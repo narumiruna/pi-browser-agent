@@ -181,7 +181,17 @@ export async function executePageOperation(
             "The cross-origin link target was not authorized or changed before the click",
           )
         }
-        found.click()
+        if (crossOrigin) {
+          const event = new MouseEvent("click", {
+            bubbles: true,
+            cancelable: true,
+            composed: true,
+          })
+          event.preventDefault()
+          found.dispatchEvent(event)
+        } else {
+          found.click()
+        }
         return success({ clicked: true, selector: getSelector() ?? "" })
       }
       case "type": {

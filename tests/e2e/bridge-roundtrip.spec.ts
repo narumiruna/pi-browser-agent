@@ -63,6 +63,9 @@ function startFixtureServer(port: number): Promise<Server> {
           event.preventDefault()
           document.querySelector('#result').textContent = 'submitted'
         })
+        document.querySelector('#external').addEventListener('click', (event) => {
+          event.currentTarget.href = 'http://127.0.0.1:${port}/second'
+        })
       </script>`)
   })
   return new Promise((resolvePromise) =>

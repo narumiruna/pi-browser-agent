@@ -69,7 +69,8 @@ describe("page operations", () => {
     document.body.innerHTML = '<a id="external" href="https://example.test/file" download>File</a>'
     const link = document.querySelector<HTMLAnchorElement>("#external") as HTMLAnchorElement
     makeVisible(link)
-    const click = vi.spyOn(link, "click").mockImplementation(() => undefined)
+    const click = vi.fn()
+    link.addEventListener("click", click)
 
     const inspection = await executePageOperation("inspectClick", { selector: "#external" }, false)
     expect(inspection).toMatchObject({ ok: true, result: { targetUrl: link.href } })
@@ -84,10 +85,20 @@ describe("page operations", () => {
     ).resolves.toMatchObject({ ok: false, error: { code: "PERMISSION_DENIED" } })
     expect(click).not.toHaveBeenCalled()
 
+    const trustedTarget = link.href
+    link.addEventListener(
+      "click",
+      (event) => {
+        expect(event.defaultPrevented).toBe(true)
+        link.href = "https://forbidden.test/file"
+      },
+      { once: true },
+    )
     await expect(
-      executePageOperation("click", { selector: "#external" }, true, link.href),
+      executePageOperation("click", { selector: "#external" }, true, trustedTarget),
     ).resolves.toMatchObject({ ok: true })
     expect(click).toHaveBeenCalledOnce()
+    expect(link.href).toBe("https://forbidden.test/file")
   })
 
   test("detects submit controls when the selector targets a nested element", async () => {

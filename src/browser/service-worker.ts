@@ -134,10 +134,7 @@ async function runClickOperation(request: RequestFrame): Promise<JsonValue> {
       : undefined
   if (target === null || target === undefined) return runPageOperation("click", request)
   if (typeof target !== "string" || !isSupportedPageUrl(target)) {
-    throw new BridgeError(
-      "PERMISSION_DENIED",
-      "Cross-origin links must target an HTTP or HTTPS page",
-    )
+    throw new BridgeError("PERMISSION_DENIED", "Only HTTP and HTTPS link targets can be opened")
   }
 
   const context = await refreshBoundContext()
@@ -153,7 +150,11 @@ async function runClickOperation(request: RequestFrame): Promise<JsonValue> {
       { action: "click", targetUrl: targetUrl.href },
     )
   }
-  return runPageOperation("click", request, targetUrl.href)
+  const result = await runPageOperation("click", request, targetUrl.href)
+  await chrome.tabs.update(context.tabId, { url: targetUrl.href })
+  boundContext = { tabId: context.tabId, url: targetUrl.href, epoch: context.epoch + 1 }
+  bridge.sendEvent("tab.changed", {}, boundContext)
+  return result
 }
 
 async function runWebMcpOperation(
