@@ -1,5 +1,5 @@
 import { Agent, type AgentEvent, type AgentMessage } from "@earendil-works/pi-agent-core"
-import type { AuthEvent, AuthPrompt } from "@earendil-works/pi-ai"
+import type { AuthEvent, AuthPrompt, ImageContent } from "@earendil-works/pi-ai"
 import { OPENAI_PROVIDER_ID } from "../auth/codex-oauth.js"
 import { ChromeCredentialStore } from "../auth/credential-store.js"
 import { createBrowserModels } from "../auth/provider.js"
@@ -59,7 +59,12 @@ function messageTitle(messages: AgentMessage[]): string | undefined {
       : Array.isArray(first.content)
         ? first.content.find((item) => item.type === "text")?.text
         : undefined
-  return text?.trim().replace(/\s+/g, " ").slice(0, 60) || undefined
+  return (
+    text?.trim().replace(/\s+/g, " ").slice(0, 60) ||
+    (Array.isArray(first.content) && first.content.some((item) => item.type === "image")
+      ? "Image"
+      : undefined)
+  )
 }
 
 export class BrowserAgentRuntime {
@@ -186,33 +191,47 @@ export class BrowserAgentRuntime {
     await this.credentials.delete(OPENAI_PROVIDER_ID)
   }
 
-  async prompt(text: string): Promise<void> {
+  async prompt(text: string, images: ImageContent[] = []): Promise<void> {
     if (this.authChanging) throw new Error("Wait for the authentication change to finish")
     if (this.agent.state.isStreaming) throw new Error("The agent is already running")
     this.agent.state.systemPrompt = composeSystemPrompt(this.settings)
-    await this.agent.prompt(text)
+    if (images.length > 0) await this.agent.prompt(text, images)
+    else await this.agent.prompt(text)
   }
 
   async submit(
     text: string,
     streamingBehavior: StreamingBehavior = "steer",
+    images: ImageContent[] = [],
   ): Promise<SubmissionMode> {
     if (this.authChanging) throw new Error("Wait for the authentication change to finish")
     if (!this.agent.state.isStreaming) {
-      await this.prompt(text)
+      if (images.length > 0) await this.prompt(text, images)
+      else await this.prompt(text)
       return "prompt"
     }
-    if (streamingBehavior === "followUp") this.followUp(text)
+    if (streamingBehavior === "followUp") {
+      if (images.length > 0) this.followUp(text, images)
+      else this.followUp(text)
+    } else if (images.length > 0) this.steer(text, images)
     else this.steer(text)
     return streamingBehavior
   }
 
-  steer(text: string): void {
-    this.agent.steer({ role: "user", content: text, timestamp: Date.now() })
+  steer(text: string, images: ImageContent[] = []): void {
+    this.agent.steer({
+      role: "user",
+      content: images.length > 0 ? [{ type: "text", text }, ...images] : text,
+      timestamp: Date.now(),
+    })
   }
 
-  followUp(text: string): void {
-    this.agent.followUp({ role: "user", content: text, timestamp: Date.now() })
+  followUp(text: string, images: ImageContent[] = []): void {
+    this.agent.followUp({
+      role: "user",
+      content: images.length > 0 ? [{ type: "text", text }, ...images] : text,
+      timestamp: Date.now(),
+    })
   }
 
   abort(): void {

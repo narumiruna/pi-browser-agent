@@ -7,6 +7,13 @@ import { safeErrorMessage } from "../auth/redaction.js"
 import { requestHostPermission } from "../permissions.js"
 import { type RuntimeEvent, sendRuntimeRequest } from "../runtime/messages.js"
 import type { JsonObject } from "../runtime/types.js"
+import {
+  imageContentSource,
+  MAX_PASTED_IMAGE_BYTES,
+  MAX_PASTED_IMAGES,
+  type PastedImage,
+  readPastedImage,
+} from "./images.js"
 
 function element<T extends HTMLElement>(id: string): T {
   const value = document.getElementById(id)
@@ -35,10 +42,14 @@ const sendButton = element<HTMLButtonElement>("send")
 const abortButton = element<HTMLButtonElement>("abort")
 const composerHint = element<HTMLElement>("composer-hint")
 const accountMenuTrigger = element<HTMLElement>("account-menu-trigger")
+const pastedImages = element<HTMLElement>("pasted-images")
 let loginController: AbortController | undefined
 let verificationUri = ""
 let activeTabUrl: string | undefined
 let submissionPending = false
+let pendingPasteOperations = 0
+let pasteQueue = Promise.resolve()
+let composerImages: Array<PastedImage & { id: string }> = []
 
 function setError(error?: unknown): void {
   errorOutput.textContent = error === undefined ? "" : safeErrorMessage(error)
@@ -60,6 +71,55 @@ function setRunStatus(text: string, running = runtime.agent.state.isStreaming): 
 function resizePromptInput(): void {
   promptInput.style.height = "auto"
   promptInput.style.height = `${Math.min(promptInput.scrollHeight, 160)}px`
+}
+
+function updateSendButton(): void {
+  sendButton.disabled = submissionPending || pendingPasteOperations > 0
+}
+
+function renderComposerImages(): void {
+  pastedImages.replaceChildren()
+  pastedImages.hidden = composerImages.length === 0
+  for (const [index, pastedImage] of composerImages.entries()) {
+    const preview = document.createElement("span")
+    preview.className = "pasted-image"
+    const image = document.createElement("img")
+    image.src = imageContentSource(pastedImage.content) ?? ""
+    image.alt = `Pasted image ${index + 1}`
+    const remove = document.createElement("button")
+    remove.type = "button"
+    remove.className = "remove-pasted-image"
+    remove.ariaLabel = `Remove pasted image ${index + 1}`
+    remove.title = remove.ariaLabel
+    remove.textContent = "×"
+    remove.addEventListener("click", () => {
+      composerImages = composerImages.filter((candidate) => candidate.id !== pastedImage.id)
+      renderComposerImages()
+      promptInput.focus()
+    })
+    preview.append(image, remove)
+    pastedImages.append(preview)
+  }
+}
+
+async function attachPastedImages(files: File[]): Promise<void> {
+  if (composerImages.length + files.length > MAX_PASTED_IMAGES) {
+    throw new Error(`Paste up to ${MAX_PASTED_IMAGES} images at a time`)
+  }
+  const additions: Array<PastedImage & { id: string }> = []
+  let usedBytes = composerImages.reduce((total, image) => total + image.byteLength, 0)
+  for (const file of files) {
+    const pastedImage = await readPastedImage(file, MAX_PASTED_IMAGE_BYTES - usedBytes)
+    additions.push({ ...pastedImage, id: crypto.randomUUID() })
+    usedBytes += pastedImage.byteLength
+  }
+  composerImages.push(...additions)
+  renderComposerImages()
+}
+
+function clearComposerImages(): void {
+  composerImages = []
+  renderComposerImages()
 }
 
 function confirmation(
@@ -137,6 +197,62 @@ function roleLabel(message: AgentMessage): string {
   return message.role
 }
 
+function messageHasImage(message: AgentMessage): boolean {
+  return (
+    "content" in message &&
+    Array.isArray(message.content) &&
+    message.content.some((item) => item.type === "image")
+  )
+}
+
+function appendTextContent(container: HTMLElement, text: string): void {
+  const block = document.createElement("span")
+  block.className = "content-text"
+  block.textContent = text
+  container.append(block)
+}
+
+function renderMessageContent(container: HTMLElement, message: AgentMessage): void {
+  if (!("content" in message)) {
+    appendTextContent(container, JSON.stringify(message))
+    return
+  }
+  if (typeof message.content === "string") {
+    appendTextContent(container, message.content)
+    return
+  }
+  if (!Array.isArray(message.content)) {
+    appendTextContent(container, JSON.stringify(message.content))
+    return
+  }
+  for (const item of message.content) {
+    if (item.type === "image") {
+      const source = imageContentSource(item)
+      if (!source) {
+        appendTextContent(container, `[image unavailable: ${item.mimeType}]`)
+        continue
+      }
+      const image = document.createElement("img")
+      image.className = "message-image"
+      image.src = source
+      image.alt = message.role === "user" ? "Pasted image" : "Image result"
+      image.loading = "lazy"
+      image.decoding = "async"
+      container.append(image)
+      continue
+    }
+    if (item.type === "text") {
+      if (item.text) appendTextContent(container, item.text)
+    } else if (item.type === "toolCall") {
+      appendTextContent(
+        container,
+        `[tool call: ${item.name}]\n${JSON.stringify(item.arguments, null, 2)}`,
+      )
+    } else if (item.type === "thinking") appendTextContent(container, item.thinking)
+    else appendTextContent(container, "[content]")
+  }
+}
+
 function renderMessages(streaming?: AgentMessage): void {
   transcript.replaceChildren()
   const messages = [...runtime.agent.state.messages, ...(streaming ? [streaming] : [])]
@@ -161,14 +277,14 @@ function renderMessages(streaming?: AgentMessage): void {
     const content = document.createElement("span")
     content.className = "content"
     const text = messageText(message)
-    content.textContent = text
+    renderMessageContent(content, message)
     if (article instanceof HTMLDetailsElement) {
       const summary = document.createElement("summary")
       const preview = document.createElement("span")
       preview.className = "tool-preview"
       preview.textContent = text.split("\n", 1)[0]?.replace(/^\[|\]$/g, "") ?? "Details"
       summary.append(role, preview)
-      article.open = /^error\b/i.test(text)
+      article.open = /^error\b/i.test(text) || messageHasImage(message)
       article.append(summary, content)
     } else {
       article.append(role, content)
@@ -329,11 +445,15 @@ element<HTMLButtonElement>("grant-site").addEventListener("click", () => {
 
 function submitPrompt(queueAfterCurrentTask = false): void {
   if (submissionPending) return
+  if (pendingPasteOperations > 0) {
+    setError("Wait for the pasted image preview before sending")
+    return
+  }
   const text = promptInput.value.trim()
-  if (!text) return
+  if (!text && composerImages.length === 0) return
   const submittedWhileStreaming = runtime.agent.state.isStreaming
   submissionPending = true
-  sendButton.disabled = true
+  updateSendButton()
   void run(async () => {
     try {
       await requestActiveSiteAccess()
@@ -349,20 +469,39 @@ function submitPrompt(queueAfterCurrentTask = false): void {
             : "A task started before the prompt could be sent. Send it again.",
         )
       }
+      const images = composerImages.map((image) => ({ ...image.content }))
       promptInput.value = ""
+      clearComposerImages()
       resizePromptInput()
       submissionPending = false
-      sendButton.disabled = false
-      const mode = await runtime.submit(text, queueAfterCurrentTask ? "followUp" : "steer")
+      updateSendButton()
+      const mode = await runtime.submit(text, queueAfterCurrentTask ? "followUp" : "steer", images)
       if (mode !== "prompt") setRunStatus("Instruction queued", true)
     } finally {
       submissionPending = false
-      sendButton.disabled = false
+      updateSendButton()
     }
   })
 }
 
 sendButton.addEventListener("click", () => submitPrompt())
+
+promptInput.addEventListener("paste", (event) => {
+  const files = Array.from(event.clipboardData?.items ?? [])
+    .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+    .map((item) => item.getAsFile())
+    .filter((file): file is File => file !== null)
+  if (files.length === 0) return
+  event.preventDefault()
+  setError()
+  pendingPasteOperations += 1
+  updateSendButton()
+  const operation = pasteQueue.then(() => attachPastedImages(files))
+  pasteQueue = operation.catch(setError).finally(() => {
+    pendingPasteOperations -= 1
+    updateSendButton()
+  })
+})
 
 promptInput.addEventListener("input", resizePromptInput)
 promptInput.addEventListener("keydown", (event) => {

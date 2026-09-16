@@ -31,6 +31,7 @@ Load the production artifact:
 2. Open the verification page, enter the displayed device code, and complete OpenAI login.
 3. Open the HTTP or HTTPS page you want to use. Pi Chrome follows the visible tab automatically.
 4. Enter a prompt. Pi Chrome requests access to that site when needed.
+5. To include an image, paste it into the composer, review the preview, and send it with optional text.
 
 The model transport is always SSE. Closing the Side Panel aborts the active run and marks the session interrupted; reopening never automatically repeats a browser mutation.
 
@@ -42,6 +43,7 @@ The agent can read visible text and selection, capture the visible viewport, cli
 - Form submissions, downloads, cross-origin links, cross-origin navigation, and all WebMCP calls require confirmation.
 - A request created before navigation or a visible-tab change is rejected as stale.
 - Visible text and selected text are capped at 50 KB; screenshots are capped at 3 MB.
+- A message accepts up to four pasted PNG, JPEG, WebP, or GIF images using at most 3 MB in total.
 - Page text, selections, screenshot metadata, and WebMCP results are labeled as untrusted model input.
 - Credentials stay in trusted extension storage and are never sent to the service worker, content injection, page context, transcript, or diagnostic export.
 

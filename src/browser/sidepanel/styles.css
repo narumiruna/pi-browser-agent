@@ -546,7 +546,24 @@ textarea {
 }
 
 .message .content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.message .content-text {
   display: block;
+}
+
+.message-image {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  max-height: 420px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  object-fit: contain;
+  background: var(--surface-subtle);
 }
 
 .message.user .role {
@@ -651,6 +668,52 @@ textarea {
   box-shadow:
     var(--shadow),
     0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.pasted-images {
+  display: flex;
+  gap: 8px;
+  padding: 4px 6px 7px;
+  overflow-x: auto;
+}
+
+.pasted-images[hidden] {
+  display: none;
+}
+
+.pasted-image {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  flex: 0 0 auto;
+}
+
+.pasted-image img {
+  width: 100%;
+  height: 100%;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  object-fit: cover;
+  background: var(--surface-subtle);
+}
+
+button.remove-pasted-image {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  display: grid;
+  width: 22px;
+  height: 22px;
+  min-height: 22px;
+  padding: 0;
+  place-items: center;
+  border-color: var(--border);
+  border-radius: 50%;
+  color: var(--text);
+  background: var(--surface);
+  box-shadow: 0 2px 6px rgb(0 0 0 / 18%);
+  font-size: 1rem;
+  line-height: 1;
 }
 
 #prompt {

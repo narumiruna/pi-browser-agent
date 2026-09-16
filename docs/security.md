@@ -28,7 +28,7 @@ Mutation tools declare `replay: "never"` and execute sequentially. Interrupted s
 
 ## Untrusted content and limits
 
-Visible page text, selection, screenshot metadata, tab metadata, and WebMCP results are wrapped as untrusted content before model use. They cannot enter the system-prompt channel. Visible text and selections are truncated to 50 KB. Screenshots are rejected above 3 MB. Session records are rejected above 5 MB and retention is capped at 50 sessions.
+Visible page text, selection, screenshot metadata, tab metadata, and WebMCP results are wrapped as untrusted content before model use. They cannot enter the system-prompt channel. Visible text and selections are truncated to 50 KB. Screenshots are rejected above 3 MB. Clipboard input accepts at most four PNG, JPEG, WebP, or GIF images using 3 MB in total; SVG and other MIME types are rejected, and transcript rendering constructs data URLs only for validated raster-image content. Session records are rejected above 5 MB and retention is capped at 50 sessions.
 
 ## Build boundary
 
