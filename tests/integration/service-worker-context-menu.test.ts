@@ -200,14 +200,53 @@ describe("service worker visible-tab targeting", () => {
     delayedWindowLookup = new Promise<void>((resolve) => {
       releaseWindowLookup = resolve
     })
-    sendMessage.mockClear()
-    const getWindowCallsBeforeRace = getWindow.mock.calls.length
-    listeners.activated?.({ tabId: 7, windowId: 3 })
+    let getWindowCallsBeforeRace = getWindow.mock.calls.length
+    const changedBeforeActivationEvent = appState("changed-before-activation-event")
     await vi.waitFor(() =>
       expect(getWindow.mock.calls.length).toBeGreaterThan(getWindowCallsBeforeRace),
     )
     activeTab = { id: 9, url: "https://newest.test/page", windowId: 3 }
+    releaseWindowLookup?.()
+    await expect(changedBeforeActivationEvent).resolves.toMatchObject({
+      ok: true,
+      result: { tabContext: { tabId: 9, url: "https://newest.test/page" } },
+    })
+
+    activeTab = { id: 7, url: "https://example.test/page", windowId: 3 }
+    await expect(appState("current-before-superseded-sync")).resolves.toMatchObject({
+      ok: true,
+      result: { tabContext: { tabId: 7 } },
+    })
+    sendMessage.mockClear()
+    delayedWindowLookup = new Promise<void>((resolve) => {
+      releaseWindowLookup = resolve
+    })
+    getWindowCallsBeforeRace = getWindow.mock.calls.length
+    let supersededStateSettled = false
+    const supersededState = appState("superseded-state").finally(() => {
+      supersededStateSettled = true
+    })
+    await vi.waitFor(() =>
+      expect(getWindow.mock.calls.length).toBeGreaterThan(getWindowCallsBeforeRace),
+    )
+
+    let releaseLatestWindowLookup: (() => void) | undefined
+    delayedWindowLookup = new Promise<void>((resolve) => {
+      releaseLatestWindowLookup = resolve
+    })
+    activeTab = { id: 9, url: "https://newest.test/page", windowId: 3 }
     listeners.activated?.({ tabId: 9, windowId: 3 })
+    await vi.waitFor(() =>
+      expect(getWindow.mock.calls.length).toBeGreaterThan(getWindowCallsBeforeRace + 1),
+    )
+    releaseWindowLookup?.()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(supersededStateSettled).toBe(false)
+    releaseLatestWindowLookup?.()
+    await expect(supersededState).resolves.toMatchObject({
+      ok: true,
+      result: { tabContext: { tabId: 9, url: "https://newest.test/page" } },
+    })
     await vi.waitFor(() =>
       expect(sendMessage).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -216,16 +255,36 @@ describe("service worker visible-tab targeting", () => {
         }),
       ),
     )
-    releaseWindowLookup?.()
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    await vi.waitFor(() => {
-      const changes = sendMessage.mock.calls
-        .map(([message]) => message as { name?: string; tabContext?: { tabId?: number } })
-        .filter((message) => message.name === "tab.changed" && message.tabContext)
-      expect(changes.at(-1)?.tabContext?.tabId).toBe(9)
-    })
 
     activeTab = { id: 7, url: "https://example.test/page", windowId: 3 }
+    await expect(appState("current-before-focus-loss-race")).resolves.toMatchObject({
+      ok: true,
+      result: { tabContext: { tabId: 7 } },
+    })
+    let focusLossQueued = false
+    queryTabs.mockResolvedValueOnce([activeTab]).mockImplementationOnce(async () => [
+      {
+        id: activeTab.id,
+        windowId: activeTab.windowId,
+        get url() {
+          if (!focusLossQueued) {
+            focusLossQueued = true
+            queueMicrotask(() => {
+              focusedWindowId = -1
+              listeners.focusChanged?.(-1)
+            })
+          }
+          return activeTab.url
+        },
+      },
+    ])
+    await expect(appState("focus-loss-before-commit")).resolves.toEqual({
+      ok: true,
+      result: { tabContext: null },
+    })
+    expect(focusLossQueued).toBe(true)
+
+    focusedWindowId = 3
     listeners.activated?.({ tabId: 7, windowId: 3 })
     focusedWindowId = -1
     listeners.focusChanged?.(-1)
