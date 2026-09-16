@@ -1,7 +1,7 @@
 import { StringEnum } from "@earendil-works/pi-ai"
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent"
 import { Type } from "typebox"
-import { BridgeError, type JsonObject } from "../protocol/index.js"
+import { BridgeError, isJsonObject, type JsonObject } from "../protocol/index.js"
 import type { BridgeServer } from "./bridge-server.js"
 
 type ServerProvider = () => BridgeServer
@@ -20,8 +20,13 @@ async function requestWithConfirmation(
   signal: AbortSignal | undefined,
   ctx: ExtensionContext,
 ): Promise<unknown> {
+  const tabContext = server.getStatus().tabContext
+  if (!tabContext) {
+    throw new BridgeError("TAB_NOT_BOUND", "Bind a Chrome tab before running this action")
+  }
+  const contextOptions = { signal, tabContext: { ...tabContext } }
   try {
-    return await server.request(method, params, { signal })
+    return await server.request(method, params, contextOptions)
   } catch (error) {
     if (!(error instanceof BridgeError) || error.code !== "CONFIRMATION_REQUIRED") throw error
     if (!ctx.hasUI) {
@@ -32,7 +37,7 @@ async function requestWithConfirmation(
     }
     const confirmed = await ctx.ui.confirm("Confirm browser action", error.message)
     if (!confirmed) throw new BridgeError("PERMISSION_DENIED", "Browser action was declined")
-    return server.request(method, params, { confirmed: true, signal })
+    return server.request(method, params, { ...contextOptions, confirmed: true })
   }
 }
 
@@ -174,7 +179,7 @@ export function registerBrowserTools(pi: ExtensionAPI, getServer: ServerProvider
     name: "browser_navigate",
     label: "Browser Navigate",
     description:
-      "Navigate the bound Chrome tab to an HTTP or HTTPS URL. Cross-origin navigation requires user confirmation.",
+      "Navigate the bound Chrome tab to an HTTP or HTTPS URL. Cross-origin navigation requires user confirmation and a persistent destination host permission.",
     parameters: Type.Object({
       url: Type.String({ description: "Absolute HTTP or HTTPS URL", maxLength: 16_384 }),
     }),
@@ -197,23 +202,32 @@ export function registerBrowserTools(pi: ExtensionAPI, getServer: ServerProvider
       "List or call WebMCP tools exposed by the bound page when the experimental browser API is available.",
     parameters: Type.Object({
       action: StringEnum(["list", "call"] as const),
-      name: Type.Optional(Type.String({ description: "Registered WebMCP tool name for call" })),
+      name: Type.Optional(
+        Type.String({ description: "Registered WebMCP tool name for call", maxLength: 256 }),
+      ),
       arguments: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
     }),
     async execute(_id, params, signal, _onUpdate, ctx) {
-      const result =
-        params.action === "list"
-          ? await getServer().request("webmcp.listTools", {}, { signal })
-          : await requestWithConfirmation(
-              getServer(),
-              "webmcp.callTool",
-              {
-                name: params.name ?? "",
-                arguments: (params.arguments ?? {}) as JsonObject,
-              },
-              signal,
-              ctx,
-            )
+      let result: unknown
+      if (params.action === "list") {
+        result = await getServer().request("webmcp.listTools", {}, { signal })
+      } else {
+        const name = params.name?.trim()
+        const args = params.arguments ?? {}
+        if (!name) {
+          throw new BridgeError("INVALID_REQUEST", "A non-empty WebMCP tool name is required")
+        }
+        if (!isJsonObject(args)) {
+          throw new BridgeError("INVALID_REQUEST", "WebMCP arguments must be a plain JSON object")
+        }
+        result = await requestWithConfirmation(
+          getServer(),
+          "webmcp.callTool",
+          { name, arguments: args },
+          signal,
+          ctx,
+        )
+      }
       return {
         content: [{ type: "text", text: formatUntrusted(result) }],
         details: result,

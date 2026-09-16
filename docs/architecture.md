@@ -53,11 +53,11 @@ flowchart LR
 
 ### Pairing state
 
-Pi stores `{port, secret, allowedExtensionId}` outside the session transcript. Chrome stores `{port, secret, clientId, boundTabId}` in extension-local storage. A new `/chrome-pair` secret clears the previously bound extension ID. The first client that proves knowledge of the new secret becomes the bound extension.
+Pi stores `{port, secret, allowedExtensionId}` outside the session transcript. Chrome stores `{port, secret, clientId}` in `chrome.storage.local`. The current `boundTabId` lives in `chrome.storage.session`, so it survives an MV3 service-worker restart but is cleared when Chrome restarts. A new `/chrome-pair` secret clears the previously bound extension ID. The first client that proves knowledge of the new secret becomes the bound extension.
 
 ### Tab state
 
-A tab context is `{tabId, url, epoch}`. The extension increments the epoch when navigation starts and sends `tab.changed`. Every pi request carries the most recently observed context. Chrome rechecks the live tab and rejects a mismatch with `STALE_CONTEXT`.
+A tab context is `{tabId, url, epoch}`. The extension increments the epoch when navigation starts or Chrome reports a URL change and sends `tab.changed`. Every pi request carries the context captured when the operation begins; a confirmation retry reuses that exact context. Chrome rechecks the live tab and rejects a mismatch with `STALE_CONTEXT`.
 
 ### Connection state
 

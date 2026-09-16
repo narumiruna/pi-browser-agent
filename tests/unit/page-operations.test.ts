@@ -31,6 +31,11 @@ describe("page operations", () => {
       value: undefined,
       writable: true,
     })
+    Object.defineProperty(document, "elementFromPoint", {
+      configurable: true,
+      value: undefined,
+      writable: true,
+    })
   })
 
   test("reads visible text without collecting input values", async () => {
@@ -85,6 +90,56 @@ describe("page operations", () => {
     expect(click).not.toHaveBeenCalled()
   })
 
+  test("requires confirmation for a label associated with a submit control", async () => {
+    document.body.innerHTML =
+      '<form><button id="submit" type="submit">Submit</button><label id="label" for="submit">Go</label></form>'
+    const label = document.querySelector<HTMLLabelElement>("#label") as HTMLLabelElement
+    makeVisible(label)
+    const click = vi.spyOn(label, "click").mockImplementation(() => undefined)
+
+    const blocked = await executePageOperation("click", { selector: "#label" }, false)
+
+    expect(blocked).toMatchObject({ ok: false, error: { code: "CONFIRMATION_REQUIRED" } })
+    expect(click).not.toHaveBeenCalled()
+  })
+
+  test("rejects elements hidden by ancestors, outside the viewport, or covered", async () => {
+    document.body.innerHTML =
+      '<div id="hidden" style="opacity: 0"><button id="inside">Inside</button></div><button id="outside">Outside</button><button id="covered">Covered</button><div id="overlay"></div>'
+    const inside = document.querySelector<HTMLButtonElement>("#inside") as HTMLButtonElement
+    const outside = document.querySelector<HTMLButtonElement>("#outside") as HTMLButtonElement
+    const covered = document.querySelector<HTMLButtonElement>("#covered") as HTMLButtonElement
+    const overlay = document.querySelector<HTMLDivElement>("#overlay") as HTMLDivElement
+    makeVisible(inside)
+    vi.spyOn(outside, "getBoundingClientRect").mockReturnValue({
+      bottom: -10,
+      height: 10,
+      left: 0,
+      right: 10,
+      top: -20,
+      width: 10,
+      x: 0,
+      y: -20,
+      toJSON: () => ({}),
+    })
+    makeVisible(covered)
+
+    await expect(
+      executePageOperation("click", { selector: "#inside" }, false),
+    ).resolves.toMatchObject({ ok: false, error: { code: "INVALID_REQUEST" } })
+    await expect(
+      executePageOperation("click", { selector: "#outside" }, false),
+    ).resolves.toMatchObject({ ok: false, error: { code: "INVALID_REQUEST" } })
+
+    Object.defineProperty(document, "elementFromPoint", {
+      configurable: true,
+      value: vi.fn(() => overlay),
+    })
+    await expect(
+      executePageOperation("click", { selector: "#covered" }, false),
+    ).resolves.toMatchObject({ ok: false, error: { code: "INVALID_REQUEST" } })
+  })
+
   test("never types into password, file, or hidden inputs", async () => {
     document.body.innerHTML =
       '<input id="password" type="password"><input id="file" type="file"><input id="hidden" type="hidden">'
@@ -114,6 +169,29 @@ describe("page operations", () => {
     )
     expect(result).toMatchObject({ ok: true })
     expect(input.value).toBe("new title")
+    expect(listener).toHaveBeenCalledOnce()
+  })
+
+  test("uses the native value setter for framework-controlled inputs", async () => {
+    document.body.innerHTML = '<input id="controlled" type="text">'
+    const input = document.querySelector<HTMLInputElement>("#controlled") as HTMLInputElement
+    makeVisible(input)
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")
+    if (!descriptor?.get) throw new Error("Native input value getter unavailable")
+    const trackedSetter = vi.fn()
+    Object.defineProperty(input, "value", {
+      configurable: true,
+      get: () => descriptor.get?.call(input),
+      set: trackedSetter,
+    })
+    const listener = vi.fn()
+    input.addEventListener("input", listener)
+
+    await expect(
+      executePageOperation("type", { selector: "#controlled", text: "updated" }, false),
+    ).resolves.toMatchObject({ ok: true })
+    expect(trackedSetter).not.toHaveBeenCalled()
+    expect(input.value).toBe("updated")
     expect(listener).toHaveBeenCalledOnce()
   })
 

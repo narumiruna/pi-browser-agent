@@ -9,7 +9,7 @@ import {
   verifyAuthenticationProof,
 } from "../../src/pi/authentication.js"
 import { BridgeConfigStore } from "../../src/pi/config.js"
-import { BridgeError } from "../../src/protocol/index.js"
+import { BridgeError, isPairingSecret } from "../../src/protocol/index.js"
 
 const extensionId = "a".repeat(32)
 const origin = `chrome-extension://${extensionId}`
@@ -20,6 +20,35 @@ describe("bridge authentication", () => {
     const challenge = createChallenge(1_000)
     const proof = createAuthenticationProof(secret, challenge, "client", origin)
 
+    expect(() =>
+      verifyAuthenticationProof({
+        challenge,
+        challengeId: challenge.challengeId,
+        clientId: "client",
+        now: 1_001,
+        origin,
+        proof,
+        secret,
+      }),
+    ).not.toThrow()
+  })
+
+  test("does not consume a challenge for a mismatched ID", () => {
+    const challenge = createChallenge(1_000)
+    const proof = createAuthenticationProof(secret, challenge, "client", origin)
+
+    expect(() =>
+      verifyAuthenticationProof({
+        challenge,
+        challengeId: "wrong-id",
+        clientId: "client",
+        now: 1_001,
+        origin,
+        proof,
+        secret,
+      }),
+    ).toThrow(/invalid/)
+    expect(challenge.used).toBe(false)
     expect(() =>
       verifyAuthenticationProof({
         challenge,
@@ -46,6 +75,7 @@ describe("bridge authentication", () => {
         secret,
       }),
     ).toThrow(BridgeError)
+    expect(incorrect.used).toBe(true)
 
     const expired = createChallenge(1_000)
     const expiredProof = createAuthenticationProof(secret, expired, "client", origin)
@@ -82,6 +112,16 @@ describe("bridge authentication", () => {
     expect(() => parseExtensionOrigin("chrome-extension://*")).toThrow(BridgeError)
     expect(() => parseExtensionOrigin(`${origin}/`)).toThrow(BridgeError)
     expect(() => parseExtensionOrigin(undefined)).toThrow(BridgeError)
+  })
+})
+
+describe("pairing secret format", () => {
+  test("accepts only base64url-encoded 256-bit secrets", () => {
+    expect(isPairingSecret(secret)).toBe(true)
+    expect(isPairingSecret(` ${secret}`)).toBe(false)
+    expect(isPairingSecret("x".repeat(42))).toBe(false)
+    expect(isPairingSecret("x".repeat(44))).toBe(false)
+    expect(isPairingSecret(`${"x".repeat(42)}+`)).toBe(false)
   })
 })
 

@@ -177,10 +177,20 @@ test("supports scoped interaction and blocks sensitive actions until confirmed",
   await bridge.request("page.click", { selector: "#submit" }, { confirmed: true })
   await expect(page.locator("#result")).toHaveText("submitted")
 
-  await expect(
-    bridge.request("tabs.navigate", { url: `http://localhost:${fixturePort}/second` }),
-  ).rejects.toMatchObject({ code: "CONFIRMATION_REQUIRED" })
+  const localhostUrl = `http://localhost:${fixturePort}/second`
+  await expect(bridge.request("tabs.navigate", { url: localhostUrl })).rejects.toMatchObject({
+    code: "CONFIRMATION_REQUIRED",
+  })
   await expect(page).toHaveURL(`http://127.0.0.1:${fixturePort}/`)
+
+  await bridge.request("tabs.navigate", { url: localhostUrl }, { confirmed: true })
+  await page.waitForURL(localhostUrl)
+  await bridge.request(
+    "tabs.navigate",
+    { url: `http://127.0.0.1:${fixturePort}/` },
+    { confirmed: true },
+  )
+  await page.waitForURL(`http://127.0.0.1:${fixturePort}/`)
 })
 
 test("rejects stale requests after navigation", async () => {
@@ -192,6 +202,17 @@ test("rejects stale requests after navigation", async () => {
   await expect(
     bridge.request("page.getVisibleText", {}, { tabContext: previous }),
   ).rejects.toMatchObject({ code: "STALE_CONTEXT" })
+})
+
+test("publishes same-document URL changes before later requests", async () => {
+  const updatedUrl = `http://127.0.0.1:${fixturePort}/second#client-state`
+  await page.evaluate(() => history.pushState({}, "", "/second#client-state"))
+  await waitFor(() => bridge.getStatus().tabContext?.url === updatedUrl)
+
+  await expect(bridge.request("page.getVisibleText", {})).resolves.toMatchObject({
+    text: expect.stringContaining("Second page"),
+    url: updatedUrl,
+  })
 })
 
 test("restores state after the MV3 service worker is restarted", async () => {
@@ -233,5 +254,7 @@ test("reconnects after pi reload and supports revoke", async () => {
   await controller.close()
   expect(revoked.ok).toBe(true)
   await waitFor(() => !bridge.getStatus().connected)
+  expect(bridge.getStatus().paired).toBe(false)
+  await expect(configStore.load()).resolves.toEqual({ port: bridgePort })
   await expect(bridge.request("tabs.getActive", {})).rejects.toBeInstanceOf(BridgeError)
 })

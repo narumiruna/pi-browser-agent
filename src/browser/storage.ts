@@ -1,3 +1,5 @@
+import { isPairingSecret } from "../protocol/index.js"
+
 export const DEFAULT_BRIDGE_PORT = 17_373
 
 export interface StoredBridgeSettings {
@@ -5,14 +7,16 @@ export interface StoredBridgeSettings {
   port: number
   secret?: string
   clientId: string
-  boundTabId?: number
 }
 
-const STORAGE_KEY = "piChromeBridgeSettings"
+const LOCAL_STORAGE_KEY = "piChromeBridgeSettings"
+const SESSION_TAB_KEY = "piChromeBoundTabId"
 
 export async function getBridgeSettings(): Promise<StoredBridgeSettings> {
-  const stored = await chrome.storage.local.get(STORAGE_KEY)
-  const value = stored[STORAGE_KEY] as Partial<StoredBridgeSettings> | undefined
+  const stored = await chrome.storage.local.get(LOCAL_STORAGE_KEY)
+  const value = stored[LOCAL_STORAGE_KEY] as
+    | (Partial<StoredBridgeSettings> & { boundTabId?: unknown })
+    | undefined
   const clientId =
     typeof value?.clientId === "string" && value.clientId.length > 0 && value.clientId.length <= 256
       ? value.clientId
@@ -25,19 +29,16 @@ export async function getBridgeSettings(): Promise<StoredBridgeSettings> {
     enabled: value?.enabled === true,
     port,
     clientId,
-    ...(typeof value?.secret === "string" && /^[A-Za-z0-9_-]{43}$/.test(value.secret)
-      ? { secret: value.secret }
-      : {}),
-    ...(Number.isInteger(value?.boundTabId) && (value?.boundTabId ?? -1) >= 0
-      ? { boundTabId: value?.boundTabId as number }
-      : {}),
+    ...(isPairingSecret(value?.secret) ? { secret: value.secret } : {}),
   }
-  if (clientId !== value?.clientId || port !== value?.port) await saveBridgeSettings(settings)
+  if (clientId !== value?.clientId || port !== value?.port || "boundTabId" in (value ?? {})) {
+    await saveBridgeSettings(settings)
+  }
   return settings
 }
 
 export async function saveBridgeSettings(settings: StoredBridgeSettings): Promise<void> {
-  await chrome.storage.local.set({ [STORAGE_KEY]: settings })
+  await chrome.storage.local.set({ [LOCAL_STORAGE_KEY]: settings })
 }
 
 export async function updateBridgeSettings(
@@ -47,6 +48,21 @@ export async function updateBridgeSettings(
   const next = { ...current, ...patch }
   await saveBridgeSettings(next)
   return next
+}
+
+export async function getBoundTabId(): Promise<number | undefined> {
+  const stored = await chrome.storage.session.get(SESSION_TAB_KEY)
+  const value = stored[SESSION_TAB_KEY]
+  return Number.isInteger(value) && (value as number) >= 0 ? (value as number) : undefined
+}
+
+export async function saveBoundTabId(tabId: number | undefined): Promise<void> {
+  if (tabId === undefined) {
+    await chrome.storage.session.remove(SESSION_TAB_KEY)
+    return
+  }
+  if (!Number.isInteger(tabId) || tabId < 0) throw new Error("Invalid Chrome tab ID")
+  await chrome.storage.session.set({ [SESSION_TAB_KEY]: tabId })
 }
 
 export async function clearPairing(): Promise<StoredBridgeSettings> {

@@ -59,15 +59,39 @@ export async function executePageOperation(
     "ok" in value
   const isVisible = (element: Element): boolean => {
     if (!(element instanceof HTMLElement)) return false
-    const style = getComputedStyle(element)
+    for (let current: HTMLElement | null = element; current; current = current.parentElement) {
+      const style = getComputedStyle(current)
+      if (
+        style.display === "none" ||
+        style.visibility === "hidden" ||
+        style.visibility === "collapse" ||
+        Number.parseFloat(style.opacity || "1") <= 0
+      ) {
+        return false
+      }
+    }
+
     const rect = element.getBoundingClientRect()
-    return (
-      style.display !== "none" &&
-      style.visibility !== "hidden" &&
-      Number.parseFloat(style.opacity || "1") > 0 &&
-      rect.width > 0 &&
-      rect.height > 0
-    )
+    const left = Math.max(0, rect.left)
+    const right = Math.min(window.innerWidth, rect.right)
+    const top = Math.max(0, rect.top)
+    const bottom = Math.min(window.innerHeight, rect.bottom)
+    if (rect.width <= 0 || rect.height <= 0 || left >= right || top >= bottom) return false
+
+    if (typeof document.elementFromPoint === "function") {
+      const hit = document.elementFromPoint((left + right) / 2, (top + bottom) / 2)
+      if (!hit || (hit !== element && !element.contains(hit))) return false
+    }
+    return true
+  }
+  const setNativeValue = (element: HTMLInputElement | HTMLTextAreaElement, value: string): void => {
+    const prototype =
+      element instanceof HTMLInputElement
+        ? HTMLInputElement.prototype
+        : HTMLTextAreaElement.prototype
+    const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set
+    if (!setter) throw new Error("The browser does not expose a native value setter")
+    setter.call(element, value)
   }
   try {
     switch (operation) {
@@ -89,8 +113,22 @@ export async function executePageOperation(
         }
 
         const anchor = found.closest("a")
-        const button = found.closest("button")
-        const input = found.closest("input")
+        const label = found.closest("label")
+        const labelControl = label instanceof HTMLLabelElement ? label.control : null
+        const ancestorButton = found.closest("button")
+        const ancestorInput = found.closest("input")
+        const button =
+          ancestorButton instanceof HTMLButtonElement
+            ? ancestorButton
+            : labelControl instanceof HTMLButtonElement
+              ? labelControl
+              : null
+        const input =
+          ancestorInput instanceof HTMLInputElement
+            ? ancestorInput
+            : labelControl instanceof HTMLInputElement
+              ? labelControl
+              : null
         const submitControl =
           (button instanceof HTMLButtonElement && button.type === "submit") ||
           (input instanceof HTMLInputElement && ["image", "submit"].includes(input.type))
@@ -135,13 +173,13 @@ export async function executePageOperation(
             return failure("PERMISSION_DENIED", `Input type ${found.type} is not editable`)
           }
           found.focus()
-          found.value = text
+          setNativeValue(found, text)
         } else if (found instanceof HTMLTextAreaElement) {
           if (found.disabled || found.readOnly) {
             return failure("PERMISSION_DENIED", "The text area is disabled or read-only")
           }
           found.focus()
-          found.value = text
+          setNativeValue(found, text)
         } else if (found instanceof HTMLElement && found.isContentEditable) {
           found.focus()
           found.textContent = text

@@ -1,3 +1,5 @@
+import { toHostPermissionPattern } from "../permissions.js"
+
 interface RuntimeResponse<T> {
   ok: boolean
   result?: T
@@ -85,7 +87,9 @@ required(document.querySelector<HTMLButtonElement>("#grant-site"), "grant site")
       if (url.protocol !== "http:" && url.protocol !== "https:") {
         throw new Error("Only HTTP and HTTPS sites can be granted access")
       }
-      const granted = await chrome.permissions.request({ origins: [`${url.origin}/*`] })
+      const granted = await chrome.permissions.request({
+        origins: [toHostPermissionPattern(url)],
+      })
       if (!granted) throw new Error("Site access was not granted")
       await send({ type: "bridge.bindTab" })
       await refresh()

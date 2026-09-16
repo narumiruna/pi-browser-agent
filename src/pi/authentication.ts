@@ -66,10 +66,10 @@ export function verifyAuthenticationProof(options: {
   if (options.challenge.used) {
     throw new BridgeError("AUTHENTICATION_FAILED", "Authentication challenge was already used")
   }
-  options.challenge.used = true
   if (options.challenge.challengeId !== options.challengeId || now > options.challenge.expiresAt) {
     throw new BridgeError("AUTHENTICATION_FAILED", "Authentication challenge is invalid or expired")
   }
+  options.challenge.used = true
 
   const expected = Buffer.from(
     createAuthenticationProof(options.secret, options.challenge, options.clientId, options.origin),
