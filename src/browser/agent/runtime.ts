@@ -12,8 +12,10 @@ import {
 } from "../sessions/session-store.js"
 import {
   type AppSettings,
+  getActiveSessionId,
   getSettings,
   restrictLocalStorageToTrustedContexts,
+  saveActiveSessionId,
   saveSettings,
 } from "../storage.js"
 import { type ConfirmationHandler, createBrowserTools } from "./browser-tools.js"
@@ -94,14 +96,19 @@ export class BrowserAgentRuntime {
     await restrictLocalStorageToTrustedContexts()
     await this.sessions.markRunningSessionsInterrupted()
     this.settings = await getSettings()
-    const resumeId = sessionId ?? (await this.sessions.list())[0]?.id
-    const restored = resumeId ? await this.sessions.get(resumeId) : undefined
+    const storedSessionId = sessionId ?? (await getActiveSessionId())
+    let restored = storedSessionId ? await this.sessions.get(storedSessionId) : undefined
+    if (!restored) {
+      const latest = (await this.sessions.list())[0]
+      if (latest) restored = await this.sessions.get(latest.id)
+    }
     this.session = restored ?? createSession(this.model.id)
     this.agent.sessionId = this.session.id
     this.agent.state.messages = structuredClone(this.session.messages)
     this.agent.state.thinkingLevel = this.session.model.thinkingLevel
     this.agent.state.systemPrompt = composeSystemPrompt(this.settings)
     if (!restored) await this.sessions.put(this.session)
+    await saveActiveSessionId(this.session.id)
   }
 
   get activeSession(): SessionRecord {
@@ -190,6 +197,7 @@ export class BrowserAgentRuntime {
     this.agent.state.thinkingLevel = "medium"
     this.agent.state.systemPrompt = composeSystemPrompt(this.settings)
     await this.sessions.put(this.session)
+    await saveActiveSessionId(this.session.id)
   }
 
   async resumeSession(id: string): Promise<void> {
@@ -205,6 +213,7 @@ export class BrowserAgentRuntime {
     this.agent.state.messages = structuredClone(record.messages)
     this.agent.state.thinkingLevel = record.model.thinkingLevel
     this.agent.state.systemPrompt = composeSystemPrompt(this.settings)
+    await saveActiveSessionId(this.session.id)
   }
 
   async renameSession(title: string): Promise<void> {

@@ -1,5 +1,6 @@
 const SESSION_TAB_KEY = "piChromeBoundTabId"
 const SETTINGS_KEY = "piChromeSettings"
+const ACTIVE_SESSION_KEY = "piChromeActiveSessionId"
 
 export interface AppSettings {
   systemPrompt: string
@@ -31,6 +32,17 @@ export async function getSettings(): Promise<AppSettings> {
 
 export async function saveSettings(settings: AppSettings): Promise<void> {
   await chrome.storage.local.set({ [SETTINGS_KEY]: settings })
+}
+
+export async function getActiveSessionId(): Promise<string | undefined> {
+  const stored = await chrome.storage.local.get(ACTIVE_SESSION_KEY)
+  const value = stored[ACTIVE_SESSION_KEY]
+  return typeof value === "string" && value.length > 0 ? value : undefined
+}
+
+export async function saveActiveSessionId(sessionId: string): Promise<void> {
+  if (!sessionId) throw new Error("Invalid session ID")
+  await chrome.storage.local.set({ [ACTIVE_SESSION_KEY]: sessionId })
 }
 
 export async function getBoundTabId(): Promise<number | undefined> {

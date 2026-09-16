@@ -42,7 +42,11 @@ function defaultSleep(milliseconds: number, signal: AbortSignal): Promise<void> 
   })
 }
 
-const defaults: CodexOAuthDependencies = { fetch, now: Date.now, sleep: defaultSleep }
+const defaults: CodexOAuthDependencies = {
+  fetch: (input, init) => globalThis.fetch(input, init),
+  now: () => Date.now(),
+  sleep: defaultSleep,
+}
 
 function asRecord(value: unknown): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {

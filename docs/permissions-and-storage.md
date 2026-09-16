@@ -18,7 +18,7 @@ The extension CSP permits connections only to `auth.openai.com` and `chatgpt.com
 
 | Store | Data | Lifetime |
 | --- | --- | --- |
-| `chrome.storage.local` | OpenAI credential, system prompt, AGENTS-style instructions | Until logout, settings change, or extension data removal |
+| `chrome.storage.local` | OpenAI credential, system prompt, AGENTS-style instructions, active session ID | Until logout, settings change, session selection, or extension data removal |
 | `chrome.storage.session` | Bound tab ID | Browser session |
 | IndexedDB `pi-chrome-sessions` | Versioned complete messages, model state, names, timestamps, embedded image content | Until retention deletion or user clear |
 | Memory | Live agent, partial stream, confirmations, login cancellation | Side Panel lifetime |
@@ -27,6 +27,6 @@ Local extension storage is restricted to trusted contexts. Content injection has
 
 ## Retention and recovery
 
-IndexedDB stores at most 50 sessions, newest first. Each serialized session is limited to 5 MB. Deleting a session deletes its transcript and inline image content in the same record. Clearing session storage removes the object store contents before creating a new empty session.
+IndexedDB stores at most 50 sessions, newest first. Each serialized session is limited to 5 MB. The active session ID is stored separately so Side Panel and Chrome restarts restore the selected session even when records have equal timestamps. Deleting a session deletes its transcript and inline image content in the same record. Clearing session storage removes the object store contents before creating a new empty session.
 
 A session is `running` only while an agent invocation is active. Startup changes stale `running` records to `interrupted`. Partial streaming state is memory-only; completed messages remain available for review, and mutation tools are not replayed.

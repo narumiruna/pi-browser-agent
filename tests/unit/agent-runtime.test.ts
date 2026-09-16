@@ -9,7 +9,7 @@ function assistant(content: string, stopReason: "pending" | "stop"): AssistantMe
     role: "assistant",
     api: "openai-codex-responses",
     provider: "openai-codex",
-    model: "gpt-5.4",
+    model: "gpt-5.6-terra",
     content: content ? [{ type: "text", text: content }] : [],
     stopReason,
     timestamp: Date.now(),
@@ -43,7 +43,7 @@ describe("browser agent configuration", () => {
   test("streams lifecycle events in order and forces SSE", async () => {
     const model = openaiCodexProvider()
       .getModels()
-      .find((candidate) => candidate.id === "gpt-5.4")
+      .find((candidate) => candidate.id === "gpt-5.6-terra")
     if (!model) throw new Error("test model unavailable")
     const streamFn = vi.fn((_model, _context, options) => {
       const stream = createAssistantMessageEventStream()

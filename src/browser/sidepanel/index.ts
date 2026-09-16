@@ -106,9 +106,7 @@ async function refreshAuth(): Promise<void> {
   loginButton.hidden = status.loggedIn
   logoutButton.hidden = !status.loggedIn
   refreshTokenButton.hidden = !status.loggedIn
-  authStatus.textContent = status.loggedIn
-    ? `Logged in${status.accountId ? ` · account ${status.accountId}` : ""}`
-    : "Not logged in"
+  authStatus.textContent = status.loggedIn ? "Logged in" : "Not logged in"
 }
 
 async function refreshTab(): Promise<void> {
