@@ -13,6 +13,7 @@ async function walk(directory) {
   }
 }
 await walk(root)
+const artifactFiles = new Set(files.map((path) => relative(root, path).replaceAll("\\", "/")))
 
 const failures = []
 for (const path of files) {
@@ -33,6 +34,22 @@ for (const path of files) {
 }
 
 const manifest = JSON.parse(await readFile(join(root, "manifest.json"), "utf8"))
+const iconPaths = (icons) => {
+  if (typeof icons === "string") return [icons]
+  if (!icons || typeof icons !== "object") return []
+  return Object.values(icons).filter((path) => typeof path === "string")
+}
+const extensionIcons = iconPaths(manifest.icons)
+const actionIcons = iconPaths(manifest.action?.default_icon)
+if (extensionIcons.length === 0) failures.push("manifest.json: extension icons must be declared")
+if (actionIcons.length === 0) failures.push("manifest.json: action icons must be declared")
+for (const iconPath of new Set([...extensionIcons, ...actionIcons])) {
+  const normalizedPath = iconPath.replaceAll("\\", "/").replace(/^\/+/, "")
+  if (!artifactFiles.has(normalizedPath)) {
+    failures.push(`manifest.json: missing icon file ${iconPath}`)
+  }
+}
+
 const expectedPermissions = [
   "activeTab",
   "contextMenus",

@@ -173,7 +173,7 @@ button.text-button:hover:not(:disabled) {
   background: var(--surface);
 }
 
-.brand-row,
+.header-row,
 .session-row,
 .composer-toolbar,
 .dialog-actions {
@@ -181,41 +181,6 @@ button.text-button:hover:not(:disabled) {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-}
-
-.brand,
-.header-actions {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-}
-
-.brand {
-  gap: 8px;
-}
-
-.header-actions {
-  gap: 6px;
-}
-
-.brand-mark {
-  display: grid;
-  width: 28px;
-  height: 28px;
-  flex: 0 0 auto;
-  place-items: center;
-  border-radius: 8px;
-  color: white;
-  background: linear-gradient(145deg, #7777eb, #4d4db8);
-  box-shadow: 0 3px 8px rgb(74 74 180 / 22%);
-  font-family: Georgia, serif;
-  font-size: 1.1rem;
-  font-weight: 700;
-}
-
-.brand strong {
-  display: block;
-  line-height: 1.2;
 }
 
 .eyebrow,
@@ -230,14 +195,20 @@ button.text-button:hover:not(:disabled) {
   align-items: center;
   gap: 6px;
   max-width: 160px;
+  flex: 0 1 auto;
   padding: 4px 8px;
   overflow: hidden;
   border-radius: 999px;
   color: var(--text-muted);
   background: var(--surface-subtle);
   font-size: 0.78rem;
-  text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+#run-status {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .status-dot {
@@ -338,15 +309,19 @@ body[data-state="running"] .status-dot {
   align-items: center;
   gap: 8px;
   min-width: 0;
-  margin-top: 7px;
+  flex: 1 1 0;
   padding: 6px 8px;
+  overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 9px;
   background: var(--surface-subtle);
 }
 
 .page-context > div {
+  width: 0;
   min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
 }
 
 .page-context .eyebrow {
@@ -819,6 +794,26 @@ dialog p {
 
   .status-pill {
     max-width: 100px;
+  }
+}
+
+@media (max-width: 360px) {
+  .app-header {
+    padding-inline: 8px;
+  }
+
+  .header-row {
+    gap: 6px;
+  }
+
+  .page-context {
+    gap: 6px;
+    padding-inline: 6px;
+  }
+
+  .status-pill {
+    max-width: 86px;
+    padding-inline: 6px;
   }
 }
 
