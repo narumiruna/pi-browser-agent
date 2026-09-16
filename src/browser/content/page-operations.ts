@@ -16,6 +16,7 @@ export interface PageOperationFailure {
       | "INVALID_REQUEST"
       | "NOT_SUPPORTED"
       | "PERMISSION_DENIED"
+      | "STALE_CONTEXT"
     message: string
     details?: JsonObject
   }
@@ -32,6 +33,7 @@ export async function executePageOperation(
   params: JsonObject,
   confirmed: boolean,
   trustedLinkTargetUrl: string | null = null,
+  expectedPageUrl: string | null = null,
 ): Promise<PageOperationResult> {
   const success = (result: JsonValue): PageOperationSuccess => ({ ok: true, result })
   const failure = (
@@ -110,6 +112,15 @@ export async function executePageOperation(
     setter.call(element, value)
   }
   try {
+    if (
+      expectedPageUrl !== null &&
+      (location.href !== expectedPageUrl || document.visibilityState !== "visible")
+    ) {
+      return failure(
+        "STALE_CONTEXT",
+        "The page is no longer the visible target for this browser operation",
+      )
+    }
     switch (operation) {
       case "getVisibleText": {
         const text = document.body?.innerText ?? ""

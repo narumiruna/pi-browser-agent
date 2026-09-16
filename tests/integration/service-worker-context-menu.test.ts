@@ -9,6 +9,7 @@ interface TestTab {
 interface ListenerMap {
   installed?: () => void
   activated?: (activeInfo: { tabId: number; windowId: number }) => void
+  updated?: (tabId: number, changeInfo: { status?: string; url?: string }, tab: TestTab) => void
   focusChanged?: (windowId: number) => void
   contextClicked?: (info: { menuItemId: string; selectionText?: string }, tab?: TestTab) => void
   runtimeMessage?: (
@@ -33,6 +34,9 @@ describe("service worker visible-tab targeting", () => {
       throw new Error("No Side Panel receiver")
     })
     const executeScript = vi.fn()
+    const updateTab = vi.fn(async () => activeTab)
+    let permissionCheck: Promise<boolean> | undefined
+    const contains = vi.fn(async () => permissionCheck ?? true)
     let activeTab: TestTab = { id: 1, url: "https://old.test/page", windowId: 3 }
     let failPendingRead = false
 
@@ -53,6 +57,7 @@ describe("service worker visible-tab targeting", () => {
           }),
         },
       },
+      permissions: { contains },
       runtime: {
         onInstalled: {
           addListener: vi.fn((listener: () => void) => (listeners.installed = listener)),
@@ -80,12 +85,17 @@ describe("service worker visible-tab targeting", () => {
       tabs: {
         query: vi.fn(async () => [activeTab]),
         get: vi.fn(async () => activeTab),
+        update: updateTab,
         onActivated: {
           addListener: vi.fn(
             (listener: NonNullable<ListenerMap["activated"]>) => (listeners.activated = listener),
           ),
         },
-        onUpdated: { addListener: vi.fn() },
+        onUpdated: {
+          addListener: vi.fn(
+            (listener: NonNullable<ListenerMap["updated"]>) => (listeners.updated = listener),
+          ),
+        },
         onRemoved: { addListener: vi.fn() },
       },
       windows: {
@@ -146,6 +156,56 @@ describe("service worker visible-tab targeting", () => {
       ok: true,
       result: { tabContext: null },
     })
+
+    activeTab = { id: 8, url: "https://recovered.test/page", windowId: 3 }
+    listeners.updated?.(8, { status: "loading", url: activeTab.url }, activeTab)
+    await vi.waitFor(async () => {
+      await expect(appState("recovered-state")).resolves.toMatchObject({
+        ok: true,
+        result: { tabContext: { tabId: 8, url: "https://recovered.test/page" } },
+      })
+    })
+
+    activeTab = { id: 8, url: "chrome://settings", windowId: 3 }
+    listeners.updated?.(8, { url: activeTab.url }, activeTab)
+    await vi.waitFor(async () => {
+      await expect(appState("unsupported-update-state")).resolves.toEqual({
+        ok: true,
+        result: { tabContext: null },
+      })
+    })
+
+    activeTab = { id: 7, url: "https://example.test/page", windowId: 3 }
+    listeners.activated?.({ tabId: 7, windowId: 3 })
+    const currentResponse = await vi.waitFor(async () => {
+      const response = (await appState("current-before-navigation")) as {
+        result?: { tabContext?: { tabId: number; url: string; epoch: number } }
+      }
+      expect(response.result?.tabContext?.tabId).toBe(7)
+      return response
+    })
+    let releasePermission: ((value: boolean) => void) | undefined
+    permissionCheck = new Promise<boolean>((resolve) => {
+      releasePermission = resolve
+    })
+    const navigation = request({
+      kind: "request",
+      requestId: "in-flight-navigation",
+      method: "tabs.navigate",
+      params: { url: "https://destination.test/page" },
+      confirmed: true,
+      tabContext: currentResponse.result?.tabContext,
+    })
+    await vi.waitFor(() => expect(contains).toHaveBeenCalled())
+    activeTab = { id: 9, url: "https://other.test/page", windowId: 3 }
+    listeners.activated?.({ tabId: 9, windowId: 3 })
+    releasePermission?.(true)
+    await expect(navigation).resolves.toMatchObject({
+      ok: false,
+      error: { code: "STALE_CONTEXT" },
+    })
+    expect(updateTab).not.toHaveBeenCalled()
+    permissionCheck = undefined
 
     activeTab = { id: 7, url: "https://example.test/page", windowId: 3 }
     listeners.contextClicked?.(

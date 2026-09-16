@@ -276,10 +276,12 @@ logoutButton.addEventListener("click", () => {
 
 element<HTMLButtonElement>("grant-site").addEventListener("click", () => {
   void run(async () => {
-    if (!activeTabUrl) throw new Error("Open an HTTP or HTTPS page before granting site access")
-    const pattern = toHostPermissionPattern(activeTabUrl)
+    const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
+    if (!tab?.url) throw new Error("Open an HTTP or HTTPS page before granting site access")
+    const pattern = toHostPermissionPattern(tab.url)
     const granted = await chrome.permissions.request({ origins: [pattern] })
     if (!granted) throw new Error("Site access was not granted")
+    await refreshTab()
   })
 })
 

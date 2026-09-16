@@ -50,6 +50,22 @@ describe("page operations", () => {
     expect(JSON.stringify(result)).not.toContain("private value")
   })
 
+  test("rejects mutations when the injected page is no longer visible", async () => {
+    document.body.innerHTML = '<button id="target" type="button">Click</button>'
+    const button = document.querySelector<HTMLButtonElement>("#target") as HTMLButtonElement
+    makeVisible(button)
+    const click = vi.spyOn(button, "click").mockImplementation(() => undefined)
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "hidden",
+    })
+
+    await expect(
+      executePageOperation("click", { selector: "#target" }, false, null, location.href),
+    ).resolves.toMatchObject({ ok: false, error: { code: "STALE_CONTEXT" } })
+    expect(click).not.toHaveBeenCalled()
+  })
+
   test("requires confirmation before submit controls", async () => {
     document.body.innerHTML = '<form><button id="submit">Submit</button></form>'
     const button = document.querySelector<HTMLButtonElement>("#submit") as HTMLButtonElement

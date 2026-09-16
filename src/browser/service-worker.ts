@@ -59,6 +59,23 @@ async function syncVisibleTab(): Promise<TabContext | undefined> {
   return setBoundTab(tab)
 }
 
+async function syncUpdatedVisibleTab(updatedTabId: number): Promise<void> {
+  const previous = boundContext
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
+  const context = setBoundTab(tab)
+  if (
+    context &&
+    tab?.id === updatedTabId &&
+    previous?.tabId === context.tabId &&
+    previous.url === context.url &&
+    previous.epoch === context.epoch
+  ) {
+    contextEpoch = Math.max(contextEpoch, context.epoch) + 1
+    boundContext = { ...context, epoch: contextEpoch }
+    emitTabChanged()
+  }
+}
+
 async function initialize(): Promise<void> {
   await restrictLocalStorageToTrustedContexts()
   await syncVisibleTab()
@@ -93,6 +110,24 @@ async function refreshBoundContext(): Promise<TabContext> {
   return context
 }
 
+async function revalidateRequestContext(
+  request: RuntimeRequest,
+  expected: TabContext,
+): Promise<TabContext> {
+  const current = await refreshBoundContext()
+  assertTabContext(expected, current)
+  assertTabContext(request.tabContext, current)
+  return current
+}
+
+function throwStaleContext(expected: TabContext, actual?: TabContext): never {
+  throw new RuntimeError(
+    "STALE_CONTEXT",
+    "The visible tab changed or navigated while the browser operation was running",
+    { expected, ...(actual ? { actual } : {}) },
+  )
+}
+
 async function runPageOperation(
   operation: PageOperation,
   request: RuntimeRequest,
@@ -105,7 +140,13 @@ async function runPageOperation(
     results = await chrome.scripting.executeScript({
       target: { tabId: context.tabId },
       func: executePageOperation,
-      args: [operation, request.params, request.confirmed ?? false, trustedLinkTargetUrl],
+      args: [
+        operation,
+        request.params,
+        request.confirmed ?? false,
+        trustedLinkTargetUrl,
+        context.url,
+      ],
     })
   } catch (error) {
     throw new RuntimeError(
@@ -113,6 +154,7 @@ async function runPageOperation(
       error instanceof Error ? error.message : "Chrome denied access to the current tab",
     )
   }
+  await revalidateRequestContext(request, context)
   const outcome = results[0]?.result
   if (!outcome) throw new RuntimeError("INTERNAL_ERROR", "The page operation returned no result")
   if (!outcome.ok)
@@ -157,9 +199,10 @@ async function runClick(request: RuntimeRequest): Promise<JsonValue> {
     !Array.isArray(result) &&
     result.navigationAllowed === true
   ) {
-    await chrome.tabs.update(context.tabId, { url: targetUrl.href })
-    boundContext = { ...context, url: targetUrl.href, epoch: context.epoch + 1 }
-    emitTabChanged()
+    const current = await revalidateRequestContext(request, context)
+    await chrome.tabs.update(current.tabId, { url: targetUrl.href })
+    const updated = await syncVisibleTab()
+    if (!updated || updated.tabId !== current.tabId) throwStaleContext(current, updated)
   }
   return result
 }
@@ -180,7 +223,7 @@ async function runWebMcp(operation: WebMcpOperation, request: RuntimeRequest): P
     results = await chrome.scripting.executeScript({
       target: { tabId: context.tabId },
       func: executeWebMcpOperation,
-      args: [operation, request.params, request.confirmed ?? false],
+      args: [operation, request.params, request.confirmed ?? false, context.url],
     })
   } catch (error) {
     throw new RuntimeError(
@@ -188,6 +231,7 @@ async function runWebMcp(operation: WebMcpOperation, request: RuntimeRequest): P
       error instanceof Error ? error.message : "Chrome denied WebMCP access",
     )
   }
+  await revalidateRequestContext(request, context)
   const outcome = results[0]?.result
   if (!outcome) throw new RuntimeError("INTERNAL_ERROR", "WebMCP returned no result")
   if (!outcome.ok)
@@ -209,6 +253,7 @@ async function captureVisible(request: RuntimeRequest): Promise<JsonValue> {
     throw new RuntimeError("INVALID_REQUEST", "The current tab must remain active for a screenshot")
   }
   const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" })
+  await revalidateRequestContext(request, context)
   if (dataUrl.length > 3_000_000) {
     throw new RuntimeError("INVALID_REQUEST", "Screenshot exceeds the 3 MB extension limit")
   }
@@ -240,10 +285,11 @@ async function navigate(request: RuntimeRequest): Promise<JsonValue> {
       },
     )
   }
-  await chrome.tabs.update(context.tabId, { url: targetUrl.href })
-  boundContext = { ...context, url: targetUrl.href, epoch: context.epoch + 1 }
-  emitTabChanged()
-  return { ...boundContext }
+  const current = await revalidateRequestContext(request, context)
+  await chrome.tabs.update(current.tabId, { url: targetUrl.href })
+  const updated = await syncVisibleTab()
+  if (!updated || updated.tabId !== current.tabId) throwStaleContext(current, updated)
+  return updated
 }
 
 async function dispatch(request: RuntimeRequest, signal: AbortSignal): Promise<JsonValue> {
@@ -331,19 +377,8 @@ chrome.runtime.onInstalled.addListener(() => {
 })
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-  if (
-    !boundContext ||
-    tabId !== boundContext.tabId ||
-    (!changeInfo.url && changeInfo.status !== "loading")
-  )
-    return
-  contextEpoch = Math.max(contextEpoch, boundContext.epoch) + 1
-  boundContext = {
-    tabId,
-    url: changeInfo.url ?? boundContext.url,
-    epoch: contextEpoch,
-  }
-  emitTabChanged()
+  if (!changeInfo.url && changeInfo.status !== "loading") return
+  void initialization.then(() => syncUpdatedVisibleTab(tabId)).catch(() => undefined)
 })
 
 chrome.tabs.onActivated.addListener(() => {

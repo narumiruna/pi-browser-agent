@@ -122,9 +122,16 @@ async function request(
 }
 
 async function waitForCurrentTab(url: string): Promise<typeof tabContext> {
-  await expect.poll(async () => (await request("tabs.getActive")).url).toBe(url)
-  const active = await request("tabs.getActive")
-  return active as unknown as typeof tabContext
+  let current: typeof tabContext | undefined
+  await expect
+    .poll(async () => {
+      const active = (await request("tabs.getActive")) as unknown as typeof tabContext
+      if (active.url === url) current = active
+      return active.url
+    })
+    .toBe(url)
+  if (!current) throw new Error(`Current tab did not reach ${url}`)
+  return current
 }
 
 test.beforeAll(async () => {
@@ -222,7 +229,7 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
     { access: `e30.${fakePayload}.signature`, expires: Date.now() + 3_600_000 },
   )
   await controller.reload()
-  await expect(controller.locator("#auth-status")).toContainText("Logged in")
+  await expect(controller.locator("#auth-status")).toContainText("OpenAI connected")
 
   await page.locator("h1").selectText()
   const responses = [
