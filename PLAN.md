@@ -124,7 +124,7 @@ flowchart TB
 
 - [x] Add an isolated browser-target build probe for `pi-agent-core`, `openaiCodexProvider()`, and the Codex SSE implementation; require a successful production build with no unresolved Node built-ins and record the generated chunk inventory.
 - [ ] Build a temporary authenticated extension-origin probe for one Codex SSE request; verify streaming text, abort behavior, required headers after Chrome filtering, and a tool-call response in an explicitly documented manual test.
-- [ ] Exercise the complete device-code sequence from an extension page without calling the existing Node OAuth loader; verify login, denial, expiry, cancellation, refresh, and logout against mocked endpoints, plus one manual login against OpenAI.
+- [x] Exercise the complete device-code sequence from an extension page without calling the existing Node OAuth loader; verify login, denial, expiry, cancellation, refresh, and logout against mocked endpoints, plus one manual login against OpenAI.
 - [x] Decide and document the browser OAuth integration seam in `pi-ai`—provider auth replacement or a browser-owned credential resolver—based on the probes; verify that normal model requests and automatic refresh use the same persisted credential.
 
 ### 2. Establish the Chrome-native application shell
@@ -144,7 +144,7 @@ flowchart TB
 
 ### 4. Create the browser agent runtime
 
-- [x] Construct a single Side Panel `Agent` using `pi-agent-core`, `pi-ai`, `openaiCodexProvider()`, the browser credential store, and forced `transport: "sse"`; verify a mocked prompt streams lifecycle events in order.
+- [x] Construct a single Side Panel `Agent` using `pi-agent-core`, `pi-ai`, `openaiCodexProvider()`, the browser credential store, a currently supported ChatGPT Codex model, and forced `transport: "sse"`; verify a mocked prompt streams lifecycle events in order.
 - [x] Add editable system prompt and AGENTS-style instruction settings, compose them deterministically into the agent system prompt, and persist them without filesystem discovery; verify changes apply to the next run.
 - [x] Wrap the existing bounded browser capabilities as `AgentTool` definitions with the current schemas, output limits, and error semantics; verify tool arguments are validated before any Chrome operation.
 - [x] Implement confirmation handling through `beforeToolCall` or an equivalent Side Panel gate for form submission, downloads, cross-origin navigation, and every WebMCP call; verify cancellation and stale tab context prevent execution.
@@ -169,8 +169,8 @@ flowchart TB
 
 ### 7. Harden, test, and document the result
 
-- [x] Update unit tests for OAuth, credential storage, agent events, internal messages, confirmations, session recovery, permission revocation, and output truncation; verify `npm test` passes.
-- [x] Replace bridge E2E coverage with Side Panel-to-bound-tab agent-tool round trips using mocked model responses; verify read, click, type, navigation, screenshot, selection, WebMCP fallback, and stale-context behavior in `npm run test:e2e`.
+- [x] Update unit tests for OAuth, credential storage, agent events, internal messages, confirmations, session recovery, permission revocation, model compatibility, and output truncation; verify `npm test` passes.
+- [x] Replace bridge E2E coverage with Side Panel-to-bound-tab agent-tool round trips using mocked model responses; verify read, click, type, navigation, screenshot, selection, WebMCP fallback, stale-context behavior, and deterministic active-session restoration in `npm run test:e2e`.
 - [x] Add a production artifact audit that rejects Node built-ins, localhost bridge URLs, remote executable code, source maps containing credentials, and unexpected host permissions; verify it runs in `npm run ci`.
 - [x] Update `README.md`, architecture, security, setup, authentication, permissions, data-storage, and troubleshooting documentation for the Chrome-only Codex design; verify no instructions require pi, `/chrome-pair`, or a loopback server.
 - [x] Document a manual acceptance procedure for real Codex login, token refresh, one text response, one browser tool round trip, logout, permission revocation, Side Panel interruption, and Chrome restart; record the tested Chrome and package versions.
@@ -199,10 +199,11 @@ flowchart TB
 
 ## Execution Evidence
 
-- `npm run ci` passes: 53 unit/integration tests, production browser build and artifact audit, and 6 Chrome E2E tests.
+- `npm run ci` passes: 55 unit/integration tests, production browser build and artifact audit, and 6 Chrome E2E tests.
 - `npm audit --omit=dev` reports 0 vulnerabilities. The full development audit's four Extension.js/Less/`image-size` denial-of-service advisories are documented and accepted in `docs/security.md`; those parsers are absent from the extension artifact.
 - The browser probe emits three chunks with no Node built-in imports; the production audit checks six files.
-- Mocked OAuth tests cover device success, pending, slowdown, denial, expiry, cancellation, exchange, account claims, refresh rotation, redaction, and concurrent single-flight refresh.
+- Mocked OAuth tests cover device success, pending, slowdown, denial, expiry, cancellation, exchange, account claims, refresh rotation, redaction, concurrent single-flight refresh, and the browser fetch receiver contract.
+- A real-account device login reached the logged-in state in stable Chrome 152. The first request identified the retired `gpt-5.4` default; the extension now uses its documented replacement, `gpt-5.6-terra`, and no longer renders the account ID in login status. Authenticated SSE rerun remains pending.
 - Chrome E2E covers bound-tab read, selection, screenshot, click, type, sensitive-input denial, confirmation, navigation, stale context, WebMCP fallback, Side Panel session reopen, service-worker restart, and full Chrome restart.
 
-The unchecked items require a reviewer-owned ChatGPT Plus/Pro account and a stable-Chrome manual run. `docs/manual-acceptance.md` records the procedure and the automated Chrome/package versions without claiming that real-account acceptance ran.
+The unchecked items require completion of the stable-Chrome authenticated SSE, browser-tool, refresh, logout, permission-revocation, interruption, and restart checks. `docs/manual-acceptance.md` records the successful real-account device login and the remaining manual work without claiming full acceptance.

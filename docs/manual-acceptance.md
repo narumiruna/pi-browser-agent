@@ -8,7 +8,9 @@ Use a production build from `npm run build`. Do not test login with development 
 - `@earendil-works/pi-agent-core`: 0.85.1
 - `@earendil-works/pi-ai`: 0.85.1
 - Automated browser round trips: Google Chrome for Testing 153.0.8010.12
-- Real-account device login: not run in repository automation; requires the reviewing user's ChatGPT Plus/Pro account
+- Manual browser: Google Chrome 152.0.7977.83
+- Real-account device login: passed on 2026-09-16; account tier was not recorded
+- Authenticated SSE and browser-tool round trip: pending; the first request exposed a retired `gpt-5.4` default, which was replaced with `gpt-5.6-terra` before retry
 
 ## Procedure
 

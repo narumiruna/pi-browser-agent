@@ -8,7 +8,7 @@ import {
 import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex"
 import { createBrowserCodexOAuth } from "./codex-oauth.js"
 
-export const DEFAULT_CODEX_MODEL = "gpt-5.4"
+export const DEFAULT_CODEX_MODEL = "gpt-5.6-terra"
 
 export function createBrowserCodexProvider(): Provider<"openai-codex-responses"> {
   const provider = openaiCodexProvider()

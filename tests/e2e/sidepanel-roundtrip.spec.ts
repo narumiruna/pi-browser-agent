@@ -291,7 +291,9 @@ test("enforces confirmation, stale context, navigation, and WebMCP fallback", as
 
 test("restores IndexedDB sessions after the Side Panel closes and reopens", async () => {
   await controller.bringToFront()
+  const previousSessionId = await controller.locator("#sessions").inputValue()
   await controller.locator("#new-session").click()
+  await expect.poll(() => controller.locator("#sessions").inputValue()).not.toBe(previousSessionId)
   savedSessionId = await controller.locator("#sessions").inputValue()
   expect(savedSessionId).not.toBe("")
   await controller.reload()
@@ -309,7 +311,7 @@ test("restores the bound tab after a service-worker restart", async () => {
   )
   if (!target) throw new Error("Service worker target not found")
   await cdp.send("Target.closeTarget", { targetId: target.targetId })
-  await expect(request("tabs.getActive")).resolves.toMatchObject({ title: "Second" })
+  await expect.poll(async () => (await request("tabs.getActive")).title).toBe("Second")
 })
 
 test("restores sessions after a full Chrome restart", async () => {

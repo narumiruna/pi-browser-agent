@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest"
+import { afterEach, describe, expect, test, vi } from "vitest"
 import {
   type DeviceAuthorization,
   exchangeDeviceCode,
@@ -26,7 +26,28 @@ const device: DeviceAuthorization = {
   expiresInSeconds: 900,
 }
 
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
+
 describe("browser Codex OAuth", () => {
+  test("calls the default browser fetch with the global receiver", async () => {
+    const browserFetch = vi.fn(function (this: typeof globalThis): Promise<Response> {
+      expect(this).toBe(globalThis)
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({ device_auth_id: "device-1", user_code: "ABCD-EFGH", interval: 1 }),
+          { status: 200 },
+        ),
+      )
+    })
+    vi.stubGlobal("fetch", browserFetch)
+
+    await expect(requestDeviceAuthorization(new AbortController().signal)).resolves.toMatchObject(
+      device,
+    )
+    expect(browserFetch).toHaveBeenCalledOnce()
+  })
   test("parses device authorization and exchanges a completed code", async () => {
     const access = jwt()
     const fetchMock = vi
