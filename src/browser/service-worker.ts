@@ -54,15 +54,23 @@ function setBoundTab(tab: chrome.tabs.Tab | undefined): TabContext | undefined {
   return { ...boundContext }
 }
 
+async function setFocusedTab(tab: chrome.tabs.Tab | undefined): Promise<TabContext | undefined> {
+  if (tab?.id === undefined || !tab.url || !isSupportedPageUrl(tab.url)) {
+    return setBoundTab(undefined)
+  }
+  const window = await chrome.windows.get(tab.windowId)
+  return setBoundTab(window.focused ? tab : undefined)
+}
+
 async function syncVisibleTab(): Promise<TabContext | undefined> {
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
-  return setBoundTab(tab)
+  return setFocusedTab(tab)
 }
 
 async function syncUpdatedVisibleTab(updatedTabId: number): Promise<void> {
   const previous = boundContext
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
-  const context = setBoundTab(tab)
+  const context = await setFocusedTab(tab)
   if (
     context &&
     tab?.id === updatedTabId &&
@@ -158,11 +166,13 @@ async function assertCurrentMutationTarget(
   if (sender.id !== chrome.runtime.id || sender.tab?.id !== expected.tabId) {
     throw new RuntimeError("PERMISSION_DENIED", "Invalid browser mutation target assertion")
   }
-  const current = await refreshBoundContext()
+  const current = await syncVisibleTab()
+  if (!current) throwStaleContext(expected)
   assertTabContext(expected, current)
   const tab = await chrome.tabs.get(current.tabId)
   const window = await chrome.windows.get(tab.windowId)
-  const latest = await refreshBoundContext()
+  const latest = await syncVisibleTab()
+  if (!latest) throwStaleContext(expected)
   assertTabContext(expected, latest)
   if (!tab.active || !window.focused || sender.tab.windowId !== tab.windowId) {
     throw new RuntimeError(
@@ -193,11 +203,15 @@ async function runPageOperation(
       error instanceof Error ? error.message : "Chrome denied access to the current tab",
     )
   }
-  await revalidateRequestContext(request, context)
   const outcome = results[0]?.result
   if (!outcome) throw new RuntimeError("INTERNAL_ERROR", "The page operation returned no result")
-  if (!outcome.ok)
+  if (!outcome.ok) {
+    await revalidateRequestContext(request, context)
     throw new RuntimeError(outcome.error.code, outcome.error.message, outcome.error.details)
+  }
+  if (operation !== "click" && operation !== "type") {
+    await revalidateRequestContext(request, context)
+  }
   return outcome.result
 }
 
@@ -262,7 +276,7 @@ async function runWebMcp(operation: WebMcpOperation, request: RuntimeRequest): P
     results = await chrome.scripting.executeScript({
       target: { tabId: context.tabId },
       func: executeWebMcpOperation,
-      args: [operation, request.params, request.confirmed ?? false, context.url],
+      args: [operation, request.params, request.confirmed ?? false, context],
     })
   } catch (error) {
     throw new RuntimeError(
@@ -270,11 +284,15 @@ async function runWebMcp(operation: WebMcpOperation, request: RuntimeRequest): P
       error instanceof Error ? error.message : "Chrome denied WebMCP access",
     )
   }
-  await revalidateRequestContext(request, context)
   const outcome = results[0]?.result
   if (!outcome) throw new RuntimeError("INTERNAL_ERROR", "WebMCP returned no result")
-  if (!outcome.ok)
+  if (!outcome.ok) {
+    await revalidateRequestContext(request, context)
     throw new RuntimeError(outcome.error.code, outcome.error.message, outcome.error.details)
+  }
+  if (operation === "webmcp.listTools") {
+    await revalidateRequestContext(request, context)
+  }
   return outcome.result
 }
 
@@ -434,9 +452,11 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 })
 
 chrome.windows.onFocusChanged.addListener((windowId) => {
-  if (windowId !== chrome.windows.WINDOW_ID_NONE) {
-    void initialization.then(syncVisibleTab).catch(() => undefined)
+  if (windowId === chrome.windows.WINDOW_ID_NONE) {
+    clearBoundTab()
+    return
   }
+  void initialization.then(syncVisibleTab).catch(() => undefined)
 })
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {

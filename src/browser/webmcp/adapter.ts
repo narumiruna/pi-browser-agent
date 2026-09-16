@@ -3,7 +3,7 @@ import type {
   PageOperationResult,
   PageOperationSuccess,
 } from "../content/page-operations.js"
-import type { JsonObject, JsonValue } from "../runtime/types.js"
+import type { JsonObject, JsonValue, TabContext } from "../runtime/types.js"
 
 export type WebMcpOperation = "webmcp.callTool" | "webmcp.listTools"
 
@@ -15,7 +15,7 @@ export async function executeWebMcpOperation(
   operation: WebMcpOperation,
   params: JsonObject,
   confirmed: boolean,
-  expectedPageUrl: string | null = null,
+  expectedContext: TabContext | null = null,
 ): Promise<PageOperationResult> {
   const success = (result: JsonValue): PageOperationSuccess => ({ ok: true, result })
   const failure = (
@@ -55,8 +55,8 @@ export async function executeWebMcpOperation(
     return JSON.parse(JSON.stringify(value)) as JsonValue
   }
   const stalePage = (): PageOperationFailure | undefined =>
-    expectedPageUrl !== null &&
-    (location.href !== expectedPageUrl || document.visibilityState !== "visible")
+    expectedContext !== null &&
+    (location.href !== expectedContext.url || document.visibilityState !== "visible")
       ? failure(
           "STALE_CONTEXT",
           "The page is no longer the visible target for this WebMCP operation",
@@ -108,9 +108,20 @@ export async function executeWebMcpOperation(
     if (currentStalePage) return currentStalePage
     const tool = tools.find((candidate) => candidate.name === name)
     if (!tool) return failure("INVALID_REQUEST", `WebMCP tool is not registered: ${name}`)
+    if (expectedContext !== null) {
+      const assertion = (await chrome.runtime.sendMessage({
+        kind: "assert-current-mutation-target",
+        tabContext: expectedContext,
+      })) as { ok?: boolean; error?: { message?: string } } | undefined
+      if (!assertion?.ok) {
+        return failure(
+          "STALE_CONTEXT",
+          assertion?.error?.message ?? "The page is no longer in the focused browser window",
+        )
+      }
+    }
     const result = await context.executeTool(tool, args as JsonObject)
-    const finalStalePage = stalePage()
-    return finalStalePage ?? success(jsonSafe(result))
+    return success(jsonSafe(result))
   } catch (error) {
     return failure(
       "INTERNAL_ERROR",

@@ -38,6 +38,10 @@ describe("service worker visible-tab targeting", () => {
     let permissionCheck: Promise<boolean> | undefined
     const contains = vi.fn(async () => permissionCheck ?? true)
     let focusedWindowId = 3
+    const getWindow = vi.fn(async (windowId: number) => ({
+      id: windowId,
+      focused: windowId === focusedWindowId,
+    }))
     let activeTab: TestTab = { id: 1, url: "https://old.test/page", windowId: 3 }
     let failPendingRead = false
 
@@ -102,10 +106,7 @@ describe("service worker visible-tab targeting", () => {
       },
       windows: {
         WINDOW_ID_NONE: -1,
-        get: vi.fn(async (windowId: number) => ({
-          id: windowId,
-          focused: windowId === focusedWindowId,
-        })),
+        get: getWindow,
         onFocusChanged: {
           addListener: vi.fn(
             (listener: NonNullable<ListenerMap["focusChanged"]>) =>
@@ -192,6 +193,27 @@ describe("service worker visible-tab targeting", () => {
 
     activeTab = { id: 7, url: "https://example.test/page", windowId: 3 }
     listeners.activated?.({ tabId: 7, windowId: 3 })
+    focusedWindowId = -1
+    listeners.focusChanged?.(-1)
+    await vi.waitFor(async () => {
+      await expect(appState("unfocused-state")).resolves.toEqual({
+        ok: true,
+        result: { tabContext: null },
+      })
+    })
+    sendMessage.mockClear()
+    const getWindowCalls = getWindow.mock.calls.length
+    listeners.updated?.(7, { status: "loading" }, activeTab)
+    await vi.waitFor(() => expect(getWindow.mock.calls.length).toBeGreaterThan(getWindowCalls))
+    expect(sendMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "tab.changed",
+        tabContext: expect.objectContaining({ tabId: 7 }),
+      }),
+    )
+
+    focusedWindowId = 3
+    listeners.focusChanged?.(3)
     const currentResponse = await vi.waitFor(async () => {
       const response = (await appState("current-before-navigation")) as {
         result?: { tabContext?: { tabId: number; url: string; epoch: number } }
@@ -217,6 +239,36 @@ describe("service worker visible-tab targeting", () => {
       }),
     ).resolves.toMatchObject({ ok: false, error: { code: "STALE_CONTEXT" } })
     focusedWindowId = 3
+    listeners.focusChanged?.(3)
+    const clickContextResponse = await vi.waitFor(async () => {
+      const response = (await appState("current-before-click")) as {
+        result?: { tabContext?: { tabId: number; url: string; epoch: number } }
+      }
+      expect(response.result?.tabContext?.tabId).toBe(7)
+      return response
+    })
+
+    executeScript.mockImplementationOnce(async () => {
+      activeTab = { id: 7, url: "https://example.test/next", windowId: 3 }
+      listeners.updated?.(7, { status: "loading", url: activeTab.url }, activeTab)
+      return [{ result: { ok: true, result: { clicked: true, selector: "#next" } } }]
+    })
+    await expect(
+      request({
+        kind: "request",
+        requestId: "self-navigating-click",
+        method: "page.click",
+        params: { selector: "#next" },
+        tabContext: clickContextResponse.result?.tabContext,
+      }),
+    ).resolves.toMatchObject({ ok: true, result: { clicked: true } })
+    const navigationResponse = await vi.waitFor(async () => {
+      const response = (await appState("current-after-click")) as {
+        result?: { tabContext?: { tabId: number; url: string; epoch: number } }
+      }
+      expect(response.result?.tabContext?.url).toBe("https://example.test/next")
+      return response
+    })
 
     let releasePermission: ((value: boolean) => void) | undefined
     permissionCheck = new Promise<boolean>((resolve) => {
@@ -228,7 +280,7 @@ describe("service worker visible-tab targeting", () => {
       method: "tabs.navigate",
       params: { url: "https://destination.test/page" },
       confirmed: true,
-      tabContext: currentResponse.result?.tabContext,
+      tabContext: navigationResponse.result?.tabContext,
     })
     await vi.waitFor(() => expect(contains).toHaveBeenCalled())
     activeTab = { id: 9, url: "https://other.test/page", windowId: 3 }
