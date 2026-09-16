@@ -293,7 +293,7 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
     const body = route.request().postDataJSON() as { tools?: Array<{ name?: string }> }
     expect(body.tools?.map((tool) => tool.name)).toContain("browser_read_page")
     if (requestCount === 0) {
-      expect(JSON.stringify(body)).toContain("data:image/png;base64,")
+      expect(JSON.stringify(body).match(/data:image\/png;base64,/g)).toHaveLength(1)
     }
     const response = responses[requestCount]
     requestCount += 1
@@ -306,10 +306,54 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
     })
   })
 
+  await controller.evaluate(() => {
+    const originalContains = chrome.permissions.contains.bind(chrome.permissions)
+    let markEntered: () => void = () => undefined
+    let release: () => void = () => undefined
+    const entered = new Promise<void>((resolve) => {
+      markEntered = resolve
+    })
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    chrome.permissions.contains = (async (permissions) => {
+      markEntered()
+      await gate
+      chrome.permissions.contains = originalContains
+      return originalContains(permissions)
+    }) as typeof chrome.permissions.contains
+    ;(
+      window as typeof window & {
+        submissionGate?: { entered: Promise<void>; release: () => void }
+      }
+    ).submissionGate = { entered, release }
+  })
+
   await controller.locator("#prompt").fill("Exercise the browser tools")
   await controller.locator("#send").click()
-  await expect(controller.locator("#pasted-images")).toBeHidden()
-  await expect(controller.locator('#transcript img[alt="Pasted image"]')).toBeVisible()
+  await controller.evaluate(
+    () =>
+      (
+        window as typeof window & {
+          submissionGate?: { entered: Promise<void> }
+        }
+      ).submissionGate?.entered,
+  )
+  await controller.locator(".remove-pasted-image").click()
+  await pastePngIntoComposer()
+  await expect(controller.locator("#pasted-images img")).toHaveCount(1)
+  await controller.evaluate(() => {
+    ;(
+      window as typeof window & {
+        submissionGate?: { release: () => void }
+      }
+    ).submissionGate?.release()
+  })
+
+  await expect(controller.locator("#pasted-images img")).toHaveCount(1)
+  const transcriptImage = controller.locator('#transcript img[alt="Pasted image"]')
+  await expect(transcriptImage).toBeVisible()
+  const transcriptImageHandle = await transcriptImage.elementHandle()
   await expect(controller.locator("#confirm-dialog")).toBeVisible()
   await controller.locator('#confirm-dialog button[value="confirm"]').click()
   await expect(controller.locator("#confirm-dialog")).toBeHidden()
@@ -319,6 +363,7 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
     "Mock agent completed the browser round trip.",
   )
   await expect(controller.locator('#transcript img[alt="Image result"]')).toBeVisible()
+  expect(await transcriptImageHandle?.evaluate((image) => image.isConnected)).toBe(true)
   await expect(controller.locator("#transcript details.message").first()).toHaveJSProperty(
     "open",
     false,
