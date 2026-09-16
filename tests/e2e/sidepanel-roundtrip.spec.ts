@@ -174,23 +174,26 @@ async function gateNextSubmissionPreflight(): Promise<void> {
 }
 
 async function waitForSubmissionPreflight(): Promise<void> {
-  await controller.evaluate(
-    () =>
-      (
-        window as typeof window & {
-          submissionGate?: { entered: Promise<void> }
-        }
-      ).submissionGate?.entered,
-  )
+  await controller.evaluate(async () => {
+    const gate = (
+      window as typeof window & {
+        submissionGate?: { entered: Promise<void> }
+      }
+    ).submissionGate
+    if (!gate) throw new Error("Submission preflight gate is not installed")
+    await gate.entered
+  })
 }
 
 async function releaseSubmissionPreflight(): Promise<void> {
   await controller.evaluate(() => {
-    ;(
+    const gate = (
       window as typeof window & {
         submissionGate?: { release: () => void }
       }
-    ).submissionGate?.release()
+    ).submissionGate
+    if (!gate) throw new Error("Submission preflight gate is not installed")
+    gate.release()
   })
 }
 
