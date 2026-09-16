@@ -9,11 +9,11 @@ flowchart TB
     Store[IndexedDB sessions]
     Credentials[Trusted chrome.storage.local]
     Worker[MV3 service worker]
-    Injection[Bound-page injected operations]
+    Injection[Current-page injected operations]
   end
   Auth[auth.openai.com]
   Codex[chatgpt.com/backend-api]
-  Page[Explicitly bound HTTP/S tab]
+  Page[Active HTTP/S tab in the focused window]
 
   Panel -->|device flow and refresh| Auth
   Panel -->|Codex SSE| Codex
@@ -34,7 +34,7 @@ Closing the panel aborts the active agent. Complete messages and tool results ar
 
 ### Service worker
 
-The worker owns the bound-tab context, context menu, injected DOM operations, screenshots, navigation, and WebMCP adapter. The Side Panel requests optional host permissions directly from the corresponding user gesture; the worker verifies those grants before protected operations. It accepts only the methods and JSON shapes listed in `src/browser/runtime/messages.ts`. Every operation compares its captured tab ID, URL, and navigation epoch with the current context.
+The worker owns current-tab tracking, the selection context menu, injected DOM operations, screenshots, navigation, and the WebMCP adapter. It follows tab activation and focused-window changes, clears the target for unsupported pages, and revalidates the visible tab before every operation. The Side Panel requests optional host permissions directly from the corresponding user gesture; the worker verifies those grants before protected operations. It accepts only the methods and JSON shapes listed in `src/browser/runtime/messages.ts`. Every operation compares its captured tab ID, URL, and context epoch with the current context.
 
 ### Injected operations
 

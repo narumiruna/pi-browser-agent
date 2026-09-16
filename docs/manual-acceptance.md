@@ -22,11 +22,12 @@ Use a production build from `npm run build`. Do not test login with development 
    - Open the displayed verification URL, enter the code, and finish login.
    - Expected: the panel reports logged in without showing an access or refresh token.
 3. **Text SSE response**
-   - Right-click a harmless page, select **Bind this tab to Pi Chrome**, and ask for a one-sentence summary.
-   - Expected: text appears incrementally and DevTools shows an HTTPS request to `chatgpt.com/backend-api`, with no browser WebSocket or loopback request.
+   - Make a harmless HTTP(S) page visible and ask for a one-sentence summary without using a bind command.
+   - Expected: the Side Panel shows the page automatically, text appears incrementally, and DevTools shows an HTTPS request to `chatgpt.com/backend-api`, with no browser WebSocket or loopback request.
 4. **Browser tool round trip**
    - Ask the agent to read a unique heading, type into a non-sensitive test field, and click an ordinary button.
-   - Expected: the read output is marked untrusted and each operation affects only the bound tab.
+   - Switch to another HTTP(S) tab and confirm the Side Panel follows it; switch to an internal Chrome page and confirm no page remains targeted.
+   - Expected: the read output is marked untrusted and each operation affects only the currently visible HTTP(S) tab.
    - Ask it to submit a form or call a WebMCP tool.
    - Expected: the operation waits for explicit confirmation.
 5. **Refresh**

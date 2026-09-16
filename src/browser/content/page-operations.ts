@@ -1,4 +1,4 @@
-import type { JsonObject, JsonValue } from "../runtime/types.js"
+import type { JsonObject, JsonValue, TabContext } from "../runtime/types.js"
 
 export type PageOperation = "click" | "getSelection" | "getVisibleText" | "inspectClick" | "type"
 
@@ -16,6 +16,7 @@ export interface PageOperationFailure {
       | "INVALID_REQUEST"
       | "NOT_SUPPORTED"
       | "PERMISSION_DENIED"
+      | "STALE_CONTEXT"
     message: string
     details?: JsonObject
   }
@@ -32,6 +33,7 @@ export async function executePageOperation(
   params: JsonObject,
   confirmed: boolean,
   trustedLinkTargetUrl: string | null = null,
+  expectedContext: TabContext | null = null,
 ): Promise<PageOperationResult> {
   const success = (result: JsonValue): PageOperationSuccess => ({ ok: true, result })
   const failure = (
@@ -110,6 +112,27 @@ export async function executePageOperation(
     setter.call(element, value)
   }
   try {
+    if (
+      expectedContext !== null &&
+      (location.href !== expectedContext.url || document.visibilityState !== "visible")
+    ) {
+      return failure(
+        "STALE_CONTEXT",
+        "The page is no longer the visible target for this browser operation",
+      )
+    }
+    if (expectedContext !== null && (operation === "click" || operation === "type")) {
+      const assertion = (await chrome.runtime.sendMessage({
+        kind: "assert-current-mutation-target",
+        tabContext: expectedContext,
+      })) as { ok?: boolean; error?: { message?: string } } | undefined
+      if (!assertion?.ok) {
+        return failure(
+          "STALE_CONTEXT",
+          assertion?.error?.message ?? "The page is no longer in the focused browser window",
+        )
+      }
+    }
     switch (operation) {
       case "getVisibleText": {
         const text = document.body?.innerText ?? ""

@@ -33,7 +33,14 @@ for (const path of files) {
 }
 
 const manifest = JSON.parse(await readFile(join(root, "manifest.json"), "utf8"))
-const expectedPermissions = ["activeTab", "contextMenus", "scripting", "sidePanel", "storage"]
+const expectedPermissions = [
+  "activeTab",
+  "contextMenus",
+  "scripting",
+  "sidePanel",
+  "storage",
+  "tabs",
+]
 const expectedOrigins = [
   "https://auth.openai.com/*",
   "https://chatgpt.com/*",

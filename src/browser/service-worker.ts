@@ -4,20 +4,19 @@ import { hasHostPermission } from "./permissions.js"
 import { parseRuntimeRequest, type RuntimeEvent, type RuntimeRequest } from "./runtime/messages.js"
 import { type JsonValue, RuntimeError, type TabContext, truncateUtf8 } from "./runtime/types.js"
 import {
-  getBoundTabId,
   restrictLocalStorageToTrustedContexts,
-  saveBoundTabId,
   savePendingSelection,
   takePendingSelection,
 } from "./storage.js"
 import { executeWebMcpOperation, type WebMcpOperation } from "./webmcp/adapter.js"
 
 const SELECTION_CONTEXT_MENU_ID = "pi-chrome-send-selection"
-const BIND_CONTEXT_MENU_ID = "pi-chrome-bind-tab"
 const activeRequests = new Map<string, AbortController>()
 let boundContext: TabContext | undefined
+let contextEpoch = 0
+let visibleTabSyncVersion = 0
 let pendingSelectionTake: Promise<JsonValue> = Promise.resolve(null)
-const initialization = Promise.all([restrictLocalStorageToTrustedContexts(), restoreBoundContext()])
+const initialization = initialize()
 
 function isSupportedPageUrl(value: string): boolean {
   try {
@@ -35,40 +34,80 @@ function emitTabChanged(): void {
   emitEvent({ kind: "event", name: "tab.changed", payload: {}, tabContext: boundContext })
 }
 
-async function clearBoundTab(): Promise<void> {
+function clearBoundTab(): void {
+  if (!boundContext) return
+  contextEpoch = Math.max(contextEpoch, boundContext.epoch) + 1
   boundContext = undefined
-  await saveBoundTabId(undefined)
   emitTabChanged()
 }
 
-async function restoreBoundContext(): Promise<void> {
-  const tabId = await getBoundTabId()
-  if (tabId === undefined) return
-  try {
-    const tab = await chrome.tabs.get(tabId)
-    if (!tab.url || !isSupportedPageUrl(tab.url)) return clearBoundTab()
-    boundContext = { tabId, url: tab.url, epoch: 0 }
-  } catch {
-    await clearBoundTab()
-  }
-}
-
-async function bindTab(tab: chrome.tabs.Tab | undefined): Promise<TabContext> {
+function setBoundTab(tab: chrome.tabs.Tab | undefined): TabContext | undefined {
   if (tab?.id === undefined || !tab.url || !isSupportedPageUrl(tab.url)) {
-    throw new RuntimeError(
-      "PERMISSION_DENIED",
-      "Use the Pi Chrome page menu on an HTTP or HTTPS tab before binding it",
-    )
+    clearBoundTab()
+    return undefined
   }
-  boundContext = { tabId: tab.id, url: tab.url, epoch: 0 }
-  await saveBoundTabId(tab.id)
+  if (boundContext?.tabId === tab.id && boundContext.url === tab.url) {
+    return { ...boundContext }
+  }
+  if (boundContext) contextEpoch = Math.max(contextEpoch, boundContext.epoch) + 1
+  boundContext = { tabId: tab.id, url: tab.url, epoch: contextEpoch }
   emitTabChanged()
   return { ...boundContext }
 }
 
-async function bindActiveTab(): Promise<TabContext> {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-  return bindTab(tab)
+async function focusedTab(tab: chrome.tabs.Tab | undefined): Promise<chrome.tabs.Tab | undefined> {
+  if (tab?.id === undefined || !tab.url || !isSupportedPageUrl(tab.url)) return undefined
+  const window = await chrome.windows.get(tab.windowId)
+  return window.focused ? tab : undefined
+}
+
+function currentBoundContext(): TabContext | undefined {
+  return boundContext ? { ...boundContext } : undefined
+}
+
+async function syncVisibleTab(): Promise<TabContext | undefined> {
+  const version = ++visibleTabSyncVersion
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
+  const currentTab = await focusedTab(tab)
+  if (version !== visibleTabSyncVersion) return currentBoundContext()
+  return setBoundTab(currentTab)
+}
+
+async function syncUpdatedVisibleTab(updatedTabId: number): Promise<void> {
+  const version = ++visibleTabSyncVersion
+  const previous = boundContext
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
+  const currentTab = await focusedTab(tab)
+  if (version !== visibleTabSyncVersion) return
+  const context = setBoundTab(currentTab)
+  if (
+    context &&
+    tab?.id === updatedTabId &&
+    previous?.tabId === context.tabId &&
+    previous.url === context.url &&
+    previous.epoch === context.epoch
+  ) {
+    contextEpoch = Math.max(contextEpoch, context.epoch) + 1
+    boundContext = { ...context, epoch: contextEpoch }
+    emitTabChanged()
+  }
+}
+
+async function initialize(): Promise<void> {
+  await restrictLocalStorageToTrustedContexts()
+  await syncVisibleTab()
+}
+
+function bindSelectionTab(tab: chrome.tabs.Tab | undefined): TabContext {
+  visibleTabSyncVersion += 1
+  const context = setBoundTab(tab)
+  if (!context) {
+    throw new RuntimeError(
+      "PERMISSION_DENIED",
+      "Selections can only be sent from an HTTP or HTTPS page",
+    )
+  }
+  return context
 }
 
 function consumePendingSelection(windowId: number): Promise<JsonValue> {
@@ -82,22 +121,76 @@ function consumePendingSelection(windowId: number): Promise<JsonValue> {
 }
 
 async function refreshBoundContext(): Promise<TabContext> {
-  if (!boundContext) throw new RuntimeError("TAB_NOT_BOUND", "Bind a tab from the Side Panel")
-  let tab: chrome.tabs.Tab
-  try {
-    tab = await chrome.tabs.get(boundContext.tabId)
-  } catch {
-    await clearBoundTab()
-    throw new RuntimeError("TAB_NOT_BOUND", "The bound tab no longer exists")
+  const context = await syncVisibleTab()
+  if (!context) {
+    throw new RuntimeError("TAB_NOT_BOUND", "Open an HTTP or HTTPS page in the active tab")
   }
-  if (!tab.url || !isSupportedPageUrl(tab.url)) {
-    throw new RuntimeError("PERMISSION_DENIED", "The bound tab is not an HTTP or HTTPS page")
+  return context
+}
+
+async function revalidateRequestContext(
+  request: RuntimeRequest,
+  expected: TabContext,
+): Promise<TabContext> {
+  const current = await refreshBoundContext()
+  assertTabContext(expected, current)
+  assertTabContext(request.tabContext, current)
+  return current
+}
+
+function throwStaleContext(expected: TabContext, actual?: TabContext): never {
+  throw new RuntimeError(
+    "STALE_CONTEXT",
+    "The visible tab changed or navigated while the browser operation was running",
+    { expected, ...(actual ? { actual } : {}) },
+  )
+}
+
+function mutationTargetContext(message: unknown): TabContext | undefined {
+  if (
+    typeof message !== "object" ||
+    message === null ||
+    !("kind" in message) ||
+    message.kind !== "assert-current-mutation-target" ||
+    !("tabContext" in message)
+  ) {
+    return undefined
   }
-  if (tab.url !== boundContext.url) {
-    boundContext = { ...boundContext, url: tab.url, epoch: boundContext.epoch + 1 }
-    emitTabChanged()
+  const context = message.tabContext
+  return typeof context === "object" &&
+    context !== null &&
+    "tabId" in context &&
+    typeof context.tabId === "number" &&
+    "url" in context &&
+    typeof context.url === "string" &&
+    "epoch" in context &&
+    typeof context.epoch === "number"
+    ? (context as TabContext)
+    : undefined
+}
+
+async function assertCurrentMutationTarget(
+  expected: TabContext,
+  sender: chrome.runtime.MessageSender,
+): Promise<void> {
+  if (sender.id !== chrome.runtime.id || sender.tab?.id !== expected.tabId) {
+    throw new RuntimeError("PERMISSION_DENIED", "Invalid browser mutation target assertion")
   }
-  return { ...boundContext }
+  const current = await syncVisibleTab()
+  if (!current) throwStaleContext(expected)
+  assertTabContext(expected, current)
+  const tab = await chrome.tabs.get(current.tabId)
+  const window = await chrome.windows.get(tab.windowId)
+  const latest = await syncVisibleTab()
+  if (!latest) throwStaleContext(expected)
+  assertTabContext(expected, latest)
+  if (!tab.active || !window.focused || sender.tab.windowId !== tab.windowId) {
+    throw new RuntimeError(
+      "STALE_CONTEXT",
+      "The target tab is no longer active in the focused browser window",
+      { expected, actual: latest },
+    )
+  }
 }
 
 async function runPageOperation(
@@ -112,18 +205,23 @@ async function runPageOperation(
     results = await chrome.scripting.executeScript({
       target: { tabId: context.tabId },
       func: executePageOperation,
-      args: [operation, request.params, request.confirmed ?? false, trustedLinkTargetUrl],
+      args: [operation, request.params, request.confirmed ?? false, trustedLinkTargetUrl, context],
     })
   } catch (error) {
     throw new RuntimeError(
       "PERMISSION_DENIED",
-      error instanceof Error ? error.message : "Chrome denied access to the bound tab",
+      error instanceof Error ? error.message : "Chrome denied access to the current tab",
     )
   }
   const outcome = results[0]?.result
   if (!outcome) throw new RuntimeError("INTERNAL_ERROR", "The page operation returned no result")
-  if (!outcome.ok)
+  if (!outcome.ok) {
+    await revalidateRequestContext(request, context)
     throw new RuntimeError(outcome.error.code, outcome.error.message, outcome.error.details)
+  }
+  if (operation !== "click" && operation !== "type") {
+    await revalidateRequestContext(request, context)
+  }
   return outcome.result
 }
 
@@ -164,9 +262,10 @@ async function runClick(request: RuntimeRequest): Promise<JsonValue> {
     !Array.isArray(result) &&
     result.navigationAllowed === true
   ) {
-    await chrome.tabs.update(context.tabId, { url: targetUrl.href })
-    boundContext = { ...context, url: targetUrl.href, epoch: context.epoch + 1 }
-    emitTabChanged()
+    const current = await revalidateRequestContext(request, context)
+    await chrome.tabs.update(current.tabId, { url: targetUrl.href })
+    const updated = await syncVisibleTab()
+    if (!updated || updated.tabId !== current.tabId) throwStaleContext(current, updated)
   }
   return result
 }
@@ -187,7 +286,7 @@ async function runWebMcp(operation: WebMcpOperation, request: RuntimeRequest): P
     results = await chrome.scripting.executeScript({
       target: { tabId: context.tabId },
       func: executeWebMcpOperation,
-      args: [operation, request.params, request.confirmed ?? false],
+      args: [operation, request.params, request.confirmed ?? false, context],
     })
   } catch (error) {
     throw new RuntimeError(
@@ -197,14 +296,21 @@ async function runWebMcp(operation: WebMcpOperation, request: RuntimeRequest): P
   }
   const outcome = results[0]?.result
   if (!outcome) throw new RuntimeError("INTERNAL_ERROR", "WebMCP returned no result")
-  if (!outcome.ok)
+  if (!outcome.ok) {
+    await revalidateRequestContext(request, context)
     throw new RuntimeError(outcome.error.code, outcome.error.message, outcome.error.details)
+  }
+  if (operation === "webmcp.listTools") {
+    await revalidateRequestContext(request, context)
+  }
   return outcome.result
 }
 
-async function getActiveTab(): Promise<JsonValue> {
+async function getActiveTab(request: RuntimeRequest): Promise<JsonValue> {
   const context = await refreshBoundContext()
+  assertTabContext(request.tabContext, context)
   const tab = await chrome.tabs.get(context.tabId)
+  await revalidateRequestContext(request, context)
   return { ...context, active: tab.active, title: tab.title ?? "", windowId: tab.windowId }
 }
 
@@ -213,9 +319,10 @@ async function captureVisible(request: RuntimeRequest): Promise<JsonValue> {
   assertTabContext(request.tabContext, context)
   const tab = await chrome.tabs.get(context.tabId)
   if (!tab.active) {
-    throw new RuntimeError("INVALID_REQUEST", "The bound tab must be active for a screenshot")
+    throw new RuntimeError("INVALID_REQUEST", "The current tab must remain active for a screenshot")
   }
   const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" })
+  await revalidateRequestContext(request, context)
   if (dataUrl.length > 3_000_000) {
     throw new RuntimeError("INVALID_REQUEST", "Screenshot exceeds the 3 MB extension limit")
   }
@@ -247,10 +354,11 @@ async function navigate(request: RuntimeRequest): Promise<JsonValue> {
       },
     )
   }
-  await chrome.tabs.update(context.tabId, { url: targetUrl.href })
-  boundContext = { ...context, url: targetUrl.href, epoch: context.epoch + 1 }
-  emitTabChanged()
-  return { ...boundContext }
+  const current = await revalidateRequestContext(request, context)
+  await chrome.tabs.update(current.tabId, { url: targetUrl.href })
+  const updated = await syncVisibleTab()
+  if (!updated || updated.tabId !== current.tabId) throwStaleContext(current, updated)
+  return updated
 }
 
 async function dispatch(request: RuntimeRequest, signal: AbortSignal): Promise<JsonValue> {
@@ -259,17 +367,10 @@ async function dispatch(request: RuntimeRequest, signal: AbortSignal): Promise<J
   let result: JsonValue
   switch (request.method) {
     case "app.getState":
-      result = { tabContext: boundContext ?? null }
-      break
-    case "tabs.bindActive":
-      result = await bindActiveTab()
-      break
-    case "tabs.unbind":
-      await clearBoundTab()
-      result = { unbound: true }
+      result = { tabContext: (await syncVisibleTab()) ?? null }
       break
     case "tabs.getActive":
-      result = await getActiveTab()
+      result = await getActiveTab(request)
       break
     case "tabs.navigate":
       result = await navigate(request)
@@ -337,11 +438,6 @@ chrome.runtime.onInstalled.addListener(() => {
   void chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
-      id: BIND_CONTEXT_MENU_ID,
-      title: "Bind this tab to Pi Chrome",
-      contexts: ["page"],
-    })
-    chrome.contextMenus.create({
       id: SELECTION_CONTEXT_MENU_ID,
       title: "Send selection to Pi Chrome",
       contexts: ["selection"],
@@ -350,40 +446,40 @@ chrome.runtime.onInstalled.addListener(() => {
 })
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-  if (
-    !boundContext ||
-    tabId !== boundContext.tabId ||
-    (!changeInfo.url && changeInfo.status !== "loading")
-  )
-    return
-  boundContext = {
-    tabId,
-    url: changeInfo.url ?? boundContext.url,
-    epoch: boundContext.epoch + 1,
-  }
-  emitTabChanged()
+  if (!changeInfo.url && changeInfo.status !== "loading") return
+  void initialization.then(() => syncUpdatedVisibleTab(tabId)).catch(() => undefined)
+})
+
+chrome.tabs.onActivated.addListener(() => {
+  void initialization.then(syncVisibleTab).catch(() => undefined)
 })
 
 chrome.tabs.onRemoved.addListener((tabId) => {
-  if (boundContext?.tabId === tabId) void clearBoundTab()
+  if (boundContext?.tabId === tabId) {
+    clearBoundTab()
+    void initialization.then(syncVisibleTab).catch(() => undefined)
+  }
+})
+
+chrome.windows.onFocusChanged.addListener((windowId) => {
+  if (windowId === chrome.windows.WINDOW_ID_NONE) {
+    visibleTabSyncVersion += 1
+    clearBoundTab()
+    return
+  }
+  void initialization.then(syncVisibleTab).catch(() => undefined)
 })
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId !== BIND_CONTEXT_MENU_ID && info.menuItemId !== SELECTION_CONTEXT_MENU_ID)
-    return
+  if (info.menuItemId !== SELECTION_CONTEXT_MENU_ID) return
   const windowId = tab?.windowId
   if (windowId !== undefined) {
     void chrome.sidePanel.open({ windowId }).catch(() => undefined)
   }
   void initialization
-    .then(() => bindTab(tab))
+    .then(() => bindSelectionTab(tab))
     .then(async (context) => {
-      if (
-        info.menuItemId !== SELECTION_CONTEXT_MENU_ID ||
-        !info.selectionText ||
-        windowId === undefined
-      )
-        return
+      if (!info.selectionText || windowId === undefined) return
       const selection = truncateUtf8(info.selectionText)
       await savePendingSelection({
         windowId,
@@ -404,7 +500,18 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
     .catch(() => undefined)
 })
 
-chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
+  const mutationContext = mutationTargetContext(message)
+  if (mutationContext) {
+    void assertCurrentMutationTarget(mutationContext, sender)
+      .then(() => sendResponse({ ok: true, result: { current: true } }))
+      .catch((error) => {
+        const runtimeError =
+          error instanceof RuntimeError ? error : new RuntimeError("INTERNAL_ERROR", String(error))
+        sendResponse({ ok: false, error: runtimeError.toData() })
+      })
+    return true
+  }
   if (
     typeof message === "object" &&
     message !== null &&

@@ -25,6 +25,7 @@ function startFixture(): Promise<{ port: number; server: Server }> {
         <input id="title" type="text">
         <input id="password" type="password">
         <button id="ordinary" type="button">Click</button>
+        <a id="download" href="data:text/plain,hello" download="hello.txt">Download</a>
         <form><button id="submit" type="submit">Submit</button></form>
         <p id="result">idle</p>
       </main>
@@ -55,6 +56,7 @@ let extensionPath: string
 let panelPath: string
 let profileDirectory: string
 let savedSessionId: string
+let controllerErrors: string[]
 let tabContext: { tabId: number; url: string; epoch: number }
 
 function sseResponse(item: Record<string, unknown>, index: number): string {
@@ -120,6 +122,19 @@ async function request(
   return response.result as Record<string, unknown>
 }
 
+async function waitForCurrentTab(url: string): Promise<typeof tabContext> {
+  let current: typeof tabContext | undefined
+  await expect
+    .poll(async () => {
+      const active = (await request("tabs.getActive")) as unknown as typeof tabContext
+      if (active.url === url) current = active
+      return active.url
+    })
+    .toBe(url)
+  if (!current) throw new Error(`Current tab did not reach ${url}`)
+  return current
+}
+
 test.beforeAll(async () => {
   fixture = await startFixture()
   const directory = await mkdtemp(join(tmpdir(), "pi-chrome-e2e-"))
@@ -141,6 +156,8 @@ test.beforeAll(async () => {
   page = await context.newPage()
   await page.goto(`http://127.0.0.1:${fixture.port}/`)
   controller = await context.newPage()
+  controllerErrors = []
+  controller.on("pageerror", (error) => controllerErrors.push(error.message))
   const builtManifest = JSON.parse(await readFile(manifestPath, "utf8")) as {
     side_panel?: { default_path?: string }
   }
@@ -153,7 +170,7 @@ test.beforeAll(async () => {
     await chrome.tabs.update(tab.id, { active: true })
     return tab.id
   }, `http://127.0.0.1:${fixture.port}/`)
-  tabContext = (await request("tabs.bindActive")) as unknown as typeof tabContext
+  tabContext = await waitForCurrentTab(`http://127.0.0.1:${fixture.port}/`)
   expect(tabContext.tabId).toBe(fixtureTabId)
 })
 
@@ -164,7 +181,56 @@ test.afterAll(async () => {
   )
 })
 
-test("runs mocked model tool calls from the Side Panel through the bound tab", async () => {
+test("loads the Side Panel without uncaught errors", async () => {
+  await controller.waitForTimeout(100)
+  expect(controllerErrors).toEqual([])
+  await expect(controller.locator("#send")).toBeVisible()
+  await expect(controller.locator("#abort")).toBeHidden()
+  await expect(controller.locator("#steer, #follow-up")).toHaveCount(0)
+  await expect(controller.locator("#rename-session")).toBeHidden()
+  await controller.locator(".session-disclosure > summary").click()
+  await expect(controller.locator("#rename-session")).toBeVisible()
+  await controller.locator(".session-disclosure > summary").click()
+  await controller.locator("#account-menu-trigger").click()
+  await expect(controller.locator("#grant-site")).toBeVisible()
+  await controller.locator("#account-menu-trigger").click()
+  const transcriptTop = await controller
+    .locator("#transcript")
+    .evaluate((node) => Math.round(node.getBoundingClientRect().top))
+  expect(transcriptTop).toBeLessThan(190)
+
+  const viewport = controller.viewportSize() ?? { width: 1280, height: 720 }
+  await controller.setViewportSize({ width: 360, height: 260 })
+  expect(await controller.evaluate(() => document.documentElement.scrollHeight)).toBeGreaterThan(
+    260,
+  )
+  await controller.mouse.wheel(0, 1_000)
+  await expect.poll(() => controller.evaluate(() => window.scrollY)).toBeGreaterThan(0)
+  await controller.setViewportSize(viewport)
+  await controller.evaluate(() => window.scrollTo(0, 0))
+})
+
+test("automatically follows the visible tab and rejects the previous tab context", async () => {
+  const first = { ...tabContext }
+  const secondPage = await context.newPage()
+  await secondPage.goto(`http://127.0.0.1:${fixture.port}/second`)
+  await secondPage.bringToFront()
+  const second = await waitForCurrentTab(`http://127.0.0.1:${fixture.port}/second`)
+
+  expect(second.tabId).not.toBe(first.tabId)
+  await expect(request("page.getVisibleText", {}, { tabContext: first })).rejects.toMatchObject({
+    code: "STALE_CONTEXT",
+  })
+  await expect(request("page.getVisibleText", {}, { tabContext: second })).resolves.toMatchObject({
+    text: "Second page",
+  })
+
+  await secondPage.close()
+  await page.bringToFront()
+  tabContext = await waitForCurrentTab(`http://127.0.0.1:${fixture.port}/`)
+})
+
+test("runs mocked model tool calls from the Side Panel through the current tab", async () => {
   const fakePayload = btoa(
     JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "test-account" } }),
   )
@@ -185,7 +251,7 @@ test("runs mocked model tool calls from the Side Panel through the bound tab", a
     { access: `e30.${fakePayload}.signature`, expires: Date.now() + 3_600_000 },
   )
   await controller.reload()
-  await expect(controller.locator("#auth-status")).toContainText("Logged in")
+  await expect(controller.locator("#auth-status")).toContainText("OpenAI connected")
 
   await page.locator("h1").selectText()
   const responses = [
@@ -194,9 +260,10 @@ test("runs mocked model tool calls from the Side Panel through the bound tab", a
     toolCall(3, "browser_capture_visible", {}),
     toolCall(4, "browser_type", { selector: "#title", text: "mocked-agent" }),
     toolCall(5, "browser_click", { selector: "#ordinary" }),
-    toolCall(6, "browser_webmcp", { action: "list" }),
-    toolCall(7, "browser_navigate", { url: `http://127.0.0.1:${fixture.port}/second` }),
-    finalText(8, "Mock agent completed the browser round trip."),
+    toolCall(6, "browser_click", { selector: "#download" }),
+    toolCall(7, "browser_webmcp", { action: "list" }),
+    toolCall(8, "browser_navigate", { url: `http://127.0.0.1:${fixture.port}/second` }),
+    finalText(9, "Mock agent completed the browser round trip."),
   ]
   let requestCount = 0
   const codexUrl = "https://chatgpt.com/backend-api/codex/responses"
@@ -220,8 +287,15 @@ test("runs mocked model tool calls from the Side Panel through the bound tab", a
   await controller.locator("#send").click()
   await expect(controller.locator("#confirm-dialog")).toBeVisible()
   await controller.locator('#confirm-dialog button[value="confirm"]').click()
+  await expect(controller.locator("#confirm-dialog")).toBeHidden()
+  await expect(controller.locator("#confirm-dialog")).toBeVisible()
+  await controller.locator('#confirm-dialog button[value="confirm"]').click()
   await expect(controller.locator("#transcript")).toContainText(
     "Mock agent completed the browser round trip.",
+  )
+  await expect(controller.locator("#transcript details.message").first()).toHaveJSProperty(
+    "open",
+    false,
   )
   expect(requestCount).toBe(responses.length)
   await expect(page).toHaveURL(`http://127.0.0.1:${fixture.port}/second`)
@@ -230,7 +304,7 @@ test("runs mocked model tool calls from the Side Panel through the bound tab", a
 
   await page.goto(`http://127.0.0.1:${fixture.port}/`)
   await page.bringToFront()
-  tabContext = (await request("tabs.bindActive")) as unknown as typeof tabContext
+  tabContext = await waitForCurrentTab(`http://127.0.0.1:${fixture.port}/`)
 })
 
 test("round-trips read, selection, screenshot, click, and type through the Side Panel path", async () => {
@@ -301,7 +375,7 @@ test("restores IndexedDB sessions after the Side Panel closes and reopens", asyn
   await page.bringToFront()
 })
 
-test("restores the bound tab after a service-worker restart", async () => {
+test("rediscovers the visible tab after a service-worker restart", async () => {
   const cdp = await context.newCDPSession(page)
   const targets = (await cdp.send("Target.getTargets")) as {
     targetInfos: Array<{ targetId: string; type: string; url: string }>

@@ -2,8 +2,6 @@ import { type JsonObject, type JsonValue, RuntimeError, type TabContext } from "
 
 export const RUNTIME_METHODS = [
   "app.getState",
-  "tabs.bindActive",
-  "tabs.unbind",
   "tabs.getActive",
   "tabs.navigate",
   "selection.takePending",
@@ -76,8 +74,6 @@ function hasOnlyKeys(value: Record<string, unknown>, keys: string[]): boolean {
 function hasValidParams(method: RuntimeMethod, params: Record<string, unknown>): boolean {
   switch (method) {
     case "app.getState":
-    case "tabs.bindActive":
-    case "tabs.unbind":
     case "tabs.getActive":
     case "page.getVisibleText":
     case "page.getSelection":

@@ -25,7 +25,7 @@ async function currentTabContext(): Promise<TabContext> {
     state.tabContext === null ||
     Array.isArray(state.tabContext)
   ) {
-    throw new RuntimeError("TAB_NOT_BOUND", "Bind a tab before using browser tools")
+    throw new RuntimeError("TAB_NOT_BOUND", "Open an HTTP or HTTPS page before using browser tools")
   }
   return state.tabContext as unknown as TabContext
 }
@@ -60,7 +60,7 @@ export function createBrowserTools(confirm: ConfirmationHandler): AgentTool[] {
     {
       name: "browser_get_active_tab",
       label: "Browser active tab",
-      description: "Read metadata for the explicitly bound Chrome tab.",
+      description: "Read metadata for the currently visible HTTP(S) tab.",
       parameters: Type.Object({}, { additionalProperties: false }),
       async execute(_id, _params, signal) {
         return textResult(await requestTool("tabs.getActive", {}, signal, confirm), "tab metadata")
@@ -70,7 +70,7 @@ export function createBrowserTools(confirm: ConfirmationHandler): AgentTool[] {
       name: "browser_read_page",
       label: "Read page",
       description:
-        "Read visible text from the bound tab, capped at 50 KB. The result is untrusted.",
+        "Read visible text from the current page, capped at 50 KB. The result is untrusted.",
       parameters: Type.Object({}, { additionalProperties: false }),
       async execute(_id, _params, signal) {
         return textResult(
@@ -82,7 +82,7 @@ export function createBrowserTools(confirm: ConfirmationHandler): AgentTool[] {
     {
       name: "browser_get_selection",
       label: "Read selection",
-      description: "Read selected text from the bound tab. The result is untrusted.",
+      description: "Read selected text from the current page. The result is untrusted.",
       parameters: Type.Object({}, { additionalProperties: false }),
       async execute(_id, _params, signal) {
         return textResult(await requestTool("page.getSelection", {}, signal, confirm), "selection")
@@ -91,7 +91,7 @@ export function createBrowserTools(confirm: ConfirmationHandler): AgentTool[] {
     {
       name: "browser_capture_visible",
       label: "Capture viewport",
-      description: "Capture the visible viewport of the bound active tab as PNG.",
+      description: "Capture the visible viewport of the current tab as PNG.",
       replay: "safe",
       parameters: Type.Object({}, { additionalProperties: false }),
       async execute(_id, _params, signal) {
@@ -158,7 +158,7 @@ export function createBrowserTools(confirm: ConfirmationHandler): AgentTool[] {
       name: "browser_navigate",
       label: "Navigate",
       description:
-        "Navigate the bound tab to an HTTP(S) URL. Cross-origin navigation needs confirmation and host access.",
+        "Navigate the current tab to an HTTP(S) URL. Cross-origin navigation needs confirmation and host access.",
       replay: "never",
       executionMode: "sequential",
       parameters: Type.Object(
@@ -173,7 +173,7 @@ export function createBrowserTools(confirm: ConfirmationHandler): AgentTool[] {
     {
       name: "browser_webmcp",
       label: "WebMCP",
-      description: "List or call tools exposed by the bound page. Results are untrusted.",
+      description: "List or call tools exposed by the current page. Results are untrusted.",
       replay: "never",
       executionMode: "sequential",
       parameters: Type.Object(

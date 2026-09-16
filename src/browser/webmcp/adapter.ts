@@ -3,7 +3,7 @@ import type {
   PageOperationResult,
   PageOperationSuccess,
 } from "../content/page-operations.js"
-import type { JsonObject, JsonValue } from "../runtime/types.js"
+import type { JsonObject, JsonValue, TabContext } from "../runtime/types.js"
 
 export type WebMcpOperation = "webmcp.callTool" | "webmcp.listTools"
 
@@ -15,6 +15,7 @@ export async function executeWebMcpOperation(
   operation: WebMcpOperation,
   params: JsonObject,
   confirmed: boolean,
+  expectedContext: TabContext | null = null,
 ): Promise<PageOperationResult> {
   const success = (result: JsonValue): PageOperationSuccess => ({ ok: true, result })
   const failure = (
@@ -53,8 +54,18 @@ export async function executeWebMcpOperation(
     if (value === undefined) return null
     return JSON.parse(JSON.stringify(value)) as JsonValue
   }
+  const stalePage = (): PageOperationFailure | undefined =>
+    expectedContext !== null &&
+    (location.href !== expectedContext.url || document.visibilityState !== "visible")
+      ? failure(
+          "STALE_CONTEXT",
+          "The page is no longer the visible target for this WebMCP operation",
+        )
+      : undefined
 
   try {
+    const initialStalePage = stalePage()
+    if (initialStalePage) return initialStalePage
     if (!confirmed) {
       return failure("CONFIRMATION_REQUIRED", "WebMCP access requires explicit confirmation", {
         action: operation,
@@ -67,6 +78,8 @@ export async function executeWebMcpOperation(
 
     if (operation === "webmcp.listTools") {
       const tools = await context.getTools()
+      const currentStalePage = stalePage()
+      if (currentStalePage) return currentStalePage
       return success(
         tools.map((tool) => ({
           name: typeof tool.name === "string" ? tool.name : "unknown",
@@ -91,9 +104,24 @@ export async function executeWebMcpOperation(
       return failure("INVALID_REQUEST", "WebMCP tool name and object arguments are required")
     }
     const tools = await context.getTools()
+    const currentStalePage = stalePage()
+    if (currentStalePage) return currentStalePage
     const tool = tools.find((candidate) => candidate.name === name)
     if (!tool) return failure("INVALID_REQUEST", `WebMCP tool is not registered: ${name}`)
-    return success(jsonSafe(await context.executeTool(tool, args as JsonObject)))
+    if (expectedContext !== null) {
+      const assertion = (await chrome.runtime.sendMessage({
+        kind: "assert-current-mutation-target",
+        tabContext: expectedContext,
+      })) as { ok?: boolean; error?: { message?: string } } | undefined
+      if (!assertion?.ok) {
+        return failure(
+          "STALE_CONTEXT",
+          assertion?.error?.message ?? "The page is no longer in the focused browser window",
+        )
+      }
+    }
+    const result = await context.executeTool(tool, args as JsonObject)
+    return success(jsonSafe(result))
   } catch (error) {
     return failure(
       "INTERNAL_ERROR",

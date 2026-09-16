@@ -12,11 +12,12 @@ OpenAI access requires an explicit **Log in** gesture before Chrome requests the
 
 Logout first aborts the agent, waits for it to become idle, then removes persistent credentials. Requests cannot silently switch providers or hosts after auth failure.
 
-## Bound-tab controls
+## Current-tab controls
 
-- Only one user-selected HTTP(S) tab is bound.
-- Tab ID, URL, and navigation epoch identify the operation context.
-- Navigation after request creation causes `STALE_CONTEXT`.
+- Only the active HTTP(S) tab in the focused Chrome window is targeted.
+- Tab and window activation automatically update the target; unsupported pages clear it.
+- Tab ID, URL, and context epoch identify the operation context.
+- Navigation or a visible-tab change after request creation causes `STALE_CONTEXT`.
 - Host access is requested from a user gesture and scoped to a selected origin.
 - Password and file inputs are always denied.
 - Form submissions, downloads, cross-origin links, cross-origin navigation, and WebMCP calls require confirmation.

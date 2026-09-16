@@ -20,6 +20,7 @@ function makeVisible(element: HTMLElement): void {
 
 describe("page operations", () => {
   beforeEach(() => {
+    vi.unstubAllGlobals()
     document.body.innerHTML = ""
     Object.defineProperty(document, "modelContext", {
       configurable: true,
@@ -48,6 +49,26 @@ describe("page operations", () => {
     const result = await executePageOperation("getVisibleText", {}, false)
     expect(result).toMatchObject({ ok: true, result: { text: "Hello browser" } })
     expect(JSON.stringify(result)).not.toContain("private value")
+  })
+
+  test("rejects mutations when the injected page is no longer visible", async () => {
+    document.body.innerHTML = '<button id="target" type="button">Click</button>'
+    const button = document.querySelector<HTMLButtonElement>("#target") as HTMLButtonElement
+    makeVisible(button)
+    const click = vi.spyOn(button, "click").mockImplementation(() => undefined)
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "hidden",
+    })
+
+    await expect(
+      executePageOperation("click", { selector: "#target" }, false, null, {
+        tabId: 1,
+        url: location.href,
+        epoch: 0,
+      }),
+    ).resolves.toMatchObject({ ok: false, error: { code: "STALE_CONTEXT" } })
+    expect(click).not.toHaveBeenCalled()
   })
 
   test("requires confirmation before submit controls", async () => {
@@ -355,6 +376,40 @@ describe("page operations", () => {
       ),
     ).resolves.toMatchObject({ ok: true })
     expect(executeTool).toHaveBeenCalledOnce()
+  })
+
+  test("rechecks the focused mutation target immediately before calling a WebMCP tool", async () => {
+    const getTools = vi.fn(async () => [{ name: "mutate-page", inputSchema: {} }])
+    const executeTool = vi.fn(async () => ({ changed: true }))
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    })
+    Object.defineProperty(document, "modelContext", {
+      configurable: true,
+      value: { getTools, executeTool },
+    })
+    const sendMessage = vi.fn(async () => ({
+      ok: false,
+      error: { code: "STALE_CONTEXT", message: "The browser window lost focus" },
+    }))
+    vi.stubGlobal("chrome", { runtime: { sendMessage } })
+    const expectedContext = { tabId: 7, url: location.href, epoch: 3 }
+
+    await expect(
+      executeWebMcpOperation(
+        "webmcp.callTool",
+        { name: "mutate-page", arguments: {} },
+        true,
+        expectedContext,
+      ),
+    ).resolves.toMatchObject({ ok: false, error: { code: "STALE_CONTEXT" } })
+    expect(getTools).toHaveBeenCalledOnce()
+    expect(sendMessage).toHaveBeenCalledWith({
+      kind: "assert-current-mutation-target",
+      tabContext: expectedContext,
+    })
+    expect(executeTool).not.toHaveBeenCalled()
   })
 
   test("lists the current WebMCP registry after toolchange without caching", async () => {
