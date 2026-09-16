@@ -99,6 +99,7 @@ async function refreshBoundContext(): Promise<TabContext> {
 async function runPageOperation(
   operation: PageOperation,
   request: RequestFrame,
+  trustedCrossOriginTargetUrl: string | null = null,
 ): Promise<JsonValue> {
   const context = await refreshBoundContext()
   assertTabContext(request.tabContext, context)
@@ -108,7 +109,7 @@ async function runPageOperation(
     results = await chrome.scripting.executeScript({
       target: { tabId: context.tabId },
       func: executePageOperation,
-      args: [operation, request.params, request.confirmed ?? false],
+      args: [operation, request.params, request.confirmed ?? false, trustedCrossOriginTargetUrl],
     })
   } catch (error) {
     throw new BridgeError(
@@ -121,6 +122,38 @@ async function runPageOperation(
   if (!outcome.ok)
     throw new BridgeError(outcome.error.code, outcome.error.message, outcome.error.details)
   return outcome.result
+}
+
+async function runClickOperation(request: RequestFrame): Promise<JsonValue> {
+  if (!request.confirmed) return runPageOperation("click", request)
+
+  const inspection = await runPageOperation("inspectClick", request)
+  const target =
+    typeof inspection === "object" && inspection !== null && !Array.isArray(inspection)
+      ? inspection.targetUrl
+      : undefined
+  if (target === null || target === undefined) return runPageOperation("click", request)
+  if (typeof target !== "string" || !isSupportedPageUrl(target)) {
+    throw new BridgeError(
+      "PERMISSION_DENIED",
+      "Cross-origin links must target an HTTP or HTTPS page",
+    )
+  }
+
+  const context = await refreshBoundContext()
+  assertTabContext(request.tabContext, context)
+  const targetUrl = new URL(target)
+  if (targetUrl.origin === new URL(context.url).origin) {
+    return runPageOperation("click", request)
+  }
+  if (!(await hasHostPermission(targetUrl))) {
+    throw new BridgeError(
+      "PERMISSION_DENIED",
+      "Grant persistent access to the link destination from the popup before clicking",
+      { action: "click", targetUrl: targetUrl.href },
+    )
+  }
+  return runPageOperation("click", request, targetUrl.href)
 }
 
 async function runWebMcpOperation(
@@ -244,7 +277,7 @@ async function handleBridgeRequest(request: RequestFrame, signal: AbortSignal): 
       result = await captureVisiblePage(request)
       break
     case "page.click":
-      result = await runPageOperation("click", request)
+      result = await runClickOperation(request)
       break
     case "page.type":
       result = await runPageOperation("type", request)

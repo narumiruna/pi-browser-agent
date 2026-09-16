@@ -65,6 +65,7 @@ export class BridgeServer {
   private httpServer?: Server
   private webSocketServer?: WebSocketServer
   private config: BridgeConfig = { port: 17_373 }
+  private pairingOperation: Promise<void> = Promise.resolve()
   private active?: ConnectionState
   private readonly connections = new Set<ConnectionState>()
   private readonly pending = new Map<string, PendingRequest>()
@@ -178,17 +179,17 @@ export class BridgeServer {
   }
 
   async createPairing(): Promise<{ secret: string; port: number }> {
-    const { config, secret } = await this.configStore.createPairing()
-    this.config = config
-    this.disconnectActive("Pairing rotated")
-    this.emitStatus()
-    return { secret, port: config.port }
+    return this.serializePairingOperation(async () => {
+      const { config, secret } = await this.configStore.createPairing()
+      this.config = config
+      this.disconnectActive("Pairing rotated")
+      this.emitStatus()
+      return { secret, port: config.port }
+    })
   }
 
   async revoke(): Promise<void> {
-    this.config = await this.configStore.revoke()
-    this.disconnectActive("Pairing revoked")
-    this.emitStatus()
+    await this.serializePairingOperation(() => this.revokeUnlocked())
   }
 
   getStatus(): BridgeServerStatus {
@@ -302,7 +303,7 @@ export class BridgeServer {
           return
         case "event":
           if (frame.name === "pairing.revoke") {
-            await this.revoke()
+            await this.revokeConnection(connection)
             return
           }
           if (frame.tabContext) connection.tabContext = frame.tabContext
@@ -334,7 +335,35 @@ export class BridgeServer {
     }
   }
 
-  private async authenticate(
+  private async revokeConnection(connection: ConnectionState): Promise<void> {
+    await this.serializePairingOperation(async () => {
+      if (this.active !== connection) {
+        throw new BridgeError(
+          "AUTHENTICATION_REQUIRED",
+          "Only the active Chrome connection can revoke pairing",
+        )
+      }
+      await this.revokeUnlocked()
+    })
+  }
+
+  private async revokeUnlocked(): Promise<void> {
+    this.config = await this.configStore.revoke()
+    this.disconnectActive("Pairing revoked")
+    this.emitStatus()
+  }
+
+  private authenticate(
+    connection: ConnectionState,
+    challengeId: string,
+    proof: string,
+  ): Promise<void> {
+    return this.serializePairingOperation(() =>
+      this.authenticateUnlocked(connection, challengeId, proof),
+    )
+  }
+
+  private async authenticateUnlocked(
     connection: ConnectionState,
     challengeId: string,
     proof: string,
@@ -372,6 +401,15 @@ export class BridgeServer {
     this.active = connection
     this.send(connection.socket, { type: "auth.result", success: true })
     this.emitStatus()
+  }
+
+  private serializePairingOperation<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.pairingOperation.then(operation, operation)
+    this.pairingOperation = result.then(
+      () => undefined,
+      () => undefined,
+    )
+    return result
   }
 
   private handleResponse(connection: ConnectionState, response: ResponseFrame): void {
@@ -418,8 +456,12 @@ export class BridgeServer {
   }
 
   private disconnectActive(reason: string): void {
-    this.active?.socket.close(1000, reason)
+    const connection = this.active
     this.active = undefined
+    if (connection) {
+      connection.authenticated = false
+      connection.socket.close(1000, reason)
+    }
     this.rejectAllPending(new BridgeError("CONNECTION_CLOSED", reason))
   }
 

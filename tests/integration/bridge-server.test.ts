@@ -2,7 +2,7 @@ import { mkdtemp } from "node:fs/promises"
 import { createServer } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { afterEach, describe, expect, test } from "vitest"
+import { afterEach, describe, expect, test, vi } from "vitest"
 import WebSocket from "ws"
 import { createAuthenticationProof } from "../../src/pi/authentication.js"
 import { BridgeServer } from "../../src/pi/bridge-server.js"
@@ -250,6 +250,43 @@ describe("BridgeServer", () => {
     await expect(closed).resolves.toEqual({ code: 1000, reason: "Pairing revoked" })
     expect(server.getStatus()).toMatchObject({ connected: false, paired: false })
     await expect(store.load()).resolves.toEqual({ port })
+  })
+
+  test("rejects revocation from an authenticated connection that is no longer active", async () => {
+    const { server, store, port, secret } = await makeServer()
+    const close = vi.fn()
+    const inactiveConnection = {
+      authenticated: true,
+      socket: { close, readyState: WebSocket.OPEN },
+    }
+    const internals = server as unknown as {
+      handleMessage: (connection: unknown, data: Buffer) => Promise<void>
+    }
+
+    await internals.handleMessage(
+      inactiveConnection,
+      Buffer.from(serializeProtocolFrame({ type: "event", name: "pairing.revoke", payload: {} })),
+    )
+
+    expect(close).toHaveBeenCalledWith(1008, "Only the active Chrome connection can revoke pairing")
+    await expect(store.load()).resolves.toEqual({ port, secret })
+  })
+
+  test("invalidates an active connection before initiating its close", () => {
+    const server = new BridgeServer()
+    const close = vi.fn()
+    const connection = { authenticated: true, socket: { close } }
+    const internals = server as unknown as {
+      active?: typeof connection
+      disconnectActive: (reason: string) => void
+    }
+    internals.active = connection
+
+    internals.disconnectActive("Replaced")
+
+    expect(connection.authenticated).toBe(false)
+    expect(internals.active).toBeUndefined()
+    expect(close).toHaveBeenCalledWith(1000, "Replaced")
   })
 
   test("stops idempotently and releases the port for reload", async () => {

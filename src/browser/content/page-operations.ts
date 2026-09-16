@@ -1,6 +1,6 @@
 import type { JsonObject, JsonValue } from "../../protocol/index.js"
 
-export type PageOperation = "click" | "getSelection" | "getVisibleText" | "type"
+export type PageOperation = "click" | "getSelection" | "getVisibleText" | "inspectClick" | "type"
 
 export interface PageOperationSuccess {
   ok: true
@@ -31,6 +31,7 @@ export async function executePageOperation(
   operation: PageOperation,
   params: JsonObject,
   confirmed: boolean,
+  trustedCrossOriginTargetUrl: string | null = null,
 ): Promise<PageOperationResult> {
   const success = (result: JsonValue): PageOperationSuccess => ({ ok: true, result })
   const failure = (
@@ -59,14 +60,13 @@ export async function executePageOperation(
     "ok" in value
   const isVisible = (element: Element): boolean => {
     if (!(element instanceof HTMLElement)) return false
+    const selectedStyle = getComputedStyle(element)
+    if (selectedStyle.visibility === "hidden" || selectedStyle.visibility === "collapse") {
+      return false
+    }
     for (let current: HTMLElement | null = element; current; current = current.parentElement) {
       const style = getComputedStyle(current)
-      if (
-        style.display === "none" ||
-        style.visibility === "hidden" ||
-        style.visibility === "collapse" ||
-        Number.parseFloat(style.opacity || "1") <= 0
-      ) {
+      if (style.display === "none" || Number.parseFloat(style.opacity || "1") <= 0) {
         return false
       }
     }
@@ -121,6 +121,14 @@ export async function executePageOperation(
       }
       case "getSelection":
         return success({ text: window.getSelection()?.toString().trim() ?? "", url: location.href })
+      case "inspectClick": {
+        const found = findElement()
+        if (isFailure(found)) return found
+        const anchor = found.closest("a")
+        return success({
+          targetUrl: anchor instanceof HTMLAnchorElement && anchor.href ? anchor.href : null,
+        })
+      }
       case "click": {
         const found = findElement()
         if (isFailure(found)) return found
@@ -162,6 +170,15 @@ export async function executePageOperation(
               selector: getSelector() ?? "",
               ...(anchor instanceof HTMLAnchorElement ? { targetUrl: anchor.href } : {}),
             },
+          )
+        }
+        if (
+          crossOrigin &&
+          (!(anchor instanceof HTMLAnchorElement) || anchor.href !== trustedCrossOriginTargetUrl)
+        ) {
+          return failure(
+            "PERMISSION_DENIED",
+            "The cross-origin link target was not authorized or changed before the click",
           )
         }
         found.click()
