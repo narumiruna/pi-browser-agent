@@ -37,6 +37,7 @@ describe("service worker visible-tab targeting", () => {
     const updateTab = vi.fn(async () => activeTab)
     let permissionCheck: Promise<boolean> | undefined
     const contains = vi.fn(async () => permissionCheck ?? true)
+    let focusedWindowId = 3
     let activeTab: TestTab = { id: 1, url: "https://old.test/page", windowId: 3 }
     let failPendingRead = false
 
@@ -59,6 +60,7 @@ describe("service worker visible-tab targeting", () => {
       },
       permissions: { contains },
       runtime: {
+        id: "test-extension",
         onInstalled: {
           addListener: vi.fn((listener: () => void) => (listeners.installed = listener)),
         },
@@ -100,6 +102,10 @@ describe("service worker visible-tab targeting", () => {
       },
       windows: {
         WINDOW_ID_NONE: -1,
+        get: vi.fn(async (windowId: number) => ({
+          id: windowId,
+          focused: windowId === focusedWindowId,
+        })),
         onFocusChanged: {
           addListener: vi.fn(
             (listener: NonNullable<ListenerMap["focusChanged"]>) =>
@@ -193,6 +199,25 @@ describe("service worker visible-tab targeting", () => {
       expect(response.result?.tabContext?.tabId).toBe(7)
       return response
     })
+    focusedWindowId = 4
+    await expect(
+      new Promise((resolve) => {
+        const accepted = listeners.runtimeMessage?.(
+          {
+            kind: "assert-current-mutation-target",
+            tabContext: currentResponse.result?.tabContext,
+          },
+          {
+            id: "test-extension",
+            tab: { id: 7, url: "https://example.test/page", windowId: 3 },
+          },
+          resolve,
+        )
+        expect(accepted).toBe(true)
+      }),
+    ).resolves.toMatchObject({ ok: false, error: { code: "STALE_CONTEXT" } })
+    focusedWindowId = 3
+
     let releasePermission: ((value: boolean) => void) | undefined
     permissionCheck = new Promise<boolean>((resolve) => {
       releasePermission = resolve

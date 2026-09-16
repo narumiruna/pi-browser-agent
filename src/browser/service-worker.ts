@@ -128,6 +128,51 @@ function throwStaleContext(expected: TabContext, actual?: TabContext): never {
   )
 }
 
+function mutationTargetContext(message: unknown): TabContext | undefined {
+  if (
+    typeof message !== "object" ||
+    message === null ||
+    !("kind" in message) ||
+    message.kind !== "assert-current-mutation-target" ||
+    !("tabContext" in message)
+  ) {
+    return undefined
+  }
+  const context = message.tabContext
+  return typeof context === "object" &&
+    context !== null &&
+    "tabId" in context &&
+    typeof context.tabId === "number" &&
+    "url" in context &&
+    typeof context.url === "string" &&
+    "epoch" in context &&
+    typeof context.epoch === "number"
+    ? (context as TabContext)
+    : undefined
+}
+
+async function assertCurrentMutationTarget(
+  expected: TabContext,
+  sender: chrome.runtime.MessageSender,
+): Promise<void> {
+  if (sender.id !== chrome.runtime.id || sender.tab?.id !== expected.tabId) {
+    throw new RuntimeError("PERMISSION_DENIED", "Invalid browser mutation target assertion")
+  }
+  const current = await refreshBoundContext()
+  assertTabContext(expected, current)
+  const tab = await chrome.tabs.get(current.tabId)
+  const window = await chrome.windows.get(tab.windowId)
+  const latest = await refreshBoundContext()
+  assertTabContext(expected, latest)
+  if (!tab.active || !window.focused || sender.tab.windowId !== tab.windowId) {
+    throw new RuntimeError(
+      "STALE_CONTEXT",
+      "The target tab is no longer active in the focused browser window",
+      { expected, actual: latest },
+    )
+  }
+}
+
 async function runPageOperation(
   operation: PageOperation,
   request: RuntimeRequest,
@@ -140,13 +185,7 @@ async function runPageOperation(
     results = await chrome.scripting.executeScript({
       target: { tabId: context.tabId },
       func: executePageOperation,
-      args: [
-        operation,
-        request.params,
-        request.confirmed ?? false,
-        trustedLinkTargetUrl,
-        context.url,
-      ],
+      args: [operation, request.params, request.confirmed ?? false, trustedLinkTargetUrl, context],
     })
   } catch (error) {
     throw new RuntimeError(
@@ -430,7 +469,18 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
     .catch(() => undefined)
 })
 
-chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
+  const mutationContext = mutationTargetContext(message)
+  if (mutationContext) {
+    void assertCurrentMutationTarget(mutationContext, sender)
+      .then(() => sendResponse({ ok: true, result: { current: true } }))
+      .catch((error) => {
+        const runtimeError =
+          error instanceof RuntimeError ? error : new RuntimeError("INTERNAL_ERROR", String(error))
+        sendResponse({ ok: false, error: runtimeError.toData() })
+      })
+    return true
+  }
   if (
     typeof message === "object" &&
     message !== null &&

@@ -61,7 +61,11 @@ describe("page operations", () => {
     })
 
     await expect(
-      executePageOperation("click", { selector: "#target" }, false, null, location.href),
+      executePageOperation("click", { selector: "#target" }, false, null, {
+        tabId: 1,
+        url: location.href,
+        epoch: 0,
+      }),
     ).resolves.toMatchObject({ ok: false, error: { code: "STALE_CONTEXT" } })
     expect(click).not.toHaveBeenCalled()
   })
