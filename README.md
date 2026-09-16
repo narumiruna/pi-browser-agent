@@ -51,7 +51,9 @@ pi install .
 
 The secret is shown by pi for transfer to Chrome. Pi stores it in `~/.pi/agent/pi-chrome.json` (or the configured pi agent directory) with mode `0600`; Chrome stores it in `chrome.storage.local`. Running `/chrome-pair` again rotates the secret and disconnects the previous client.
 
-The normal flow uses the temporary `activeTab` grant created when the user opens the popup. Select **Always allow this site** to request an optional, origin-scoped host permission. The production manifest does not request `<all_urls>`.
+The normal flow uses the temporary `activeTab` grant created when the user opens the popup. Select **Always allow this site** to request an optional, origin-scoped host permission. The production manifest does not request `<all_urls>`. Before navigating the bound tab across origins, grant **Always allow this site** on the destination, then return to and rebind the source tab. Chrome revokes `activeTab` access on cross-origin navigation.
+
+The tab binding survives an MV3 service-worker restart, but it is cleared when the browser session ends. Bind a tab again after restarting Chrome. Revoking from the popup normally waits for pi to persist the revocation and close the authenticated connection. If pi is disconnected, the popup clears local pairing data and warns you to run `/chrome-revoke` in pi before pairing again.
 
 Commands:
 
@@ -73,7 +75,7 @@ Commands:
 | `browser_navigate` | Navigate to an HTTP or HTTPS URL |
 | `browser_webmcp` | List or call page WebMCP tools when available |
 
-Form submissions, downloads, cross-origin navigation, and WebMCP calls require interactive confirmation. Password and file inputs are always denied. There is no arbitrary JavaScript execution tool.
+Form submissions, downloads, cross-origin navigation, and WebMCP calls require interactive confirmation. Cross-origin navigation additionally requires a previously granted destination host permission. Password and file inputs are always denied. There is no arbitrary JavaScript execution tool.
 
 Use the popup or the selection context menu to send selected page text to pi. Browser content is wrapped and labelled as untrusted before it enters the conversation. If pi is busy, the message is queued as a follow-up.
 

@@ -117,7 +117,12 @@ afterEach(async () => {
   servers.length = 0
 })
 
-async function makeServer(): Promise<{ server: BridgeServer; port: number; secret: string }> {
+async function makeServer(): Promise<{
+  server: BridgeServer
+  store: BridgeConfigStore
+  port: number
+  secret: string
+}> {
   const directory = await mkdtemp(join(tmpdir(), "pi-chrome-bridge-"))
   const store = new BridgeConfigStore(join(directory, "config.json"))
   const port = await getFreePort()
@@ -126,7 +131,7 @@ async function makeServer(): Promise<{ server: BridgeServer; port: number; secre
   const server = new BridgeServer(store)
   servers.push(server)
   await server.start()
-  return { server, port, secret }
+  return { server, store, port, secret }
 }
 
 describe("BridgeServer", () => {
@@ -226,6 +231,25 @@ describe("BridgeServer", () => {
     await new Promise<void>((resolve, reject) =>
       occupied.close((error) => (error ? reject(error) : resolve())),
     )
+  })
+
+  test("persists browser-initiated revocation before acknowledging with close", async () => {
+    const { server, store, port, secret } = await makeServer()
+    const client = await connectClient({ port, secret })
+    sockets.push(client.socket)
+    const closed = new Promise<{ code: number; reason: string }>((resolve) => {
+      client.socket.once("close", (code, reason) =>
+        resolve({ code, reason: reason.toString("utf8") }),
+      )
+    })
+
+    client.socket.send(
+      serializeProtocolFrame({ type: "event", name: "pairing.revoke", payload: {} }),
+    )
+
+    await expect(closed).resolves.toEqual({ code: 1000, reason: "Pairing revoked" })
+    expect(server.getStatus()).toMatchObject({ connected: false, paired: false })
+    await expect(store.load()).resolves.toEqual({ port })
   })
 
   test("stops idempotently and releases the port for reload", async () => {

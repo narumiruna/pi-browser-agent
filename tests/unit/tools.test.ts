@@ -38,32 +38,62 @@ describe("pi browser tool mapping", () => {
     expect(result.content[0]?.text).toContain("Untrusted browser content")
   })
 
-  test("retries sensitive mutations only after explicit confirmation", async () => {
+  test("retries sensitive mutations only for the originally inspected tab context", async () => {
+    const originalContext = { tabId: 7, url: "https://example.test/form", epoch: 3 }
+    const changedContext = { tabId: 7, url: "https://example.test/other", epoch: 4 }
+    let currentContext = originalContext
+    const getStatus = vi.fn(() => ({
+      listening: true,
+      port: 17_373,
+      paired: true,
+      connected: true,
+      tabContext: currentContext,
+    }))
     const request = vi
       .fn()
       .mockRejectedValueOnce(new BridgeError("CONFIRMATION_REQUIRED", "This click submits a form"))
       .mockResolvedValueOnce({ clicked: true })
-    const tools = captureTools({ getStatus: vi.fn(), request })
+    const tools = captureTools({ getStatus, request })
     const tool = findTool(tools, "browser_click")
-    const confirm = vi.fn().mockResolvedValue(true)
+    const confirm = vi.fn(async () => {
+      currentContext = changedContext
+      return true
+    })
     const ctx = { hasUI: true, ui: { confirm } } as unknown as ExtensionContext
 
     await tool.execute("call", { selector: "#submit" }, undefined, undefined, ctx)
 
     expect(confirm).toHaveBeenCalledOnce()
-    expect(request).toHaveBeenLastCalledWith(
+    expect(request).toHaveBeenNthCalledWith(
+      1,
       "page.click",
       { selector: "#submit" },
-      { confirmed: true, signal: undefined },
+      { signal: undefined, tabContext: originalContext },
+    )
+    expect(request).toHaveBeenNthCalledWith(
+      2,
+      "page.click",
+      { selector: "#submit" },
+      { confirmed: true, signal: undefined, tabContext: originalContext },
     )
   })
 
   test("routes WebMCP through one stable tool and confirms calls", async () => {
+    const tabContext = { tabId: 9, url: "https://example.test/tools", epoch: 1 }
     const request = vi
       .fn()
       .mockRejectedValueOnce(new BridgeError("CONFIRMATION_REQUIRED", "Page tool may mutate state"))
       .mockResolvedValueOnce({ content: "done" })
-    const tools = captureTools({ getStatus: vi.fn(), request })
+    const tools = captureTools({
+      getStatus: vi.fn(() => ({
+        listening: true,
+        port: 17_373,
+        paired: true,
+        connected: true,
+        tabContext,
+      })),
+      request,
+    })
     const tool = findTool(tools, "browser_webmcp")
     const ctx = {
       hasUI: true,
@@ -81,15 +111,45 @@ describe("pi browser tool mapping", () => {
     expect(request).toHaveBeenLastCalledWith(
       "webmcp.callTool",
       { name: "add-todo", arguments: { text: "Ship" } },
-      { confirmed: true, signal: undefined },
+      { confirmed: true, signal: undefined, tabContext },
     )
+  })
+
+  test("rejects missing names and non-object WebMCP arguments", async () => {
+    const request = vi.fn()
+    const tools = captureTools({ getStatus: vi.fn(), request })
+    const tool = findTool(tools, "browser_webmcp")
+    const ctx = {} as ExtensionContext
+
+    await expect(
+      tool.execute("call", { action: "call", name: "   " }, undefined, undefined, ctx),
+    ).rejects.toMatchObject({ code: "INVALID_REQUEST" })
+    await expect(
+      tool.execute(
+        "call",
+        { action: "call", name: "add-todo", arguments: [] },
+        undefined,
+        undefined,
+        ctx,
+      ),
+    ).rejects.toMatchObject({ code: "INVALID_REQUEST" })
+    expect(request).not.toHaveBeenCalled()
   })
 
   test("does not execute a sensitive mutation when confirmation is declined", async () => {
     const request = vi
       .fn()
       .mockRejectedValue(new BridgeError("CONFIRMATION_REQUIRED", "This click submits a form"))
-    const tools = captureTools({ getStatus: vi.fn(), request })
+    const tools = captureTools({
+      getStatus: vi.fn(() => ({
+        listening: true,
+        port: 17_373,
+        paired: true,
+        connected: true,
+        tabContext: { tabId: 7, url: "https://example.test/form", epoch: 3 },
+      })),
+      request,
+    })
     const tool = findTool(tools, "browser_click")
     const ctx = {
       hasUI: true,

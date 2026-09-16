@@ -1,3 +1,5 @@
+import { toHostPermissionPattern } from "../permissions.js"
+
 interface RuntimeResponse<T> {
   ok: boolean
   result?: T
@@ -7,6 +9,7 @@ interface RuntimeResponse<T> {
 interface PopupState {
   status: { state: string; error?: string }
   tabContext?: { tabId: number; url: string; epoch: number }
+  warning?: string
 }
 
 const statusElement = document.querySelector<HTMLSpanElement>("#status")
@@ -41,7 +44,7 @@ function render(state: PopupState): void {
   required(tabElement, "tab status").textContent = state.tabContext
     ? `Tab ${state.tabContext.tabId} · ${state.tabContext.url}`
     : "No tab bound"
-  showError(state.status.error)
+  showError(state.status.error ?? state.warning)
 }
 
 async function refresh(): Promise<void> {
@@ -85,7 +88,9 @@ required(document.querySelector<HTMLButtonElement>("#grant-site"), "grant site")
       if (url.protocol !== "http:" && url.protocol !== "https:") {
         throw new Error("Only HTTP and HTTPS sites can be granted access")
       }
-      const granted = await chrome.permissions.request({ origins: [`${url.origin}/*`] })
+      const granted = await chrome.permissions.request({
+        origins: [toHostPermissionPattern(url)],
+      })
       if (!granted) throw new Error("Site access was not granted")
       await send({ type: "bridge.bindTab" })
       await refresh()

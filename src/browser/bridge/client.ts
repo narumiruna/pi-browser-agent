@@ -1,4 +1,5 @@
 import {
+  BridgeError,
   type HelloFrame,
   type JsonObject,
   type JsonValue,
@@ -72,6 +73,11 @@ export class BridgeClient {
   private status: BridgeClientStatus = { state: "disconnected" }
   private readonly listeners = new Set<(status: BridgeClientStatus) => void>()
   private readonly activeRequests = new Map<string, AbortController>()
+  private pendingRevocation?: {
+    reject: (error: Error) => void
+    resolve: () => void
+    timeout: ReturnType<typeof setTimeout>
+  }
 
   constructor(
     private readonly getSettings: SettingsProvider,
@@ -97,6 +103,13 @@ export class BridgeClient {
     this.stopped = true
     this.clearTimers()
     this.cancelActiveRequests()
+    if (this.pendingRevocation) {
+      clearTimeout(this.pendingRevocation.timeout)
+      this.pendingRevocation.reject(
+        new BridgeError("REQUEST_CANCELLED", "Pairing revocation was cancelled"),
+      )
+      this.pendingRevocation = undefined
+    }
     this.socket?.close(1000, "Bridge stopped")
     this.socket = undefined
     this.setStatus("disconnected")
@@ -114,6 +127,26 @@ export class BridgeClient {
     if (this.status.state !== "authenticated") return false
     this.send({ type: "event", name, payload, ...(tabContext ? { tabContext } : {}) })
     return true
+  }
+
+  async revokePairing(timeoutMs = 5_000): Promise<void> {
+    if (this.status.state !== "authenticated" || this.socket?.readyState !== WebSocket.OPEN) {
+      throw new BridgeError("NOT_CONNECTED", "Connect to pi before revoking the pairing")
+    }
+    if (this.pendingRevocation) {
+      throw new BridgeError("INVALID_REQUEST", "Pairing revocation is already in progress")
+    }
+
+    this.stopped = true
+    return new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pendingRevocation = undefined
+        this.stopped = false
+        reject(new BridgeError("REQUEST_TIMEOUT", "Pi did not acknowledge pairing revocation"))
+      }, timeoutMs)
+      this.pendingRevocation = { reject, resolve, timeout }
+      this.send({ type: "event", name: "pairing.revoke", payload: {} })
+    })
   }
 
   private async connect(): Promise<void> {
@@ -162,11 +195,27 @@ export class BridgeClient {
       void this.handleMessage(String(event.data), settings)
     })
 
-    socket.addEventListener("close", () => {
+    socket.addEventListener("close", (event) => {
       if (socket !== this.socket) return
       this.socket = undefined
       this.clearHeartbeat()
       this.cancelActiveRequests()
+
+      const revocation = this.pendingRevocation
+      if (revocation) {
+        clearTimeout(revocation.timeout)
+        this.pendingRevocation = undefined
+        if (event.code === 1000 && event.reason === "Pairing revoked") {
+          this.setStatus("unpaired")
+          revocation.resolve()
+        } else {
+          this.stopped = false
+          revocation.reject(
+            new BridgeError("CONNECTION_CLOSED", "Connection closed before pi revoked the pairing"),
+          )
+        }
+      }
+
       if (!this.stopped) {
         this.setStatus("disconnected")
         this.scheduleReconnect()

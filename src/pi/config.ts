@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto"
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import { getAgentDir } from "@earendil-works/pi-coding-agent"
+import { isPairingSecret } from "../protocol/index.js"
 
 export const DEFAULT_BRIDGE_PORT = 17_373
 
@@ -23,7 +24,7 @@ export class BridgeConfigStore {
       const parsed = JSON.parse(await readFile(this.path, "utf8")) as Partial<BridgeConfig>
       return {
         port: normalizePort(parsed.port),
-        ...(isSecret(parsed.secret) ? { secret: parsed.secret } : {}),
+        ...(isPairingSecret(parsed.secret) ? { secret: parsed.secret } : {}),
         ...(isExtensionId(parsed.allowedExtensionId)
           ? { allowedExtensionId: parsed.allowedExtensionId }
           : {}),
@@ -75,10 +76,6 @@ function normalizePort(port: unknown): number {
   return typeof port === "number" && Number.isInteger(port) && port >= 1024 && port <= 65_535
     ? port
     : DEFAULT_BRIDGE_PORT
-}
-
-function isSecret(value: unknown): value is string {
-  return typeof value === "string" && /^[A-Za-z0-9_-]{43}$/.test(value)
 }
 
 export function isExtensionId(value: unknown): value is string {

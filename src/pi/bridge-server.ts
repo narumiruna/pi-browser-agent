@@ -301,6 +301,10 @@ export class BridgeServer {
           this.handleResponse(connection, frame)
           return
         case "event":
+          if (frame.name === "pairing.revoke") {
+            await this.revoke()
+            return
+          }
           if (frame.tabContext) connection.tabContext = frame.tabContext
           for (const listener of this.eventListeners) listener(frame)
           this.emitStatus()

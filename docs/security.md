@@ -12,7 +12,7 @@ The browser page, page-provided WebMCP metadata and results, WebSocket peers bef
 - A 256-bit secret authenticates a client with a 30-second, single-use HMAC challenge. The first valid pairing binds the extension ID.
 - Pi stores configuration atomically with mode `0600`; Chrome uses extension-local storage. Secrets are not included in URLs, tool results, or pi session entries.
 - Every frame is schema-checked and size-limited. Requests have bounded timeouts, correlation IDs, cancellation, known methods, and a navigation epoch.
-- The production manifest starts with `activeTab`; persistent host access is optional and origin-scoped.
+- The production manifest starts with `activeTab`; persistent host access is optional and origin-scoped. Cross-origin navigation is denied until the destination origin has a persistent grant because `activeTab` does not survive that navigation.
 - Browser operations expose no arbitrary JavaScript, cookie, storage, password, file-input, or unrestricted network capability.
 - Form submission, download, cross-origin navigation, and every WebMCP invocation require confirmation. Pairing can be revoked from either side.
 - Page text sent to the model is truncated and labelled as untrusted data.
@@ -29,9 +29,9 @@ The browser page, page-provided WebMCP metadata and results, WebSocket peers bef
 | Replay | Each challenge is random, expires after 30 seconds, and is consumed on the first response. The proof binds challenge ID, nonce, client ID, and origin. | None known within the HMAC and random-number assumptions. |
 | Prompt injection | Browser text and WebMCP output are wrapped as untrusted content and never become system instructions. WebMCP tools are exposed through one stable tool rather than dynamically changing pi's instruction surface. | Models can still mishandle adversarial content. Confirmation is required before high-impact mutations. |
 | Over-privileged permissions | Production uses `activeTab` and asks for an optional per-origin host grant only from the popup. It does not request `<all_urls>`, cookies, downloads, or debugger access. | A bound tab can contain sensitive visible account data. Binding and persistent grants remain explicit user decisions. |
-| Cross-tab or navigation race | One tab is bound and each request includes tab ID, URL, and document epoch. Chrome rejects stale contexts. | Same-document application state can change without navigation; selectors are resolved immediately and must refer to visible elements. |
+| Cross-tab or navigation race | One tab is bound for the current browser session, each request includes tab ID, URL, and document epoch, confirmation retries reuse the original context, and URL-only changes are published. Chrome rejects stale contexts. | Same-document application state can change without a URL change; selectors are resolved immediately and must refer to visible, viewport-intersecting, hit-testable elements. |
 | Oversized or malformed data | Frame, JSON shape, nesting, key, array, text, and timeout limits are enforced before processing; oversized responses become typed errors. | Screenshot data can approach the frame limit and fail rather than being recompressed. |
-| Lifecycle leaks | Session shutdown closes sockets and pending work; reconnect backoff and heartbeat timers are cancelled; start/stop is idempotent. | Abrupt process termination relies on the operating system to release the loopback port. |
+| Lifecycle leaks | Session shutdown closes sockets and pending work; reconnect backoff and heartbeat timers are cancelled; start/stop is idempotent. Popup revocation waits for pi acknowledgement when connected; otherwise it clears local data and directs the user to run `/chrome-revoke` in pi. | Abrupt process termination relies on the operating system to release the loopback port. |
 
 ## Accepted MVP risks
 

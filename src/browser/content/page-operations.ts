@@ -59,15 +59,55 @@ export async function executePageOperation(
     "ok" in value
   const isVisible = (element: Element): boolean => {
     if (!(element instanceof HTMLElement)) return false
-    const style = getComputedStyle(element)
-    const rect = element.getBoundingClientRect()
-    return (
-      style.display !== "none" &&
-      style.visibility !== "hidden" &&
-      Number.parseFloat(style.opacity || "1") > 0 &&
-      rect.width > 0 &&
-      rect.height > 0
-    )
+    for (let current: HTMLElement | null = element; current; current = current.parentElement) {
+      const style = getComputedStyle(current)
+      if (
+        style.display === "none" ||
+        style.visibility === "hidden" ||
+        style.visibility === "collapse" ||
+        Number.parseFloat(style.opacity || "1") <= 0
+      ) {
+        return false
+      }
+    }
+
+    const clientRects = Array.from(element.getClientRects())
+    const rects = clientRects.length > 0 ? clientRects : [element.getBoundingClientRect()]
+    const visibleRects = rects
+      .map((rect) => ({
+        bottom: Math.min(window.innerHeight, rect.bottom),
+        left: Math.max(0, rect.left),
+        right: Math.min(window.innerWidth, rect.right),
+        top: Math.max(0, rect.top),
+      }))
+      .filter((rect) => rect.left < rect.right && rect.top < rect.bottom)
+    if (visibleRects.length === 0) return false
+
+    if (typeof document.elementFromPoint !== "function") return true
+    return visibleRects.some((rect) => {
+      const insetX = Math.min(1, (rect.right - rect.left) / 2)
+      const insetY = Math.min(1, (rect.bottom - rect.top) / 2)
+      const points: [number, number][] = [
+        [(rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2],
+        [rect.left + insetX, rect.top + insetY],
+        [rect.right - insetX, rect.top + insetY],
+        [rect.left + insetX, rect.bottom - insetY],
+        [rect.right - insetX, rect.bottom - insetY],
+      ]
+      return points.some(([x, y]) => {
+        const hit = document.elementFromPoint(x, y)
+        return Boolean(hit && (element.contains(hit) || hit.contains(element)))
+      })
+    })
+  }
+  const setNativeValue = (element: HTMLInputElement | HTMLTextAreaElement, value: string): void => {
+    const prototype =
+      element instanceof HTMLInputElement
+        ? HTMLInputElement.prototype
+        : HTMLTextAreaElement.prototype
+    const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set
+    if (!setter) throw new Error("The browser does not expose a native value setter")
+    setter.call(element, value)
   }
   try {
     switch (operation) {
@@ -89,8 +129,22 @@ export async function executePageOperation(
         }
 
         const anchor = found.closest("a")
-        const button = found.closest("button")
-        const input = found.closest("input")
+        const label = found.closest("label")
+        const labelControl = label instanceof HTMLLabelElement ? label.control : null
+        const ancestorButton = found.closest("button")
+        const ancestorInput = found.closest("input")
+        const button =
+          ancestorButton instanceof HTMLButtonElement
+            ? ancestorButton
+            : labelControl instanceof HTMLButtonElement
+              ? labelControl
+              : null
+        const input =
+          ancestorInput instanceof HTMLInputElement
+            ? ancestorInput
+            : labelControl instanceof HTMLInputElement
+              ? labelControl
+              : null
         const submitControl =
           (button instanceof HTMLButtonElement && button.type === "submit") ||
           (input instanceof HTMLInputElement && ["image", "submit"].includes(input.type))
@@ -135,13 +189,13 @@ export async function executePageOperation(
             return failure("PERMISSION_DENIED", `Input type ${found.type} is not editable`)
           }
           found.focus()
-          found.value = text
+          setNativeValue(found, text)
         } else if (found instanceof HTMLTextAreaElement) {
           if (found.disabled || found.readOnly) {
             return failure("PERMISSION_DENIED", "The text area is disabled or read-only")
           }
           found.focus()
-          found.value = text
+          setNativeValue(found, text)
         } else if (found instanceof HTMLElement && found.isContentEditable) {
           found.focus()
           found.textContent = text

@@ -1,3 +1,4 @@
+export { isPairingSecret } from "./auth.js"
 export {
   BRIDGE_CAPABILITIES,
   type BridgeCapability,

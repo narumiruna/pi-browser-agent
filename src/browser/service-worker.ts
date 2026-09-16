@@ -2,6 +2,7 @@ import {
   BridgeError,
   type BridgeMethod,
   isBridgeMethod,
+  isPairingSecret,
   type JsonValue,
   type RequestFrame,
   type TabContext,
@@ -11,10 +12,12 @@ import { BridgeClient } from "./bridge/client.js"
 import { RECONNECT_ALARM } from "./bridge/reconnect.js"
 import { executePageOperation, type PageOperation } from "./content/page-operations.js"
 import { assertTabContext } from "./content/tab-context.js"
+import { hasHostPermission } from "./permissions.js"
 import {
   clearPairing,
+  getBoundTabId,
   getBridgeSettings,
-  saveBridgeSettings,
+  saveBoundTabId,
   updateBridgeSettings,
 } from "./storage.js"
 import { executeWebMcpOperation, type WebMcpOperation } from "./webmcp/adapter.js"
@@ -31,11 +34,14 @@ function truncatePromptText(text: string): string {
 }
 
 async function restoreBoundContext(): Promise<void> {
-  const settings = await getBridgeSettings()
-  if (settings.boundTabId === undefined) return
+  const boundTabId = await getBoundTabId()
+  if (boundTabId === undefined) return
   try {
-    const tab = await chrome.tabs.get(settings.boundTabId)
-    if (!tab.url || !isSupportedPageUrl(tab.url)) return
+    const tab = await chrome.tabs.get(boundTabId)
+    if (!tab.url || !isSupportedPageUrl(tab.url)) {
+      await clearBoundTab()
+      return
+    }
     boundContext = { tabId: tab.id as number, url: tab.url, epoch: 0 }
   } catch {
     await clearBoundTab()
@@ -60,17 +66,14 @@ async function bindActiveTab(): Promise<TabContext> {
     )
   }
   boundContext = { tabId: tab.id, url: tab.url, epoch: 0 }
-  await updateBridgeSettings({ boundTabId: tab.id })
+  await saveBoundTabId(tab.id)
   bridge.sendEvent("tab.changed", {}, boundContext)
   return boundContext
 }
 
 async function clearBoundTab(): Promise<void> {
   boundContext = undefined
-  const settings = await getBridgeSettings()
-  const next = { ...settings }
-  delete next.boundTabId
-  await saveBridgeSettings(next)
+  await saveBoundTabId(undefined)
 }
 
 async function refreshBoundContext(): Promise<TabContext> {
@@ -87,6 +90,8 @@ async function refreshBoundContext(): Promise<TabContext> {
   }
   if (tab.url !== boundContext.url) {
     boundContext = { ...boundContext, url: tab.url, epoch: boundContext.epoch + 1 }
+    bridge.sendEvent("tab.changed", {}, boundContext)
+    sendRuntimeStatus()
   }
   return boundContext
 }
@@ -177,10 +182,18 @@ async function navigate(request: RequestFrame): Promise<JsonValue> {
     throw new BridgeError("INVALID_REQUEST", "Navigation requires an HTTP or HTTPS URL")
   }
   const targetUrl = new URL(target)
-  if (targetUrl.origin !== new URL(context.url).origin && !request.confirmed) {
+  const crossesOrigin = targetUrl.origin !== new URL(context.url).origin
+  if (crossesOrigin && !request.confirmed) {
     throw new BridgeError(
       "CONFIRMATION_REQUIRED",
       `Navigation crosses origins from ${new URL(context.url).origin} to ${targetUrl.origin}`,
+      { action: "navigate", targetUrl: targetUrl.href },
+    )
+  }
+  if (crossesOrigin && !(await hasHostPermission(targetUrl))) {
+    throw new BridgeError(
+      "PERMISSION_DENIED",
+      "Grant persistent access to the destination from the popup before cross-origin navigation",
       { action: "navigate", targetUrl: targetUrl.href },
     )
   }
@@ -289,7 +302,13 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 })
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-  if (!boundContext || tabId !== boundContext.tabId || changeInfo.status !== "loading") return
+  if (
+    !boundContext ||
+    tabId !== boundContext.tabId ||
+    (changeInfo.status !== "loading" && changeInfo.url === undefined)
+  ) {
+    return
+  }
   boundContext = {
     tabId,
     url: changeInfo.url ?? boundContext.url,
@@ -328,14 +347,15 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
       case "bridge.getStatus":
         return { status: bridge.getStatus(), tabContext: boundContext }
       case "bridge.pair": {
-        if (typeof typed.secret !== "string" || typed.secret.length < 32) {
+        const secret = typeof typed.secret === "string" ? typed.secret.trim() : undefined
+        if (!isPairingSecret(secret)) {
           throw new BridgeError("INVALID_REQUEST", "Enter the pairing secret shown by /chrome-pair")
         }
         const port = typeof typed.port === "number" ? typed.port : (await getBridgeSettings()).port
         if (!Number.isInteger(port) || port < 1024 || port > 65_535) {
           throw new BridgeError("INVALID_REQUEST", "Port must be between 1024 and 65535")
         }
-        await updateBridgeSettings({ enabled: true, port, secret: typed.secret.trim() })
+        await updateBridgeSettings({ enabled: true, port, secret })
         await bindActiveTab()
         await bridge.reconnect()
         return { status: bridge.getStatus(), tabContext: boundContext }
@@ -346,11 +366,35 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
         bridge.stop()
         await updateBridgeSettings({ enabled: false })
         return { status: bridge.getStatus() }
-      case "bridge.revoke":
-        bridge.stop()
+      case "bridge.revoke": {
+        const settings = await getBridgeSettings()
+        let serverAcknowledged = false
+        let warning: string | undefined
+        if (bridge.getStatus().state === "authenticated") {
+          try {
+            await bridge.revokePairing()
+            serverAcknowledged = true
+          } catch (error) {
+            if (
+              !(error instanceof BridgeError) ||
+              !["CONNECTION_CLOSED", "NOT_CONNECTED", "REQUEST_TIMEOUT"].includes(error.code)
+            ) {
+              throw error
+            }
+          }
+        }
+        if (!serverAcknowledged) {
+          bridge.stop()
+          if (settings.secret) {
+            warning =
+              "Local pairing data was cleared, but pi did not acknowledge revocation. Run /chrome-revoke in pi before pairing again."
+          }
+        }
         await clearPairing()
         await clearBoundTab()
-        return { status: bridge.getStatus() }
+        if (!serverAcknowledged) await bridge.start()
+        return { status: bridge.getStatus(), ...(warning ? { warning } : {}) }
+      }
       case "bridge.sendSelection": {
         const selection = await runPageOperation("getSelection", {
           type: "request",
