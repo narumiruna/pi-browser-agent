@@ -20,7 +20,7 @@
     "check": "biome ci .",
     "ci": "npm run check && npm test && npm run build && npm run test:e2e",
     "dev:chrome": "extension dev --browser=chrome",
-    "package:chrome": "npm run build && extension build --browser=chrome --zip --zip-filename=pi-chrome.zip",
+    "pack": "npm run build && extension build --browser=chrome --zip --zip-filename=pi-chrome.zip",
     "prepare": "husky",
     "probe:browser": "node scripts/probe-browser-boundary.mjs",
     "test": "vitest run",
