@@ -12,15 +12,15 @@ import {
 class FakeLockManager {
   private readonly held = new Set<string>()
 
-  async request(
+  async request<T>(
     name: string,
     _options: LockOptions,
-    callback: (lock: Lock | null) => Promise<void>,
-  ): Promise<void> {
+    callback: (lock: Lock | null) => Promise<T>,
+  ): Promise<T> {
     if (this.held.has(name)) return callback(null)
     this.held.add(name)
     try {
-      await callback({ name, mode: "exclusive" } as Lock)
+      return await callback({ name, mode: "exclusive" } as Lock)
     } finally {
       this.held.delete(name)
     }
@@ -120,6 +120,36 @@ describe("browser agent session persistence", () => {
     await second.shutdown()
   })
 
+  test("restores the latest session when the preferred record is missing", async () => {
+    const runtime = createRuntime(new FakeLockManager() as unknown as LockManager)
+    const saved = createSession("gpt-5.6-terra")
+    await runtime.sessions.put(saved)
+
+    await runtime.initialize("missing-session")
+
+    expect(runtime.activeSession.id).toBe(saved.id)
+    await runtime.shutdown()
+  })
+
+  test("does not stop the current run when a resumed session is already leased", async () => {
+    const locks = new FakeLockManager() as unknown as LockManager
+    const first = createRuntime(locks)
+    await first.initialize()
+    const originalId = first.activeSession.id
+    const second = createRuntime(locks)
+    await second.initialize()
+    const abort = vi.spyOn(first.agent, "abort")
+
+    await expect(first.resumeSession(second.activeSession.id)).rejects.toThrow(
+      "open in another Side Panel",
+    )
+
+    expect(abort).not.toHaveBeenCalled()
+    expect(first.activeSession.id).toBe(originalId)
+    await first.shutdown()
+    await second.shutdown()
+  })
+
   test("marks a stale running session interrupted when resuming it", async () => {
     const runtime = createRuntime(new FakeLockManager() as unknown as LockManager)
     await runtime.initialize()
@@ -131,6 +161,58 @@ describe("browser agent session persistence", () => {
     expect(runtime.activeSession.status).toBe("interrupted")
     await expect(runtime.sessions.get(stale.id)).resolves.toMatchObject({ status: "interrupted" })
     await runtime.shutdown()
+  })
+
+  test("rechecks a retention candidate's lease immediately before eviction", async () => {
+    const locks = new FakeLockManager() as unknown as LockManager
+    const runtime = createRuntime(locks)
+    await runtime.initialize()
+    const candidate = createSession("gpt-5.6-terra")
+    candidate.createdAt = 0
+    candidate.updatedAt = 0
+    await runtime.sessions.put(candidate)
+    for (let index = 1; index < MAX_SESSIONS - 1; index += 1) {
+      const session = createSession("gpt-5.6-terra")
+      session.createdAt = index
+      session.updatedAt = index
+      await runtime.sessions.put(session)
+    }
+
+    const competingLease = new SessionLease(locks)
+    const originalList = runtime.sessions.list.bind(runtime.sessions)
+    let leaseAcquired = false
+    vi.spyOn(runtime.sessions, "list").mockImplementation(async () => {
+      const sessions = await originalList()
+      if (!leaseAcquired && sessions.length > MAX_SESSIONS) {
+        leaseAcquired = await competingLease.claim(candidate.id)
+      }
+      return sessions
+    })
+
+    await runtime.newSession()
+
+    expect(leaseAcquired).toBe(true)
+    await expect(runtime.sessions.get(candidate.id)).resolves.toBeDefined()
+    await expect(runtime.listSessions()).resolves.toHaveLength(MAX_SESSIONS)
+    await competingLease.release()
+    await runtime.shutdown()
+  })
+
+  test("refuses to clear sessions owned by another Side Panel", async () => {
+    const locks = new FakeLockManager() as unknown as LockManager
+    const first = createRuntime(locks)
+    await first.initialize()
+    const second = createRuntime(locks)
+    await second.initialize()
+    const abort = vi.spyOn(first.agent, "abort")
+
+    await expect(first.clearSessions()).rejects.toThrow("Close other Side Panels")
+
+    expect(abort).not.toHaveBeenCalled()
+    await expect(first.sessions.get(first.activeSession.id)).resolves.toBeDefined()
+    await expect(first.sessions.get(second.activeSession.id)).resolves.toBeDefined()
+    await first.shutdown()
+    await second.shutdown()
   })
 
   test("waits for queued persistence before clearing sessions", async () => {

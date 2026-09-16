@@ -4,15 +4,15 @@ import { SessionLease } from "../../src/browser/sessions/session-lease.js"
 class FakeLockManager {
   private readonly held = new Set<string>()
 
-  async request(
+  async request<T>(
     name: string,
     _options: LockOptions,
-    callback: (lock: Lock | null) => Promise<void>,
-  ): Promise<void> {
+    callback: (lock: Lock | null) => Promise<T>,
+  ): Promise<T> {
     if (this.held.has(name)) return callback(null)
     this.held.add(name)
     try {
-      await callback({ name, mode: "exclusive" } as Lock)
+      return await callback({ name, mode: "exclusive" } as Lock)
     } finally {
       this.held.delete(name)
     }

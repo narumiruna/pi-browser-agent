@@ -27,6 +27,8 @@ export interface SessionSummary {
   status: SessionStatus
 }
 
+type EvictSession = (id: string) => Promise<boolean>
+
 function requestResult<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result)
@@ -158,29 +160,22 @@ export class SessionStore {
       }))
   }
 
-  async put(
-    record: SessionRecord,
-    protectedSessionIds: ReadonlySet<string> = new Set(),
-  ): Promise<void> {
+  async put(record: SessionRecord, evictSession?: EvictSession): Promise<void> {
     if (!isSessionRecord(record)) throw new Error("Refusing to persist an invalid session")
     assertWithinLimit(record)
     const database = await this.open()
     const transaction = database.transaction(STORE_NAME, "readwrite")
     transaction.objectStore(STORE_NAME).put(structuredClone(record))
     await transactionDone(transaction)
-    await this.enforceRetention(protectedSessionIds)
+    await this.enforceRetention(evictSession)
   }
 
-  async rename(
-    id: string,
-    title: string,
-    protectedSessionIds: ReadonlySet<string> = new Set(),
-  ): Promise<void> {
+  async rename(id: string, title: string, evictSession?: EvictSession): Promise<void> {
     const record = await this.get(id)
     if (!record) throw new Error("Session not found")
     const normalized = title.trim().slice(0, 120)
     if (!normalized) throw new Error("Session title cannot be empty")
-    await this.put({ ...record, title: normalized, updatedAt: Date.now() }, protectedSessionIds)
+    await this.put({ ...record, title: normalized, updatedAt: Date.now() }, evictSession)
   }
 
   async delete(id: string): Promise<void> {
@@ -206,19 +201,21 @@ export class SessionStore {
     await transactionDone(transaction)
   }
 
-  private async enforceRetention(protectedSessionIds: ReadonlySet<string>): Promise<void> {
+  private async enforceRetention(evictSession?: EvictSession): Promise<void> {
     const summaries = await this.list()
     const excess = summaries.length - MAX_SESSIONS
     if (excess <= 0) return
-    const toDelete = [...summaries]
-      .reverse()
-      .filter((session) => !protectedSessionIds.has(session.id))
-      .slice(0, excess)
-    const database = await this.open()
-    const transaction = database.transaction(STORE_NAME, "readwrite")
-    const store = transaction.objectStore(STORE_NAME)
-    for (const session of toDelete) store.delete(session.id)
-    await transactionDone(transaction)
+    const evict =
+      evictSession ??
+      (async (id: string): Promise<boolean> => {
+        await this.delete(id)
+        return true
+      })
+    let removed = 0
+    for (const session of [...summaries].reverse()) {
+      if (await evict(session.id)) removed += 1
+      if (removed === excess) return
+    }
   }
 }
 

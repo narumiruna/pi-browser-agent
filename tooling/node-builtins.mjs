@@ -1,5 +1,5 @@
 export const NODE_BUILTIN_IMPORT =
-  /\b(?:import|export)\s+(?:[^"'()\n;]*?\s+from\s+)?["']node:|\b(?:import|require)\s*\(\s*["']node:/
+  /\b(?:import|export)\b(?:\s*["']node:|[^"'()\n;]*?\bfrom\s*["']node:)|\b(?:import|require)\b\s*\(\s*["']node:/
 
 export function containsNodeBuiltinImport(source) {
   return NODE_BUILTIN_IMPORT.test(source)

@@ -7,7 +7,10 @@ describe("Node built-in import detection", () => {
     'import "node:fs"',
     'import fs from "node:fs"',
     'import { readFile } from "node:fs/promises"',
+    'import{readFile}from"node:fs"',
     'export { join } from "node:path"',
+    'export{join}from"node:path"',
+    'export*from"node:path"',
     'await import("node:crypto")',
     'require("node:os")',
   ])("detects %s", (source) => {

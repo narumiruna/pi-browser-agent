@@ -6,6 +6,7 @@ import { safeErrorMessage } from "../auth/redaction.js"
 import { toHostPermissionPattern } from "../permissions.js"
 import { type RuntimeEvent, sendRuntimeRequest } from "../runtime/messages.js"
 import type { JsonObject } from "../runtime/types.js"
+import { BoundTabState } from "./tab-state.js"
 
 function element<T extends HTMLElement>(id: string): T {
   const value = document.getElementById(id)
@@ -22,6 +23,7 @@ const tabStatus = element<HTMLElement>("tab-status")
 const loginButton = element<HTMLButtonElement>("login")
 const logoutButton = element<HTMLButtonElement>("logout")
 const refreshTokenButton = element<HTMLButtonElement>("refresh-token")
+const grantSiteButton = element<HTMLButtonElement>("grant-site")
 const sessionSelect = element<HTMLSelectElement>("sessions")
 const confirmDialog = element<HTMLDialogElement>("confirm-dialog")
 const confirmMessage = element<HTMLElement>("confirm-message")
@@ -31,7 +33,7 @@ const systemPrompt = element<HTMLTextAreaElement>("system-prompt")
 const agentInstructions = element<HTMLTextAreaElement>("agent-instructions")
 let loginController: AbortController | undefined
 let verificationUri = ""
-let boundTabUrl: string | undefined
+const boundTab = new BoundTabState()
 
 function setError(error?: unknown): void {
   errorOutput.textContent = error === undefined ? "" : safeErrorMessage(error)
@@ -111,20 +113,19 @@ async function refreshAuth(): Promise<void> {
   authStatus.textContent = status.loggedIn ? "Logged in" : "Not logged in"
 }
 
+function renderBoundTab(): void {
+  tabStatus.textContent = boundTab.url
+    ? `Bound: ${boundTab.url}`
+    : "No tab bound. Right-click a page and choose “Bind this tab to Pi Chrome”."
+  grantSiteButton.disabled = !boundTab.url
+}
+
 async function refreshTab(): Promise<void> {
+  const revision = boundTab.beginRefresh()
   const state = await sendRuntimeRequest("app.getState")
   const context =
     typeof state === "object" && state !== null && !Array.isArray(state) ? state.tabContext : null
-  boundTabUrl =
-    typeof context === "object" &&
-    context !== null &&
-    !Array.isArray(context) &&
-    typeof context.url === "string"
-      ? context.url
-      : undefined
-  tabStatus.textContent = boundTabUrl
-    ? `Bound: ${boundTabUrl}`
-    : "No tab bound. Right-click a page and choose “Bind this tab to Pi Chrome”."
+  if (boundTab.applyRefresh(revision, context)) renderBoundTab()
 }
 
 function onAuthEvent(event: AuthEvent): void {
@@ -222,10 +223,11 @@ logoutButton.addEventListener("click", () => {
   })
 })
 
-element<HTMLButtonElement>("grant-site").addEventListener("click", () => {
+grantSiteButton.addEventListener("click", () => {
   void run(async () => {
-    if (!boundTabUrl) throw new Error("Bind a tab before granting site access")
-    const pattern = toHostPermissionPattern(boundTabUrl)
+    const url = boundTab.url
+    if (!url) throw new Error("Bind a tab before granting site access")
+    const pattern = toHostPermissionPattern(url)
     const granted = await chrome.permissions.request({ origins: [pattern] })
     if (!granted) throw new Error("Site access was not granted")
   })
@@ -334,7 +336,10 @@ async function pullPendingSelection(expectedWindowId?: number): Promise<void> {
 chrome.runtime.onMessage.addListener((message: unknown) => {
   const event = message as Partial<RuntimeEvent>
   if (event.kind !== "event") return false
-  if (event.name === "tab.changed") void refreshTab()
+  if (event.name === "tab.changed") {
+    boundTab.applyEvent(event.tabContext)
+    renderBoundTab()
+  }
   if (event.name === "operation.progress" && event.payload) {
     runStatus.textContent =
       event.payload.status === "started"

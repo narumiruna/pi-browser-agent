@@ -47,6 +47,13 @@ export function composeSystemPrompt(settings: AppSettings): string {
   ].join("\n")
 }
 
+type SessionClaimResult =
+  | { outcome: "claimed"; record: SessionRecord }
+  | { outcome: "missing" }
+  | { outcome: "unavailable" }
+
+class StoredSessionMissingError extends Error {}
+
 function messageTitle(messages: AgentMessage[]): string | undefined {
   const first = messages.find((message) => message.role === "user")
   if (!first || !("content" in first)) return undefined
@@ -103,13 +110,18 @@ export class BrowserAgentRuntime {
     await restrictLocalStorageToTrustedContexts()
     this.settings = await getSettings()
     const preferredId = sessionId ?? (await getActiveSessionId())
-    let restored = preferredId ? await this.sessions.get(preferredId) : undefined
-    if (restored && !(await this.sessionLease.claim(restored.id))) restored = undefined
-    if (!restored && !preferredId) {
+    let restored: SessionRecord | undefined
+    let shouldTryLatest = !preferredId
+    if (preferredId) {
+      const preferred = await this.claimStoredSession(preferredId)
+      shouldTryLatest = preferred.outcome === "missing"
+      if (preferred.outcome === "claimed") restored = preferred.record
+    }
+    if (!restored && shouldTryLatest) {
       const latest = (await this.sessions.list())[0]
       if (latest) {
-        const candidate = await this.sessions.get(latest.id)
-        if (candidate && (await this.sessionLease.claim(candidate.id))) restored = candidate
+        const candidate = await this.claimStoredSession(latest.id)
+        if (candidate.outcome === "claimed") restored = candidate.record
       }
     }
 
@@ -218,13 +230,12 @@ export class BrowserAgentRuntime {
   }
 
   async resumeSession(id: string): Promise<void> {
-    await this.stopAgent()
-    let record = await this.sessions.get(id)
-    if (!record) throw new Error("Session not found")
-    if (!(await this.sessionLease.claim(id))) {
+    const claimed = await this.claimStoredSession(id, () => this.stopAgent())
+    if (claimed.outcome === "unavailable") {
       throw new Error("That session is open in another Side Panel")
     }
-    record = await this.normalizeClaimedSession(record)
+    if (claimed.outcome === "missing") throw new Error("Session not found")
+    const record = await this.normalizeClaimedSession(claimed.record)
     this.session = record
     this.applySession(record)
     await saveActiveSessionId(record.id)
@@ -232,11 +243,7 @@ export class BrowserAgentRuntime {
 
   async renameSession(title: string): Promise<void> {
     await this.persistChain
-    await this.sessions.rename(
-      this.session.id,
-      title,
-      await this.sessionLease.protectedSessionIds(),
-    )
+    await this.sessions.rename(this.session.id, title, (id) => this.evictSession(id))
     this.session.title = title.trim().slice(0, 120)
   }
 
@@ -258,8 +265,14 @@ export class BrowserAgentRuntime {
   }
 
   async clearSessions(): Promise<void> {
-    await this.stopAgent()
-    await this.sessions.clear()
+    await this.sessionLease.withExclusiveClaims(async () => {
+      const leasedIds = await this.sessionLease.protectedSessionIds()
+      if ([...leasedIds].some((id) => id !== this.sessionLease.sessionId)) {
+        throw new Error("Close other Side Panels before clearing all sessions")
+      }
+      await this.stopAgent()
+      await this.sessions.clear()
+    })
     const replacement = createSession(this.model.id)
     if (!(await this.sessionLease.claim(replacement.id))) {
       throw new Error("Unable to claim a replacement session")
@@ -295,6 +308,26 @@ export class BrowserAgentRuntime {
     await this.persistChain
   }
 
+  private async claimStoredSession(
+    id: string,
+    beforeSwitch?: () => Promise<void>,
+  ): Promise<SessionClaimResult> {
+    let record: SessionRecord | undefined
+    try {
+      const claimed = await this.sessionLease.claim(id, async () => {
+        record = await this.sessions.get(id)
+        if (!record) throw new StoredSessionMissingError()
+        await beforeSwitch?.()
+      })
+      if (!claimed) return { outcome: "unavailable" }
+    } catch (error) {
+      if (error instanceof StoredSessionMissingError) return { outcome: "missing" }
+      throw error
+    }
+    if (!record) return { outcome: "missing" }
+    return { outcome: "claimed", record }
+  }
+
   private async normalizeClaimedSession(record: SessionRecord): Promise<SessionRecord> {
     if (record.status !== "running") return record
     await this.sessions.markSessionInterrupted(record.id)
@@ -302,7 +335,11 @@ export class BrowserAgentRuntime {
   }
 
   private async saveSession(record: SessionRecord): Promise<void> {
-    await this.sessions.put(record, await this.sessionLease.protectedSessionIds())
+    await this.sessions.put(record, (id) => this.evictSession(id))
+  }
+
+  private async evictSession(id: string): Promise<boolean> {
+    return this.sessionLease.runIfAvailable(id, () => this.sessions.delete(id))
   }
 
   private applySession(record: SessionRecord): void {
