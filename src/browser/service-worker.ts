@@ -14,6 +14,7 @@ const SELECTION_CONTEXT_MENU_ID = "pi-chrome-send-selection"
 const activeRequests = new Map<string, AbortController>()
 let boundContext: TabContext | undefined
 let contextEpoch = 0
+let visibleTabSyncVersion = 0
 let pendingSelectionTake: Promise<JsonValue> = Promise.resolve(null)
 const initialization = initialize()
 
@@ -54,23 +55,31 @@ function setBoundTab(tab: chrome.tabs.Tab | undefined): TabContext | undefined {
   return { ...boundContext }
 }
 
-async function setFocusedTab(tab: chrome.tabs.Tab | undefined): Promise<TabContext | undefined> {
-  if (tab?.id === undefined || !tab.url || !isSupportedPageUrl(tab.url)) {
-    return setBoundTab(undefined)
-  }
+async function focusedTab(tab: chrome.tabs.Tab | undefined): Promise<chrome.tabs.Tab | undefined> {
+  if (tab?.id === undefined || !tab.url || !isSupportedPageUrl(tab.url)) return undefined
   const window = await chrome.windows.get(tab.windowId)
-  return setBoundTab(window.focused ? tab : undefined)
+  return window.focused ? tab : undefined
+}
+
+function currentBoundContext(): TabContext | undefined {
+  return boundContext ? { ...boundContext } : undefined
 }
 
 async function syncVisibleTab(): Promise<TabContext | undefined> {
+  const version = ++visibleTabSyncVersion
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
-  return setFocusedTab(tab)
+  const currentTab = await focusedTab(tab)
+  if (version !== visibleTabSyncVersion) return currentBoundContext()
+  return setBoundTab(currentTab)
 }
 
 async function syncUpdatedVisibleTab(updatedTabId: number): Promise<void> {
+  const version = ++visibleTabSyncVersion
   const previous = boundContext
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
-  const context = await setFocusedTab(tab)
+  const currentTab = await focusedTab(tab)
+  if (version !== visibleTabSyncVersion) return
+  const context = setBoundTab(currentTab)
   if (
     context &&
     tab?.id === updatedTabId &&
@@ -90,6 +99,7 @@ async function initialize(): Promise<void> {
 }
 
 function bindSelectionTab(tab: chrome.tabs.Tab | undefined): TabContext {
+  visibleTabSyncVersion += 1
   const context = setBoundTab(tab)
   if (!context) {
     throw new RuntimeError(
@@ -453,6 +463,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 
 chrome.windows.onFocusChanged.addListener((windowId) => {
   if (windowId === chrome.windows.WINDOW_ID_NONE) {
+    visibleTabSyncVersion += 1
     clearBoundTab()
     return
   }

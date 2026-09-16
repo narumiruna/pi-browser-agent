@@ -30,7 +30,7 @@ describe("service worker visible-tab targeting", () => {
     const session: Record<string, unknown> = {}
     const create = vi.fn()
     const open = vi.fn(async () => undefined)
-    const sendMessage = vi.fn(async () => {
+    const sendMessage = vi.fn(async (_message: unknown) => {
       throw new Error("No Side Panel receiver")
     })
     const executeScript = vi.fn()
@@ -38,11 +38,15 @@ describe("service worker visible-tab targeting", () => {
     let permissionCheck: Promise<boolean> | undefined
     const contains = vi.fn(async () => permissionCheck ?? true)
     let focusedWindowId = 3
-    const getWindow = vi.fn(async (windowId: number) => ({
-      id: windowId,
-      focused: windowId === focusedWindowId,
-    }))
+    let delayedWindowLookup: Promise<void> | undefined
+    const getWindow = vi.fn(async (windowId: number) => {
+      const delay = delayedWindowLookup
+      delayedWindowLookup = undefined
+      await delay
+      return { id: windowId, focused: windowId === focusedWindowId }
+    })
     let activeTab: TestTab = { id: 1, url: "https://old.test/page", windowId: 3 }
+    const queryTabs = vi.fn(async () => [activeTab])
     let failPendingRead = false
 
     vi.stubGlobal("chrome", {
@@ -89,7 +93,7 @@ describe("service worker visible-tab targeting", () => {
       scripting: { executeScript },
       sidePanel: { setPanelBehavior: vi.fn(async () => undefined), open },
       tabs: {
-        query: vi.fn(async () => [activeTab]),
+        query: queryTabs,
         get: vi.fn(async () => activeTab),
         update: updateTab,
         onActivated: {
@@ -189,6 +193,36 @@ describe("service worker visible-tab targeting", () => {
         ok: true,
         result: { tabContext: null },
       })
+    })
+
+    activeTab = { id: 7, url: "https://example.test/page", windowId: 3 }
+    let releaseWindowLookup: (() => void) | undefined
+    delayedWindowLookup = new Promise<void>((resolve) => {
+      releaseWindowLookup = resolve
+    })
+    sendMessage.mockClear()
+    const getWindowCallsBeforeRace = getWindow.mock.calls.length
+    listeners.activated?.({ tabId: 7, windowId: 3 })
+    await vi.waitFor(() =>
+      expect(getWindow.mock.calls.length).toBeGreaterThan(getWindowCallsBeforeRace),
+    )
+    activeTab = { id: 9, url: "https://newest.test/page", windowId: 3 }
+    listeners.activated?.({ tabId: 9, windowId: 3 })
+    await vi.waitFor(() =>
+      expect(sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "tab.changed",
+          tabContext: expect.objectContaining({ tabId: 9 }),
+        }),
+      ),
+    )
+    releaseWindowLookup?.()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    await vi.waitFor(() => {
+      const changes = sendMessage.mock.calls
+        .map(([message]) => message as { name?: string; tabContext?: { tabId?: number } })
+        .filter((message) => message.name === "tab.changed" && message.tabContext)
+      expect(changes.at(-1)?.tabContext?.tabId).toBe(9)
     })
 
     activeTab = { id: 7, url: "https://example.test/page", windowId: 3 }
