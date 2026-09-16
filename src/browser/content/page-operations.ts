@@ -162,6 +162,10 @@ export async function executePageOperation(
             ? new URL(anchor.href, location.href).origin !== location.origin
             : false
         const download = Boolean(anchor?.hasAttribute("download"))
+        const nativeDownload =
+          download &&
+          anchor instanceof HTMLAnchorElement &&
+          ["blob:", "data:"].includes(new URL(anchor.href, location.href).protocol)
         const sensitive = submitControl || download || crossOrigin
         if (sensitive && !confirmed) {
           return failure(
@@ -183,28 +187,11 @@ export async function executePageOperation(
             "The link target was not authorized or changed before the click",
           )
         }
-        if (crossOrigin && !download && trustedLinkTargetUrl === null) {
+        if (crossOrigin && !nativeDownload && trustedLinkTargetUrl === null) {
           return failure("PERMISSION_DENIED", "The cross-origin link target was not authorized")
         }
-        if (crossOrigin && !download) {
-          const event = new MouseEvent("click", {
-            bubbles: true,
-            cancelable: true,
-            composed: true,
-          })
-          let navigationAllowed = false
-          const preventNavigation = (dispatchedEvent: Event) => {
-            if (dispatchedEvent !== event) return
-            navigationAllowed = !event.defaultPrevented
-            event.preventDefault()
-          }
-          window.addEventListener("click", preventNavigation)
-          try {
-            found.dispatchEvent(event)
-          } finally {
-            window.removeEventListener("click", preventNavigation)
-          }
-          return success({ clicked: true, navigationAllowed, selector: getSelector() ?? "" })
+        if (crossOrigin && !nativeDownload) {
+          return success({ clicked: true, navigationAllowed: true, selector: getSelector() ?? "" })
         }
         found.click()
         return success({ clicked: true, selector: getSelector() ?? "" })

@@ -65,7 +65,7 @@ describe("page operations", () => {
     expect(click).toHaveBeenCalledOnce()
   })
 
-  test("requires confirmation before cross-origin or download links", async () => {
+  test("requires confirmation and trusted navigation for cross-origin links", async () => {
     document.body.innerHTML = '<a id="external" href="https://example.test/file">File</a>'
     const link = document.querySelector<HTMLAnchorElement>("#external") as HTMLAnchorElement
     makeVisible(link)
@@ -94,26 +94,10 @@ describe("page operations", () => {
     expect(click).not.toHaveBeenCalled()
 
     link.href = trustedTarget
-    link.addEventListener(
-      "click",
-      (event) => {
-        expect(event.defaultPrevented).toBe(false)
-        link.href = "https://forbidden.test/file"
-      },
-      { once: true },
-    )
     await expect(
       executePageOperation("click", { selector: "#external" }, true, trustedTarget),
     ).resolves.toMatchObject({ ok: true, result: { navigationAllowed: true } })
-    expect(click).toHaveBeenCalledOnce()
-    expect(link.href).toBe("https://forbidden.test/file")
-
-    link.href = trustedTarget
-    link.addEventListener("click", (event) => event.preventDefault(), { once: true })
-    await expect(
-      executePageOperation("click", { selector: "#external" }, true, trustedTarget),
-    ).resolves.toMatchObject({ ok: true, result: { navigationAllowed: false } })
-    expect(click).toHaveBeenCalledTimes(2)
+    expect(click).not.toHaveBeenCalled()
   })
 
   test("allows confirmed non-HTTP download targets without treating them as navigation", async () => {

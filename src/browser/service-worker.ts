@@ -137,18 +137,18 @@ async function runClickOperation(request: RequestFrame): Promise<JsonValue> {
   if (typeof target !== "string") {
     throw new BridgeError("INTERNAL_ERROR", "The inspected link target is invalid")
   }
-  if (inspectedLink?.download === true) {
-    return runPageOperation("click", request, target)
-  }
+  const targetUrl = new URL(target)
+  const nativeDownload =
+    inspectedLink?.download === true && ["blob:", "data:"].includes(targetUrl.protocol)
+  if (nativeDownload) return runPageOperation("click", request, target)
   if (!isSupportedPageUrl(target)) {
     throw new BridgeError("PERMISSION_DENIED", "Only HTTP and HTTPS link targets can be opened")
   }
 
   const context = await refreshBoundContext()
   assertTabContext(request.tabContext, context)
-  const targetUrl = new URL(target)
   if (targetUrl.origin === new URL(context.url).origin) {
-    return runPageOperation("click", request)
+    return runPageOperation("click", request, inspectedLink?.download === true ? target : null)
   }
   if (!(await hasHostPermission(targetUrl))) {
     throw new BridgeError(
