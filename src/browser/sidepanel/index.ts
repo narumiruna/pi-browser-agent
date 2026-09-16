@@ -46,7 +46,7 @@ const pastedImages = element<HTMLElement>("pasted-images")
 let loginController: AbortController | undefined
 let verificationUri = ""
 let activeTabUrl: string | undefined
-let submissionPending = false
+let activeSubmissionGuard: object | undefined
 let pendingPasteOperations = 0
 let pasteQueue = Promise.resolve()
 let composerImages: Array<PastedImage & { id: string }> = []
@@ -75,7 +75,13 @@ function resizePromptInput(): void {
 }
 
 function updateSendButton(): void {
-  sendButton.disabled = submissionPending || pendingPasteOperations > 0
+  sendButton.disabled = activeSubmissionGuard !== undefined || pendingPasteOperations > 0
+}
+
+function releaseSubmissionGuard(guard: object): void {
+  if (activeSubmissionGuard !== guard) return
+  activeSubmissionGuard = undefined
+  updateSendButton()
 }
 
 function renderComposerImages(): void {
@@ -444,7 +450,7 @@ element<HTMLButtonElement>("grant-site").addEventListener("click", () => {
 })
 
 function submitPrompt(queueAfterCurrentTask = false): void {
-  if (submissionPending) return
+  if (activeSubmissionGuard) return
   if (pendingPasteOperations > 0) {
     setError("Wait for the pasted image preview before sending")
     return
@@ -456,7 +462,8 @@ function submitPrompt(queueAfterCurrentTask = false): void {
   }))
   if (!text && submittedImages.length === 0) return
   const submittedWhileStreaming = runtime.agent.state.isStreaming
-  submissionPending = true
+  const submissionGuard = {}
+  activeSubmissionGuard = submissionGuard
   updateSendButton()
   void run(async () => {
     try {
@@ -483,13 +490,11 @@ function submitPrompt(queueAfterCurrentTask = false): void {
         queueAfterCurrentTask ? "followUp" : "steer",
         submittedImages.map((image) => image.content),
       )
-      submissionPending = false
-      updateSendButton()
+      releaseSubmissionGuard(submissionGuard)
       const mode = await submission
       if (mode !== "prompt") setRunStatus("Instruction queued", true)
     } finally {
-      submissionPending = false
-      updateSendButton()
+      releaseSubmissionGuard(submissionGuard)
     }
   })
 }
