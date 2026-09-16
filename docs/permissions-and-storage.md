@@ -11,7 +11,7 @@
 | `storage` | Store settings, credentials, and undelivered context-menu selections. |
 | `tabs` | Identify the active tab and its URL when the user switches tabs or windows. |
 
-Optional host patterns are the two OpenAI origins and HTTP(S) page origins. OpenAI origins are requested together only from **Log in**. A page origin is requested directly from the **Allow site** click handler. Selecting the extension action grants temporary `activeTab` access to the page visible at that time; later pages need a matching optional host grant before tools can be injected. There is no production `host_permissions` grant.
+Optional host patterns are the two OpenAI origins and HTTP(S) page origins. OpenAI origins are requested together only from **Log in**. When the user submits a prompt, the Side Panel requests the visible page's origin before starting or queueing the task; the account menu keeps **Allow current site** as a manual retry. Confirming cross-origin navigation or a cross-origin link requests the destination origin as part of that confirmation. Selecting the extension action also grants temporary `activeTab` access to the page visible at that time. There is no production `host_permissions` grant and no site access request occurs without a user gesture.
 
 The extension CSP permits connections only to `auth.openai.com` and `chatgpt.com`; it does not permit remote scripts.
 

@@ -30,8 +30,7 @@ Load the production artifact:
 1. In the Side Panel, select **Log in** and approve access to `auth.openai.com` and `chatgpt.com`.
 2. Open the verification page, enter the displayed device code, and complete OpenAI login.
 3. Open the HTTP or HTTPS page you want to use. Pi Chrome follows the visible tab automatically.
-4. Select **Allow site** if a browser action needs access beyond the extension action's temporary `activeTab` grant.
-5. Enter a prompt.
+4. Enter a prompt. Pi Chrome requests access to that site when needed.
 
 The model transport is always SSE. Closing the Side Panel aborts the active run and marks the session interrupted; reopening never automatically repeats a browser mutation.
 
@@ -67,7 +66,7 @@ npm audit --omit=dev
 ## Troubleshooting
 
 - **OpenAI host access was revoked:** select **Log in** again and approve both requested OpenAI origins.
-- **A page tool is denied:** make the intended HTTP(S) page visible, then select **Allow site**. Chrome internal pages cannot be controlled.
+- **A page tool is denied:** make the intended HTTP(S) page visible and send the prompt again. If access was previously declined, use **Account and site access → Allow current site**. Chrome internal pages cannot be controlled.
 - **Stale context:** the visible tab changed or navigated after the tool request began. Retry after the Side Panel shows the current URL.
 - **Login pending:** finish the device flow before its 15-minute expiry. Cancel and restart if the code expires or is denied.
 - **Refresh failed:** log out, then complete device login again. The extension does not fall back to another provider.

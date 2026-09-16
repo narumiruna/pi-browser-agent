@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, test, vi } from "vitest"
-import { hasHostPermission, toHostPermissionPattern } from "../../src/browser/permissions.js"
+import {
+  hasHostPermission,
+  requestHostPermission,
+  toHostPermissionPattern,
+} from "../../src/browser/permissions.js"
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -22,5 +26,13 @@ describe("browser host permissions", () => {
 
     await expect(hasHostPermission("http://localhost:3000/path")).resolves.toBe(false)
     expect(contains).toHaveBeenCalledWith({ origins: ["http://localhost/*"] })
+  })
+
+  test("requests only the normalized destination permission", async () => {
+    const request = vi.fn().mockResolvedValue(true)
+    vi.stubGlobal("chrome", { permissions: { request } })
+
+    await expect(requestHostPermission("https://example.test:8443/path")).resolves.toBe(true)
+    expect(request).toHaveBeenCalledWith({ origins: ["https://example.test/*"] })
   })
 })

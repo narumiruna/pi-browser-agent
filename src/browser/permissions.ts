@@ -9,3 +9,7 @@ export function toHostPermissionPattern(value: string | URL): string {
 export async function hasHostPermission(value: string | URL): Promise<boolean> {
   return chrome.permissions.contains({ origins: [toHostPermissionPattern(value)] })
 }
+
+export async function requestHostPermission(value: string | URL): Promise<boolean> {
+  return chrome.permissions.request({ origins: [toHostPermissionPattern(value)] })
+}

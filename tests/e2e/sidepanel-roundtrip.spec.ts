@@ -186,6 +186,17 @@ test("loads the Side Panel without uncaught errors", async () => {
   await expect(controller.locator("#send")).toBeVisible()
   await expect(controller.locator("#abort")).toBeHidden()
   await expect(controller.locator("#steer, #follow-up")).toHaveCount(0)
+  await expect(controller.locator("#rename-session")).toBeHidden()
+  await controller.locator(".session-disclosure > summary").click()
+  await expect(controller.locator("#rename-session")).toBeVisible()
+  await controller.locator(".session-disclosure > summary").click()
+  await controller.locator("#account-menu-trigger").click()
+  await expect(controller.locator("#grant-site")).toBeVisible()
+  await controller.locator("#account-menu-trigger").click()
+  const transcriptTop = await controller
+    .locator("#transcript")
+    .evaluate((node) => Math.round(node.getBoundingClientRect().top))
+  expect(transcriptTop).toBeLessThan(190)
 
   const viewport = controller.viewportSize() ?? { width: 1280, height: 720 }
   await controller.setViewportSize({ width: 360, height: 260 })
@@ -276,6 +287,10 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
   await controller.locator('#confirm-dialog button[value="confirm"]').click()
   await expect(controller.locator("#transcript")).toContainText(
     "Mock agent completed the browser round trip.",
+  )
+  await expect(controller.locator("#transcript details.message").first()).toHaveJSProperty(
+    "open",
+    false,
   )
   expect(requestCount).toBe(responses.length)
   await expect(page).toHaveURL(`http://127.0.0.1:${fixture.port}/second`)

@@ -4,7 +4,7 @@ import type { AuthEvent } from "@earendil-works/pi-ai"
 import { BrowserAgentRuntime } from "../agent/runtime.js"
 import { AUTH_ORIGINS } from "../auth/codex-oauth.js"
 import { safeErrorMessage } from "../auth/redaction.js"
-import { toHostPermissionPattern } from "../permissions.js"
+import { requestHostPermission } from "../permissions.js"
 import { type RuntimeEvent, sendRuntimeRequest } from "../runtime/messages.js"
 import type { JsonObject } from "../runtime/types.js"
 
@@ -26,6 +26,7 @@ const refreshTokenButton = element<HTMLButtonElement>("refresh-token")
 const sessionSelect = element<HTMLSelectElement>("sessions")
 const confirmDialog = element<HTMLDialogElement>("confirm-dialog")
 const confirmMessage = element<HTMLElement>("confirm-message")
+const confirmActionButton = element<HTMLButtonElement>("confirm-action")
 const loginDialog = element<HTMLDialogElement>("login-dialog")
 const deviceCode = element<HTMLOutputElement>("device-code")
 const systemPrompt = element<HTMLTextAreaElement>("system-prompt")
@@ -33,6 +34,7 @@ const agentInstructions = element<HTMLTextAreaElement>("agent-instructions")
 const sendButton = element<HTMLButtonElement>("send")
 const abortButton = element<HTMLButtonElement>("abort")
 const composerHint = element<HTMLElement>("composer-hint")
+const accountMenuTrigger = element<HTMLElement>("account-menu-trigger")
 let loginController: AbortController | undefined
 let verificationUri = ""
 let activeTabUrl: string | undefined
@@ -67,14 +69,27 @@ function confirmation(
   confirmMessage.textContent = details ? `${message}\n${JSON.stringify(details, null, 2)}` : message
   confirmDialog.showModal()
   return new Promise((resolve) => {
+    const requestDestinationAccess = (event: MouseEvent): void => {
+      const targetUrl = details?.targetUrl
+      if (typeof targetUrl !== "string") return
+      event.preventDefault()
+      void requestSiteAccess(targetUrl)
+        .then((granted) => {
+          if (granted) confirmDialog.close("confirm")
+          else setError("Site access is required for that destination")
+        })
+        .catch(setError)
+    }
     const finish = (): void => {
       signal?.removeEventListener("abort", cancel)
+      confirmActionButton.removeEventListener("click", requestDestinationAccess)
       resolve(confirmDialog.returnValue === "confirm" && !signal?.aborted)
     }
     const cancel = (): void => {
       if (confirmDialog.open) confirmDialog.close("cancel")
       else finish()
     }
+    confirmActionButton.addEventListener("click", requestDestinationAccess)
     confirmDialog.addEventListener("close", finish, { once: true })
     signal?.addEventListener("abort", cancel, { once: true })
     if (signal?.aborted) cancel()
@@ -129,15 +144,27 @@ function renderMessages(streaming?: AgentMessage): void {
     return
   }
   for (const message of messages) {
-    const article = document.createElement("article")
+    const toolMessage = isToolCall(message) || message.role === "toolResult"
+    const article = document.createElement(toolMessage ? "details" : "article")
     article.className = `message ${message.role}${isToolCall(message) ? " toolCall" : ""}`
     const role = document.createElement("span")
     role.className = "role"
     role.textContent = roleLabel(message)
     const content = document.createElement("span")
     content.className = "content"
-    content.textContent = messageText(message)
-    article.append(role, content)
+    const text = messageText(message)
+    content.textContent = text
+    if (article instanceof HTMLDetailsElement) {
+      const summary = document.createElement("summary")
+      const preview = document.createElement("span")
+      preview.className = "tool-preview"
+      preview.textContent = text.split("\n", 1)[0]?.replace(/^\[|\]$/g, "") ?? "Details"
+      summary.append(role, preview)
+      article.open = /^error\b/i.test(text)
+      article.append(summary, content)
+    } else {
+      article.append(role, content)
+    }
     transcript.append(article)
   }
   transcript.scrollTop = transcript.scrollHeight
@@ -162,6 +189,7 @@ async function refreshAuth(): Promise<void> {
   refreshTokenButton.hidden = !status.loggedIn
   authStatus.textContent = status.loggedIn ? "OpenAI connected" : "OpenAI not connected"
   authStatus.dataset.loggedIn = String(status.loggedIn)
+  accountMenuTrigger.dataset.loggedIn = String(status.loggedIn)
 }
 
 async function refreshTab(): Promise<void> {
@@ -274,21 +302,26 @@ logoutButton.addEventListener("click", () => {
   })
 })
 
+function requestSiteAccess(url: string): Promise<boolean> {
+  return requestHostPermission(url)
+}
+
+async function requestActiveSiteAccess(): Promise<void> {
+  if (!activeTabUrl) throw new Error("Open an HTTP or HTTPS page before granting site access")
+  if (!(await requestSiteAccess(activeTabUrl))) {
+    throw new Error("Site access is required to work with the current page")
+  }
+}
+
 element<HTMLButtonElement>("grant-site").addEventListener("click", () => {
-  void run(async () => {
-    const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
-    if (!tab?.url) throw new Error("Open an HTTP or HTTPS page before granting site access")
-    const pattern = toHostPermissionPattern(tab.url)
-    const granted = await chrome.permissions.request({ origins: [pattern] })
-    if (!granted) throw new Error("Site access was not granted")
-    await refreshTab()
-  })
+  void run(requestActiveSiteAccess)
 })
 
 function submitPrompt(queueAfterCurrentTask = false): void {
   void run(async () => {
     const text = promptInput.value.trim()
     if (!text) return
+    await requestActiveSiteAccess()
     const hasPermission = await chrome.permissions.contains({ origins: [...AUTH_ORIGINS] })
     if (!hasPermission) throw new Error("OpenAI host access was revoked. Log in again to continue.")
     if (!(await runtime.authStatus()).loggedIn)
@@ -367,6 +400,23 @@ element<HTMLButtonElement>("clear-sessions").addEventListener("click", () => {
     renderMessages()
     await refreshSessions()
   })
+})
+
+const disclosures = document.querySelectorAll<HTMLDetailsElement>("details.disclosure")
+for (const disclosure of disclosures) {
+  disclosure.addEventListener("toggle", () => {
+    if (!disclosure.open) return
+    for (const other of disclosures) {
+      if (other !== disclosure) other.open = false
+    }
+  })
+  disclosure.addEventListener("click", (event) => {
+    if ((event.target as Element).closest("button")) disclosure.open = false
+  })
+}
+document.addEventListener("click", (event) => {
+  if ((event.target as Element).closest("details.disclosure")) return
+  for (const disclosure of disclosures) disclosure.open = false
 })
 
 function queueSelection(payload: JsonObject): void {
