@@ -6,7 +6,7 @@ afterEach(() => {
 })
 
 describe("internal runtime messages", () => {
-  test("accepts a known, JSON-safe request", () => {
+  test("accepts known, JSON-safe requests", () => {
     expect(
       parseRuntimeRequest({
         kind: "request",
@@ -16,6 +16,14 @@ describe("internal runtime messages", () => {
         tabContext: { tabId: 1, url: "https://example.test", epoch: 2 },
       }),
     ).toMatchObject({ method: "page.type" })
+    expect(
+      parseRuntimeRequest({
+        kind: "request",
+        requestId: "request-2",
+        method: "selection.takePending",
+        params: { windowId: 3 },
+      }),
+    ).toMatchObject({ method: "selection.takePending", params: { windowId: 3 } })
   })
 
   test.each([
@@ -29,6 +37,7 @@ describe("internal runtime messages", () => {
       params: { selector: "#x", extra: true },
     },
     { kind: "request", requestId: "", method: "page.type", params: {} },
+    { kind: "request", requestId: "1", method: "selection.takePending", params: {} },
     { kind: "event", name: "tab.changed", payload: {} },
   ])("rejects malformed or unknown message %#", (message) => {
     expect(() => parseRuntimeRequest(message)).toThrow("Malformed or unknown")

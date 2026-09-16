@@ -223,14 +223,11 @@ logoutButton.addEventListener("click", () => {
 })
 
 element<HTMLButtonElement>("grant-site").addEventListener("click", () => {
-  if (!boundTabUrl) {
-    setError("Bind a tab before granting site access")
-    return
-  }
-  const pattern = toHostPermissionPattern(boundTabUrl)
-  const permissionRequest = chrome.permissions.request({ origins: [pattern] })
   void run(async () => {
-    if (!(await permissionRequest)) throw new Error("Site access was not granted")
+    if (!boundTabUrl) throw new Error("Bind a tab before granting site access")
+    const pattern = toHostPermissionPattern(boundTabUrl)
+    const granted = await chrome.permissions.request({ origins: [pattern] })
+    if (!granted) throw new Error("Site access was not granted")
   })
 })
 
@@ -323,8 +320,11 @@ function queueSelection(payload: JsonObject): void {
   else promptInput.value = text
 }
 
-async function pullPendingSelection(): Promise<void> {
-  const value = await sendRuntimeRequest("selection.takePending")
+async function pullPendingSelection(expectedWindowId?: number): Promise<void> {
+  const windowId = (await chrome.windows.getCurrent()).id
+  if (windowId === undefined || (expectedWindowId !== undefined && windowId !== expectedWindowId))
+    return
+  const value = await sendRuntimeRequest("selection.takePending", { windowId })
   if (typeof value !== "object" || value === null || Array.isArray(value)) return
   const payload = value.payload
   if (typeof payload !== "object" || payload === null || Array.isArray(payload)) return
@@ -343,7 +343,10 @@ chrome.runtime.onMessage.addListener((message: unknown) => {
           ? "Running"
           : "Ready"
   }
-  if (event.name === "selection.queued") void run(pullPendingSelection)
+  const selectionWindowId = event.payload?.windowId
+  if (event.name === "selection.queued" && typeof selectionWindowId === "number") {
+    void run(() => pullPendingSelection(selectionWindowId))
+  }
   return false
 })
 

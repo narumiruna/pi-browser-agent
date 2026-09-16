@@ -101,8 +101,12 @@ export function compactSession(record: SessionRecord): {
 
   let removedMessages = 0
   while (sessionByteLength(compacted) > MAX_SESSION_BYTES && compacted.messages.length > 0) {
-    compacted.messages.shift()
-    removedMessages += 1
+    const nextTurn = compacted.messages.findIndex(
+      (message, index) => index > 0 && message.role === "user",
+    )
+    const turnLength = nextTurn === -1 ? compacted.messages.length : nextTurn
+    compacted.messages.splice(0, turnLength)
+    removedMessages += turnLength
   }
   if (sessionByteLength(compacted) > MAX_SESSION_BYTES) throw new SessionSizeLimitError()
   return { record: compacted, removedImages, removedMessages }
@@ -154,22 +158,29 @@ export class SessionStore {
       }))
   }
 
-  async put(record: SessionRecord): Promise<void> {
+  async put(
+    record: SessionRecord,
+    protectedSessionIds: ReadonlySet<string> = new Set(),
+  ): Promise<void> {
     if (!isSessionRecord(record)) throw new Error("Refusing to persist an invalid session")
     assertWithinLimit(record)
     const database = await this.open()
     const transaction = database.transaction(STORE_NAME, "readwrite")
     transaction.objectStore(STORE_NAME).put(structuredClone(record))
     await transactionDone(transaction)
-    await this.enforceRetention()
+    await this.enforceRetention(protectedSessionIds)
   }
 
-  async rename(id: string, title: string): Promise<void> {
+  async rename(
+    id: string,
+    title: string,
+    protectedSessionIds: ReadonlySet<string> = new Set(),
+  ): Promise<void> {
     const record = await this.get(id)
     if (!record) throw new Error("Session not found")
     const normalized = title.trim().slice(0, 120)
     if (!normalized) throw new Error("Session title cannot be empty")
-    await this.put({ ...record, title: normalized, updatedAt: Date.now() })
+    await this.put({ ...record, title: normalized, updatedAt: Date.now() }, protectedSessionIds)
   }
 
   async delete(id: string): Promise<void> {
@@ -195,13 +206,18 @@ export class SessionStore {
     await transactionDone(transaction)
   }
 
-  private async enforceRetention(): Promise<void> {
+  private async enforceRetention(protectedSessionIds: ReadonlySet<string>): Promise<void> {
     const summaries = await this.list()
-    if (summaries.length <= MAX_SESSIONS) return
+    const excess = summaries.length - MAX_SESSIONS
+    if (excess <= 0) return
+    const toDelete = [...summaries]
+      .reverse()
+      .filter((session) => !protectedSessionIds.has(session.id))
+      .slice(0, excess)
     const database = await this.open()
     const transaction = database.transaction(STORE_NAME, "readwrite")
     const store = transaction.objectStore(STORE_NAME)
-    for (const session of summaries.slice(MAX_SESSIONS)) store.delete(session.id)
+    for (const session of toDelete) store.delete(session.id)
     await transactionDone(transaction)
   }
 }

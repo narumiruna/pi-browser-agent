@@ -42,13 +42,15 @@ describe("browser storage", () => {
       },
     })
     const selection = {
+      windowId: 3,
       payload: { text: "selected", untrusted: true },
       tabContext: { tabId: 4, url: "https://example.test", epoch: 0 },
     }
 
     await savePendingSelection(selection)
 
-    await expect(takePendingSelection()).resolves.toEqual(selection)
-    await expect(takePendingSelection()).resolves.toBeUndefined()
+    await expect(takePendingSelection(4)).resolves.toBeUndefined()
+    await expect(takePendingSelection(3)).resolves.toEqual(selection)
+    await expect(takePendingSelection(3)).resolves.toBeUndefined()
   })
 })

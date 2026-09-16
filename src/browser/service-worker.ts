@@ -71,11 +71,13 @@ async function bindActiveTab(): Promise<TabContext> {
   return bindTab(tab)
 }
 
-function consumePendingSelection(): Promise<JsonValue> {
-  pendingSelectionTake = pendingSelectionTake.then(async () => {
-    const selection = await takePendingSelection()
-    return selection ? { payload: selection.payload, tabContext: selection.tabContext } : null
-  })
+function consumePendingSelection(windowId: number): Promise<JsonValue> {
+  pendingSelectionTake = pendingSelectionTake
+    .catch(() => null)
+    .then(async () => {
+      const selection = await takePendingSelection(windowId)
+      return selection ? { payload: selection.payload, tabContext: selection.tabContext } : null
+    })
   return pendingSelectionTake
 }
 
@@ -272,9 +274,13 @@ async function dispatch(request: RuntimeRequest, signal: AbortSignal): Promise<J
     case "tabs.navigate":
       result = await navigate(request)
       break
-    case "selection.takePending":
-      result = await consumePendingSelection()
+    case "selection.takePending": {
+      const windowId = request.params.windowId
+      if (typeof windowId !== "number")
+        throw new RuntimeError("INVALID_REQUEST", "windowId is required")
+      result = await consumePendingSelection(windowId)
       break
+    }
     case "requests.cancel": {
       const requestId = request.params.requestId
       if (typeof requestId !== "string")
@@ -365,14 +371,22 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId !== BIND_CONTEXT_MENU_ID && info.menuItemId !== SELECTION_CONTEXT_MENU_ID)
     return
-  if (tab?.windowId !== undefined) {
-    void chrome.sidePanel.open({ windowId: tab.windowId }).catch(() => undefined)
+  const windowId = tab?.windowId
+  if (windowId !== undefined) {
+    void chrome.sidePanel.open({ windowId }).catch(() => undefined)
   }
-  void bindTab(tab)
+  void initialization
+    .then(() => bindTab(tab))
     .then(async (context) => {
-      if (info.menuItemId !== SELECTION_CONTEXT_MENU_ID || !info.selectionText) return
+      if (
+        info.menuItemId !== SELECTION_CONTEXT_MENU_ID ||
+        !info.selectionText ||
+        windowId === undefined
+      )
+        return
       const selection = truncateUtf8(info.selectionText)
       await savePendingSelection({
+        windowId,
         payload: {
           text: selection.text,
           source: "context-menu",
@@ -381,7 +395,11 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
         },
         tabContext: context,
       })
-      emitEvent({ kind: "event", name: "selection.queued", payload: { available: true } })
+      emitEvent({
+        kind: "event",
+        name: "selection.queued",
+        payload: { available: true, windowId },
+      })
     })
     .catch(() => undefined)
 })

@@ -11,6 +11,7 @@ export interface AppSettings {
 }
 
 export interface PendingSelection {
+  windowId: number
   payload: JsonObject
   tabContext: TabContext
 }
@@ -68,17 +69,25 @@ export async function saveBoundTabId(tabId: number | undefined): Promise<void> {
   await chrome.storage.session.set({ [SESSION_TAB_KEY]: tabId })
 }
 
-export async function savePendingSelection(selection: PendingSelection): Promise<void> {
-  await chrome.storage.session.set({ [PENDING_SELECTION_KEY]: selection })
+function pendingSelectionKey(windowId: number): string {
+  if (!Number.isSafeInteger(windowId) || windowId < 0) throw new Error("Invalid Chrome window ID")
+  return `${PENDING_SELECTION_KEY}:${windowId}`
 }
 
-export async function takePendingSelection(): Promise<PendingSelection | undefined> {
-  const stored = await chrome.storage.session.get(PENDING_SELECTION_KEY)
-  const value = stored[PENDING_SELECTION_KEY]
-  await chrome.storage.session.remove(PENDING_SELECTION_KEY)
+export async function savePendingSelection(selection: PendingSelection): Promise<void> {
+  await chrome.storage.session.set({ [pendingSelectionKey(selection.windowId)]: selection })
+}
+
+export async function takePendingSelection(
+  windowId: number,
+): Promise<PendingSelection | undefined> {
+  const key = pendingSelectionKey(windowId)
+  const stored = await chrome.storage.session.get(key)
+  const value = stored[key]
+  await chrome.storage.session.remove(key)
   if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined
   const selection = value as Partial<PendingSelection>
-  return selection.payload && selection.tabContext
+  return selection.windowId === windowId && selection.payload && selection.tabContext
     ? (structuredClone(selection) as PendingSelection)
     : undefined
 }

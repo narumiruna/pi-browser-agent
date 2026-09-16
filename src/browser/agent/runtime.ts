@@ -114,18 +114,14 @@ export class BrowserAgentRuntime {
     }
 
     if (restored) {
-      await this.sessions.markSessionInterrupted(restored.id)
-      restored = {
-        ...restored,
-        status: restored.status === "running" ? "interrupted" : restored.status,
-      }
+      restored = await this.normalizeClaimedSession(restored)
       this.session = restored
     } else {
       this.session = createSession(this.model.id)
       if (!(await this.sessionLease.claim(this.session.id))) {
         throw new Error("Unable to claim a new browser session")
       }
-      await this.sessions.put(this.session)
+      await this.saveSession(this.session)
     }
     this.applySession(this.session)
     await saveActiveSessionId(this.session.id)
@@ -217,17 +213,18 @@ export class BrowserAgentRuntime {
       throw new Error("Unable to claim a new session")
     this.session = record
     this.applySession(record)
-    await this.sessions.put(record)
+    await this.saveSession(record)
     await saveActiveSessionId(record.id)
   }
 
   async resumeSession(id: string): Promise<void> {
     await this.stopAgent()
-    const record = await this.sessions.get(id)
+    let record = await this.sessions.get(id)
     if (!record) throw new Error("Session not found")
     if (!(await this.sessionLease.claim(id))) {
       throw new Error("That session is open in another Side Panel")
     }
+    record = await this.normalizeClaimedSession(record)
     this.session = record
     this.applySession(record)
     await saveActiveSessionId(record.id)
@@ -235,7 +232,11 @@ export class BrowserAgentRuntime {
 
   async renameSession(title: string): Promise<void> {
     await this.persistChain
-    await this.sessions.rename(this.session.id, title)
+    await this.sessions.rename(
+      this.session.id,
+      title,
+      await this.sessionLease.protectedSessionIds(),
+    )
     this.session.title = title.trim().slice(0, 120)
   }
 
@@ -252,7 +253,7 @@ export class BrowserAgentRuntime {
     }
     this.session = replacement
     this.applySession(replacement)
-    await this.sessions.put(replacement)
+    await this.saveSession(replacement)
     await saveActiveSessionId(replacement.id)
   }
 
@@ -265,7 +266,7 @@ export class BrowserAgentRuntime {
     }
     this.session = replacement
     this.applySession(replacement)
-    await this.sessions.put(replacement)
+    await this.saveSession(replacement)
     await saveActiveSessionId(replacement.id)
   }
 
@@ -292,6 +293,16 @@ export class BrowserAgentRuntime {
     this.agent.abort()
     await this.agent.waitForIdle()
     await this.persistChain
+  }
+
+  private async normalizeClaimedSession(record: SessionRecord): Promise<SessionRecord> {
+    if (record.status !== "running") return record
+    await this.sessions.markSessionInterrupted(record.id)
+    return { ...record, status: "interrupted" }
+  }
+
+  private async saveSession(record: SessionRecord): Promise<void> {
+    await this.sessions.put(record, await this.sessionLease.protectedSessionIds())
   }
 
   private applySession(record: SessionRecord): void {
@@ -326,11 +337,11 @@ export class BrowserAgentRuntime {
     this.persistChain = this.persistChain
       .then(async () => {
         try {
-          await this.sessions.put(record)
+          await this.saveSession(record)
         } catch (error) {
           if (!(error instanceof SessionSizeLimitError)) throw error
           const compacted = compactSession(record)
-          await this.sessions.put(compacted.record)
+          await this.saveSession(compacted.record)
           if (this.session === record) {
             this.session = compacted.record
             this.agent.state.messages = structuredClone(compacted.record.messages)

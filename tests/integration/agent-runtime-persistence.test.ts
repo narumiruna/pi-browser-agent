@@ -25,6 +25,13 @@ class FakeLockManager {
       this.held.delete(name)
     }
   }
+
+  async query(): Promise<LockManagerSnapshot> {
+    return {
+      held: [...this.held].map((name) => ({ name, mode: "exclusive", clientId: "test" })),
+      pending: [],
+    }
+  }
 }
 
 function installChromeStorage(): void {
@@ -89,6 +96,41 @@ describe("browser agent session persistence", () => {
     })
     await first.shutdown()
     await second.shutdown()
+  })
+
+  test("preserves leased sessions when retention evicts an old record", async () => {
+    const locks = new FakeLockManager() as unknown as LockManager
+    const first = createRuntime(locks)
+    await first.initialize()
+    const firstRecord = { ...first.activeSession, createdAt: 0, updatedAt: 0 }
+    await first.sessions.put(firstRecord)
+    for (let index = 1; index < MAX_SESSIONS; index += 1) {
+      const session = createSession("gpt-5.6-terra")
+      session.createdAt = index
+      session.updatedAt = index
+      await first.sessions.put(session)
+    }
+
+    const second = createRuntime(locks)
+    await second.initialize()
+
+    await expect(first.sessions.get(firstRecord.id)).resolves.toBeDefined()
+    await expect(first.listSessions()).resolves.toHaveLength(MAX_SESSIONS)
+    await first.shutdown()
+    await second.shutdown()
+  })
+
+  test("marks a stale running session interrupted when resuming it", async () => {
+    const runtime = createRuntime(new FakeLockManager() as unknown as LockManager)
+    await runtime.initialize()
+    const stale = { ...createSession("gpt-5.6-terra"), status: "running" as const }
+    await runtime.sessions.put(stale)
+
+    await runtime.resumeSession(stale.id)
+
+    expect(runtime.activeSession.status).toBe("interrupted")
+    await expect(runtime.sessions.get(stale.id)).resolves.toMatchObject({ status: "interrupted" })
+    await runtime.shutdown()
   })
 
   test("waits for queued persistence before clearing sessions", async () => {

@@ -53,6 +53,16 @@ export class SessionLease {
     return true
   }
 
+  async protectedSessionIds(): Promise<ReadonlySet<string>> {
+    const snapshot = await this.locks.query()
+    return new Set(
+      snapshot.held
+        ?.map((lock) => lock.name)
+        .filter((name): name is string => typeof name === "string" && name.startsWith(LOCK_PREFIX))
+        .map((name) => name.slice(LOCK_PREFIX.length)) ?? [],
+    )
+  }
+
   async release(): Promise<void> {
     const current = this.current
     if (!current) return

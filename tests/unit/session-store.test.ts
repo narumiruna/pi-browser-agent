@@ -116,4 +116,47 @@ describe("session storage", () => {
     expect(compacted.record.messages).toHaveLength(1)
     expect(sessionByteLength(compacted.record)).toBeLessThanOrEqual(MAX_SESSION_BYTES)
   })
+
+  test("compacts complete turns without orphaning tool calls or results", () => {
+    const session = createSession("gpt-5.4")
+    session.messages = [
+      { role: "user", content: "first turn", timestamp: 1 },
+      {
+        role: "assistant",
+        api: "openai-codex-responses",
+        provider: "openai-codex",
+        model: "gpt-5.4",
+        timestamp: 2,
+        stopReason: "toolUse",
+        usage: {
+          input: 1,
+          output: 1,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 2,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
+        content: [
+          { type: "text", text: "x".repeat(MAX_SESSION_BYTES) },
+          { type: "toolCall", id: "call-1", name: "browser_get_visible_text", arguments: {} },
+        ],
+      },
+      {
+        role: "toolResult",
+        toolCallId: "call-1",
+        toolName: "browser_get_visible_text",
+        timestamp: 3,
+        isError: false,
+        content: [{ type: "text", text: "result" }],
+      },
+      { role: "user", content: "second turn", timestamp: 4 },
+    ]
+
+    const compacted = compactSession(session)
+
+    expect(compacted.removedMessages).toBe(3)
+    expect(compacted.record.messages).toEqual([
+      { role: "user", content: "second turn", timestamp: 4 },
+    ])
+  })
 })

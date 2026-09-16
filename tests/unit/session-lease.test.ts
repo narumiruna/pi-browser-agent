@@ -17,6 +17,13 @@ class FakeLockManager {
       this.held.delete(name)
     }
   }
+
+  async query(): Promise<LockManagerSnapshot> {
+    return {
+      held: [...this.held].map((name) => ({ name, mode: "exclusive", clientId: "test" })),
+      pending: [],
+    }
+  }
 }
 
 describe("session leases", () => {
@@ -26,6 +33,7 @@ describe("session leases", () => {
     const second = new SessionLease(locks)
 
     await expect(first.claim("session-1")).resolves.toBe(true)
+    await expect(first.protectedSessionIds()).resolves.toEqual(new Set(["session-1"]))
     await expect(second.claim("session-1")).resolves.toBe(false)
     await first.release()
     await expect(second.claim("session-1")).resolves.toBe(true)

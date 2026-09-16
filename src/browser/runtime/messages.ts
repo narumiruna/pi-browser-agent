@@ -79,12 +79,17 @@ function hasValidParams(method: RuntimeMethod, params: Record<string, unknown>):
     case "tabs.bindActive":
     case "tabs.unbind":
     case "tabs.getActive":
-    case "selection.takePending":
     case "page.getVisibleText":
     case "page.getSelection":
     case "page.captureVisible":
     case "webmcp.listTools":
       return Object.keys(params).length === 0
+    case "selection.takePending":
+      return (
+        hasOnlyKeys(params, ["windowId"]) &&
+        Number.isSafeInteger(params.windowId) &&
+        (params.windowId as number) >= 0
+      )
     case "tabs.navigate":
       return (
         hasOnlyKeys(params, ["url"]) &&
