@@ -99,6 +99,7 @@ async function refreshBoundContext(): Promise<TabContext> {
 async function runPageOperation(
   operation: PageOperation,
   request: RequestFrame,
+  trustedLinkTargetUrl: string | null = null,
 ): Promise<JsonValue> {
   const context = await refreshBoundContext()
   assertTabContext(request.tabContext, context)
@@ -108,7 +109,7 @@ async function runPageOperation(
     results = await chrome.scripting.executeScript({
       target: { tabId: context.tabId },
       func: executePageOperation,
-      args: [operation, request.params, request.confirmed ?? false],
+      args: [operation, request.params, request.confirmed ?? false, trustedLinkTargetUrl],
     })
   } catch (error) {
     throw new BridgeError(
@@ -121,6 +122,53 @@ async function runPageOperation(
   if (!outcome.ok)
     throw new BridgeError(outcome.error.code, outcome.error.message, outcome.error.details)
   return outcome.result
+}
+
+async function runClickOperation(request: RequestFrame): Promise<JsonValue> {
+  if (!request.confirmed) return runPageOperation("click", request)
+
+  const inspection = await runPageOperation("inspectClick", request)
+  const inspectedLink =
+    typeof inspection === "object" && inspection !== null && !Array.isArray(inspection)
+      ? inspection
+      : undefined
+  const target = inspectedLink?.targetUrl
+  if (target === null || target === undefined) return runPageOperation("click", request)
+  if (typeof target !== "string") {
+    throw new BridgeError("INTERNAL_ERROR", "The inspected link target is invalid")
+  }
+  const targetUrl = new URL(target)
+  const nativeDownload =
+    inspectedLink?.download === true && ["blob:", "data:"].includes(targetUrl.protocol)
+  if (nativeDownload) return runPageOperation("click", request, target)
+  if (!isSupportedPageUrl(target)) {
+    throw new BridgeError("PERMISSION_DENIED", "Only HTTP and HTTPS link targets can be opened")
+  }
+
+  const context = await refreshBoundContext()
+  assertTabContext(request.tabContext, context)
+  if (targetUrl.origin === new URL(context.url).origin) {
+    return runPageOperation("click", request, inspectedLink?.download === true ? target : null)
+  }
+  if (!(await hasHostPermission(targetUrl))) {
+    throw new BridgeError(
+      "PERMISSION_DENIED",
+      "Grant persistent access to the link destination from the popup before clicking",
+      { action: "click", targetUrl: targetUrl.href },
+    )
+  }
+  const result = await runPageOperation("click", request, targetUrl.href)
+  const navigationAllowed =
+    typeof result === "object" &&
+    result !== null &&
+    !Array.isArray(result) &&
+    result.navigationAllowed === true
+  if (navigationAllowed) {
+    await chrome.tabs.update(context.tabId, { url: targetUrl.href })
+    boundContext = { tabId: context.tabId, url: targetUrl.href, epoch: context.epoch + 1 }
+    bridge.sendEvent("tab.changed", {}, boundContext)
+  }
+  return result
 }
 
 async function runWebMcpOperation(
@@ -244,7 +292,7 @@ async function handleBridgeRequest(request: RequestFrame, signal: AbortSignal): 
       result = await captureVisiblePage(request)
       break
     case "page.click":
-      result = await runPageOperation("click", request)
+      result = await runClickOperation(request)
       break
     case "page.type":
       result = await runPageOperation("type", request)

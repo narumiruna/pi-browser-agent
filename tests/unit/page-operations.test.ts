@@ -65,15 +65,54 @@ describe("page operations", () => {
     expect(click).toHaveBeenCalledOnce()
   })
 
-  test("requires confirmation before cross-origin or download links", async () => {
-    document.body.innerHTML = '<a id="external" href="https://example.test/file" download>File</a>'
+  test("requires confirmation and trusted navigation for cross-origin links", async () => {
+    document.body.innerHTML = '<a id="external" href="https://example.test/file">File</a>'
     const link = document.querySelector<HTMLAnchorElement>("#external") as HTMLAnchorElement
     makeVisible(link)
-    const click = vi.spyOn(link, "click").mockImplementation(() => undefined)
+    const click = vi.fn()
+    link.addEventListener("click", click)
+
+    const inspection = await executePageOperation("inspectClick", { selector: "#external" }, false)
+    expect(inspection).toMatchObject({
+      ok: true,
+      result: { download: false, targetUrl: link.href },
+    })
 
     const blocked = await executePageOperation("click", { selector: "#external" }, false)
     expect(blocked).toMatchObject({ ok: false, error: { code: "CONFIRMATION_REQUIRED" } })
+    await expect(
+      executePageOperation("click", { selector: "#external" }, true),
+    ).resolves.toMatchObject({ ok: false, error: { code: "PERMISSION_DENIED" } })
+    await expect(
+      executePageOperation("click", { selector: "#external" }, true, "https://other.test/file"),
+    ).resolves.toMatchObject({ ok: false, error: { code: "PERMISSION_DENIED" } })
+    const trustedTarget = link.href
+    link.href = "/same-origin"
+    await expect(
+      executePageOperation("click", { selector: "#external" }, true, trustedTarget),
+    ).resolves.toMatchObject({ ok: false, error: { code: "PERMISSION_DENIED" } })
     expect(click).not.toHaveBeenCalled()
+
+    link.href = trustedTarget
+    await expect(
+      executePageOperation("click", { selector: "#external" }, true, trustedTarget),
+    ).resolves.toMatchObject({ ok: true, result: { navigationAllowed: true } })
+    expect(click).not.toHaveBeenCalled()
+  })
+
+  test("allows confirmed non-HTTP download targets without treating them as navigation", async () => {
+    document.body.innerHTML = '<a id="download" href="data:text/plain,hello" download>File</a>'
+    const link = document.querySelector<HTMLAnchorElement>("#download") as HTMLAnchorElement
+    makeVisible(link)
+    const click = vi.spyOn(link, "click").mockImplementation(() => undefined)
+
+    await expect(
+      executePageOperation("click", { selector: "#download" }, false),
+    ).resolves.toMatchObject({ ok: false, error: { code: "CONFIRMATION_REQUIRED" } })
+    await expect(
+      executePageOperation("click", { selector: "#download" }, true, link.href),
+    ).resolves.toMatchObject({ ok: true })
+    expect(click).toHaveBeenCalledOnce()
   })
 
   test("detects submit controls when the selector targets a nested element", async () => {
@@ -138,6 +177,19 @@ describe("page operations", () => {
     await expect(
       executePageOperation("click", { selector: "#covered" }, false),
     ).resolves.toMatchObject({ ok: false, error: { code: "INVALID_REQUEST" } })
+  })
+
+  test("allows a visible descendant to override an ancestor's hidden visibility", async () => {
+    document.body.innerHTML =
+      '<div style="visibility: hidden"><button id="visible" type="button" style="visibility: visible">Visible</button></div>'
+    const button = document.querySelector<HTMLButtonElement>("#visible") as HTMLButtonElement
+    makeVisible(button)
+    const click = vi.spyOn(button, "click").mockImplementation(() => undefined)
+
+    await expect(
+      executePageOperation("click", { selector: "#visible" }, false),
+    ).resolves.toMatchObject({ ok: true })
+    expect(click).toHaveBeenCalledOnce()
   })
 
   test("accepts a selected child when hit testing finds its clickable ancestor", async () => {
