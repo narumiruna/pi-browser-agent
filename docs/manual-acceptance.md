@@ -24,26 +24,30 @@ Use a production build from `npm run build`. Do not test login with development 
 3. **Text SSE response**
    - Make a harmless HTTP(S) page visible and ask for a one-sentence summary without using a bind command.
    - Expected: the Side Panel shows the page automatically, text appears incrementally, and DevTools shows an HTTPS request to `chatgpt.com/backend-api`, with no browser WebSocket or loopback request.
-4. **Browser tool round trip**
-   - Ask the agent to read a unique heading, type into a non-sensitive test field, and click an ordinary button.
+4. **Clipboard image round trip**
+   - Copy a PNG, JPEG, WebP, or GIF image and paste it into the composer.
+   - Expected: a removable preview appears; sending with optional text shows the image in the transcript and lets the model inspect it.
+   - Reopen the session and confirm the image still renders. Try an image larger than 3 MB and confirm it is rejected without being attached.
+5. **Browser tool round trip**
+   - Ask the agent to read a unique heading, capture the visible page, type into a non-sensitive test field, and click an ordinary button.
    - Switch to another HTTP(S) tab and confirm the Side Panel follows it; switch to an internal Chrome page and confirm no page remains targeted.
    - Expected: the read output is marked untrusted and each operation affects only the currently visible HTTP(S) tab.
    - Ask it to submit a form or call a WebMCP tool.
    - Expected: the operation waits for explicit confirmation.
-5. **Refresh**
+6. **Refresh**
    - Use **Refresh credential** if exposed in the tested build, or repeat a request after the token reaches refresh eligibility in a controlled test profile.
    - Expected: one refresh request succeeds, the session continues, and no credential appears in logs or storage outside trusted local storage.
-6. **Permission revocation**
+7. **Permission revocation**
    - Revoke either OpenAI origin in Chrome extension settings, then send a prompt.
    - Expected: the active run aborts, the panel changes to **Not logged in**, and the next request is blocked until login. No fallback host is contacted.
-7. **Interruption and restart**
+8. **Interruption and restart**
    - Start a response, close the Side Panel, reopen it, then restart Chrome.
    - Expected: the last complete transcript returns, the session is marked interrupted when applicable, and no click, type, navigation, or WebMCP call repeats automatically.
-8. **Logout and deletion**
+9. **Logout and deletion**
    - Select **Log out**, then attempt a request.
    - Expected: the request is blocked until login.
    - Delete one session and use **Clear all session data**; verify associated image content is no longer listed.
-9. **Artifact inspection**
+10. **Artifact inspection**
    - Run `npm run audit:artifact` and inspect `chrome://extensions` permissions.
    - Expected: the audit passes; there is no loopback URL, remote code, source map, native host, or unexpected host permission.
 

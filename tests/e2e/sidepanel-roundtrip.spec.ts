@@ -135,6 +135,19 @@ async function waitForCurrentTab(url: string): Promise<typeof tabContext> {
   return current
 }
 
+async function pastePngIntoComposer(): Promise<void> {
+  await controller.locator("#prompt").evaluate((target) => {
+    const encoded =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nL8AAAAASUVORK5CYII="
+    const bytes = Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0))
+    const clipboard = new DataTransfer()
+    clipboard.items.add(new File([bytes], "clipboard.png", { type: "image/png" }))
+    target.dispatchEvent(
+      new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: clipboard }),
+    )
+  })
+}
+
 test.beforeAll(async () => {
   fixture = await startFixture()
   const directory = await mkdtemp(join(tmpdir(), "pi-chrome-e2e-"))
@@ -253,6 +266,13 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
   await controller.reload()
   await expect(controller.locator("#auth-status")).toContainText("OpenAI connected")
 
+  await pastePngIntoComposer()
+  await expect(controller.locator("#pasted-images img")).toBeVisible()
+  await controller.locator(".remove-pasted-image").click()
+  await expect(controller.locator("#pasted-images")).toBeHidden()
+  await pastePngIntoComposer()
+  await expect(controller.locator("#pasted-images img")).toBeVisible()
+
   await page.locator("h1").selectText()
   const responses = [
     toolCall(1, "browser_read_page", {}),
@@ -272,6 +292,9 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
     expect(route.request().headers().accept).toContain("text/event-stream")
     const body = route.request().postDataJSON() as { tools?: Array<{ name?: string }> }
     expect(body.tools?.map((tool) => tool.name)).toContain("browser_read_page")
+    if (requestCount === 0) {
+      expect(JSON.stringify(body)).toContain("data:image/png;base64,")
+    }
     const response = responses[requestCount]
     requestCount += 1
     if (!response) throw new Error(`Unexpected Codex request ${requestCount}`)
@@ -285,6 +308,8 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
 
   await controller.locator("#prompt").fill("Exercise the browser tools")
   await controller.locator("#send").click()
+  await expect(controller.locator("#pasted-images")).toBeHidden()
+  await expect(controller.locator('#transcript img[alt="Pasted image"]')).toBeVisible()
   await expect(controller.locator("#confirm-dialog")).toBeVisible()
   await controller.locator('#confirm-dialog button[value="confirm"]').click()
   await expect(controller.locator("#confirm-dialog")).toBeHidden()
@@ -293,6 +318,7 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
   await expect(controller.locator("#transcript")).toContainText(
     "Mock agent completed the browser round trip.",
   )
+  await expect(controller.locator('#transcript img[alt="Image result"]')).toBeVisible()
   await expect(controller.locator("#transcript details.message").first()).toHaveJSProperty(
     "open",
     false,
@@ -301,6 +327,9 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
   await expect(page).toHaveURL(`http://127.0.0.1:${fixture.port}/second`)
   await expect(page.locator("main")).toHaveText("Second page")
   await context.unroute(codexUrl)
+  await controller.reload()
+  await expect(controller.locator('#transcript img[alt="Pasted image"]')).toBeVisible()
+  await expect(controller.locator('#transcript img[alt="Image result"]')).toBeVisible()
 
   await page.goto(`http://127.0.0.1:${fixture.port}/`)
   await page.bringToFront()

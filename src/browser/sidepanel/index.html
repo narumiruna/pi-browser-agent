@@ -106,6 +106,12 @@
     <footer class="composer">
       <label for="prompt" class="visually-hidden">Message</label>
       <div class="composer-shell">
+        <div
+          id="pasted-images"
+          class="pasted-images"
+          aria-live="polite"
+          hidden
+        ></div>
         <textarea id="prompt" rows="2" placeholder="Ask about the current page"></textarea>
         <div class="composer-toolbar">
           <span id="composer-hint">Enter to send · Shift+Enter for a new line</span>

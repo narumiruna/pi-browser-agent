@@ -89,15 +89,24 @@ describe("browser agent session persistence", () => {
     const state = runtime.agent.state as unknown as { isStreaming: boolean }
     state.isStreaming = true
 
+    const image = { type: "image" as const, data: "cG5n", mimeType: "image/png" }
     await expect(runtime.submit("Change direction")).resolves.toBe("steer")
+    await expect(runtime.submit("Inspect this", "steer", [image])).resolves.toBe("steer")
     await expect(runtime.submit("Do this later", "followUp")).resolves.toBe("followUp")
-    expect(steer).toHaveBeenCalledWith("Change direction")
-    expect(followUp).toHaveBeenCalledWith("Do this later")
+    await expect(runtime.submit("Inspect this later", "followUp", [image])).resolves.toBe(
+      "followUp",
+    )
+    expect(steer).toHaveBeenNthCalledWith(1, "Change direction")
+    expect(steer).toHaveBeenNthCalledWith(2, "Inspect this", [image])
+    expect(followUp).toHaveBeenNthCalledWith(1, "Do this later")
+    expect(followUp).toHaveBeenNthCalledWith(2, "Inspect this later", [image])
 
     state.isStreaming = false
     const prompt = vi.spyOn(runtime, "prompt").mockResolvedValue()
     await expect(runtime.submit("Start a task")).resolves.toBe("prompt")
-    expect(prompt).toHaveBeenCalledWith("Start a task")
+    await expect(runtime.submit("Inspect now", "steer", [image])).resolves.toBe("prompt")
+    expect(prompt).toHaveBeenNthCalledWith(1, "Start a task")
+    expect(prompt).toHaveBeenNthCalledWith(2, "Inspect now", [image])
     await runtime.shutdown()
   })
 
