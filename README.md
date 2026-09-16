@@ -1,83 +1,56 @@
-# Pi Chrome Bridge
+# Pi Chrome
 
-Pi Chrome Bridge connects one explicitly authorized Chrome tab to an existing pi coding-agent session. It contains two installable parts:
+Pi Chrome is a Chrome-native Codex assistant. The Side Panel runs `pi-agent-core` and `pi-ai`, signs in with a ChatGPT Plus/Pro device code, and exposes bounded tools for one explicitly bound tab.
 
-- a Manifest V3 Chrome extension built with Extension.js;
-- a pi extension that exposes bounded browser tools and hosts an authenticated loopback WebSocket server.
-
-WebMCP is an optional page adapter. It is not used as the process transport.
+No local agent process, native host, shell, filesystem access, pairing secret, or loopback connection is required.
 
 ## Requirements
 
-- Node.js 22.12 or a newer even-numbered release supported by the toolchain
+- Node.js 22.19 or a newer supported even-numbered release
 - Chrome 116 or newer
-- pi coding agent 0.85.1 or newer
+- A ChatGPT Plus or Pro account with Codex access
 
 ## Install and build
 
 ```sh
-npm install
+npm ci
 npm run build
 ```
 
-The Chrome artifact is written to `dist/chrome`.
-
-Load it locally:
+Load the production artifact:
 
 1. Open `chrome://extensions`.
 2. Enable **Developer mode**.
 3. Choose **Load unpacked**.
 4. Select `dist/chrome`.
+5. Select the extension action to open the Side Panel.
 
-Run the pi extension directly during development:
+## First use
 
-```sh
-pi -e ./src/pi/index.ts
-```
+1. In the Side Panel, select **Log in** and approve access to `auth.openai.com` and `chatgpt.com`.
+2. Open the verification page, enter the displayed device code, and complete OpenAI login.
+3. Open an HTTP or HTTPS page, then select **Bind active tab**.
+4. Select **Allow site** if a browser action needs persistent access beyond the action's temporary `activeTab` grant.
+5. Enter a prompt.
 
-Or install this checkout as a local pi package:
+The model transport is always SSE. Closing the Side Panel aborts the active run and marks the session interrupted; reopening never automatically repeats a browser mutation.
 
-```sh
-pi install .
-```
+## Browser safety
 
-## Pair Chrome with pi
+The agent can read visible text and selection, capture the visible viewport, click one visible CSS-selected element, type into ordinary editable controls, navigate, and use page WebMCP tools when available.
 
-1. Start pi with the extension loaded.
-2. Run `/chrome-pair` in pi.
-3. Open an HTTP or HTTPS tab that pi may access.
-4. Open the **Pi Chrome Bridge** popup.
-5. Paste the displayed pairing secret and verify the port, then select **Pair and bind this tab**.
+- Password and file inputs are denied.
+- Form submissions, downloads, cross-origin links, cross-origin navigation, and all WebMCP calls require confirmation.
+- A request created before tab navigation is rejected as stale.
+- Visible text and selected text are capped at 50 KB; screenshots are capped at 3 MB.
+- Page text, selections, screenshot metadata, and WebMCP results are labeled as untrusted model input.
+- Credentials stay in trusted extension storage and are never sent to the service worker, content injection, page context, transcript, or diagnostic export.
 
-The secret is shown by pi for transfer to Chrome. Pi stores it in `~/.pi/agent/pi-chrome.json` (or the configured pi agent directory) with mode `0600`; Chrome stores it in `chrome.storage.local`. Running `/chrome-pair` again rotates the secret and disconnects the previous client.
+## Sessions and settings
 
-The normal flow uses the temporary `activeTab` grant created when the user opens the popup. Select **Always allow this site** to request an optional, origin-scoped host permission. The production manifest does not request `<all_urls>`. Before navigating the bound tab across origins, grant **Always allow this site** on the destination, then return to and rebind the source tab. Chrome revokes `activeTab` access on cross-origin navigation.
+The Side Panel supports creating, resuming, renaming, and deleting sessions. Complete transcript boundaries are stored in versioned IndexedDB records. Storage keeps at most 50 sessions and limits each record to 5 MB. **Clear all session data** removes transcripts and embedded images.
 
-The tab binding survives an MV3 service-worker restart, but it is cleared when the browser session ends. Bind a tab again after restarting Chrome. Revoking from the popup normally waits for pi to persist the revocation and close the authenticated connection. If pi is disconnected, the popup clears local pairing data and warns you to run `/chrome-revoke` in pi before pairing again.
-
-Commands:
-
-- `/chrome-pair` — rotate and display a pairing secret.
-- `/chrome-status` — show listener, pairing, connection, and bound-tab state.
-- `/chrome-revoke` — revoke the secret and disconnect Chrome.
-
-## Tools
-
-| Tool | Capability |
-| --- | --- |
-| `browser_connection_state` | Inspect local bridge and bound-tab state |
-| `browser_get_active_tab` | Read metadata for the bound tab |
-| `browser_read_page` | Read visible text, truncated to 50 KB |
-| `browser_get_selection` | Read selected page text |
-| `browser_capture_visible` | Capture the visible active viewport as PNG |
-| `browser_click` | Click one visible CSS-selected element |
-| `browser_type` | Replace text in a non-sensitive editable element |
-| `browser_navigate` | Navigate to an HTTP or HTTPS URL |
-| `browser_webmcp` | List or call page WebMCP tools when available |
-
-Form submissions, downloads, cross-origin navigation, and WebMCP calls require interactive confirmation. Cross-origin navigation additionally requires a previously granted destination host permission. Password and file inputs are always denied. There is no arbitrary JavaScript execution tool.
-
-Use the popup or the selection context menu to send selected page text to pi. Browser content is wrapped and labelled as untrusted before it enters the conversation. If pi is busy, the message is queued as a follow-up.
+The system prompt and AGENTS-style instructions are editable in the Side Panel and apply to the next run. The extension does not discover instructions from the local filesystem.
 
 ## Development
 
@@ -86,26 +59,25 @@ npm run dev:chrome
 npm test
 npm run test:e2e
 npm run ci
+npm audit --omit=dev
 ```
 
-The Playwright suite builds a temporary test-only extension copy with `<all_urls>` so headless Chromium can exercise `captureVisibleTab` without a toolbar gesture. The production manifest remains `activeTab`-only.
+`npm run build` runs the isolated browser bundle probe, production extension build, typecheck, and artifact security audit. `npm run package:chrome` creates the Chrome zip without publishing anything.
 
-Package artifacts without publishing:
+## Troubleshooting
 
-```sh
-npm run package:chrome  # dist/chrome/pi-chrome.zip
-npm run package:pi      # dist/packages/pi-chrome-0.1.0.tgz
-```
-
-Do not load an Extension.js development output into a release package. Run `npm run package:chrome` to regenerate a production artifact.
-
-## Configuration
-
-Set `PI_CHROME_PORT` before starting pi to replace the default loopback port `17373`. The value must be between `1024` and `65535`. The server always binds only to `127.0.0.1`.
+- **OpenAI host access was revoked:** select **Log in** again and approve both requested OpenAI origins.
+- **A page tool is denied:** bind the intended HTTP(S) tab and select **Allow site**. Chrome internal pages cannot be controlled.
+- **Stale context:** the bound tab navigated after the tool request began. Retry after the Side Panel shows the new URL.
+- **Login pending:** finish the device flow before its 15-minute expiry. Cancel and restart if the code expires or is denied.
+- **Refresh failed:** log out, then complete device login again. The extension does not fall back to another provider.
+- **Interrupted session:** review the transcript before continuing. Mutation tools are never replayed automatically.
 
 ## Documentation
 
 - [Architecture](docs/architecture.md)
-- [Protocol](docs/protocol.md)
+- [Authentication](docs/authentication.md)
+- [Permissions and data storage](docs/permissions-and-storage.md)
 - [Security model](docs/security.md)
+- [Manual acceptance](docs/manual-acceptance.md)
 - [WebMCP status](docs/webmcp.md)

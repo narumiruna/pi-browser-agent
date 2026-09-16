@@ -1,4 +1,4 @@
-import { BridgeError, type TabContext } from "../../protocol/index.js"
+import { RuntimeError, type TabContext } from "../runtime/types.js"
 
 export function assertTabContext(expected: TabContext | undefined, actual: TabContext): void {
   if (!expected) return
@@ -7,7 +7,7 @@ export function assertTabContext(expected: TabContext | undefined, actual: TabCo
     expected.url !== actual.url ||
     expected.epoch !== actual.epoch
   ) {
-    throw new BridgeError(
+    throw new RuntimeError(
       "STALE_CONTEXT",
       "The bound tab navigated after this request was created",
       {

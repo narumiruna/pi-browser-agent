@@ -318,6 +318,10 @@ describe("page operations", () => {
   test("feature-detects WebMCP and keeps the DOM fallback available", async () => {
     await expect(executeWebMcpOperation("webmcp.listTools", {}, false)).resolves.toMatchObject({
       ok: false,
+      error: { code: "CONFIRMATION_REQUIRED" },
+    })
+    await expect(executeWebMcpOperation("webmcp.listTools", {}, true)).resolves.toMatchObject({
+      ok: false,
       error: { code: "NOT_SUPPORTED" },
     })
 
@@ -332,21 +336,21 @@ describe("page operations", () => {
       },
     })
 
-    await expect(executeWebMcpOperation("webmcp.listTools", {}, false)).resolves.toMatchObject({
+    await expect(executeWebMcpOperation("webmcp.listTools", {}, true)).resolves.toMatchObject({
       ok: true,
       result: [{ name: "add-todo" }],
     })
     await expect(
       executeWebMcpOperation(
         "webmcp.callTool",
-        { name: "add-todo", arguments: { text: "Ship bridge" } },
+        { name: "add-todo", arguments: { text: "Ship extension" } },
         false,
       ),
     ).resolves.toMatchObject({ ok: false, error: { code: "CONFIRMATION_REQUIRED" } })
     await expect(
       executeWebMcpOperation(
         "webmcp.callTool",
-        { name: "add-todo", arguments: { text: "Ship bridge" } },
+        { name: "add-todo", arguments: { text: "Ship extension" } },
         true,
       ),
     ).resolves.toMatchObject({ ok: true })
@@ -362,12 +366,12 @@ describe("page operations", () => {
       },
     })
 
-    await expect(executeWebMcpOperation("webmcp.listTools", {}, false)).resolves.toMatchObject({
+    await expect(executeWebMcpOperation("webmcp.listTools", {}, true)).resolves.toMatchObject({
       result: [{ name: "first" }],
     })
     tools = [{ name: "second", description: "Second tool", inputSchema: {} }]
     document.dispatchEvent(new Event("toolchange"))
-    await expect(executeWebMcpOperation("webmcp.listTools", {}, false)).resolves.toMatchObject({
+    await expect(executeWebMcpOperation("webmcp.listTools", {}, true)).resolves.toMatchObject({
       result: [{ name: "second" }],
     })
   })
@@ -378,7 +382,7 @@ describe("page operations", () => {
       value: { getTools: async () => [{ name: "legacy", inputSchema: {} }] },
     })
 
-    await expect(executeWebMcpOperation("webmcp.listTools", {}, false)).resolves.toMatchObject({
+    await expect(executeWebMcpOperation("webmcp.listTools", {}, true)).resolves.toMatchObject({
       result: [{ name: "legacy" }],
     })
   })

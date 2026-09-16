@@ -1,9 +1,9 @@
-import type { JsonObject, JsonValue } from "../../protocol/index.js"
 import type {
   PageOperationFailure,
   PageOperationResult,
   PageOperationSuccess,
 } from "../content/page-operations.js"
+import type { JsonObject, JsonValue } from "../runtime/types.js"
 
 export type WebMcpOperation = "webmcp.callTool" | "webmcp.listTools"
 
@@ -55,6 +55,11 @@ export async function executeWebMcpOperation(
   }
 
   try {
+    if (!confirmed) {
+      return failure("CONFIRMATION_REQUIRED", "WebMCP access requires explicit confirmation", {
+        action: operation,
+      })
+    }
     const context = modelContext()
     if (!context?.getTools) {
       return failure("NOT_SUPPORTED", "WebMCP is not available in this page context")
@@ -72,13 +77,6 @@ export async function executeWebMcpOperation(
       )
     }
 
-    if (!confirmed) {
-      return failure(
-        "CONFIRMATION_REQUIRED",
-        "Calling a page-provided WebMCP tool may change page or account state",
-        { action: "webmcp.callTool" },
-      )
-    }
     if (!context.executeTool) {
       return failure("NOT_SUPPORTED", "WebMCP tool execution is not available in this page context")
     }

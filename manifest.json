@@ -1,20 +1,27 @@
 {
   "manifest_version": 3,
-  "name": "Pi Chrome Bridge",
-  "description": "Connect an explicitly authorized Chrome tab to the local pi coding agent.",
+  "name": "Pi Chrome",
+  "description": "A Chrome-native Codex assistant for an explicitly bound tab.",
   "version": "0.1.0",
   "minimum_chrome_version": "116",
-  "permissions": ["activeTab", "alarms", "contextMenus", "scripting", "storage"],
-  "optional_host_permissions": ["http://*/*", "https://*/*"],
+  "permissions": ["activeTab", "contextMenus", "scripting", "sidePanel", "storage"],
+  "optional_host_permissions": [
+    "https://auth.openai.com/*",
+    "https://chatgpt.com/*",
+    "http://*/*",
+    "https://*/*"
+  ],
   "background": {
     "service_worker": "src/browser/service-worker.ts",
     "type": "module"
   },
   "action": {
-    "default_title": "Pi Chrome Bridge",
-    "default_popup": "src/browser/popup/index.html"
+    "default_title": "Open Pi Chrome"
+  },
+  "side_panel": {
+    "default_path": "src/browser/sidepanel/index.html"
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; connect-src ws://127.0.0.1:*"
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src https://auth.openai.com https://chatgpt.com"
   }
 }

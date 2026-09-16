@@ -1,4 +1,4 @@
-import type { JsonObject, JsonValue } from "../../protocol/index.js"
+import type { JsonObject, JsonValue } from "../runtime/types.js"
 
 export type PageOperation = "click" | "getSelection" | "getVisibleText" | "inspectClick" | "type"
 
