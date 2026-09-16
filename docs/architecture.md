@@ -34,7 +34,7 @@ Closing the panel aborts the active agent. Complete messages and tool results ar
 
 ### Service worker
 
-The worker owns the bound-tab context, Chrome permissions, context menu, injected DOM operations, screenshots, navigation, and WebMCP adapter. It accepts only the methods and JSON shapes listed in `src/browser/runtime/messages.ts`. Every operation compares its captured tab ID, URL, and navigation epoch with the current context.
+The worker owns the bound-tab context, context menu, injected DOM operations, screenshots, navigation, and WebMCP adapter. The Side Panel requests optional host permissions directly from the corresponding user gesture; the worker verifies those grants before protected operations. It accepts only the methods and JSON shapes listed in `src/browser/runtime/messages.ts`. Every operation compares its captured tab ID, URL, and navigation epoch with the current context.
 
 ### Injected operations
 

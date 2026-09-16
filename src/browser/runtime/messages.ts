@@ -6,7 +6,7 @@ export const RUNTIME_METHODS = [
   "tabs.unbind",
   "tabs.getActive",
   "tabs.navigate",
-  "permissions.grantBoundOrigin",
+  "selection.takePending",
   "requests.cancel",
   "page.getVisibleText",
   "page.getSelection",
@@ -79,12 +79,17 @@ function hasValidParams(method: RuntimeMethod, params: Record<string, unknown>):
     case "tabs.bindActive":
     case "tabs.unbind":
     case "tabs.getActive":
-    case "permissions.grantBoundOrigin":
     case "page.getVisibleText":
     case "page.getSelection":
     case "page.captureVisible":
     case "webmcp.listTools":
       return Object.keys(params).length === 0
+    case "selection.takePending":
+      return (
+        hasOnlyKeys(params, ["windowId"]) &&
+        Number.isSafeInteger(params.windowId) &&
+        (params.windowId as number) >= 0
+      )
     case "tabs.navigate":
       return (
         hasOnlyKeys(params, ["url"]) &&
@@ -173,6 +178,7 @@ export async function sendRuntimeRequest(
   const response = (await chrome.runtime.sendMessage(request).finally(() => {
     signal?.removeEventListener("abort", cancel)
   })) as RuntimeResponse | undefined
+  if (signal?.aborted) throw new RuntimeError("REQUEST_CANCELLED", "Browser request was cancelled")
   if (!response) throw new RuntimeError("INTERNAL_ERROR", "The extension worker did not respond")
   if (!response.ok) {
     throw new RuntimeError(

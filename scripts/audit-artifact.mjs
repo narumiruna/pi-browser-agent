@@ -1,5 +1,6 @@
 import { readdir, readFile, stat } from "node:fs/promises"
 import { join, relative, resolve } from "node:path"
+import { NODE_BUILTIN_IMPORT } from "../tooling/node-builtins.mjs"
 
 const root = resolve("dist/chrome")
 const files = []
@@ -18,7 +19,7 @@ for (const path of files) {
   const name = relative(root, path)
   const contents = await readFile(path, "utf8").catch(() => "")
   const checks = [
-    [/\b(?:import|from|require\s*\()["']node:/, "Node built-in import"],
+    [NODE_BUILTIN_IMPORT, "Node built-in import"],
     [/(?:ws|wss):\/\/(?:127\.0\.0\.1|localhost)|127\.0\.0\.1:17373/, "localhost bridge URL"],
     [/<script[^>]+src=["']https?:\/\//i, "remote executable script"],
     [

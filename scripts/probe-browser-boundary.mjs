@@ -2,6 +2,7 @@ import { mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join, relative, resolve } from "node:path"
 import { build } from "esbuild"
+import { containsNodeBuiltinImport } from "../tooling/node-builtins.mjs"
 
 const output = await mkdtemp(join(tmpdir(), "pi-chrome-browser-probe-"))
 try {
@@ -32,7 +33,7 @@ try {
   inventory.sort((left, right) => left.file.localeCompare(right.file))
   for (const item of inventory) {
     const contents = await readFile(join(output, item.file), "utf8")
-    if (/\b(?:import|from|require\s*\()["']node:/.test(contents)) {
+    if (containsNodeBuiltinImport(contents)) {
       throw new Error(`Browser boundary emitted a Node built-in import in ${item.file}`)
     }
   }
