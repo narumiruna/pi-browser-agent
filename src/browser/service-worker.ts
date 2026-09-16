@@ -91,7 +91,9 @@ async function finishVisibleTabSync(
 ): Promise<TabContext | undefined> {
   const previous = boundContext
   const tab = await findFocusedVisibleTab(version)
-  if (tab === null) return latestVisibleTabContext(version)
+  if (tab === null || version !== visibleTabSyncVersion) {
+    return latestVisibleTabContext(version)
+  }
 
   const context = setBoundTab(tab)
   if (

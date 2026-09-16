@@ -217,6 +217,7 @@ describe("service worker visible-tab targeting", () => {
       ok: true,
       result: { tabContext: { tabId: 7 } },
     })
+    sendMessage.mockClear()
     delayedWindowLookup = new Promise<void>((resolve) => {
       releaseWindowLookup = resolve
     })
@@ -256,6 +257,34 @@ describe("service worker visible-tab targeting", () => {
     )
 
     activeTab = { id: 7, url: "https://example.test/page", windowId: 3 }
+    await expect(appState("current-before-focus-loss-race")).resolves.toMatchObject({
+      ok: true,
+      result: { tabContext: { tabId: 7 } },
+    })
+    let focusLossQueued = false
+    queryTabs.mockResolvedValueOnce([activeTab]).mockImplementationOnce(async () => [
+      {
+        id: activeTab.id,
+        windowId: activeTab.windowId,
+        get url() {
+          if (!focusLossQueued) {
+            focusLossQueued = true
+            queueMicrotask(() => {
+              focusedWindowId = -1
+              listeners.focusChanged?.(-1)
+            })
+          }
+          return activeTab.url
+        },
+      },
+    ])
+    await expect(appState("focus-loss-before-commit")).resolves.toEqual({
+      ok: true,
+      result: { tabContext: null },
+    })
+    expect(focusLossQueued).toBe(true)
+
+    focusedWindowId = 3
     listeners.activated?.({ tabId: 7, windowId: 3 })
     focusedWindowId = -1
     listeners.focusChanged?.(-1)
