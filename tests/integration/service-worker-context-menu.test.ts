@@ -143,6 +143,15 @@ describe("service worker visible-tab targeting", () => {
         tabContext: { tabId: 1, url: "https://old.test/page", epoch: 0 },
       }),
     ).resolves.toMatchObject({ ok: false, error: { code: "STALE_CONTEXT" } })
+    await expect(
+      request({
+        kind: "request",
+        requestId: "stale-tab-metadata",
+        method: "tabs.getActive",
+        params: {},
+        tabContext: { tabId: 1, url: "https://old.test/page", epoch: 0 },
+      }),
+    ).resolves.toMatchObject({ ok: false, error: { code: "STALE_CONTEXT" } })
     expect(executeScript).not.toHaveBeenCalled()
 
     activeTab = { id: 8, url: "chrome://settings", windowId: 3 }

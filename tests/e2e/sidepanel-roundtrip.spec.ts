@@ -186,6 +186,16 @@ test("loads the Side Panel without uncaught errors", async () => {
   await expect(controller.locator("#send")).toBeVisible()
   await expect(controller.locator("#abort")).toBeHidden()
   await expect(controller.locator("#steer, #follow-up")).toHaveCount(0)
+
+  const viewport = controller.viewportSize() ?? { width: 1280, height: 720 }
+  await controller.setViewportSize({ width: 360, height: 260 })
+  expect(await controller.evaluate(() => document.documentElement.scrollHeight)).toBeGreaterThan(
+    260,
+  )
+  await controller.mouse.wheel(0, 1_000)
+  await expect.poll(() => controller.evaluate(() => window.scrollY)).toBeGreaterThan(0)
+  await controller.setViewportSize(viewport)
+  await controller.evaluate(() => window.scrollTo(0, 0))
 })
 
 test("automatically follows the visible tab and rejects the previous tab context", async () => {

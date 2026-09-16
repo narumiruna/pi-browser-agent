@@ -239,9 +239,11 @@ async function runWebMcp(operation: WebMcpOperation, request: RuntimeRequest): P
   return outcome.result
 }
 
-async function getActiveTab(): Promise<JsonValue> {
+async function getActiveTab(request: RuntimeRequest): Promise<JsonValue> {
   const context = await refreshBoundContext()
+  assertTabContext(request.tabContext, context)
   const tab = await chrome.tabs.get(context.tabId)
+  await revalidateRequestContext(request, context)
   return { ...context, active: tab.active, title: tab.title ?? "", windowId: tab.windowId }
 }
 
@@ -301,7 +303,7 @@ async function dispatch(request: RuntimeRequest, signal: AbortSignal): Promise<J
       result = { tabContext: (await syncVisibleTab()) ?? null }
       break
     case "tabs.getActive":
-      result = await getActiveTab()
+      result = await getActiveTab(request)
       break
     case "tabs.navigate":
       result = await navigate(request)
