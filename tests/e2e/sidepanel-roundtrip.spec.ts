@@ -148,6 +148,52 @@ async function pastePngIntoComposer(): Promise<void> {
   })
 }
 
+async function gateNextSubmissionPreflight(): Promise<void> {
+  await controller.evaluate(() => {
+    const originalContains = chrome.permissions.contains.bind(chrome.permissions)
+    let markEntered: () => void = () => undefined
+    let release: () => void = () => undefined
+    const entered = new Promise<void>((resolve) => {
+      markEntered = resolve
+    })
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    chrome.permissions.contains = (async (permissions) => {
+      markEntered()
+      await gate
+      chrome.permissions.contains = originalContains
+      return originalContains(permissions)
+    }) as typeof chrome.permissions.contains
+    ;(
+      window as typeof window & {
+        submissionGate?: { entered: Promise<void>; release: () => void }
+      }
+    ).submissionGate = { entered, release }
+  })
+}
+
+async function waitForSubmissionPreflight(): Promise<void> {
+  await controller.evaluate(
+    () =>
+      (
+        window as typeof window & {
+          submissionGate?: { entered: Promise<void> }
+        }
+      ).submissionGate?.entered,
+  )
+}
+
+async function releaseSubmissionPreflight(): Promise<void> {
+  await controller.evaluate(() => {
+    ;(
+      window as typeof window & {
+        submissionGate?: { release: () => void }
+      }
+    ).submissionGate?.release()
+  })
+}
+
 test.beforeAll(async () => {
   fixture = await startFixture()
   const directory = await mkdtemp(join(tmpdir(), "pi-chrome-e2e-"))
@@ -266,6 +312,45 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
   await controller.reload()
   await expect(controller.locator("#auth-status")).toContainText("OpenAI connected")
 
+  const codexUrl = "https://chatgpt.com/backend-api/codex/responses"
+  let markFirstRequestStarted: () => void = () => undefined
+  let releaseFirstResponse: () => void = () => undefined
+  const firstRequestStarted = new Promise<void>((resolve) => {
+    markFirstRequestStarted = resolve
+  })
+  const firstResponseGate = new Promise<void>((resolve) => {
+    releaseFirstResponse = resolve
+  })
+  await context.route(codexUrl, async (route) => {
+    markFirstRequestStarted()
+    await firstResponseGate
+    await route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      headers: { "cache-control": "no-cache" },
+      body: finalText(0, "Submission guard test complete."),
+    })
+  })
+
+  await controller.locator("#prompt").fill("Start the submission guard test")
+  await controller.locator("#send").click()
+  await firstRequestStarted
+  await gateNextSubmissionPreflight()
+  await controller.locator("#prompt").fill("Queue while the current task finishes")
+  await controller.locator("#send").click()
+  await waitForSubmissionPreflight()
+  releaseFirstResponse()
+  await expect(controller.locator("#transcript")).toContainText("Submission guard test complete.")
+  await expect(controller.locator("#run-status")).toHaveText("Ready")
+  await controller.evaluate(() => new Promise((resolve) => setTimeout(resolve)))
+  await expect(controller.locator("#send")).toBeDisabled()
+  await releaseSubmissionPreflight()
+  await expect(controller.locator("#send")).toBeEnabled()
+  await expect(controller.locator("#error")).toContainText(
+    "The current task finished before the instruction could be queued. Send it again.",
+  )
+  await context.unroute(codexUrl)
+
   await pastePngIntoComposer()
   await expect(controller.locator("#pasted-images img")).toBeVisible()
   await controller.locator(".remove-pasted-image").click()
@@ -286,7 +371,6 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
     finalText(9, "Mock agent completed the browser round trip."),
   ]
   let requestCount = 0
-  const codexUrl = "https://chatgpt.com/backend-api/codex/responses"
   await context.route(codexUrl, async (route) => {
     expect(route.request().method()).toBe("POST")
     expect(route.request().headers().accept).toContain("text/event-stream")
@@ -306,49 +390,14 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
     })
   })
 
-  await controller.evaluate(() => {
-    const originalContains = chrome.permissions.contains.bind(chrome.permissions)
-    let markEntered: () => void = () => undefined
-    let release: () => void = () => undefined
-    const entered = new Promise<void>((resolve) => {
-      markEntered = resolve
-    })
-    const gate = new Promise<void>((resolve) => {
-      release = resolve
-    })
-    chrome.permissions.contains = (async (permissions) => {
-      markEntered()
-      await gate
-      chrome.permissions.contains = originalContains
-      return originalContains(permissions)
-    }) as typeof chrome.permissions.contains
-    ;(
-      window as typeof window & {
-        submissionGate?: { entered: Promise<void>; release: () => void }
-      }
-    ).submissionGate = { entered, release }
-  })
-
+  await gateNextSubmissionPreflight()
   await controller.locator("#prompt").fill("Exercise the browser tools")
   await controller.locator("#send").click()
-  await controller.evaluate(
-    () =>
-      (
-        window as typeof window & {
-          submissionGate?: { entered: Promise<void> }
-        }
-      ).submissionGate?.entered,
-  )
+  await waitForSubmissionPreflight()
   await controller.locator(".remove-pasted-image").click()
   await pastePngIntoComposer()
   await expect(controller.locator("#pasted-images img")).toHaveCount(1)
-  await controller.evaluate(() => {
-    ;(
-      window as typeof window & {
-        submissionGate?: { release: () => void }
-      }
-    ).submissionGate?.release()
-  })
+  await releaseSubmissionPreflight()
 
   await expect(controller.locator("#pasted-images img")).toHaveCount(1)
   const transcriptImage = controller.locator('#transcript img[alt="Pasted image"]')
