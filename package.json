@@ -54,7 +54,7 @@
     "@types/chrome": "^0.0.301",
     "@types/node": "^24.7.2",
     "@types/ws": "^8.18.1",
-    "extension": "^4.1.19",
+    "extension": "^3.11.1",
     "husky": "^9.1.7",
     "jsdom": "^27.0.0",
     "typebox": "^1.3.31",
