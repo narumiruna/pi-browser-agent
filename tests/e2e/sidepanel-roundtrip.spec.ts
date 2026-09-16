@@ -55,6 +55,7 @@ let extensionPath: string
 let panelPath: string
 let profileDirectory: string
 let savedSessionId: string
+let controllerErrors: string[]
 let tabContext: { tabId: number; url: string; epoch: number }
 
 function sseResponse(item: Record<string, unknown>, index: number): string {
@@ -147,6 +148,8 @@ test.beforeAll(async () => {
   page = await context.newPage()
   await page.goto(`http://127.0.0.1:${fixture.port}/`)
   controller = await context.newPage()
+  controllerErrors = []
+  controller.on("pageerror", (error) => controllerErrors.push(error.message))
   const builtManifest = JSON.parse(await readFile(manifestPath, "utf8")) as {
     side_panel?: { default_path?: string }
   }
@@ -168,6 +171,14 @@ test.afterAll(async () => {
   await new Promise<void>((resolvePromise, reject) =>
     fixture?.server.close((error) => (error ? reject(error) : resolvePromise())),
   )
+})
+
+test("loads the Side Panel without uncaught errors", async () => {
+  await controller.waitForTimeout(100)
+  expect(controllerErrors).toEqual([])
+  await expect(controller.locator("#send")).toBeVisible()
+  await expect(controller.locator("#abort")).toBeHidden()
+  await expect(controller.locator("#steer, #follow-up")).toHaveCount(0)
 })
 
 test("automatically follows the visible tab and rejects the previous tab context", async () => {

@@ -4,53 +4,84 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Pi Chrome</title>
-    <link rel="stylesheet" href="./styles.css" />
   </head>
-  <body>
-    <header>
-      <div>
-        <strong>Pi Chrome</strong>
-        <span id="run-status" aria-live="polite">Ready</span>
+  <body data-state="idle">
+    <header class="app-header">
+      <div class="brand-row">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">π</span>
+          <div>
+            <strong>Pi Chrome</strong>
+            <span class="brand-subtitle">Browser agent</span>
+          </div>
+        </div>
+        <span class="status-pill">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span id="run-status" aria-live="polite">Ready</span>
+        </span>
       </div>
-      <div class="row wrap">
-        <button type="button" id="login">Log in</button>
-        <button type="button" id="refresh-token" hidden>Refresh credential</button>
-        <button type="button" id="logout" hidden>Log out</button>
-        <button type="button" id="grant-site">Allow site</button>
+
+      <div class="page-context">
+        <span class="eyebrow">Current page</span>
+        <p id="tab-status" title="">Detecting current page</p>
       </div>
-      <p id="auth-status">Not logged in</p>
-      <p id="tab-status">Detecting current page</p>
+
+      <div class="account-row">
+        <span id="auth-status" class="auth-status">Not logged in</span>
+        <div class="row wrap account-actions">
+          <button type="button" id="login" class="primary">Log in</button>
+          <button type="button" id="refresh-token" class="subtle" hidden>Refresh</button>
+          <button type="button" id="logout" class="subtle" hidden>Log out</button>
+          <button type="button" id="grant-site" class="subtle">Allow site</button>
+        </div>
+      </div>
     </header>
 
-    <section aria-label="Sessions">
-      <div class="row">
+    <section class="session-panel" aria-label="Sessions">
+      <div class="session-row">
+        <label for="sessions" class="visually-hidden">Saved sessions</label>
         <select id="sessions" aria-label="Saved sessions"></select>
-        <button type="button" id="new-session">New</button>
-        <button type="button" id="rename-session">Rename</button>
-        <button type="button" id="delete-session">Delete</button>
+        <div class="row session-actions">
+          <button type="button" id="new-session" class="subtle">New</button>
+          <button type="button" id="rename-session" class="subtle">Rename</button>
+          <button type="button" id="delete-session" class="subtle danger">Delete</button>
+        </div>
       </div>
-      <button type="button" id="clear-sessions" class="danger">Clear all session data</button>
+      <button type="button" id="clear-sessions" class="text-button danger">
+        Clear all session data
+      </button>
     </section>
 
-    <details>
-      <summary>Instructions</summary>
-      <label for="system-prompt">System prompt</label>
-      <textarea id="system-prompt" rows="4"></textarea>
-      <label for="agent-instructions">AGENTS-style instructions</label>
-      <textarea id="agent-instructions" rows="4"></textarea>
-      <button type="button" id="save-settings">Save for next run</button>
+    <details class="instruction-panel">
+      <summary>
+        <span>Instructions</span>
+        <span class="summary-hint">System and project guidance</span>
+      </summary>
+      <div class="settings-content">
+        <label for="system-prompt">System prompt</label>
+        <textarea id="system-prompt" rows="4"></textarea>
+        <label for="agent-instructions">AGENTS-style instructions</label>
+        <textarea id="agent-instructions" rows="4"></textarea>
+        <button type="button" id="save-settings" class="primary">Save instructions</button>
+      </div>
     </details>
 
     <main id="transcript" aria-live="polite" aria-label="Conversation"></main>
 
-    <footer>
-      <label for="prompt">Message</label>
-      <textarea id="prompt" rows="4" placeholder="Ask about the current page"></textarea>
-      <div class="row wrap">
-        <button type="button" id="send" class="primary">Send</button>
-        <button type="button" id="steer">Steer</button>
-        <button type="button" id="follow-up">Follow up</button>
-        <button type="button" id="abort" class="danger">Abort</button>
+    <footer class="composer">
+      <label for="prompt" class="visually-hidden">Message</label>
+      <div class="composer-shell">
+        <textarea id="prompt" rows="2" placeholder="Ask about the current page"></textarea>
+        <div class="composer-toolbar">
+          <span id="composer-hint">Enter to send · Shift+Enter for a new line</span>
+          <div class="row composer-actions">
+            <button type="button" id="abort" class="stop-button" hidden>Stop</button>
+            <button type="button" id="send" class="primary send-button">
+              <span>Send</span>
+              <span aria-hidden="true">↑</span>
+            </button>
+          </div>
+        </div>
       </div>
       <p id="error" role="alert"></p>
     </footer>
@@ -59,8 +90,8 @@
       <form method="dialog">
         <h2>Confirm browser action</h2>
         <p id="confirm-message"></p>
-        <div class="row">
-          <button type="submit" value="cancel">Cancel</button>
+        <div class="dialog-actions">
+          <button type="submit" value="cancel" class="subtle">Cancel</button>
           <button type="submit" value="confirm" class="primary">Confirm</button>
         </div>
       </form>
@@ -70,9 +101,11 @@
       <h2>OpenAI device login</h2>
       <p>Open the verification page and enter:</p>
       <output id="device-code"></output>
-      <div class="row">
-        <button type="button" id="open-verification">Open verification page</button>
-        <button type="button" id="cancel-login">Cancel</button>
+      <div class="dialog-actions">
+        <button type="button" id="cancel-login" class="subtle">Cancel</button>
+        <button type="button" id="open-verification" class="primary">
+          Open verification page
+        </button>
       </div>
     </dialog>
 

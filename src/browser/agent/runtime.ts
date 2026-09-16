@@ -29,6 +29,9 @@ export interface AuthStatus {
   accountId?: string
 }
 
+export type StreamingBehavior = "steer" | "followUp"
+export type SubmissionMode = "prompt" | StreamingBehavior
+
 export interface RuntimeCallbacks {
   confirm: ConfirmationHandler
   onAuthEvent: (event: AuthEvent) => void
@@ -188,6 +191,20 @@ export class BrowserAgentRuntime {
     if (this.agent.state.isStreaming) throw new Error("The agent is already running")
     this.agent.state.systemPrompt = composeSystemPrompt(this.settings)
     await this.agent.prompt(text)
+  }
+
+  async submit(
+    text: string,
+    streamingBehavior: StreamingBehavior = "steer",
+  ): Promise<SubmissionMode> {
+    if (this.authChanging) throw new Error("Wait for the authentication change to finish")
+    if (!this.agent.state.isStreaming) {
+      await this.prompt(text)
+      return "prompt"
+    }
+    if (streamingBehavior === "followUp") this.followUp(text)
+    else this.steer(text)
+    return streamingBehavior
   }
 
   steer(text: string): void {

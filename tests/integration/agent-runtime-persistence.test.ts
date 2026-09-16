@@ -81,6 +81,26 @@ afterEach(() => {
 })
 
 describe("browser agent session persistence", () => {
+  test("automatically routes submissions based on the current run state", async () => {
+    const runtime = createRuntime(new FakeLockManager() as unknown as LockManager)
+    await runtime.initialize()
+    const steer = vi.spyOn(runtime, "steer")
+    const followUp = vi.spyOn(runtime, "followUp")
+    const state = runtime.agent.state as unknown as { isStreaming: boolean }
+    state.isStreaming = true
+
+    await expect(runtime.submit("Change direction")).resolves.toBe("steer")
+    await expect(runtime.submit("Do this later", "followUp")).resolves.toBe("followUp")
+    expect(steer).toHaveBeenCalledWith("Change direction")
+    expect(followUp).toHaveBeenCalledWith("Do this later")
+
+    state.isStreaming = false
+    const prompt = vi.spyOn(runtime, "prompt").mockResolvedValue()
+    await expect(runtime.submit("Start a task")).resolves.toBe("prompt")
+    expect(prompt).toHaveBeenCalledWith("Start a task")
+    await runtime.shutdown()
+  })
+
   test("gives concurrent Side Panels distinct live sessions", async () => {
     const locks = new FakeLockManager() as unknown as LockManager
     const first = createRuntime(locks)

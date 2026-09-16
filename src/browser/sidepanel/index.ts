@@ -1,4 +1,5 @@
 import type { AgentEvent, AgentMessage } from "@earendil-works/pi-agent-core"
+import "./styles.css"
 import type { AuthEvent } from "@earendil-works/pi-ai"
 import { BrowserAgentRuntime } from "../agent/runtime.js"
 import { AUTH_ORIGINS } from "../auth/codex-oauth.js"
@@ -29,12 +30,33 @@ const loginDialog = element<HTMLDialogElement>("login-dialog")
 const deviceCode = element<HTMLOutputElement>("device-code")
 const systemPrompt = element<HTMLTextAreaElement>("system-prompt")
 const agentInstructions = element<HTMLTextAreaElement>("agent-instructions")
+const sendButton = element<HTMLButtonElement>("send")
+const abortButton = element<HTMLButtonElement>("abort")
+const composerHint = element<HTMLElement>("composer-hint")
 let loginController: AbortController | undefined
 let verificationUri = ""
 let activeTabUrl: string | undefined
 
 function setError(error?: unknown): void {
   errorOutput.textContent = error === undefined ? "" : safeErrorMessage(error)
+}
+
+function setRunStatus(text: string, running = runtime.agent.state.isStreaming): void {
+  runStatus.textContent = text
+  document.body.dataset.state = running ? "running" : "idle"
+  transcript.setAttribute("aria-busy", String(running))
+  abortButton.hidden = !running
+  promptInput.placeholder = running
+    ? "Add an instruction while Pi is working"
+    : "Ask about the current page"
+  composerHint.textContent = running
+    ? "Enter to guide the current task · Alt+Enter to queue it for later"
+    : "Enter to send · Shift+Enter for a new line"
+}
+
+function resizePromptInput(): void {
+  promptInput.style.height = "auto"
+  promptInput.style.height = `${Math.min(promptInput.scrollHeight, 160)}px`
 }
 
 function confirmation(
@@ -75,15 +97,45 @@ function messageText(message: AgentMessage): string {
     .join("\n")
 }
 
+function isToolCall(message: AgentMessage): boolean {
+  return (
+    message.role === "assistant" &&
+    "content" in message &&
+    Array.isArray(message.content) &&
+    message.content.some((item) => item.type === "toolCall")
+  )
+}
+
+function roleLabel(message: AgentMessage): string {
+  if (isToolCall(message)) return "Tool call"
+  if (message.role === "user") return "You"
+  if (message.role === "assistant") return "Pi"
+  if (message.role === "toolResult") return "Tool result"
+  return message.role
+}
+
 function renderMessages(streaming?: AgentMessage): void {
   transcript.replaceChildren()
-  for (const message of [...runtime.agent.state.messages, ...(streaming ? [streaming] : [])]) {
+  const messages = [...runtime.agent.state.messages, ...(streaming ? [streaming] : [])]
+  if (messages.length === 0) {
+    const emptyState = document.createElement("div")
+    emptyState.className = "empty-state"
+    const title = document.createElement("strong")
+    title.textContent = "How can I help?"
+    const description = document.createElement("span")
+    description.textContent = "Ask Pi about the page open in your browser."
+    emptyState.append(title, description)
+    transcript.append(emptyState)
+    return
+  }
+  for (const message of messages) {
     const article = document.createElement("article")
-    article.className = `message ${message.role}`
+    article.className = `message ${message.role}${isToolCall(message) ? " toolCall" : ""}`
     const role = document.createElement("span")
     role.className = "role"
-    role.textContent = message.role
+    role.textContent = roleLabel(message)
     const content = document.createElement("span")
+    content.className = "content"
     content.textContent = messageText(message)
     article.append(role, content)
     transcript.append(article)
@@ -108,7 +160,8 @@ async function refreshAuth(): Promise<void> {
   loginButton.hidden = status.loggedIn
   logoutButton.hidden = !status.loggedIn
   refreshTokenButton.hidden = !status.loggedIn
-  authStatus.textContent = status.loggedIn ? "Logged in" : "Not logged in"
+  authStatus.textContent = status.loggedIn ? "OpenAI connected" : "OpenAI not connected"
+  authStatus.dataset.loggedIn = String(status.loggedIn)
 }
 
 async function refreshTab(): Promise<void> {
@@ -122,9 +175,8 @@ async function refreshTab(): Promise<void> {
     typeof context.url === "string"
       ? context.url
       : undefined
-  tabStatus.textContent = activeTabUrl
-    ? `Current page: ${activeTabUrl}`
-    : "No supported page visible. Open an HTTP or HTTPS page."
+  tabStatus.textContent = activeTabUrl ?? "No supported page visible. Open an HTTP or HTTPS page."
+  tabStatus.title = activeTabUrl ?? ""
 }
 
 function onAuthEvent(event: AuthEvent): void {
@@ -138,7 +190,7 @@ function onAuthEvent(event: AuthEvent): void {
 function onAgentEvent(event: AgentEvent): void {
   switch (event.type) {
     case "agent_start":
-      runStatus.textContent = "Running"
+      setRunStatus("Working", true)
       setError()
       break
     case "message_update":
@@ -148,10 +200,10 @@ function onAgentEvent(event: AgentEvent): void {
       renderMessages()
       break
     case "tool_execution_start":
-      runStatus.textContent = `Running ${event.toolName}`
+      setRunStatus(`Using ${event.toolName}`, true)
       break
     case "agent_end":
-      runStatus.textContent = "Ready"
+      setRunStatus("Ready", false)
       renderMessages()
       if (runtime.agent.state.errorMessage) setError(runtime.agent.state.errorMessage)
       void refreshSessions()
@@ -231,7 +283,7 @@ element<HTMLButtonElement>("grant-site").addEventListener("click", () => {
   })
 })
 
-element<HTMLButtonElement>("send").addEventListener("click", () => {
+function submitPrompt(queueAfterCurrentTask = false): void {
   void run(async () => {
     const text = promptInput.value.trim()
     if (!text) return
@@ -240,25 +292,27 @@ element<HTMLButtonElement>("send").addEventListener("click", () => {
     if (!(await runtime.authStatus()).loggedIn)
       throw new Error("Log in to OpenAI before sending a prompt")
     promptInput.value = ""
-    await runtime.prompt(text)
+    resizePromptInput()
+    const mode = await runtime.submit(text, queueAfterCurrentTask ? "followUp" : "steer")
+    if (mode !== "prompt") setRunStatus("Instruction queued", true)
   })
+}
+
+sendButton.addEventListener("click", () => submitPrompt())
+
+promptInput.addEventListener("input", resizePromptInput)
+promptInput.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && runtime.agent.state.isStreaming) {
+    event.preventDefault()
+    runtime.abort()
+    return
+  }
+  if (event.key !== "Enter" || event.shiftKey || event.isComposing) return
+  event.preventDefault()
+  submitPrompt(event.altKey)
 })
 
-element<HTMLButtonElement>("steer").addEventListener("click", () => {
-  const text = promptInput.value.trim()
-  if (!text) return
-  runtime.steer(text)
-  promptInput.value = ""
-})
-
-element<HTMLButtonElement>("follow-up").addEventListener("click", () => {
-  const text = promptInput.value.trim()
-  if (!text) return
-  runtime.followUp(text)
-  promptInput.value = ""
-})
-
-element<HTMLButtonElement>("abort").addEventListener("click", () => runtime.abort())
+abortButton.addEventListener("click", () => runtime.abort())
 
 element<HTMLButtonElement>("save-settings").addEventListener("click", () => {
   void run(async () => {
@@ -266,7 +320,7 @@ element<HTMLButtonElement>("save-settings").addEventListener("click", () => {
       systemPrompt: systemPrompt.value,
       agentInstructions: agentInstructions.value,
     })
-    runStatus.textContent = "Saved for next run"
+    setRunStatus("Instructions saved")
   })
 })
 
@@ -336,12 +390,14 @@ chrome.runtime.onMessage.addListener((message: unknown) => {
   if (event.kind !== "event") return false
   if (event.name === "tab.changed") void refreshTab()
   if (event.name === "operation.progress" && event.payload) {
-    runStatus.textContent =
+    setRunStatus(
       event.payload.status === "started"
-        ? `Browser operation: ${String(event.payload.method)}`
+        ? `Using ${String(event.payload.method)}`
         : runtime.agent.state.isStreaming
-          ? "Running"
-          : "Ready"
+          ? "Working"
+          : "Ready",
+      event.payload.status === "started" || runtime.agent.state.isStreaming,
+    )
   }
   const selectionWindowId = event.payload?.windowId
   if (event.name === "selection.queued" && typeof selectionWindowId === "number") {
@@ -372,5 +428,8 @@ void run(async () => {
   systemPrompt.value = runtime.appSettings.systemPrompt
   agentInstructions.value = runtime.appSettings.agentInstructions
   renderMessages()
+  resizePromptInput()
+  setRunStatus("Ready", false)
   await Promise.all([refreshSessions(), refreshAuth(), refreshTab(), pullPendingSelection()])
+  promptInput.focus()
 })
