@@ -1,9 +1,11 @@
 import { IDBFactory } from "fake-indexeddb"
 import { describe, expect, test } from "vitest"
 import {
+  compactSession,
   createSession,
   MAX_SESSION_BYTES,
   SessionStore,
+  sessionByteLength,
 } from "../../src/browser/sessions/session-store.js"
 
 describe("session storage", () => {
@@ -54,8 +56,11 @@ describe("session storage", () => {
     const store = new SessionStore(new IDBFactory())
     const session = { ...createSession("gpt-5.4"), status: "running" as const }
     await store.put(session)
-    await store.markRunningSessionsInterrupted()
+    const other = { ...createSession("gpt-5.4"), status: "running" as const }
+    await store.put(other)
+    await store.markSessionInterrupted(session.id)
     await expect(store.get(session.id)).resolves.toMatchObject({ status: "interrupted" })
+    await expect(store.get(other.id)).resolves.toMatchObject({ status: "running" })
   })
 
   test("enforces retention and clears records with embedded images", async () => {
@@ -90,5 +95,25 @@ describe("session storage", () => {
     const session = createSession("gpt-5.4")
     session.messages = [{ role: "user", content: "x".repeat(MAX_SESSION_BYTES), timestamp: 1 }]
     await expect(store.put(session)).rejects.toThrow("storage limit")
+  })
+
+  test("compacts oversized images and messages into a persistable record", () => {
+    const session = createSession("gpt-5.4")
+    session.messages = [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "capture" },
+          { type: "image", data: "x".repeat(MAX_SESSION_BYTES), mimeType: "image/png" },
+        ],
+        timestamp: 1,
+      },
+    ]
+
+    const compacted = compactSession(session)
+
+    expect(compacted.removedImages).toBe(1)
+    expect(compacted.record.messages).toHaveLength(1)
+    expect(sessionByteLength(compacted.record)).toBeLessThanOrEqual(MAX_SESSION_BYTES)
   })
 })

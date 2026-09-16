@@ -22,7 +22,7 @@ Use a production build from `npm run build`. Do not test login with development 
    - Open the displayed verification URL, enter the code, and finish login.
    - Expected: the panel reports logged in without showing an access or refresh token.
 3. **Text SSE response**
-   - Bind a harmless page and ask for a one-sentence summary.
+   - Right-click a harmless page, select **Bind this tab to Pi Chrome**, and ask for a one-sentence summary.
    - Expected: text appears incrementally and DevTools shows an HTTPS request to `chatgpt.com/backend-api`, with no browser WebSocket or loopback request.
 4. **Browser tool round trip**
    - Ask the agent to read a unique heading, type into a non-sensitive test field, and click an ordinary button.
@@ -34,7 +34,7 @@ Use a production build from `npm run build`. Do not test login with development 
    - Expected: one refresh request succeeds, the session continues, and no credential appears in logs or storage outside trusted local storage.
 6. **Permission revocation**
    - Revoke either OpenAI origin in Chrome extension settings, then send a prompt.
-   - Expected: the active run aborts or the new request fails with a permission-revoked message. No fallback host is contacted.
+   - Expected: the active run aborts, the panel changes to **Not logged in**, and the next request is blocked until login. No fallback host is contacted.
 7. **Interruption and restart**
    - Start a response, close the Side Panel, reopen it, then restart Chrome.
    - Expected: the last complete transcript returns, the session is marked interrupted when applicable, and no click, type, navigation, or WebMCP call repeats automatically.

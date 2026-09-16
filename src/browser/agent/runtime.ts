@@ -4,9 +4,12 @@ import { OPENAI_PROVIDER_ID } from "../auth/codex-oauth.js"
 import { ChromeCredentialStore } from "../auth/credential-store.js"
 import { createBrowserModels } from "../auth/provider.js"
 import { safeErrorMessage } from "../auth/redaction.js"
+import { SessionLease } from "../sessions/session-lease.js"
 import {
+  compactSession,
   createSession,
   type SessionRecord,
+  SessionSizeLimitError,
   SessionStore,
   type SessionSummary,
 } from "../sessions/session-store.js"
@@ -30,6 +33,7 @@ export interface RuntimeCallbacks {
   confirm: ConfirmationHandler
   onAuthEvent: (event: AuthEvent) => void
   onAgentEvent: (event: AgentEvent) => void
+  onPersistenceError?: (message: string) => void
 }
 
 export function composeSystemPrompt(settings: AppSettings): string {
@@ -67,7 +71,10 @@ export class BrowserAgentRuntime {
   private closing = false
   private persistChain: Promise<void> = Promise.resolve()
 
-  constructor(private readonly callbacks: RuntimeCallbacks) {
+  constructor(
+    private readonly callbacks: RuntimeCallbacks,
+    private readonly sessionLease = new SessionLease(),
+  ) {
     const modelRuntime = createBrowserModels(this.credentials)
     this.models = modelRuntime.models
     this.model = modelRuntime.model
@@ -94,20 +101,33 @@ export class BrowserAgentRuntime {
 
   async initialize(sessionId?: string): Promise<void> {
     await restrictLocalStorageToTrustedContexts()
-    await this.sessions.markRunningSessionsInterrupted()
     this.settings = await getSettings()
-    const storedSessionId = sessionId ?? (await getActiveSessionId())
-    let restored = storedSessionId ? await this.sessions.get(storedSessionId) : undefined
-    if (!restored) {
+    const preferredId = sessionId ?? (await getActiveSessionId())
+    let restored = preferredId ? await this.sessions.get(preferredId) : undefined
+    if (restored && !(await this.sessionLease.claim(restored.id))) restored = undefined
+    if (!restored && !preferredId) {
       const latest = (await this.sessions.list())[0]
-      if (latest) restored = await this.sessions.get(latest.id)
+      if (latest) {
+        const candidate = await this.sessions.get(latest.id)
+        if (candidate && (await this.sessionLease.claim(candidate.id))) restored = candidate
+      }
     }
-    this.session = restored ?? createSession(this.model.id)
-    this.agent.sessionId = this.session.id
-    this.agent.state.messages = structuredClone(this.session.messages)
-    this.agent.state.thinkingLevel = this.session.model.thinkingLevel
-    this.agent.state.systemPrompt = composeSystemPrompt(this.settings)
-    if (!restored) await this.sessions.put(this.session)
+
+    if (restored) {
+      await this.sessions.markSessionInterrupted(restored.id)
+      restored = {
+        ...restored,
+        status: restored.status === "running" ? "interrupted" : restored.status,
+      }
+      this.session = restored
+    } else {
+      this.session = createSession(this.model.id)
+      if (!(await this.sessionLease.claim(this.session.id))) {
+        throw new Error("Unable to claim a new browser session")
+      }
+      await this.sessions.put(this.session)
+    }
+    this.applySession(this.session)
     await saveActiveSessionId(this.session.id)
   }
 
@@ -157,10 +177,14 @@ export class BrowserAgentRuntime {
 
   async logout(): Promise<void> {
     return this.runAuthChange(async () => {
-      this.agent.abort()
-      await this.agent.waitForIdle()
+      await this.stopAgent()
       await this.models.logout(OPENAI_PROVIDER_ID)
     })
+  }
+
+  async invalidateCredential(): Promise<void> {
+    await this.stopAgent()
+    await this.credentials.delete(OPENAI_PROVIDER_ID)
   }
 
   async prompt(text: string): Promise<void> {
@@ -187,50 +211,62 @@ export class BrowserAgentRuntime {
   }
 
   async newSession(): Promise<void> {
-    this.agent.abort()
-    await this.agent.waitForIdle()
-    this.session = createSession(this.model.id)
-    this.agent.reset()
-    this.agent.sessionId = this.session.id
-    this.agent.state.model = this.model
-    this.agent.state.tools = createBrowserTools(this.callbacks.confirm)
-    this.agent.state.thinkingLevel = "medium"
-    this.agent.state.systemPrompt = composeSystemPrompt(this.settings)
-    await this.sessions.put(this.session)
-    await saveActiveSessionId(this.session.id)
+    await this.stopAgent()
+    const record = createSession(this.model.id)
+    if (!(await this.sessionLease.claim(record.id)))
+      throw new Error("Unable to claim a new session")
+    this.session = record
+    this.applySession(record)
+    await this.sessions.put(record)
+    await saveActiveSessionId(record.id)
   }
 
   async resumeSession(id: string): Promise<void> {
-    this.agent.abort()
-    await this.agent.waitForIdle()
+    await this.stopAgent()
     const record = await this.sessions.get(id)
     if (!record) throw new Error("Session not found")
+    if (!(await this.sessionLease.claim(id))) {
+      throw new Error("That session is open in another Side Panel")
+    }
     this.session = record
-    this.agent.reset()
-    this.agent.sessionId = record.id
-    this.agent.state.model = this.model
-    this.agent.state.tools = createBrowserTools(this.callbacks.confirm)
-    this.agent.state.messages = structuredClone(record.messages)
-    this.agent.state.thinkingLevel = record.model.thinkingLevel
-    this.agent.state.systemPrompt = composeSystemPrompt(this.settings)
-    await saveActiveSessionId(this.session.id)
+    this.applySession(record)
+    await saveActiveSessionId(record.id)
   }
 
   async renameSession(title: string): Promise<void> {
+    await this.persistChain
     await this.sessions.rename(this.session.id, title)
     this.session.title = title.trim().slice(0, 120)
   }
 
   async deleteSession(id: string): Promise<void> {
-    if (id === this.session.id) await this.newSession()
+    if (id !== this.session.id) {
+      await this.sessions.delete(id)
+      return
+    }
+    await this.stopAgent()
     await this.sessions.delete(id)
+    const replacement = createSession(this.model.id)
+    if (!(await this.sessionLease.claim(replacement.id))) {
+      throw new Error("Unable to claim a replacement session")
+    }
+    this.session = replacement
+    this.applySession(replacement)
+    await this.sessions.put(replacement)
+    await saveActiveSessionId(replacement.id)
   }
 
   async clearSessions(): Promise<void> {
-    this.agent.abort()
-    await this.agent.waitForIdle()
+    await this.stopAgent()
     await this.sessions.clear()
-    await this.newSession()
+    const replacement = createSession(this.model.id)
+    if (!(await this.sessionLease.claim(replacement.id))) {
+      throw new Error("Unable to claim a replacement session")
+    }
+    this.session = replacement
+    this.applySession(replacement)
+    await this.sessions.put(replacement)
+    await saveActiveSessionId(replacement.id)
   }
 
   async shutdown(): Promise<void> {
@@ -239,6 +275,7 @@ export class BrowserAgentRuntime {
     this.agent.abort()
     await this.agent.waitForIdle()
     await this.persist(wasStreaming ? "interrupted" : "idle")
+    await this.sessionLease.release()
   }
 
   private async runAuthChange(operation: () => Promise<void>): Promise<void> {
@@ -249,6 +286,22 @@ export class BrowserAgentRuntime {
     } finally {
       this.authChanging = false
     }
+  }
+
+  private async stopAgent(): Promise<void> {
+    this.agent.abort()
+    await this.agent.waitForIdle()
+    await this.persistChain
+  }
+
+  private applySession(record: SessionRecord): void {
+    this.agent.reset()
+    this.agent.sessionId = record.id
+    this.agent.state.model = this.model
+    this.agent.state.tools = createBrowserTools(this.callbacks.confirm)
+    this.agent.state.messages = structuredClone(record.messages)
+    this.agent.state.thinkingLevel = record.model.thinkingLevel
+    this.agent.state.systemPrompt = composeSystemPrompt(this.settings)
   }
 
   private persist(status: SessionRecord["status"]): Promise<void> {
@@ -271,9 +324,30 @@ export class BrowserAgentRuntime {
     }
     this.session = record
     this.persistChain = this.persistChain
-      .then(() => this.sessions.put(record))
+      .then(async () => {
+        try {
+          await this.sessions.put(record)
+        } catch (error) {
+          if (!(error instanceof SessionSizeLimitError)) throw error
+          const compacted = compactSession(record)
+          await this.sessions.put(compacted.record)
+          if (this.session === record) {
+            this.session = compacted.record
+            this.agent.state.messages = structuredClone(compacted.record.messages)
+          }
+          const details = [
+            compacted.removedImages > 0 ? `${compacted.removedImages} image(s)` : "",
+            compacted.removedMessages > 0 ? `${compacted.removedMessages} old message(s)` : "",
+          ].filter(Boolean)
+          this.callbacks.onPersistenceError?.(
+            `Session reached its size limit; removed ${details.join(" and ")} before saving.`,
+          )
+        }
+      })
       .catch((error) => {
-        console.error("Session persistence failed", safeErrorMessage(error))
+        const message = `Session persistence failed: ${safeErrorMessage(error)}`
+        console.error(message)
+        this.callbacks.onPersistenceError?.(message)
       })
     return this.persistChain
   }

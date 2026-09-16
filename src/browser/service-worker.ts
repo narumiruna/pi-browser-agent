@@ -1,14 +1,22 @@
 import { executePageOperation, type PageOperation } from "./content/page-operations.js"
 import { assertTabContext } from "./content/tab-context.js"
-import { hasHostPermission, toHostPermissionPattern } from "./permissions.js"
+import { hasHostPermission } from "./permissions.js"
 import { parseRuntimeRequest, type RuntimeEvent, type RuntimeRequest } from "./runtime/messages.js"
 import { type JsonValue, RuntimeError, type TabContext, truncateUtf8 } from "./runtime/types.js"
-import { getBoundTabId, restrictLocalStorageToTrustedContexts, saveBoundTabId } from "./storage.js"
+import {
+  getBoundTabId,
+  restrictLocalStorageToTrustedContexts,
+  saveBoundTabId,
+  savePendingSelection,
+  takePendingSelection,
+} from "./storage.js"
 import { executeWebMcpOperation, type WebMcpOperation } from "./webmcp/adapter.js"
 
-const CONTEXT_MENU_ID = "pi-chrome-send-selection"
+const SELECTION_CONTEXT_MENU_ID = "pi-chrome-send-selection"
+const BIND_CONTEXT_MENU_ID = "pi-chrome-bind-tab"
 const activeRequests = new Map<string, AbortController>()
 let boundContext: TabContext | undefined
+let pendingSelectionTake: Promise<JsonValue> = Promise.resolve(null)
 const initialization = Promise.all([restrictLocalStorageToTrustedContexts(), restoreBoundContext()])
 
 function isSupportedPageUrl(value: string): boolean {
@@ -45,18 +53,30 @@ async function restoreBoundContext(): Promise<void> {
   }
 }
 
-async function bindActiveTab(): Promise<TabContext> {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+async function bindTab(tab: chrome.tabs.Tab | undefined): Promise<TabContext> {
   if (tab?.id === undefined || !tab.url || !isSupportedPageUrl(tab.url)) {
     throw new RuntimeError(
       "PERMISSION_DENIED",
-      "Open an HTTP or HTTPS page before binding the active tab",
+      "Use the Pi Chrome page menu on an HTTP or HTTPS tab before binding it",
     )
   }
   boundContext = { tabId: tab.id, url: tab.url, epoch: 0 }
   await saveBoundTabId(tab.id)
   emitTabChanged()
   return { ...boundContext }
+}
+
+async function bindActiveTab(): Promise<TabContext> {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+  return bindTab(tab)
+}
+
+function consumePendingSelection(): Promise<JsonValue> {
+  pendingSelectionTake = pendingSelectionTake.then(async () => {
+    const selection = await takePendingSelection()
+    return selection ? { payload: selection.payload, tabContext: selection.tabContext } : null
+  })
+  return pendingSelectionTake
 }
 
 async function refreshBoundContext(): Promise<TabContext> {
@@ -231,13 +251,6 @@ async function navigate(request: RuntimeRequest): Promise<JsonValue> {
   return { ...boundContext }
 }
 
-async function grantBoundOrigin(): Promise<JsonValue> {
-  const context = await refreshBoundContext()
-  const pattern = toHostPermissionPattern(context.url)
-  const granted = await chrome.permissions.request({ origins: [pattern] })
-  return { granted, pattern }
-}
-
 async function dispatch(request: RuntimeRequest, signal: AbortSignal): Promise<JsonValue> {
   await initialization
   if (signal.aborted) throw new RuntimeError("REQUEST_CANCELLED", "Browser request was cancelled")
@@ -259,8 +272,8 @@ async function dispatch(request: RuntimeRequest, signal: AbortSignal): Promise<J
     case "tabs.navigate":
       result = await navigate(request)
       break
-    case "permissions.grantBoundOrigin":
-      result = await grantBoundOrigin()
+    case "selection.takePending":
+      result = await consumePendingSelection()
       break
     case "requests.cancel": {
       const requestId = request.params.requestId
@@ -318,7 +331,12 @@ chrome.runtime.onInstalled.addListener(() => {
   void chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
-      id: CONTEXT_MENU_ID,
+      id: BIND_CONTEXT_MENU_ID,
+      title: "Bind this tab to Pi Chrome",
+      contexts: ["page"],
+    })
+    chrome.contextMenus.create({
+      id: SELECTION_CONTEXT_MENU_ID,
       title: "Send selection to Pi Chrome",
       contexts: ["selection"],
     })
@@ -345,25 +363,27 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 })
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (
-    info.menuItemId !== CONTEXT_MENU_ID ||
-    !info.selectionText ||
-    !boundContext ||
-    tab?.id !== boundContext.tabId
-  )
+  if (info.menuItemId !== BIND_CONTEXT_MENU_ID && info.menuItemId !== SELECTION_CONTEXT_MENU_ID)
     return
-  const selection = truncateUtf8(info.selectionText)
-  emitEvent({
-    kind: "event",
-    name: "selection.queued",
-    payload: {
-      text: selection.text,
-      source: "context-menu",
-      untrusted: true,
-      truncated: selection.truncated,
-    },
-    tabContext: { ...boundContext },
-  })
+  if (tab?.windowId !== undefined) {
+    void chrome.sidePanel.open({ windowId: tab.windowId }).catch(() => undefined)
+  }
+  void bindTab(tab)
+    .then(async (context) => {
+      if (info.menuItemId !== SELECTION_CONTEXT_MENU_ID || !info.selectionText) return
+      const selection = truncateUtf8(info.selectionText)
+      await savePendingSelection({
+        payload: {
+          text: selection.text,
+          source: "context-menu",
+          untrusted: true,
+          truncated: selection.truncated,
+        },
+        tabContext: context,
+      })
+      emitEvent({ kind: "event", name: "selection.queued", payload: { available: true } })
+    })
+    .catch(() => undefined)
 })
 
 chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {

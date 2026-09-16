@@ -62,11 +62,50 @@ function isSessionRecord(value: unknown): value is SessionRecord {
   )
 }
 
-function assertWithinLimit(record: SessionRecord): void {
-  const bytes = new TextEncoder().encode(JSON.stringify(record)).byteLength
-  if (bytes > MAX_SESSION_BYTES) {
-    throw new Error(`Session exceeds the ${MAX_SESSION_BYTES / 1024 / 1024} MB storage limit`)
+export class SessionSizeLimitError extends Error {
+  constructor() {
+    super(`Session exceeds the ${MAX_SESSION_BYTES / 1024 / 1024} MB storage limit`)
+    this.name = "SessionSizeLimitError"
   }
+}
+
+export function sessionByteLength(record: SessionRecord): number {
+  return new TextEncoder().encode(JSON.stringify(record)).byteLength
+}
+
+function assertWithinLimit(record: SessionRecord): void {
+  if (sessionByteLength(record) > MAX_SESSION_BYTES) throw new SessionSizeLimitError()
+}
+
+export function compactSession(record: SessionRecord): {
+  record: SessionRecord
+  removedImages: number
+  removedMessages: number
+} {
+  const compacted = structuredClone(record)
+  let removedImages = 0
+  for (const message of compacted.messages) {
+    const value = message as unknown as { content?: unknown }
+    if (!Array.isArray(value.content)) continue
+    for (let index = value.content.length - 1; index >= 0; index -= 1) {
+      const item = value.content[index]
+      if (typeof item === "object" && item !== null && "type" in item && item.type === "image") {
+        value.content.splice(index, 1, {
+          type: "text",
+          text: "[image omitted because the saved session reached its size limit]",
+        })
+        removedImages += 1
+      }
+    }
+  }
+
+  let removedMessages = 0
+  while (sessionByteLength(compacted) > MAX_SESSION_BYTES && compacted.messages.length > 0) {
+    compacted.messages.shift()
+    removedMessages += 1
+  }
+  if (sessionByteLength(compacted) > MAX_SESSION_BYTES) throw new SessionSizeLimitError()
+  return { record: compacted, removedImages, removedMessages }
 }
 
 export class SessionStore {
@@ -147,17 +186,13 @@ export class SessionStore {
     await transactionDone(transaction)
   }
 
-  async markRunningSessionsInterrupted(): Promise<void> {
+  async markSessionInterrupted(id: string): Promise<void> {
+    const record = await this.get(id)
+    if (record?.status !== "running") return
     const database = await this.open()
-    const read = database.transaction(STORE_NAME, "readonly")
-    const values: unknown[] = await requestResult(read.objectStore(STORE_NAME).getAll())
-    await transactionDone(read)
-    const running = values.filter(isSessionRecord).filter((record) => record.status === "running")
-    if (running.length === 0) return
-    const write = database.transaction(STORE_NAME, "readwrite")
-    const store = write.objectStore(STORE_NAME)
-    for (const record of running) store.put({ ...record, status: "interrupted" })
-    await transactionDone(write)
+    const transaction = database.transaction(STORE_NAME, "readwrite")
+    transaction.objectStore(STORE_NAME).put({ ...record, status: "interrupted" })
+    await transactionDone(transaction)
   }
 
   private async enforceRetention(): Promise<void> {

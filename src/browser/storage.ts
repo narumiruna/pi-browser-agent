@@ -1,10 +1,18 @@
+import type { JsonObject, TabContext } from "./runtime/types.js"
+
 const SESSION_TAB_KEY = "piChromeBoundTabId"
 const SETTINGS_KEY = "piChromeSettings"
 const ACTIVE_SESSION_KEY = "piChromeActiveSessionId"
+const PENDING_SELECTION_KEY = "piChromePendingSelection"
 
 export interface AppSettings {
   systemPrompt: string
   agentInstructions: string
+}
+
+export interface PendingSelection {
+  payload: JsonObject
+  tabContext: TabContext
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -58,4 +66,19 @@ export async function saveBoundTabId(tabId: number | undefined): Promise<void> {
   }
   if (!Number.isInteger(tabId) || tabId < 0) throw new Error("Invalid Chrome tab ID")
   await chrome.storage.session.set({ [SESSION_TAB_KEY]: tabId })
+}
+
+export async function savePendingSelection(selection: PendingSelection): Promise<void> {
+  await chrome.storage.session.set({ [PENDING_SELECTION_KEY]: selection })
+}
+
+export async function takePendingSelection(): Promise<PendingSelection | undefined> {
+  const stored = await chrome.storage.session.get(PENDING_SELECTION_KEY)
+  const value = stored[PENDING_SELECTION_KEY]
+  await chrome.storage.session.remove(PENDING_SELECTION_KEY)
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined
+  const selection = value as Partial<PendingSelection>
+  return selection.payload && selection.tabContext
+    ? (structuredClone(selection) as PendingSelection)
+    : undefined
 }

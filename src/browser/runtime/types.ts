@@ -55,7 +55,14 @@ export function truncateUtf8(
   if (encoder.encode(text).byteLength <= maxBytes) return { text, truncated: false }
 
   const suffix = "\n[truncated]"
-  const contentLimit = Math.max(0, maxBytes - encoder.encode(suffix).byteLength)
+  const suffixBytes = encoder.encode(suffix)
+  if (suffixBytes.byteLength >= maxBytes) {
+    return {
+      text: new TextDecoder().decode(suffixBytes.slice(0, Math.max(0, maxBytes))),
+      truncated: true,
+    }
+  }
+  const contentLimit = maxBytes - suffixBytes.byteLength
   let low = 0
   let high = text.length
   while (low < high) {

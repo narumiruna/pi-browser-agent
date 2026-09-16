@@ -1,5 +1,9 @@
-import { describe, expect, test } from "vitest"
-import { parseRuntimeRequest } from "../../src/browser/runtime/messages.js"
+import { afterEach, describe, expect, test, vi } from "vitest"
+import { parseRuntimeRequest, sendRuntimeRequest } from "../../src/browser/runtime/messages.js"
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 describe("internal runtime messages", () => {
   test("accepts a known, JSON-safe request", () => {
@@ -28,6 +32,30 @@ describe("internal runtime messages", () => {
     { kind: "event", name: "tab.changed", payload: {} },
   ])("rejects malformed or unknown message %#", (message) => {
     expect(() => parseRuntimeRequest(message)).toThrow("Malformed or unknown")
+  })
+
+  test("rejects a response that completes after cancellation", async () => {
+    let complete: ((value: unknown) => void) | undefined
+    const response = new Promise((resolve) => {
+      complete = resolve
+    })
+    vi.stubGlobal("chrome", {
+      runtime: {
+        sendMessage: vi.fn((message: { method: string }) =>
+          message.method === "requests.cancel"
+            ? Promise.resolve({ ok: true, result: { cancelled: true } })
+            : response,
+        ),
+      },
+    })
+    vi.stubGlobal("crypto", { randomUUID: vi.fn(() => "request-id") })
+    const controller = new AbortController()
+    const pending = sendRuntimeRequest("app.getState", {}, { signal: controller.signal })
+
+    controller.abort()
+    complete?.({ ok: true, result: { tabContext: null } })
+
+    await expect(pending).rejects.toMatchObject({ code: "REQUEST_CANCELLED" })
   })
 
   test("rejects prototype-polluting keys", () => {
