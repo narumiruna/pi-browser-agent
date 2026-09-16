@@ -25,6 +25,7 @@ function startFixture(): Promise<{ port: number; server: Server }> {
         <input id="title" type="text">
         <input id="password" type="password">
         <button id="ordinary" type="button">Click</button>
+        <a id="download" href="data:text/plain,hello" download="hello.txt">Download</a>
         <form><button id="submit" type="submit">Submit</button></form>
         <p id="result">idle</p>
       </main>
@@ -259,9 +260,10 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
     toolCall(3, "browser_capture_visible", {}),
     toolCall(4, "browser_type", { selector: "#title", text: "mocked-agent" }),
     toolCall(5, "browser_click", { selector: "#ordinary" }),
-    toolCall(6, "browser_webmcp", { action: "list" }),
-    toolCall(7, "browser_navigate", { url: `http://127.0.0.1:${fixture.port}/second` }),
-    finalText(8, "Mock agent completed the browser round trip."),
+    toolCall(6, "browser_click", { selector: "#download" }),
+    toolCall(7, "browser_webmcp", { action: "list" }),
+    toolCall(8, "browser_navigate", { url: `http://127.0.0.1:${fixture.port}/second` }),
+    finalText(9, "Mock agent completed the browser round trip."),
   ]
   let requestCount = 0
   const codexUrl = "https://chatgpt.com/backend-api/codex/responses"
@@ -283,6 +285,9 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
 
   await controller.locator("#prompt").fill("Exercise the browser tools")
   await controller.locator("#send").click()
+  await expect(controller.locator("#confirm-dialog")).toBeVisible()
+  await controller.locator('#confirm-dialog button[value="confirm"]').click()
+  await expect(controller.locator("#confirm-dialog")).toBeHidden()
   await expect(controller.locator("#confirm-dialog")).toBeVisible()
   await controller.locator('#confirm-dialog button[value="confirm"]').click()
   await expect(controller.locator("#transcript")).toContainText(

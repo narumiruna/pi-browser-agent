@@ -72,8 +72,15 @@ function confirmation(
     const requestDestinationAccess = (event: MouseEvent): void => {
       const targetUrl = details?.targetUrl
       if (typeof targetUrl !== "string") return
+      let destination: URL
+      try {
+        destination = new URL(targetUrl)
+      } catch {
+        return
+      }
+      if (destination.protocol !== "http:" && destination.protocol !== "https:") return
       event.preventDefault()
-      void requestSiteAccess(targetUrl)
+      void requestSiteAccess(destination.href)
         .then((granted) => {
           if (granted) confirmDialog.close("confirm")
           else setError("Site access is required for that destination")
@@ -192,7 +199,7 @@ async function refreshAuth(): Promise<void> {
   accountMenuTrigger.dataset.loggedIn = String(status.loggedIn)
 }
 
-async function refreshTab(): Promise<void> {
+async function refreshTab(): Promise<string | undefined> {
   const state = await sendRuntimeRequest("app.getState")
   const context =
     typeof state === "object" && state !== null && !Array.isArray(state) ? state.tabContext : null
@@ -205,6 +212,7 @@ async function refreshTab(): Promise<void> {
       : undefined
   tabStatus.textContent = activeTabUrl ?? "No supported page visible. Open an HTTP or HTTPS page."
   tabStatus.title = activeTabUrl ?? ""
+  return activeTabUrl
 }
 
 function onAuthEvent(event: AuthEvent): void {
@@ -307,8 +315,9 @@ function requestSiteAccess(url: string): Promise<boolean> {
 }
 
 async function requestActiveSiteAccess(): Promise<void> {
-  if (!activeTabUrl) throw new Error("Open an HTTP or HTTPS page before granting site access")
-  if (!(await requestSiteAccess(activeTabUrl))) {
+  const currentTabUrl = await refreshTab()
+  if (!currentTabUrl) throw new Error("Open an HTTP or HTTPS page before granting site access")
+  if (!(await requestSiteAccess(currentTabUrl))) {
     throw new Error("Site access is required to work with the current page")
   }
 }
@@ -318,6 +327,7 @@ element<HTMLButtonElement>("grant-site").addEventListener("click", () => {
 })
 
 function submitPrompt(queueAfterCurrentTask = false): void {
+  const submittedWhileStreaming = runtime.agent.state.isStreaming
   void run(async () => {
     const text = promptInput.value.trim()
     if (!text) return
@@ -326,6 +336,13 @@ function submitPrompt(queueAfterCurrentTask = false): void {
     if (!hasPermission) throw new Error("OpenAI host access was revoked. Log in again to continue.")
     if (!(await runtime.authStatus()).loggedIn)
       throw new Error("Log in to OpenAI before sending a prompt")
+    if (submittedWhileStreaming !== runtime.agent.state.isStreaming) {
+      throw new Error(
+        submittedWhileStreaming
+          ? "The current task finished before the instruction could be queued. Send it again."
+          : "A task started before the prompt could be sent. Send it again.",
+      )
+    }
     promptInput.value = ""
     resizePromptInput()
     const mode = await runtime.submit(text, queueAfterCurrentTask ? "followUp" : "steer")
