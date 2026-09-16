@@ -99,7 +99,7 @@ async function refreshBoundContext(): Promise<TabContext> {
 async function runPageOperation(
   operation: PageOperation,
   request: RequestFrame,
-  trustedCrossOriginTargetUrl: string | null = null,
+  trustedLinkTargetUrl: string | null = null,
 ): Promise<JsonValue> {
   const context = await refreshBoundContext()
   assertTabContext(request.tabContext, context)
@@ -109,7 +109,7 @@ async function runPageOperation(
     results = await chrome.scripting.executeScript({
       target: { tabId: context.tabId },
       func: executePageOperation,
-      args: [operation, request.params, request.confirmed ?? false, trustedCrossOriginTargetUrl],
+      args: [operation, request.params, request.confirmed ?? false, trustedLinkTargetUrl],
     })
   } catch (error) {
     throw new BridgeError(
@@ -128,12 +128,19 @@ async function runClickOperation(request: RequestFrame): Promise<JsonValue> {
   if (!request.confirmed) return runPageOperation("click", request)
 
   const inspection = await runPageOperation("inspectClick", request)
-  const target =
+  const inspectedLink =
     typeof inspection === "object" && inspection !== null && !Array.isArray(inspection)
-      ? inspection.targetUrl
+      ? inspection
       : undefined
+  const target = inspectedLink?.targetUrl
   if (target === null || target === undefined) return runPageOperation("click", request)
-  if (typeof target !== "string" || !isSupportedPageUrl(target)) {
+  if (typeof target !== "string") {
+    throw new BridgeError("INTERNAL_ERROR", "The inspected link target is invalid")
+  }
+  if (inspectedLink?.download === true) {
+    return runPageOperation("click", request, target)
+  }
+  if (!isSupportedPageUrl(target)) {
     throw new BridgeError("PERMISSION_DENIED", "Only HTTP and HTTPS link targets can be opened")
   }
 
@@ -151,9 +158,16 @@ async function runClickOperation(request: RequestFrame): Promise<JsonValue> {
     )
   }
   const result = await runPageOperation("click", request, targetUrl.href)
-  await chrome.tabs.update(context.tabId, { url: targetUrl.href })
-  boundContext = { tabId: context.tabId, url: targetUrl.href, epoch: context.epoch + 1 }
-  bridge.sendEvent("tab.changed", {}, boundContext)
+  const navigationAllowed =
+    typeof result === "object" &&
+    result !== null &&
+    !Array.isArray(result) &&
+    result.navigationAllowed === true
+  if (navigationAllowed) {
+    await chrome.tabs.update(context.tabId, { url: targetUrl.href })
+    boundContext = { tabId: context.tabId, url: targetUrl.href, epoch: context.epoch + 1 }
+    bridge.sendEvent("tab.changed", {}, boundContext)
+  }
   return result
 }
 

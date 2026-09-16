@@ -66,14 +66,17 @@ describe("page operations", () => {
   })
 
   test("requires confirmation before cross-origin or download links", async () => {
-    document.body.innerHTML = '<a id="external" href="https://example.test/file" download>File</a>'
+    document.body.innerHTML = '<a id="external" href="https://example.test/file">File</a>'
     const link = document.querySelector<HTMLAnchorElement>("#external") as HTMLAnchorElement
     makeVisible(link)
     const click = vi.fn()
     link.addEventListener("click", click)
 
     const inspection = await executePageOperation("inspectClick", { selector: "#external" }, false)
-    expect(inspection).toMatchObject({ ok: true, result: { targetUrl: link.href } })
+    expect(inspection).toMatchObject({
+      ok: true,
+      result: { download: false, targetUrl: link.href },
+    })
 
     const blocked = await executePageOperation("click", { selector: "#external" }, false)
     expect(blocked).toMatchObject({ ok: false, error: { code: "CONFIRMATION_REQUIRED" } })
@@ -83,22 +86,49 @@ describe("page operations", () => {
     await expect(
       executePageOperation("click", { selector: "#external" }, true, "https://other.test/file"),
     ).resolves.toMatchObject({ ok: false, error: { code: "PERMISSION_DENIED" } })
+    const trustedTarget = link.href
+    link.href = "/same-origin"
+    await expect(
+      executePageOperation("click", { selector: "#external" }, true, trustedTarget),
+    ).resolves.toMatchObject({ ok: false, error: { code: "PERMISSION_DENIED" } })
     expect(click).not.toHaveBeenCalled()
 
-    const trustedTarget = link.href
+    link.href = trustedTarget
     link.addEventListener(
       "click",
       (event) => {
-        expect(event.defaultPrevented).toBe(true)
+        expect(event.defaultPrevented).toBe(false)
         link.href = "https://forbidden.test/file"
       },
       { once: true },
     )
     await expect(
       executePageOperation("click", { selector: "#external" }, true, trustedTarget),
-    ).resolves.toMatchObject({ ok: true })
+    ).resolves.toMatchObject({ ok: true, result: { navigationAllowed: true } })
     expect(click).toHaveBeenCalledOnce()
     expect(link.href).toBe("https://forbidden.test/file")
+
+    link.href = trustedTarget
+    link.addEventListener("click", (event) => event.preventDefault(), { once: true })
+    await expect(
+      executePageOperation("click", { selector: "#external" }, true, trustedTarget),
+    ).resolves.toMatchObject({ ok: true, result: { navigationAllowed: false } })
+    expect(click).toHaveBeenCalledTimes(2)
+  })
+
+  test("allows confirmed non-HTTP download targets without treating them as navigation", async () => {
+    document.body.innerHTML = '<a id="download" href="data:text/plain,hello" download>File</a>'
+    const link = document.querySelector<HTMLAnchorElement>("#download") as HTMLAnchorElement
+    makeVisible(link)
+    const click = vi.spyOn(link, "click").mockImplementation(() => undefined)
+
+    await expect(
+      executePageOperation("click", { selector: "#download" }, false),
+    ).resolves.toMatchObject({ ok: false, error: { code: "CONFIRMATION_REQUIRED" } })
+    await expect(
+      executePageOperation("click", { selector: "#download" }, true, link.href),
+    ).resolves.toMatchObject({ ok: true })
+    expect(click).toHaveBeenCalledOnce()
   })
 
   test("detects submit controls when the selector targets a nested element", async () => {

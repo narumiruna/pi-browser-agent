@@ -31,7 +31,7 @@ export async function executePageOperation(
   operation: PageOperation,
   params: JsonObject,
   confirmed: boolean,
-  trustedCrossOriginTargetUrl: string | null = null,
+  trustedLinkTargetUrl: string | null = null,
 ): Promise<PageOperationResult> {
   const success = (result: JsonValue): PageOperationSuccess => ({ ok: true, result })
   const failure = (
@@ -126,6 +126,7 @@ export async function executePageOperation(
         if (isFailure(found)) return found
         const anchor = found.closest("a")
         return success({
+          download: anchor instanceof HTMLAnchorElement && anchor.hasAttribute("download"),
           targetUrl: anchor instanceof HTMLAnchorElement && anchor.href ? anchor.href : null,
         })
       }
@@ -160,7 +161,8 @@ export async function executePageOperation(
           anchor instanceof HTMLAnchorElement && anchor.href
             ? new URL(anchor.href, location.href).origin !== location.origin
             : false
-        const sensitive = submitControl || Boolean(anchor?.hasAttribute("download")) || crossOrigin
+        const download = Boolean(anchor?.hasAttribute("download"))
+        const sensitive = submitControl || download || crossOrigin
         if (sensitive && !confirmed) {
           return failure(
             "CONFIRMATION_REQUIRED",
@@ -173,25 +175,38 @@ export async function executePageOperation(
           )
         }
         if (
-          crossOrigin &&
-          (!(anchor instanceof HTMLAnchorElement) || anchor.href !== trustedCrossOriginTargetUrl)
+          trustedLinkTargetUrl !== null &&
+          (!(anchor instanceof HTMLAnchorElement) || anchor.href !== trustedLinkTargetUrl)
         ) {
           return failure(
             "PERMISSION_DENIED",
-            "The cross-origin link target was not authorized or changed before the click",
+            "The link target was not authorized or changed before the click",
           )
         }
-        if (crossOrigin) {
+        if (crossOrigin && !download && trustedLinkTargetUrl === null) {
+          return failure("PERMISSION_DENIED", "The cross-origin link target was not authorized")
+        }
+        if (crossOrigin && !download) {
           const event = new MouseEvent("click", {
             bubbles: true,
             cancelable: true,
             composed: true,
           })
-          event.preventDefault()
-          found.dispatchEvent(event)
-        } else {
-          found.click()
+          let navigationAllowed = false
+          const preventNavigation = (dispatchedEvent: Event) => {
+            if (dispatchedEvent !== event) return
+            navigationAllowed = !event.defaultPrevented
+            event.preventDefault()
+          }
+          window.addEventListener("click", preventNavigation)
+          try {
+            found.dispatchEvent(event)
+          } finally {
+            window.removeEventListener("click", preventNavigation)
+          }
+          return success({ clicked: true, navigationAllowed, selector: getSelector() ?? "" })
         }
+        found.click()
         return success({ clicked: true, selector: getSelector() ?? "" })
       }
       case "type": {

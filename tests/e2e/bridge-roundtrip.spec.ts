@@ -52,6 +52,7 @@ function startFixtureServer(port: number): Promise<Server> {
         <input id="password" type="password">
         <button id="ordinary" type="button">Ordinary click</button>
         <a id="external" href="http://localhost:${port}/second">External link</a>
+        <a id="external-cancel" href="http://localhost:${port}/second">Canceled link</a>
         <form id="dangerous"><button id="submit" type="submit">Submit</button></form>
         <p id="result">idle</p>
       </main>
@@ -65,6 +66,9 @@ function startFixtureServer(port: number): Promise<Server> {
         })
         document.querySelector('#external').addEventListener('click', (event) => {
           event.currentTarget.href = 'http://127.0.0.1:${port}/second'
+        })
+        document.querySelector('#external-cancel').addEventListener('click', (event) => {
+          event.preventDefault()
         })
       </script>`)
   })
@@ -190,6 +194,12 @@ test("supports scoped interaction and blocks sensitive actions until confirmed",
   await expect(bridge.request("page.click", { selector: "#external" })).rejects.toMatchObject({
     code: "CONFIRMATION_REQUIRED",
   })
+  await expect(
+    bridge.request("page.click", { selector: "#external-cancel" }, { confirmed: true }),
+  ).resolves.toMatchObject({ navigationAllowed: false })
+  await page.waitForTimeout(100)
+  await expect(page).toHaveURL(`http://127.0.0.1:${fixturePort}/`)
+
   await bridge.request("page.click", { selector: "#external" }, { confirmed: true })
   await page.waitForURL(localhostUrl)
   await bridge.request(
