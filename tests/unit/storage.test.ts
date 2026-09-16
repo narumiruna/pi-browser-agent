@@ -50,6 +50,16 @@ describe("browser bridge storage", () => {
     expect(sessionValues).not.toHaveProperty(SESSION_KEY)
   })
 
+  test("repairs primitive local storage values without throwing", async () => {
+    localValues[LOCAL_KEY] = "legacy-value"
+
+    await expect(getBridgeSettings()).resolves.toMatchObject({
+      enabled: false,
+      port: 17_373,
+    })
+    expect(localValues[LOCAL_KEY]).toMatchObject({ enabled: false, port: 17_373 })
+  })
+
   test("keeps tab bindings only for the current browser session", async () => {
     await saveBoundTabId(42)
     await expect(getBoundTabId()).resolves.toBe(42)

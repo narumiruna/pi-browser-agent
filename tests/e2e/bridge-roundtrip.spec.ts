@@ -251,10 +251,28 @@ test("reconnects after pi reload and supports revoke", async () => {
   const revoked = await controller.evaluate(() =>
     chrome.runtime.sendMessage({ type: "bridge.revoke" }),
   )
-  await controller.close()
   expect(revoked.ok).toBe(true)
+  expect(revoked.result.warning).toBeUndefined()
   await waitFor(() => !bridge.getStatus().connected)
   expect(bridge.getStatus().paired).toBe(false)
   await expect(configStore.load()).resolves.toEqual({ port: bridgePort })
   await expect(bridge.request("tabs.getActive", {})).rejects.toBeInstanceOf(BridgeError)
+
+  const fallback = await controller.evaluate(async (pairingSecret) => {
+    const key = "piChromeBridgeSettings"
+    const stored = await chrome.storage.local.get(key)
+    await chrome.storage.local.set({
+      [key]: { ...stored[key], enabled: true, secret: pairingSecret },
+    })
+    return chrome.runtime.sendMessage({ type: "bridge.revoke" })
+  }, secret)
+  expect(fallback.ok).toBe(true)
+  expect(fallback.result.warning).toContain("Run /chrome-revoke in pi")
+  const localSettings = await controller.evaluate(async () => {
+    const stored = await chrome.storage.local.get("piChromeBridgeSettings")
+    return stored.piChromeBridgeSettings
+  })
+  expect(localSettings).toMatchObject({ enabled: false, port: bridgePort })
+  expect(localSettings).not.toHaveProperty("secret")
+  await controller.close()
 })

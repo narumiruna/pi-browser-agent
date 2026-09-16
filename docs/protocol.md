@@ -53,7 +53,7 @@ No method accepts source code or executes arbitrary JavaScript supplied by the m
 
 - `tab.changed` carries the new `TabContext` after binding, authentication, or navigation.
 - `user.prompt` carries user-selected page text and its UI source. The pi extension wraps it as untrusted browser content before calling `pi.sendUserMessage`.
-- `pairing.revoke` asks pi to persistently remove its pairing secret. Pi acknowledges success by closing the authenticated connection with close code `1000` and reason `Pairing revoked`; only then does Chrome clear its local pairing.
+- `pairing.revoke` asks pi to persistently remove its pairing secret. Pi acknowledges success by closing the authenticated connection with close code `1000` and reason `Pairing revoked`; Chrome then clears its local pairing. If no authenticated connection exists, Chrome can only clear its local data and tells the user to run `/chrome-revoke` in pi.
 
 ## Errors
 

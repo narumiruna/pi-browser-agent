@@ -31,7 +31,8 @@ export async function getBridgeSettings(): Promise<StoredBridgeSettings> {
     clientId,
     ...(isPairingSecret(value?.secret) ? { secret: value.secret } : {}),
   }
-  if (clientId !== value?.clientId || port !== value?.port || "boundTabId" in (value ?? {})) {
+  const hasLegacyBoundTab = typeof value === "object" && value !== null && "boundTabId" in value
+  if (clientId !== value?.clientId || port !== value?.port || hasLegacyBoundTab) {
     await saveBridgeSettings(settings)
   }
   return settings

@@ -9,6 +9,7 @@ interface RuntimeResponse<T> {
 interface PopupState {
   status: { state: string; error?: string }
   tabContext?: { tabId: number; url: string; epoch: number }
+  warning?: string
 }
 
 const statusElement = document.querySelector<HTMLSpanElement>("#status")
@@ -43,7 +44,7 @@ function render(state: PopupState): void {
   required(tabElement, "tab status").textContent = state.tabContext
     ? `Tab ${state.tabContext.tabId} · ${state.tabContext.url}`
     : "No tab bound"
-  showError(state.status.error)
+  showError(state.status.error ?? state.warning)
 }
 
 async function refresh(): Promise<void> {

@@ -140,6 +140,74 @@ describe("page operations", () => {
     ).resolves.toMatchObject({ ok: false, error: { code: "INVALID_REQUEST" } })
   })
 
+  test("accepts a selected child when hit testing finds its clickable ancestor", async () => {
+    document.body.innerHTML =
+      '<button id="button" type="button"><span id="label">Go</span></button>'
+    const button = document.querySelector<HTMLButtonElement>("#button") as HTMLButtonElement
+    const label = document.querySelector<HTMLSpanElement>("#label") as HTMLSpanElement
+    makeVisible(label)
+    Object.defineProperty(document, "elementFromPoint", {
+      configurable: true,
+      value: vi.fn(() => button),
+    })
+    const click = vi.fn()
+    button.addEventListener("click", click)
+
+    await expect(
+      executePageOperation("click", { selector: "#label" }, false),
+    ).resolves.toMatchObject({ ok: true })
+    expect(click).toHaveBeenCalledOnce()
+  })
+
+  test("accepts an element when its center is covered but another point is clickable", async () => {
+    document.body.innerHTML =
+      '<button id="target" type="button">Go</button><div id="overlay"></div>'
+    const target = document.querySelector<HTMLButtonElement>("#target") as HTMLButtonElement
+    const overlay = document.querySelector<HTMLDivElement>("#overlay") as HTMLDivElement
+    makeVisible(target)
+    Object.defineProperty(document, "elementFromPoint", {
+      configurable: true,
+      value: vi.fn((x: number, y: number) => (x === 5 && y === 5 ? overlay : target)),
+    })
+    const click = vi.spyOn(target, "click").mockImplementation(() => undefined)
+
+    await expect(
+      executePageOperation("click", { selector: "#target" }, false),
+    ).resolves.toMatchObject({ ok: true })
+    expect(click).toHaveBeenCalledOnce()
+  })
+
+  test("checks each visible client rectangle for wrapped elements", async () => {
+    document.body.innerHTML = '<span id="target">Wrapped target</span><div id="overlay"></div>'
+    const target = document.querySelector<HTMLSpanElement>("#target") as HTMLSpanElement
+    const overlay = document.querySelector<HTMLDivElement>("#overlay") as HTMLDivElement
+    const rect = (left: number, right: number): DOMRect => ({
+      bottom: 10,
+      height: 10,
+      left,
+      right,
+      top: 0,
+      width: right - left,
+      x: left,
+      y: 0,
+      toJSON: () => ({}),
+    })
+    vi.spyOn(target, "getClientRects").mockReturnValue([
+      rect(0, 10),
+      rect(20, 30),
+    ] as unknown as DOMRectList)
+    Object.defineProperty(document, "elementFromPoint", {
+      configurable: true,
+      value: vi.fn((x: number) => (x >= 20 ? target : overlay)),
+    })
+    const click = vi.spyOn(target, "click").mockImplementation(() => undefined)
+
+    await expect(
+      executePageOperation("click", { selector: "#target" }, false),
+    ).resolves.toMatchObject({ ok: true })
+    expect(click).toHaveBeenCalledOnce()
+  })
+
   test("never types into password, file, or hidden inputs", async () => {
     document.body.innerHTML =
       '<input id="password" type="password"><input id="file" type="file"><input id="hidden" type="hidden">'

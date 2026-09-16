@@ -53,7 +53,7 @@ The secret is shown by pi for transfer to Chrome. Pi stores it in `~/.pi/agent/p
 
 The normal flow uses the temporary `activeTab` grant created when the user opens the popup. Select **Always allow this site** to request an optional, origin-scoped host permission. The production manifest does not request `<all_urls>`. Before navigating the bound tab across origins, grant **Always allow this site** on the destination, then return to and rebind the source tab. Chrome revokes `activeTab` access on cross-origin navigation.
 
-The tab binding survives an MV3 service-worker restart, but it is cleared when the browser session ends. Bind a tab again after restarting Chrome. Revoking from the popup is complete only after pi persists the revocation and closes the authenticated connection.
+The tab binding survives an MV3 service-worker restart, but it is cleared when the browser session ends. Bind a tab again after restarting Chrome. Revoking from the popup normally waits for pi to persist the revocation and close the authenticated connection. If pi is disconnected, the popup clears local pairing data and warns you to run `/chrome-revoke` in pi before pairing again.
 
 Commands:
 

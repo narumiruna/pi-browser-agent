@@ -366,11 +366,35 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
         bridge.stop()
         await updateBridgeSettings({ enabled: false })
         return { status: bridge.getStatus() }
-      case "bridge.revoke":
-        await bridge.revokePairing()
+      case "bridge.revoke": {
+        const settings = await getBridgeSettings()
+        let serverAcknowledged = false
+        let warning: string | undefined
+        if (bridge.getStatus().state === "authenticated") {
+          try {
+            await bridge.revokePairing()
+            serverAcknowledged = true
+          } catch (error) {
+            if (
+              !(error instanceof BridgeError) ||
+              !["CONNECTION_CLOSED", "NOT_CONNECTED", "REQUEST_TIMEOUT"].includes(error.code)
+            ) {
+              throw error
+            }
+          }
+        }
+        if (!serverAcknowledged) {
+          bridge.stop()
+          if (settings.secret) {
+            warning =
+              "Local pairing data was cleared, but pi did not acknowledge revocation. Run /chrome-revoke in pi before pairing again."
+          }
+        }
         await clearPairing()
         await clearBoundTab()
-        return { status: bridge.getStatus() }
+        if (!serverAcknowledged) await bridge.start()
+        return { status: bridge.getStatus(), ...(warning ? { warning } : {}) }
+      }
       case "bridge.sendSelection": {
         const selection = await runPageOperation("getSelection", {
           type: "request",

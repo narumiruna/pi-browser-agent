@@ -9,6 +9,7 @@ describe("browser host permissions", () => {
   test("normalizes HTTP and HTTPS URLs to origin patterns without ports", () => {
     expect(toHostPermissionPattern("http://localhost:3000/path")).toBe("http://localhost/*")
     expect(toHostPermissionPattern("https://example.test:8443/path")).toBe("https://example.test/*")
+    expect(toHostPermissionPattern("http://[::1]:3000/path")).toBe("http://[::1]/*")
   })
 
   test("rejects unsupported URL schemes", () => {

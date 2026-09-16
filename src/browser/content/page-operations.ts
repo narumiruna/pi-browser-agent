@@ -71,18 +71,34 @@ export async function executePageOperation(
       }
     }
 
-    const rect = element.getBoundingClientRect()
-    const left = Math.max(0, rect.left)
-    const right = Math.min(window.innerWidth, rect.right)
-    const top = Math.max(0, rect.top)
-    const bottom = Math.min(window.innerHeight, rect.bottom)
-    if (rect.width <= 0 || rect.height <= 0 || left >= right || top >= bottom) return false
+    const clientRects = Array.from(element.getClientRects())
+    const rects = clientRects.length > 0 ? clientRects : [element.getBoundingClientRect()]
+    const visibleRects = rects
+      .map((rect) => ({
+        bottom: Math.min(window.innerHeight, rect.bottom),
+        left: Math.max(0, rect.left),
+        right: Math.min(window.innerWidth, rect.right),
+        top: Math.max(0, rect.top),
+      }))
+      .filter((rect) => rect.left < rect.right && rect.top < rect.bottom)
+    if (visibleRects.length === 0) return false
 
-    if (typeof document.elementFromPoint === "function") {
-      const hit = document.elementFromPoint((left + right) / 2, (top + bottom) / 2)
-      if (!hit || (hit !== element && !element.contains(hit))) return false
-    }
-    return true
+    if (typeof document.elementFromPoint !== "function") return true
+    return visibleRects.some((rect) => {
+      const insetX = Math.min(1, (rect.right - rect.left) / 2)
+      const insetY = Math.min(1, (rect.bottom - rect.top) / 2)
+      const points: [number, number][] = [
+        [(rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2],
+        [rect.left + insetX, rect.top + insetY],
+        [rect.right - insetX, rect.top + insetY],
+        [rect.left + insetX, rect.bottom - insetY],
+        [rect.right - insetX, rect.bottom - insetY],
+      ]
+      return points.some(([x, y]) => {
+        const hit = document.elementFromPoint(x, y)
+        return Boolean(hit && (element.contains(hit) || hit.contains(element)))
+      })
+    })
   }
   const setNativeValue = (element: HTMLInputElement | HTMLTextAreaElement, value: string): void => {
     const prototype =
