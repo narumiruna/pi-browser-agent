@@ -1,11 +1,16 @@
 import { afterEach, describe, expect, test, vi } from "vitest"
 
+interface TestTab {
+  id?: number
+  url?: string
+  windowId?: number
+}
+
 interface ListenerMap {
   installed?: () => void
-  contextClicked?: (
-    info: { menuItemId: string; selectionText?: string },
-    tab?: { id?: number; url?: string; windowId?: number },
-  ) => void
+  activated?: (activeInfo: { tabId: number; windowId: number }) => void
+  focusChanged?: (windowId: number) => void
+  contextClicked?: (info: { menuItemId: string; selectionText?: string }, tab?: TestTab) => void
   runtimeMessage?: (
     message: unknown,
     sender: unknown,
@@ -18,25 +23,19 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe("service worker context menus", () => {
-  test("binds the invoked tab, opens the panel, and persists a selection", async () => {
+describe("service worker visible-tab targeting", () => {
+  test("tracks the visible page, rejects stale contexts, and persists a sent selection", async () => {
     const listeners: ListenerMap = {}
-    const session: Record<string, unknown> = { piChromeBoundTabId: 1 }
+    const session: Record<string, unknown> = {}
     const create = vi.fn()
     const open = vi.fn(async () => undefined)
-    let releaseRestore: (() => void) | undefined
-    const restoreGate = new Promise<void>((resolve) => {
-      releaseRestore = resolve
+    const sendMessage = vi.fn(async () => {
+      throw new Error("No Side Panel receiver")
     })
-    const getTab = vi.fn(async (tabId: number) => {
-      if (tabId === 1) await restoreGate
-      return {
-        id: tabId,
-        url: tabId === 1 ? "https://old.test/page" : "https://example.test/page",
-        windowId: 3,
-      }
-    })
+    const executeScript = vi.fn()
+    let activeTab: TestTab = { id: 1, url: "https://old.test/page", windowId: 3 }
     let failPendingRead = false
+
     vi.stubGlobal("chrome", {
       storage: {
         local: { setAccessLevel: vi.fn(async () => undefined) },
@@ -64,9 +63,7 @@ describe("service worker context menus", () => {
               (listeners.runtimeMessage = listener),
           ),
         },
-        sendMessage: vi.fn(async () => {
-          throw new Error("No Side Panel receiver")
-        }),
+        sendMessage,
       },
       contextMenus: {
         removeAll: vi.fn((callback: () => void) => callback()),
@@ -78,50 +75,104 @@ describe("service worker context menus", () => {
           ),
         },
       },
+      scripting: { executeScript },
       sidePanel: { setPanelBehavior: vi.fn(async () => undefined), open },
       tabs: {
-        get: getTab,
+        query: vi.fn(async () => [activeTab]),
+        get: vi.fn(async () => activeTab),
+        onActivated: {
+          addListener: vi.fn(
+            (listener: NonNullable<ListenerMap["activated"]>) => (listeners.activated = listener),
+          ),
+        },
         onUpdated: { addListener: vi.fn() },
         onRemoved: { addListener: vi.fn() },
       },
+      windows: {
+        WINDOW_ID_NONE: -1,
+        onFocusChanged: {
+          addListener: vi.fn(
+            (listener: NonNullable<ListenerMap["focusChanged"]>) =>
+              (listeners.focusChanged = listener),
+          ),
+        },
+      },
     })
     await import("../../src/browser/service-worker.js")
-    await vi.waitFor(() => expect(getTab).toHaveBeenCalledWith(1))
 
-    listeners.installed?.()
-    listeners.contextClicked?.(
-      { menuItemId: "pi-chrome-send-selection", selectionText: "selected text" },
-      { id: 7, url: "https://example.test/page", windowId: 3 },
+    const request = (message: Record<string, unknown>): Promise<unknown> =>
+      new Promise((resolve) => {
+        const accepted = listeners.runtimeMessage?.(message, {}, resolve)
+        expect(accepted).toBe(true)
+      })
+    const appState = (requestId: string): Promise<unknown> =>
+      request({ kind: "request", requestId, method: "app.getState", params: {} })
+
+    await expect(appState("initial-state")).resolves.toMatchObject({
+      ok: true,
+      result: { tabContext: { tabId: 1, url: "https://old.test/page" } },
+    })
+
+    activeTab = { id: 7, url: "https://example.test/page", windowId: 3 }
+    listeners.activated?.({ tabId: 7, windowId: 3 })
+    await vi.waitFor(() =>
+      expect(sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "tab.changed",
+          tabContext: expect.objectContaining({ tabId: 7 }),
+        }),
+      ),
     )
 
+    await expect(
+      request({
+        kind: "request",
+        requestId: "stale-page-read",
+        method: "page.getVisibleText",
+        params: {},
+        tabContext: { tabId: 1, url: "https://old.test/page", epoch: 0 },
+      }),
+    ).resolves.toMatchObject({ ok: false, error: { code: "STALE_CONTEXT" } })
+    expect(executeScript).not.toHaveBeenCalled()
+
+    activeTab = { id: 8, url: "chrome://settings", windowId: 3 }
+    listeners.focusChanged?.(3)
+    await vi.waitFor(() =>
+      expect(sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "tab.changed", tabContext: undefined }),
+      ),
+    )
+    await expect(appState("unsupported-state")).resolves.toEqual({
+      ok: true,
+      result: { tabContext: null },
+    })
+
+    activeTab = { id: 7, url: "https://example.test/page", windowId: 3 }
+    listeners.contextClicked?.(
+      { menuItemId: "pi-chrome-send-selection", selectionText: "selected text" },
+      activeTab,
+    )
     expect(open).toHaveBeenCalledWith({ windowId: 3 })
-    expect(session.piChromeBoundTabId).toBe(1)
-    releaseRestore?.()
     await vi.waitFor(() => {
-      expect(session.piChromeBoundTabId).toBe(7)
       expect(session["piChromePendingSelection:3"]).toMatchObject({
         windowId: 3,
         payload: { text: "selected text", untrusted: true },
         tabContext: { tabId: 7, url: "https://example.test/page" },
       })
     })
+
+    listeners.installed?.()
+    expect(create).toHaveBeenCalledTimes(1)
     expect(create).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "pi-chrome-bind-tab", contexts: ["page"] }),
+      expect.objectContaining({ id: "pi-chrome-send-selection", contexts: ["selection"] }),
     )
 
     const takeSelection = (requestId: string, windowId: number): Promise<unknown> =>
-      new Promise((resolve) => {
-        const accepted = listeners.runtimeMessage?.(
-          {
-            kind: "request",
-            requestId,
-            method: "selection.takePending",
-            params: { windowId },
-          },
-          {},
-          resolve,
-        )
-        expect(accepted).toBe(true)
+      request({
+        kind: "request",
+        requestId,
+        method: "selection.takePending",
+        params: { windowId },
       })
 
     await expect(takeSelection("wrong-window", 4)).resolves.toEqual({ ok: true, result: null })

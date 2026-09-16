@@ -120,6 +120,12 @@ async function request(
   return response.result as Record<string, unknown>
 }
 
+async function waitForCurrentTab(url: string): Promise<typeof tabContext> {
+  await expect.poll(async () => (await request("tabs.getActive")).url).toBe(url)
+  const active = await request("tabs.getActive")
+  return active as unknown as typeof tabContext
+}
+
 test.beforeAll(async () => {
   fixture = await startFixture()
   const directory = await mkdtemp(join(tmpdir(), "pi-chrome-e2e-"))
@@ -153,7 +159,7 @@ test.beforeAll(async () => {
     await chrome.tabs.update(tab.id, { active: true })
     return tab.id
   }, `http://127.0.0.1:${fixture.port}/`)
-  tabContext = (await request("tabs.bindActive")) as unknown as typeof tabContext
+  tabContext = await waitForCurrentTab(`http://127.0.0.1:${fixture.port}/`)
   expect(tabContext.tabId).toBe(fixtureTabId)
 })
 
@@ -164,7 +170,27 @@ test.afterAll(async () => {
   )
 })
 
-test("runs mocked model tool calls from the Side Panel through the bound tab", async () => {
+test("automatically follows the visible tab and rejects the previous tab context", async () => {
+  const first = { ...tabContext }
+  const secondPage = await context.newPage()
+  await secondPage.goto(`http://127.0.0.1:${fixture.port}/second`)
+  await secondPage.bringToFront()
+  const second = await waitForCurrentTab(`http://127.0.0.1:${fixture.port}/second`)
+
+  expect(second.tabId).not.toBe(first.tabId)
+  await expect(request("page.getVisibleText", {}, { tabContext: first })).rejects.toMatchObject({
+    code: "STALE_CONTEXT",
+  })
+  await expect(request("page.getVisibleText", {}, { tabContext: second })).resolves.toMatchObject({
+    text: "Second page",
+  })
+
+  await secondPage.close()
+  await page.bringToFront()
+  tabContext = await waitForCurrentTab(`http://127.0.0.1:${fixture.port}/`)
+})
+
+test("runs mocked model tool calls from the Side Panel through the current tab", async () => {
   const fakePayload = btoa(
     JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "test-account" } }),
   )
@@ -230,7 +256,7 @@ test("runs mocked model tool calls from the Side Panel through the bound tab", a
 
   await page.goto(`http://127.0.0.1:${fixture.port}/`)
   await page.bringToFront()
-  tabContext = (await request("tabs.bindActive")) as unknown as typeof tabContext
+  tabContext = await waitForCurrentTab(`http://127.0.0.1:${fixture.port}/`)
 })
 
 test("round-trips read, selection, screenshot, click, and type through the Side Panel path", async () => {
@@ -301,7 +327,7 @@ test("restores IndexedDB sessions after the Side Panel closes and reopens", asyn
   await page.bringToFront()
 })
 
-test("restores the bound tab after a service-worker restart", async () => {
+test("rediscovers the visible tab after a service-worker restart", async () => {
   const cdp = await context.newCDPSession(page)
   const targets = (await cdp.send("Target.getTargets")) as {
     targetInfos: Array<{ targetId: string; type: string; url: string }>

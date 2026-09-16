@@ -31,7 +31,7 @@ const systemPrompt = element<HTMLTextAreaElement>("system-prompt")
 const agentInstructions = element<HTMLTextAreaElement>("agent-instructions")
 let loginController: AbortController | undefined
 let verificationUri = ""
-let boundTabUrl: string | undefined
+let activeTabUrl: string | undefined
 
 function setError(error?: unknown): void {
   errorOutput.textContent = error === undefined ? "" : safeErrorMessage(error)
@@ -115,16 +115,16 @@ async function refreshTab(): Promise<void> {
   const state = await sendRuntimeRequest("app.getState")
   const context =
     typeof state === "object" && state !== null && !Array.isArray(state) ? state.tabContext : null
-  boundTabUrl =
+  activeTabUrl =
     typeof context === "object" &&
     context !== null &&
     !Array.isArray(context) &&
     typeof context.url === "string"
       ? context.url
       : undefined
-  tabStatus.textContent = boundTabUrl
-    ? `Bound: ${boundTabUrl}`
-    : "No tab bound. Right-click a page and choose “Bind this tab to Pi Chrome”."
+  tabStatus.textContent = activeTabUrl
+    ? `Current page: ${activeTabUrl}`
+    : "No supported page visible. Open an HTTP or HTTPS page."
 }
 
 function onAuthEvent(event: AuthEvent): void {
@@ -224,8 +224,8 @@ logoutButton.addEventListener("click", () => {
 
 element<HTMLButtonElement>("grant-site").addEventListener("click", () => {
   void run(async () => {
-    if (!boundTabUrl) throw new Error("Bind a tab before granting site access")
-    const pattern = toHostPermissionPattern(boundTabUrl)
+    if (!activeTabUrl) throw new Error("Open an HTTP or HTTPS page before granting site access")
+    const pattern = toHostPermissionPattern(activeTabUrl)
     const granted = await chrome.permissions.request({ origins: [pattern] })
     if (!granted) throw new Error("Site access was not granted")
   })

@@ -9,7 +9,7 @@ export function assertTabContext(expected: TabContext | undefined, actual: TabCo
   ) {
     throw new RuntimeError(
       "STALE_CONTEXT",
-      "The bound tab navigated after this request was created",
+      "The visible tab changed or navigated after this request was created",
       {
         expected,
         actual,

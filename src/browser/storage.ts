@@ -1,6 +1,5 @@
 import type { JsonObject, TabContext } from "./runtime/types.js"
 
-const SESSION_TAB_KEY = "piChromeBoundTabId"
 const SETTINGS_KEY = "piChromeSettings"
 const ACTIVE_SESSION_KEY = "piChromeActiveSessionId"
 const PENDING_SELECTION_KEY = "piChromePendingSelection"
@@ -52,21 +51,6 @@ export async function getActiveSessionId(): Promise<string | undefined> {
 export async function saveActiveSessionId(sessionId: string): Promise<void> {
   if (!sessionId) throw new Error("Invalid session ID")
   await chrome.storage.local.set({ [ACTIVE_SESSION_KEY]: sessionId })
-}
-
-export async function getBoundTabId(): Promise<number | undefined> {
-  const stored = await chrome.storage.session.get(SESSION_TAB_KEY)
-  const value = stored[SESSION_TAB_KEY]
-  return Number.isInteger(value) && (value as number) >= 0 ? (value as number) : undefined
-}
-
-export async function saveBoundTabId(tabId: number | undefined): Promise<void> {
-  if (tabId === undefined) {
-    await chrome.storage.session.remove(SESSION_TAB_KEY)
-    return
-  }
-  if (!Number.isInteger(tabId) || tabId < 0) throw new Error("Invalid Chrome tab ID")
-  await chrome.storage.session.set({ [SESSION_TAB_KEY]: tabId })
 }
 
 function pendingSelectionKey(windowId: number): string {

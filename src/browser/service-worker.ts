@@ -4,20 +4,18 @@ import { hasHostPermission } from "./permissions.js"
 import { parseRuntimeRequest, type RuntimeEvent, type RuntimeRequest } from "./runtime/messages.js"
 import { type JsonValue, RuntimeError, type TabContext, truncateUtf8 } from "./runtime/types.js"
 import {
-  getBoundTabId,
   restrictLocalStorageToTrustedContexts,
-  saveBoundTabId,
   savePendingSelection,
   takePendingSelection,
 } from "./storage.js"
 import { executeWebMcpOperation, type WebMcpOperation } from "./webmcp/adapter.js"
 
 const SELECTION_CONTEXT_MENU_ID = "pi-chrome-send-selection"
-const BIND_CONTEXT_MENU_ID = "pi-chrome-bind-tab"
 const activeRequests = new Map<string, AbortController>()
 let boundContext: TabContext | undefined
+let contextEpoch = 0
 let pendingSelectionTake: Promise<JsonValue> = Promise.resolve(null)
-const initialization = Promise.all([restrictLocalStorageToTrustedContexts(), restoreBoundContext()])
+const initialization = initialize()
 
 function isSupportedPageUrl(value: string): boolean {
   try {
@@ -35,40 +33,46 @@ function emitTabChanged(): void {
   emitEvent({ kind: "event", name: "tab.changed", payload: {}, tabContext: boundContext })
 }
 
-async function clearBoundTab(): Promise<void> {
+function clearBoundTab(): void {
+  if (!boundContext) return
+  contextEpoch = Math.max(contextEpoch, boundContext.epoch) + 1
   boundContext = undefined
-  await saveBoundTabId(undefined)
   emitTabChanged()
 }
 
-async function restoreBoundContext(): Promise<void> {
-  const tabId = await getBoundTabId()
-  if (tabId === undefined) return
-  try {
-    const tab = await chrome.tabs.get(tabId)
-    if (!tab.url || !isSupportedPageUrl(tab.url)) return clearBoundTab()
-    boundContext = { tabId, url: tab.url, epoch: 0 }
-  } catch {
-    await clearBoundTab()
-  }
-}
-
-async function bindTab(tab: chrome.tabs.Tab | undefined): Promise<TabContext> {
+function setBoundTab(tab: chrome.tabs.Tab | undefined): TabContext | undefined {
   if (tab?.id === undefined || !tab.url || !isSupportedPageUrl(tab.url)) {
-    throw new RuntimeError(
-      "PERMISSION_DENIED",
-      "Use the Pi Chrome page menu on an HTTP or HTTPS tab before binding it",
-    )
+    clearBoundTab()
+    return undefined
   }
-  boundContext = { tabId: tab.id, url: tab.url, epoch: 0 }
-  await saveBoundTabId(tab.id)
+  if (boundContext?.tabId === tab.id && boundContext.url === tab.url) {
+    return { ...boundContext }
+  }
+  if (boundContext) contextEpoch = Math.max(contextEpoch, boundContext.epoch) + 1
+  boundContext = { tabId: tab.id, url: tab.url, epoch: contextEpoch }
   emitTabChanged()
   return { ...boundContext }
 }
 
-async function bindActiveTab(): Promise<TabContext> {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-  return bindTab(tab)
+async function syncVisibleTab(): Promise<TabContext | undefined> {
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
+  return setBoundTab(tab)
+}
+
+async function initialize(): Promise<void> {
+  await restrictLocalStorageToTrustedContexts()
+  await syncVisibleTab()
+}
+
+function bindSelectionTab(tab: chrome.tabs.Tab | undefined): TabContext {
+  const context = setBoundTab(tab)
+  if (!context) {
+    throw new RuntimeError(
+      "PERMISSION_DENIED",
+      "Selections can only be sent from an HTTP or HTTPS page",
+    )
+  }
+  return context
 }
 
 function consumePendingSelection(windowId: number): Promise<JsonValue> {
@@ -82,22 +86,11 @@ function consumePendingSelection(windowId: number): Promise<JsonValue> {
 }
 
 async function refreshBoundContext(): Promise<TabContext> {
-  if (!boundContext) throw new RuntimeError("TAB_NOT_BOUND", "Bind a tab from the Side Panel")
-  let tab: chrome.tabs.Tab
-  try {
-    tab = await chrome.tabs.get(boundContext.tabId)
-  } catch {
-    await clearBoundTab()
-    throw new RuntimeError("TAB_NOT_BOUND", "The bound tab no longer exists")
+  const context = await syncVisibleTab()
+  if (!context) {
+    throw new RuntimeError("TAB_NOT_BOUND", "Open an HTTP or HTTPS page in the active tab")
   }
-  if (!tab.url || !isSupportedPageUrl(tab.url)) {
-    throw new RuntimeError("PERMISSION_DENIED", "The bound tab is not an HTTP or HTTPS page")
-  }
-  if (tab.url !== boundContext.url) {
-    boundContext = { ...boundContext, url: tab.url, epoch: boundContext.epoch + 1 }
-    emitTabChanged()
-  }
-  return { ...boundContext }
+  return context
 }
 
 async function runPageOperation(
@@ -117,7 +110,7 @@ async function runPageOperation(
   } catch (error) {
     throw new RuntimeError(
       "PERMISSION_DENIED",
-      error instanceof Error ? error.message : "Chrome denied access to the bound tab",
+      error instanceof Error ? error.message : "Chrome denied access to the current tab",
     )
   }
   const outcome = results[0]?.result
@@ -213,7 +206,7 @@ async function captureVisible(request: RuntimeRequest): Promise<JsonValue> {
   assertTabContext(request.tabContext, context)
   const tab = await chrome.tabs.get(context.tabId)
   if (!tab.active) {
-    throw new RuntimeError("INVALID_REQUEST", "The bound tab must be active for a screenshot")
+    throw new RuntimeError("INVALID_REQUEST", "The current tab must remain active for a screenshot")
   }
   const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" })
   if (dataUrl.length > 3_000_000) {
@@ -259,14 +252,7 @@ async function dispatch(request: RuntimeRequest, signal: AbortSignal): Promise<J
   let result: JsonValue
   switch (request.method) {
     case "app.getState":
-      result = { tabContext: boundContext ?? null }
-      break
-    case "tabs.bindActive":
-      result = await bindActiveTab()
-      break
-    case "tabs.unbind":
-      await clearBoundTab()
-      result = { unbound: true }
+      result = { tabContext: (await syncVisibleTab()) ?? null }
       break
     case "tabs.getActive":
       result = await getActiveTab()
@@ -337,11 +323,6 @@ chrome.runtime.onInstalled.addListener(() => {
   void chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
-      id: BIND_CONTEXT_MENU_ID,
-      title: "Bind this tab to Pi Chrome",
-      contexts: ["page"],
-    })
-    chrome.contextMenus.create({
       id: SELECTION_CONTEXT_MENU_ID,
       title: "Send selection to Pi Chrome",
       contexts: ["selection"],
@@ -356,34 +337,42 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
     (!changeInfo.url && changeInfo.status !== "loading")
   )
     return
+  contextEpoch = Math.max(contextEpoch, boundContext.epoch) + 1
   boundContext = {
     tabId,
     url: changeInfo.url ?? boundContext.url,
-    epoch: boundContext.epoch + 1,
+    epoch: contextEpoch,
   }
   emitTabChanged()
 })
 
+chrome.tabs.onActivated.addListener(() => {
+  void initialization.then(syncVisibleTab).catch(() => undefined)
+})
+
 chrome.tabs.onRemoved.addListener((tabId) => {
-  if (boundContext?.tabId === tabId) void clearBoundTab()
+  if (boundContext?.tabId === tabId) {
+    clearBoundTab()
+    void initialization.then(syncVisibleTab).catch(() => undefined)
+  }
+})
+
+chrome.windows.onFocusChanged.addListener((windowId) => {
+  if (windowId !== chrome.windows.WINDOW_ID_NONE) {
+    void initialization.then(syncVisibleTab).catch(() => undefined)
+  }
 })
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId !== BIND_CONTEXT_MENU_ID && info.menuItemId !== SELECTION_CONTEXT_MENU_ID)
-    return
+  if (info.menuItemId !== SELECTION_CONTEXT_MENU_ID) return
   const windowId = tab?.windowId
   if (windowId !== undefined) {
     void chrome.sidePanel.open({ windowId }).catch(() => undefined)
   }
   void initialization
-    .then(() => bindTab(tab))
+    .then(() => bindSelectionTab(tab))
     .then(async (context) => {
-      if (
-        info.menuItemId !== SELECTION_CONTEXT_MENU_ID ||
-        !info.selectionText ||
-        windowId === undefined
-      )
-        return
+      if (!info.selectionText || windowId === undefined) return
       const selection = truncateUtf8(info.selectionText)
       await savePendingSelection({
         windowId,

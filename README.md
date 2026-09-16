@@ -1,6 +1,6 @@
 # Pi Chrome
 
-Pi Chrome is a Chrome-native Codex assistant. The Side Panel runs `pi-agent-core` and `pi-ai`, signs in with a ChatGPT Plus/Pro device code, and exposes bounded tools for one explicitly bound tab.
+Pi Chrome is a Chrome-native Codex assistant. The Side Panel runs `pi-agent-core` and `pi-ai`, signs in with a ChatGPT Plus/Pro device code, and exposes bounded tools for the active HTTP(S) tab in the focused Chrome window.
 
 No local agent process, native host, shell, filesystem access, pairing secret, or loopback connection is required.
 
@@ -29,8 +29,8 @@ Load the production artifact:
 
 1. In the Side Panel, select **Log in** and approve access to `auth.openai.com` and `chatgpt.com`.
 2. Open the verification page, enter the displayed device code, and complete OpenAI login.
-3. Open an HTTP or HTTPS page, right-click it, then select **Bind this tab to Pi Chrome**.
-4. Select **Allow site** if a browser action needs persistent access beyond the context menu's temporary `activeTab` grant.
+3. Open the HTTP or HTTPS page you want to use. Pi Chrome follows the visible tab automatically.
+4. Select **Allow site** if a browser action needs access beyond the extension action's temporary `activeTab` grant.
 5. Enter a prompt.
 
 The model transport is always SSE. Closing the Side Panel aborts the active run and marks the session interrupted; reopening never automatically repeats a browser mutation.
@@ -41,7 +41,7 @@ The agent can read visible text and selection, capture the visible viewport, cli
 
 - Password and file inputs are denied.
 - Form submissions, downloads, cross-origin links, cross-origin navigation, and all WebMCP calls require confirmation.
-- A request created before tab navigation is rejected as stale.
+- A request created before navigation or a visible-tab change is rejected as stale.
 - Visible text and selected text are capped at 50 KB; screenshots are capped at 3 MB.
 - Page text, selections, screenshot metadata, and WebMCP results are labeled as untrusted model input.
 - Credentials stay in trusted extension storage and are never sent to the service worker, content injection, page context, transcript, or diagnostic export.
@@ -67,8 +67,8 @@ npm audit --omit=dev
 ## Troubleshooting
 
 - **OpenAI host access was revoked:** select **Log in** again and approve both requested OpenAI origins.
-- **A page tool is denied:** right-click the intended HTTP(S) tab, select **Bind this tab to Pi Chrome**, then select **Allow site**. Chrome internal pages cannot be controlled.
-- **Stale context:** the bound tab navigated after the tool request began. Retry after the Side Panel shows the new URL.
+- **A page tool is denied:** make the intended HTTP(S) page visible, then select **Allow site**. Chrome internal pages cannot be controlled.
+- **Stale context:** the visible tab changed or navigated after the tool request began. Retry after the Side Panel shows the current URL.
 - **Login pending:** finish the device flow before its 15-minute expiry. Cancel and restart if the code expires or is denied.
 - **Refresh failed:** log out, then complete device login again. The extension does not fall back to another provider.
 - **Interrupted session:** review the transcript before continuing. Mutation tools are never replayed automatically.

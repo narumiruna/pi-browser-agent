@@ -4,13 +4,14 @@
 
 | Permission | Purpose |
 | --- | --- |
-| `activeTab` | Temporary access after the user invokes the extension. |
-| `contextMenus` | Explicitly bind a tab or send its current selection to the Side Panel. |
-| `scripting` | Run the fixed bounded operation functions in the bound tab. |
+| `activeTab` | Temporary page access after the user invokes the extension. |
+| `contextMenus` | Send the current selection to the Side Panel. |
+| `scripting` | Run fixed bounded operation functions in the current page. |
 | `sidePanel` | Host the agent and user interface. |
-| `storage` | Store settings, credentials, and session-only tab binding. |
+| `storage` | Store settings, credentials, and undelivered context-menu selections. |
+| `tabs` | Identify the active tab and its URL when the user switches tabs or windows. |
 
-Optional host patterns are the two OpenAI origins and HTTP(S) page origins. OpenAI origins are requested together only from **Log in**. A page origin is requested directly from the **Allow site** click handler. Tab binding uses the page context menu so Chrome grants `activeTab` in the same gesture. There is no production `host_permissions` grant.
+Optional host patterns are the two OpenAI origins and HTTP(S) page origins. OpenAI origins are requested together only from **Log in**. A page origin is requested directly from the **Allow site** click handler. Selecting the extension action grants temporary `activeTab` access to the page visible at that time; later pages need a matching optional host grant before tools can be injected. There is no production `host_permissions` grant.
 
 The extension CSP permits connections only to `auth.openai.com` and `chatgpt.com`; it does not permit remote scripts.
 
@@ -19,7 +20,7 @@ The extension CSP permits connections only to `auth.openai.com` and `chatgpt.com
 | Store | Data | Lifetime |
 | --- | --- | --- |
 | `chrome.storage.local` | OpenAI credential, system prompt, AGENTS-style instructions, active session ID | Until logout, settings change, session selection, or extension data removal |
-| `chrome.storage.session` | Bound tab ID and an undelivered context-menu selection | Browser session |
+| `chrome.storage.session` | An undelivered context-menu selection | Browser session |
 | IndexedDB `pi-chrome-sessions` | Versioned complete messages, model state, names, timestamps, embedded image content | Until retention deletion or user clear |
 | Memory | Live agent, partial stream, confirmations, login cancellation | Side Panel lifetime |
 
