@@ -3,9 +3,12 @@
     "target": "ES2022",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "rootDir": "src",
-    "outDir": "dist",
-    "strict": true
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "noEmit": true,
+    "noUncheckedIndexedAccess": true,
+    "skipLibCheck": true,
+    "types": ["chrome", "node", "vitest/globals"]
   },
-  "include": ["src"]
+  "include": ["src", "tests", "playwright.config.ts", "extension-env.d.ts"]
 }

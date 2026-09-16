@@ -1,0 +1,113 @@
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, sans-serif;
+}
+
+body {
+  margin: 0;
+  min-width: 340px;
+}
+
+main {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: 17px;
+}
+
+h2 {
+  font-size: 14px;
+}
+
+section {
+  display: grid;
+  gap: 8px;
+}
+
+label {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+input,
+button {
+  border: 1px solid #8886;
+  border-radius: 6px;
+  box-sizing: border-box;
+  font: inherit;
+  padding: 8px 10px;
+  width: 100%;
+}
+
+button {
+  background: #1769e0;
+  border-color: #1769e0;
+  color: white;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+button.secondary {
+  background: transparent;
+  color: inherit;
+}
+
+button.danger {
+  background: #b3261e;
+  border-color: #b3261e;
+}
+
+.status {
+  border-radius: 999px;
+  font-size: 11px;
+  padding: 3px 8px;
+}
+
+.status.authenticated {
+  background: #13733333;
+  color: #1e8e3e;
+}
+
+.status.connecting,
+.status.authenticating {
+  background: #e3740033;
+  color: #e37400;
+}
+
+.status.disconnected,
+.status.unpaired {
+  background: #8883;
+}
+
+.muted {
+  color: #777;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.error {
+  background: #b3261e22;
+  border-radius: 6px;
+  color: #b3261e;
+  font-size: 12px;
+  padding: 8px;
+}
+
+.actions {
+  grid-template-columns: 1fr 1fr;
+}
