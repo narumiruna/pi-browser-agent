@@ -38,6 +38,7 @@ const accountMenuTrigger = element<HTMLElement>("account-menu-trigger")
 let loginController: AbortController | undefined
 let verificationUri = ""
 let activeTabUrl: string | undefined
+let submissionPending = false
 
 function setError(error?: unknown): void {
   errorOutput.textContent = error === undefined ? "" : safeErrorMessage(error)
@@ -327,26 +328,37 @@ element<HTMLButtonElement>("grant-site").addEventListener("click", () => {
 })
 
 function submitPrompt(queueAfterCurrentTask = false): void {
+  if (submissionPending) return
+  const text = promptInput.value.trim()
+  if (!text) return
   const submittedWhileStreaming = runtime.agent.state.isStreaming
+  submissionPending = true
+  sendButton.disabled = true
   void run(async () => {
-    const text = promptInput.value.trim()
-    if (!text) return
-    await requestActiveSiteAccess()
-    const hasPermission = await chrome.permissions.contains({ origins: [...AUTH_ORIGINS] })
-    if (!hasPermission) throw new Error("OpenAI host access was revoked. Log in again to continue.")
-    if (!(await runtime.authStatus()).loggedIn)
-      throw new Error("Log in to OpenAI before sending a prompt")
-    if (submittedWhileStreaming !== runtime.agent.state.isStreaming) {
-      throw new Error(
-        submittedWhileStreaming
-          ? "The current task finished before the instruction could be queued. Send it again."
-          : "A task started before the prompt could be sent. Send it again.",
-      )
+    try {
+      await requestActiveSiteAccess()
+      const hasPermission = await chrome.permissions.contains({ origins: [...AUTH_ORIGINS] })
+      if (!hasPermission)
+        throw new Error("OpenAI host access was revoked. Log in again to continue.")
+      if (!(await runtime.authStatus()).loggedIn)
+        throw new Error("Log in to OpenAI before sending a prompt")
+      if (submittedWhileStreaming !== runtime.agent.state.isStreaming) {
+        throw new Error(
+          submittedWhileStreaming
+            ? "The current task finished before the instruction could be queued. Send it again."
+            : "A task started before the prompt could be sent. Send it again.",
+        )
+      }
+      promptInput.value = ""
+      resizePromptInput()
+      submissionPending = false
+      sendButton.disabled = false
+      const mode = await runtime.submit(text, queueAfterCurrentTask ? "followUp" : "steer")
+      if (mode !== "prompt") setRunStatus("Instruction queued", true)
+    } finally {
+      submissionPending = false
+      sendButton.disabled = false
     }
-    promptInput.value = ""
-    resizePromptInput()
-    const mode = await runtime.submit(text, queueAfterCurrentTask ? "followUp" : "steer")
-    if (mode !== "prompt") setRunStatus("Instruction queued", true)
   })
 }
 
