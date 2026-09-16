@@ -1,54 +1,43 @@
 # Security model
 
-## Boundary and assets
+## Trust boundaries
 
-The bridge grants a paired Chrome extension bounded access to one explicitly bound HTTP(S) tab. The pairing secret, extension-ID binding, page contents, user account state, and the local pi session are protected assets.
+Trusted extension contexts are the Side Panel and MV3 service worker. Web pages, injected page results, model output, WebMCP definitions, and WebMCP results are untrusted.
 
-The browser page, page-provided WebMCP metadata and results, WebSocket peers before authentication, and model-generated tool arguments are untrusted. Loopback networking is a transport boundary, not an authentication boundary.
+`chrome.storage.local` is restricted to `TRUSTED_CONTEXTS`. OAuth values never enter runtime messages, the service worker, injected functions, model messages, tool results, IndexedDB sessions, or logs. Diagnostic strings pass through credential redaction.
 
-## Controls
+## Authentication
 
-- The server binds only to `127.0.0.1` and checks the exact `chrome-extension://<id>` WebSocket origin.
-- A 256-bit secret authenticates a client with a 30-second, single-use HMAC challenge. The first valid pairing binds the extension ID.
-- Pi stores configuration atomically with mode `0600`; Chrome uses extension-local storage. Secrets are not included in URLs, tool results, or pi session entries.
-- Every frame is schema-checked and size-limited. Requests have bounded timeouts, correlation IDs, cancellation, known methods, and a navigation epoch.
-- The production manifest starts with `activeTab`; persistent host access is optional and origin-scoped. Cross-origin navigation is denied until the destination origin has a persistent grant because `activeTab` does not survive that navigation.
-- Browser operations expose no arbitrary JavaScript, cookie, storage, password, file-input, or unrestricted network capability.
-- Form submission, download, cross-origin navigation, and every WebMCP invocation require confirmation. Pairing can be revoked from either side.
-- Page text sent to the model is truncated and labelled as untrusted data.
+OpenAI access requires an explicit **Log in** gesture before Chrome requests the two provider origins. The device flow validates response shapes and the ChatGPT account claim. Polling handles pending, slowdown, denial, local or server expiry, and cancellation. Automatic refresh runs inside the credential store's serialized provider mutation, and a rotated refresh token replaces the old credential in one storage write.
 
-## Threat analysis
+Logout first aborts the agent, waits for it to become idle, then removes persistent credentials. Requests cannot silently switch providers or hosts after auth failure.
 
-| Threat | Mitigation | Residual risk |
-| --- | --- | --- |
-| Malicious webpage | No page-controlled network transport, runtime validation, bounded output, sensitive-element denial, mutation confirmation, stale-context checks, and untrusted-content labels. | A page can present deceptive visible text or change after inspection; the user and model must treat page output as data. |
-| Malicious Chrome extension | Exact origin validation plus first-pair extension-ID binding and secret proof prevent an unpaired extension from using the bridge. | Another local extension that steals the pairing secret and can spoof the bound ID is outside Chrome's normal isolation guarantees. Revoke and pair again after suspected compromise. |
-| Localhost probing by a website | Loopback alone grants nothing. Browser WebSocket origins that are not exact Chrome-extension origins are rejected before authentication. | A website can detect that a port responds or consume a small amount of handshake work; rate-based denial of service is an accepted local-only MVP risk. |
-| DNS rebinding or remote access | The listener uses the literal IPv4 loopback address, never `0.0.0.0` or a hostname, and validates `Origin`. | A fully compromised local network stack or browser is outside scope. |
-| Stolen pairing secret | Secret files are user-only, challenges are nonce-bound, short-lived, connection-scoped, and single-use; pairing rotation disconnects the old client. | Local malware running as the same OS user can read process files or browser profile data. Native Messaging or OS keychain storage is a future hardening option. |
-| Replay | Each challenge is random, expires after 30 seconds, and is consumed on the first response. The proof binds challenge ID, nonce, client ID, and origin. | None known within the HMAC and random-number assumptions. |
-| Prompt injection | Browser text and WebMCP output are wrapped as untrusted content and never become system instructions. WebMCP tools are exposed through one stable tool rather than dynamically changing pi's instruction surface. | Models can still mishandle adversarial content. Confirmation is required before high-impact mutations. |
-| Over-privileged permissions | Production uses `activeTab` and asks for an optional per-origin host grant only from the popup. It does not request `<all_urls>`, cookies, downloads, or debugger access. | A bound tab can contain sensitive visible account data. Binding and persistent grants remain explicit user decisions. |
-| Cross-tab or navigation race | One tab is bound for the current browser session, each request includes tab ID, URL, and document epoch, confirmation retries reuse the original context, and URL-only changes are published. Chrome rejects stale contexts. | Same-document application state can change without a URL change; selectors are resolved immediately and must refer to visible, viewport-intersecting, hit-testable elements. |
-| Oversized or malformed data | Frame, JSON shape, nesting, key, array, text, and timeout limits are enforced before processing; oversized responses become typed errors. | Screenshot data can approach the frame limit and fail rather than being recompressed. |
-| Lifecycle leaks | Session shutdown closes sockets and pending work; reconnect backoff and heartbeat timers are cancelled; start/stop is idempotent. Popup revocation waits for pi acknowledgement when connected; otherwise it clears local data and directs the user to run `/chrome-revoke` in pi. | Abrupt process termination relies on the operating system to release the loopback port. |
+## Bound-tab controls
 
-## Accepted MVP risks
+- Only one user-selected HTTP(S) tab is bound.
+- Tab ID, URL, and navigation epoch identify the operation context.
+- Navigation after request creation causes `STALE_CONTEXT`.
+- Host access is requested from a user gesture and scoped to a selected origin.
+- Password and file inputs are always denied.
+- Form submissions, downloads, cross-origin links, cross-origin navigation, and WebMCP calls require confirmation.
+- Cross-origin navigation additionally requires destination host permission.
+- Tools accept fixed schemas; injected code cannot evaluate model-provided JavaScript.
 
-This is a single-user local bridge, not a sandbox against malware running as the same OS account. Transport is plaintext on loopback because confidentiality from same-user local malware cannot be provided by TLS with a bundled trust root. Native Messaging, keychain-backed credentials, operation audit logs, and policy-managed extension IDs are deferred.
+Mutation tools declare `replay: "never"` and execute sequentially. Interrupted sessions do not continue automatically.
 
-WebMCP is experimental and page-controlled. Its absence does not affect the DOM-based core, and its invocation always requires confirmation.
+## Untrusted content and limits
 
-The Extension.js 4.1.19 development toolchain currently brings a high-severity denial-of-service advisory through Less's optional `image-size` parser. Neither Less nor `image-size` is included in the Chrome or pi runtime artifacts, and this repository does not compile untrusted Less input. `npm audit --omit=dev` is clean. Upgrade Extension.js when its dependency chain resolves the advisory.
+Visible page text, selection, screenshot metadata, tab metadata, and WebMCP results are wrapped as untrusted content before model use. They cannot enter the system-prompt channel. Visible text and selections are truncated to 50 KB. Screenshots are rejected above 3 MB. Session records are rejected above 5 MB and retention is capped at 50 sessions.
 
-## Security verification
+## Build boundary
 
-Run:
+The production build includes `pi-agent-core`, selected `pi-ai` provider code, and browser-owned OAuth. It excludes native processes, shell tools, filesystem discovery, dynamic remote code, and Node OAuth callback modules. `npm run audit:artifact` rejects executable Node built-in imports, loopback transport URLs, remote scripts, source maps, embedded credential patterns, and unexpected permissions.
 
-```sh
-npm test
-npm run test:e2e
-npm audit --omit=dev
-```
+`npm audit --omit=dev` is clean. A full development-dependency audit reports four high-severity denial-of-service advisories through Extension.js → Less → `image-size`. These parsers are not shipped in the Chrome artifact, and the build does not process untrusted Less input. The available forced fix downgrades Extension.js across a breaking boundary, so the development-only advisory is accepted until the toolchain updates its dependency.
 
-The tests cover invalid origins and secrets, challenge expiry and replay, malformed and oversized frames, unknown protocol versions, stale navigation, denied mutations, worker/server restarts, revocation, and output truncation. Development-only Extension.js dependencies are not shipped in either runtime artifact.
+## Residual risks
+
+- Codex subscription endpoints can change independently of this extension.
+- Browser-profile credential storage is less protected than an OS keychain.
+- Browser or panel termination can interrupt a stream; the last complete transcript remains recoverable, but partial content is not treated as complete.
+- Page confirmation describes an intended action, but the page can still change between inspection and execution. Link targets are rechecked immediately before controlled navigation.
