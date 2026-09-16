@@ -15,6 +15,7 @@ const activeRequests = new Map<string, AbortController>()
 let boundContext: TabContext | undefined
 let contextEpoch = 0
 let visibleTabSyncVersion = 0
+let latestVisibleTabSync: { version: number; promise: Promise<TabContext | undefined> } | undefined
 let pendingSelectionTake: Promise<JsonValue> = Promise.resolve(null)
 const initialization = initialize()
 
@@ -55,31 +56,44 @@ function setBoundTab(tab: chrome.tabs.Tab | undefined): TabContext | undefined {
   return { ...boundContext }
 }
 
-async function focusedTab(tab: chrome.tabs.Tab | undefined): Promise<chrome.tabs.Tab | undefined> {
-  if (tab?.id === undefined || !tab.url || !isSupportedPageUrl(tab.url)) return undefined
-  const window = await chrome.windows.get(tab.windowId)
-  return window.focused ? tab : undefined
-}
-
 function currentBoundContext(): TabContext | undefined {
   return boundContext ? { ...boundContext } : undefined
 }
 
-async function syncVisibleTab(): Promise<TabContext | undefined> {
-  const version = ++visibleTabSyncVersion
-  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
-  const currentTab = await focusedTab(tab)
-  if (version !== visibleTabSyncVersion) return currentBoundContext()
-  return setBoundTab(currentTab)
+function sameTab(left: chrome.tabs.Tab | undefined, right: chrome.tabs.Tab | undefined): boolean {
+  return left?.id === right?.id && left?.url === right?.url && left?.windowId === right?.windowId
 }
 
-async function syncUpdatedVisibleTab(updatedTabId: number): Promise<void> {
-  const version = ++visibleTabSyncVersion
+async function latestVisibleTabContext(version: number): Promise<TabContext | undefined> {
+  const latest = latestVisibleTabSync
+  return latest && latest.version > version ? latest.promise : currentBoundContext()
+}
+
+async function findFocusedVisibleTab(version: number): Promise<chrome.tabs.Tab | undefined | null> {
+  while (version === visibleTabSyncVersion) {
+    const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
+    if (version !== visibleTabSyncVersion) return null
+    if (tab?.id === undefined || !tab.url || !isSupportedPageUrl(tab.url)) return undefined
+
+    const window = await chrome.windows.get(tab.windowId)
+    if (version !== visibleTabSyncVersion) return null
+    const [latestTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
+    if (version !== visibleTabSyncVersion) return null
+    if (!sameTab(tab, latestTab)) continue
+    return window.focused ? latestTab : undefined
+  }
+  return null
+}
+
+async function finishVisibleTabSync(
+  version: number,
+  updatedTabId?: number,
+): Promise<TabContext | undefined> {
   const previous = boundContext
-  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
-  const currentTab = await focusedTab(tab)
-  if (version !== visibleTabSyncVersion) return
-  const context = setBoundTab(currentTab)
+  const tab = await findFocusedVisibleTab(version)
+  if (tab === null) return latestVisibleTabContext(version)
+
+  const context = setBoundTab(tab)
   if (
     context &&
     tab?.id === updatedTabId &&
@@ -90,7 +104,20 @@ async function syncUpdatedVisibleTab(updatedTabId: number): Promise<void> {
     contextEpoch = Math.max(contextEpoch, context.epoch) + 1
     boundContext = { ...context, epoch: contextEpoch }
     emitTabChanged()
+    return { ...boundContext }
   }
+  return context
+}
+
+function syncVisibleTab(updatedTabId?: number): Promise<TabContext | undefined> {
+  const version = ++visibleTabSyncVersion
+  const promise = finishVisibleTabSync(version, updatedTabId)
+  latestVisibleTabSync = { version, promise }
+  return promise
+}
+
+async function syncUpdatedVisibleTab(updatedTabId: number): Promise<void> {
+  await syncVisibleTab(updatedTabId)
 }
 
 async function initialize(): Promise<void> {
@@ -451,13 +478,13 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
 })
 
 chrome.tabs.onActivated.addListener(() => {
-  void initialization.then(syncVisibleTab).catch(() => undefined)
+  void initialization.then(() => syncVisibleTab()).catch(() => undefined)
 })
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   if (boundContext?.tabId === tabId) {
     clearBoundTab()
-    void initialization.then(syncVisibleTab).catch(() => undefined)
+    void initialization.then(() => syncVisibleTab()).catch(() => undefined)
   }
 })
 
@@ -467,7 +494,7 @@ chrome.windows.onFocusChanged.addListener((windowId) => {
     clearBoundTab()
     return
   }
-  void initialization.then(syncVisibleTab).catch(() => undefined)
+  void initialization.then(() => syncVisibleTab()).catch(() => undefined)
 })
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
