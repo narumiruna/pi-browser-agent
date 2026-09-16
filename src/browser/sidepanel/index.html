@@ -7,49 +7,42 @@
   </head>
   <body data-state="idle">
     <header class="app-header">
-      <div class="brand-row">
-        <div class="brand">
-          <span class="brand-mark" aria-hidden="true">π</span>
-          <strong>Pi Chrome</strong>
+      <div class="header-row">
+        <div class="page-context">
+          <svg class="radix-icon page-icon" viewBox="0 0 15 15" aria-hidden="true">
+            <circle cx="7.5" cy="7.5" r="6.25" />
+            <path d="M1.8 5.5h11.4M1.8 9.5h11.4M7.5 1.25c1.55 1.7 2.3 3.78 2.3 6.25s-.75 4.55-2.3 6.25M7.5 1.25C5.95 2.95 5.2 5.03 5.2 7.5s.75 4.55 2.3 6.25" />
+          </svg>
+          <div>
+            <span class="eyebrow">Current page</span>
+            <p id="tab-status" title="">Detecting current page</p>
+          </div>
         </div>
-        <div class="header-actions">
-          <span class="status-pill">
-            <span class="status-dot" aria-hidden="true"></span>
-            <span id="run-status" aria-live="polite">Ready</span>
-          </span>
-          <details class="disclosure account-disclosure">
-            <summary
-              id="account-menu-trigger"
-              class="icon-button account-trigger"
-              aria-label="Account and site access"
-              title="Account and site access"
-            >
-              <svg class="radix-icon dot-icon" viewBox="0 0 15 15" aria-hidden="true">
-                <circle cx="3" cy="7.5" r="1" />
-                <circle cx="7.5" cy="7.5" r="1" />
-                <circle cx="12" cy="7.5" r="1" />
-              </svg>
-            </summary>
-            <div class="disclosure-menu account-menu">
-              <span id="auth-status" class="auth-status">Not logged in</span>
-              <button type="button" id="login" class="menu-item">Log in</button>
-              <button type="button" id="refresh-token" class="menu-item" hidden>Refresh credential</button>
-              <button type="button" id="logout" class="menu-item" hidden>Log out</button>
-              <button type="button" id="grant-site" class="menu-item">Allow current site</button>
-            </div>
-          </details>
-        </div>
-      </div>
-
-      <div class="page-context">
-        <svg class="radix-icon page-icon" viewBox="0 0 15 15" aria-hidden="true">
-          <circle cx="7.5" cy="7.5" r="6.25" />
-          <path d="M1.8 5.5h11.4M1.8 9.5h11.4M7.5 1.25c1.55 1.7 2.3 3.78 2.3 6.25s-.75 4.55-2.3 6.25M7.5 1.25C5.95 2.95 5.2 5.03 5.2 7.5s.75 4.55 2.3 6.25" />
-        </svg>
-        <div>
-          <span class="eyebrow">Current page</span>
-          <p id="tab-status" title="">Detecting current page</p>
-        </div>
+        <span class="status-pill">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span id="run-status" aria-live="polite">Ready</span>
+        </span>
+        <details class="disclosure account-disclosure">
+          <summary
+            id="account-menu-trigger"
+            class="icon-button account-trigger"
+            aria-label="Account and site access"
+            title="Account and site access"
+          >
+            <svg class="radix-icon dot-icon" viewBox="0 0 15 15" aria-hidden="true">
+              <circle cx="3" cy="7.5" r="1" />
+              <circle cx="7.5" cy="7.5" r="1" />
+              <circle cx="12" cy="7.5" r="1" />
+            </svg>
+          </summary>
+          <div class="disclosure-menu account-menu">
+            <span id="auth-status" class="auth-status">Not logged in</span>
+            <button type="button" id="login" class="menu-item">Log in</button>
+            <button type="button" id="refresh-token" class="menu-item" hidden>Refresh credential</button>
+            <button type="button" id="logout" class="menu-item" hidden>Log out</button>
+            <button type="button" id="grant-site" class="menu-item">Allow current site</button>
+          </div>
+        </details>
       </div>
     </header>
 

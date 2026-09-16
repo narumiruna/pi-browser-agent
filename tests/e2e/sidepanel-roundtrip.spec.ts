@@ -262,14 +262,128 @@ test("loads the Side Panel without uncaught errors", async () => {
   expect(transcriptTop).toBeLessThan(190)
 
   const viewport = controller.viewportSize() ?? { width: 1280, height: 720 }
-  await controller.setViewportSize({ width: 360, height: 260 })
+  await controller.setViewportSize({ width: 360, height: 200 })
   expect(await controller.evaluate(() => document.documentElement.scrollHeight)).toBeGreaterThan(
-    260,
+    200,
   )
   await controller.mouse.wheel(0, 1_000)
   await expect.poll(() => controller.evaluate(() => window.scrollY)).toBeGreaterThan(0)
   await controller.setViewportSize(viewport)
   await controller.evaluate(() => window.scrollTo(0, 0))
+})
+
+test("keeps page context and controls usable at normal and narrow widths", async () => {
+  const originalViewport = controller.viewportSize() ?? { width: 1280, height: 720 }
+  const tabStatus = controller.locator("#tab-status")
+  const originalText = await tabStatus.textContent()
+  const originalTitle = await tabStatus.getAttribute("title")
+
+  try {
+    await controller.setViewportSize({ width: 480, height: 720 })
+    await expect(controller.locator(".brand, .brand-mark")).toHaveCount(0)
+    await expect(controller.locator(".app-header")).not.toContainText("Pi Chrome")
+    await expect(tabStatus).toBeVisible()
+    await expect(tabStatus).toContainText(`http://127.0.0.1:${fixture.port}/`)
+
+    const sharesRow = await controller.locator(".header-row").evaluate((header) => {
+      const selectors = [".page-context", ".status-pill", ".account-disclosure"]
+      const rectangles = selectors.map((selector) => {
+        const element = header.querySelector(selector)
+        if (!(element instanceof HTMLElement)) throw new Error(`Missing ${selector}`)
+        return element.getBoundingClientRect()
+      })
+      return (
+        Math.max(...rectangles.map((rectangle) => rectangle.top)) <
+        Math.min(...rectangles.map((rectangle) => rectangle.bottom))
+      )
+    })
+    expect(sharesRow).toBe(true)
+
+    const longUrl = `https://example.com/${"long-path-segment/".repeat(20)}?query=current-page`
+    await tabStatus.evaluate((element, url) => {
+      element.textContent = url
+      element.setAttribute("title", url)
+    }, longUrl)
+    const truncation = await tabStatus.evaluate((element) => {
+      const style = getComputedStyle(element)
+      return {
+        clientWidth: element.clientWidth,
+        scrollWidth: element.scrollWidth,
+        textOverflow: style.textOverflow,
+        whiteSpace: style.whiteSpace,
+      }
+    })
+    expect(truncation.scrollWidth).toBeGreaterThan(truncation.clientWidth)
+    expect(truncation.textOverflow).toBe("ellipsis")
+    expect(truncation.whiteSpace).toBe("nowrap")
+
+    const headerColors = []
+    for (const colorScheme of ["light", "dark"] as const) {
+      await controller.emulateMedia({ colorScheme })
+      headerColors.push(
+        await controller
+          .locator(".app-header")
+          .evaluate((element) => getComputedStyle(element).backgroundColor),
+      )
+      for (const width of [320, 360]) {
+        await controller.setViewportSize({ width, height: 720 })
+        const narrowLayout = await controller.evaluate(() => {
+          const selectors = ["#tab-status", "#run-status", "#account-menu-trigger"]
+          const controls = selectors.map((selector) => {
+            const element = document.querySelector(selector)
+            if (!(element instanceof HTMLElement)) throw new Error(`Missing ${selector}`)
+            const rectangle = element.getBoundingClientRect()
+            return { left: rectangle.left, right: rectangle.right, width: rectangle.width }
+          })
+          return {
+            controls,
+            viewportWidth: document.documentElement.clientWidth,
+            pageWidth: document.documentElement.scrollWidth,
+          }
+        })
+        expect(narrowLayout.pageWidth).toBeLessThanOrEqual(narrowLayout.viewportWidth)
+        for (const control of narrowLayout.controls) {
+          expect(control.width).toBeGreaterThan(0)
+          expect(control.left).toBeGreaterThanOrEqual(0)
+          expect(control.right).toBeLessThanOrEqual(narrowLayout.viewportWidth)
+        }
+      }
+    }
+    expect(headerColors[0]).not.toBe(headerColors[1])
+
+    await controller.setViewportSize({ width: 320, height: 720 })
+    const accountTrigger = controller.locator("#account-menu-trigger")
+    await controller.locator(".page-context").click()
+    await controller.keyboard.press("Tab")
+    await expect(accountTrigger).toBeFocused()
+    const focusOutline = await accountTrigger.evaluate((element) => {
+      const style = getComputedStyle(element)
+      return { style: style.outlineStyle, width: Number.parseFloat(style.outlineWidth) }
+    })
+    expect(focusOutline.style).not.toBe("none")
+    expect(focusOutline.width).toBeGreaterThan(0)
+
+    await accountTrigger.click()
+    const accountMenu = controller.locator(".account-menu")
+    await expect(accountMenu).toBeVisible()
+    const menuBounds = await accountMenu.evaluate((element) => {
+      const rectangle = element.getBoundingClientRect()
+      return { left: rectangle.left, right: rectangle.right }
+    })
+    expect(menuBounds.left).toBeGreaterThanOrEqual(0)
+    expect(menuBounds.right).toBeLessThanOrEqual(320)
+    await accountTrigger.click()
+  } finally {
+    await tabStatus.evaluate(
+      (element, value) => {
+        element.textContent = value.text
+        element.setAttribute("title", value.title)
+      },
+      { text: originalText ?? "", title: originalTitle ?? "" },
+    )
+    await controller.emulateMedia({ colorScheme: null })
+    await controller.setViewportSize(originalViewport)
+  }
 })
 
 test("automatically follows the visible tab and rejects the previous tab context", async () => {

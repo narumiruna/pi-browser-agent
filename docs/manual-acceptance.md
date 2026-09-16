@@ -14,9 +14,11 @@ Use a production build from `npm run build`. Do not test login with development 
 
 ## Procedure
 
-1. **Clean setup**
+1. **Clean setup and Side Panel header**
    - Remove prior extension data, run `npm run build`, and load `dist/chrome` unpacked.
    - Confirm the action opens the Side Panel and no native or local process is running.
+   - Expected: Chrome's native header shows one blue-purple Pi icon and one **Pi Chrome** title; the extension content does not repeat that branding.
+   - Resize the Side Panel through normal and 320–360 px widths. Expected: the current URL, run status, and account menu remain usable with no horizontal page scrolling; long URLs truncate, and the account menu opens without clipping.
 2. **Device login**
    - Select **Log in** and verify Chrome asks only for `auth.openai.com` and `chatgpt.com`.
    - Open the displayed verification URL, enter the code, and finish login.
