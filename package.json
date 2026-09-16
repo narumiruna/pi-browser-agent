@@ -1,21 +1,63 @@
 {
-  "name": "typescript-template",
-  "version": "0.0.0",
+  "name": "pi-chrome",
+  "version": "0.1.0",
+  "description": "A secure local bridge between Chrome and the pi coding agent",
+  "type": "module",
+  "private": true,
+  "keywords": [
+    "pi-package",
+    "chrome-extension",
+    "browser-automation"
+  ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/narumiruna/typescript-template.git"
+    "url": "git+https://github.com/narumiruna/pi-chrome.git"
   },
+  "files": [
+    "docs",
+    "src/pi",
+    "src/protocol",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
-    "build": "tsc",
-    "start": "node dist/index.js",
+    "build": "npm run build:chrome && npm run typecheck",
+    "build:chrome": "extension build --browser=chrome",
     "check": "biome ci .",
+    "ci": "npm run check && npm test && npm run build && npm run test:e2e",
+    "dev:chrome": "extension dev --browser=chrome",
+    "package:chrome": "extension build --browser=chrome --zip --zip-filename=pi-chrome.zip",
+    "package:pi": "mkdir -p dist/packages && npm pack --pack-destination dist/packages",
+    "prepare": "husky",
     "test": "vitest run",
-    "ci": "npm run check && npm test && npm run build",
-    "prepare": "husky"
+    "test:e2e": "playwright test",
+    "typecheck": "tsc --noEmit"
+  },
+  "pi": {
+    "extensions": [
+      "./src/pi/index.ts"
+    ]
+  },
+  "dependencies": {
+    "ws": "^8.21.3"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.13",
+    "@earendil-works/pi-ai": "^0.85.1",
+    "@earendil-works/pi-coding-agent": "^0.85.1",
+    "@playwright/test": "^1.63.0",
+    "@types/chrome": "^0.0.301",
+    "@types/node": "^24.7.2",
+    "@types/ws": "^8.18.1",
+    "extension": "^4.1.19",
     "husky": "^9.1.7",
+    "jsdom": "^27.0.0",
+    "typebox": "^1.3.31",
     "typescript": "^7.0.2",
     "vitest": "^5.0.0"
   }

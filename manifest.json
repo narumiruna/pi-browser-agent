@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "Pi Chrome Bridge",
+  "description": "Connect an explicitly authorized Chrome tab to the local pi coding agent.",
+  "version": "0.1.0",
+  "minimum_chrome_version": "116",
+  "permissions": ["activeTab", "alarms", "contextMenus", "scripting", "storage"],
+  "optional_host_permissions": ["http://*/*", "https://*/*"],
+  "background": {
+    "service_worker": "src/browser/service-worker.ts",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Pi Chrome Bridge",
+    "default_popup": "src/browser/popup/index.html"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src ws://127.0.0.1:*"
+  }
+}
