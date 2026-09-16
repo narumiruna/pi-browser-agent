@@ -110,6 +110,32 @@ describe("browser agent session persistence", () => {
     await runtime.shutdown()
   })
 
+  test("omits empty text blocks from image-only submissions", async () => {
+    const runtime = createRuntime(new FakeLockManager() as unknown as LockManager)
+    await runtime.initialize()
+    const image = { type: "image" as const, data: "cG5n", mimeType: "image/png" }
+    const expectedMessage = {
+      role: "user",
+      content: [image],
+      timestamp: expect.any(Number),
+    }
+
+    const state = runtime.agent.state as unknown as { isStreaming: boolean }
+    state.isStreaming = true
+    const steer = vi.spyOn(runtime.agent, "steer")
+    const followUp = vi.spyOn(runtime.agent, "followUp")
+    await expect(runtime.submit("", "steer", [image])).resolves.toBe("steer")
+    await expect(runtime.submit("", "followUp", [image])).resolves.toBe("followUp")
+    expect(steer).toHaveBeenCalledWith(expectedMessage)
+    expect(followUp).toHaveBeenCalledWith(expectedMessage)
+
+    state.isStreaming = false
+    const prompt = vi.spyOn(runtime.agent, "prompt").mockResolvedValue()
+    await expect(runtime.submit("", "steer", [image])).resolves.toBe("prompt")
+    expect(prompt).toHaveBeenCalledWith(expectedMessage)
+    await runtime.shutdown()
+  })
+
   test("gives concurrent Side Panels distinct live sessions", async () => {
     const locks = new FakeLockManager() as unknown as LockManager
     const first = createRuntime(locks)

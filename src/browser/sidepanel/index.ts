@@ -1,6 +1,6 @@
 import type { AgentEvent, AgentMessage } from "@earendil-works/pi-agent-core"
 import "./styles.css"
-import type { AuthEvent } from "@earendil-works/pi-ai"
+import type { AuthEvent, ImageContent } from "@earendil-works/pi-ai"
 import { BrowserAgentRuntime } from "../agent/runtime.js"
 import { AUTH_ORIGINS } from "../auth/codex-oauth.js"
 import { safeErrorMessage } from "../auth/redaction.js"
@@ -50,6 +50,7 @@ let submissionPending = false
 let pendingPasteOperations = 0
 let pasteQueue = Promise.resolve()
 let composerImages: Array<PastedImage & { id: string }> = []
+const renderedImages = new WeakMap<ImageContent, HTMLImageElement>()
 
 function setError(error?: unknown): void {
   errorOutput.textContent = error === undefined ? "" : safeErrorMessage(error)
@@ -114,11 +115,6 @@ async function attachPastedImages(files: File[]): Promise<void> {
     usedBytes += pastedImage.byteLength
   }
   composerImages.push(...additions)
-  renderComposerImages()
-}
-
-function clearComposerImages(): void {
-  composerImages = []
   renderComposerImages()
 }
 
@@ -227,17 +223,21 @@ function renderMessageContent(container: HTMLElement, message: AgentMessage): vo
   }
   for (const item of message.content) {
     if (item.type === "image") {
-      const source = imageContentSource(item)
-      if (!source) {
-        appendTextContent(container, `[image unavailable: ${item.mimeType}]`)
-        continue
+      let image = renderedImages.get(item)
+      if (!image) {
+        const source = imageContentSource(item)
+        if (!source) {
+          appendTextContent(container, `[image unavailable: ${item.mimeType}]`)
+          continue
+        }
+        image = document.createElement("img")
+        image.className = "message-image"
+        image.src = source
+        image.alt = message.role === "user" ? "Pasted image" : "Image result"
+        image.loading = "lazy"
+        image.decoding = "async"
+        renderedImages.set(item, image)
       }
-      const image = document.createElement("img")
-      image.className = "message-image"
-      image.src = source
-      image.alt = message.role === "user" ? "Pasted image" : "Image result"
-      image.loading = "lazy"
-      image.decoding = "async"
       container.append(image)
       continue
     }
@@ -450,7 +450,11 @@ function submitPrompt(queueAfterCurrentTask = false): void {
     return
   }
   const text = promptInput.value.trim()
-  if (!text && composerImages.length === 0) return
+  const submittedImages = composerImages.map((image) => ({
+    id: image.id,
+    content: { ...image.content },
+  }))
+  if (!text && submittedImages.length === 0) return
   const submittedWhileStreaming = runtime.agent.state.isStreaming
   submissionPending = true
   updateSendButton()
@@ -469,13 +473,19 @@ function submitPrompt(queueAfterCurrentTask = false): void {
             : "A task started before the prompt could be sent. Send it again.",
         )
       }
-      const images = composerImages.map((image) => ({ ...image.content }))
+      const submittedImageIds = new Set(submittedImages.map((image) => image.id))
+      composerImages = composerImages.filter((image) => !submittedImageIds.has(image.id))
       promptInput.value = ""
-      clearComposerImages()
+      renderComposerImages()
       resizePromptInput()
+      const submission = runtime.submit(
+        text,
+        queueAfterCurrentTask ? "followUp" : "steer",
+        submittedImages.map((image) => image.content),
+      )
       submissionPending = false
       updateSendButton()
-      const mode = await runtime.submit(text, queueAfterCurrentTask ? "followUp" : "steer", images)
+      const mode = await submission
       if (mode !== "prompt") setRunStatus("Instruction queued", true)
     } finally {
       submissionPending = false

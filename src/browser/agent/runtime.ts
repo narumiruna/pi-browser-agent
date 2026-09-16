@@ -50,6 +50,14 @@ export function composeSystemPrompt(settings: AppSettings): string {
   ].join("\n")
 }
 
+function multimodalUserMessage(text: string, images: ImageContent[]): AgentMessage {
+  return {
+    role: "user",
+    content: [...(text ? [{ type: "text" as const, text }] : []), ...images],
+    timestamp: Date.now(),
+  }
+}
+
 function messageTitle(messages: AgentMessage[]): string | undefined {
   const first = messages.find((message) => message.role === "user")
   if (!first || !("content" in first)) return undefined
@@ -195,7 +203,7 @@ export class BrowserAgentRuntime {
     if (this.authChanging) throw new Error("Wait for the authentication change to finish")
     if (this.agent.state.isStreaming) throw new Error("The agent is already running")
     this.agent.state.systemPrompt = composeSystemPrompt(this.settings)
-    if (images.length > 0) await this.agent.prompt(text, images)
+    if (images.length > 0) await this.agent.prompt(multimodalUserMessage(text, images))
     else await this.agent.prompt(text)
   }
 
@@ -219,19 +227,19 @@ export class BrowserAgentRuntime {
   }
 
   steer(text: string, images: ImageContent[] = []): void {
-    this.agent.steer({
-      role: "user",
-      content: images.length > 0 ? [{ type: "text", text }, ...images] : text,
-      timestamp: Date.now(),
-    })
+    this.agent.steer(
+      images.length > 0
+        ? multimodalUserMessage(text, images)
+        : { role: "user", content: text, timestamp: Date.now() },
+    )
   }
 
   followUp(text: string, images: ImageContent[] = []): void {
-    this.agent.followUp({
-      role: "user",
-      content: images.length > 0 ? [{ type: "text", text }, ...images] : text,
-      timestamp: Date.now(),
-    })
+    this.agent.followUp(
+      images.length > 0
+        ? multimodalUserMessage(text, images)
+        : { role: "user", content: text, timestamp: Date.now() },
+    )
   }
 
   abort(): void {
