@@ -35,7 +35,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2.5.13",
     "@playwright/test": "^1.63.0",
-    "@types/chrome": "^0.0.301",
+    "@types/chrome": "^0.2.9",
     "@types/node": "^26.5.1",
     "esbuild": "^0.28.1",
     "extension": "^4.1.19",
