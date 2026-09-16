@@ -61,7 +61,7 @@ npm run ci
 npm audit --omit=dev
 ```
 
-`npm run build` runs the isolated browser bundle probe, production extension build, typecheck, and artifact security audit. `npm run package:chrome` creates the Chrome zip without publishing anything.
+`npm run build` runs the isolated browser bundle probe, production extension build, typecheck, and artifact security audit. `npm run pack` creates the Chrome zip without publishing anything.
 
 ## Troubleshooting
 
