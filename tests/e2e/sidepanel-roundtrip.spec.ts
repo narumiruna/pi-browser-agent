@@ -696,8 +696,61 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
   const configureProvider = settingsTab.locator("#configure-provider")
   await expect(configureProvider).toHaveText("Reconnect OpenAI Codex")
 
-  await controller.evaluate(async () => chrome.storage.local.remove("piChromeCredentialsV1"))
+  await controller.evaluate(() => {
+    const originalGet = chrome.storage.local.get
+    const callOriginalGet = originalGet.bind(chrome.storage.local)
+    let markEntered: () => void = () => undefined
+    let release: () => void = () => undefined
+    const entered = new Promise<void>((resolve) => {
+      markEntered = resolve
+    })
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let getCount = 0
+    chrome.storage.local.get = (async (key: string) => {
+      getCount += 1
+      const result = await callOriginalGet(key)
+      if (getCount !== 3) return result
+      markEntered()
+      await gate
+      chrome.storage.local.get = originalGet
+      return result
+    }) as typeof chrome.storage.local.get
+    ;(
+      window as typeof window & {
+        authStatusGate?: { entered: Promise<void>; release: () => void }
+      }
+    ).authStatusGate = { entered, release }
+  })
+  await settingsTab.evaluate(async (credential) => {
+    await chrome.storage.local.set({
+      piChromeCredentialsV1: {
+        "openai-codex": { ...credential, refresh: "updated-test-refresh-token" },
+      },
+    })
+  }, credential)
+  await controller.evaluate(async () => {
+    const gate = (
+      window as typeof window & {
+        authStatusGate?: { entered: Promise<void> }
+      }
+    ).authStatusGate
+    if (!gate) throw new Error("Auth status gate is not installed")
+    await gate.entered
+  })
+
+  await settingsTab.evaluate(async () => chrome.storage.local.remove("piChromeCredentialsV1"))
   await expect(configureProvider).toHaveText("Log in to OpenAI Codex")
+  await expect(controller.locator("#auth-status")).toHaveText("OpenAI Codex not configured")
+  await controller.evaluate(() => {
+    const state = window as typeof window & {
+      authStatusGate?: { release: () => void }
+    }
+    state.authStatusGate?.release()
+    delete state.authStatusGate
+  })
+  await controller.waitForTimeout(50)
   await expect(controller.locator("#auth-status")).toHaveText("OpenAI Codex not configured")
 
   await controller.evaluate(async (credential) => {

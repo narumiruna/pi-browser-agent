@@ -88,6 +88,7 @@ let pasteQueue = Promise.resolve()
 let composerImages: Array<PastedImage & { id: string }> = []
 let voiceInput: VoiceInputController | undefined
 let settingsModelChanged = false
+let authStatusRequest = 0
 let providerConfigurationRequest = 0
 const renderedImages = new WeakMap<ImageContent, HTMLImageElement>()
 
@@ -536,9 +537,11 @@ async function validatedAuthStatus(providerId: string) {
 }
 
 async function refreshAuth(providerId = providerSelect.value): Promise<void> {
+  const request = ++authStatusRequest
   const provider = providerSummary(providerId)
   if (!provider) return
   const status = await validatedAuthStatus(providerId)
+  if (request !== authStatusRequest) return
   loginButton.hidden = status.loggedIn || (!provider.apiKey && !provider.oauth)
   loginButton.textContent = provider.oauth
     ? `Log in to ${provider.name}`
