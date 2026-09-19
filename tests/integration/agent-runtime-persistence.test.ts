@@ -176,12 +176,13 @@ describe("browser agent session persistence", () => {
     await settingsRuntime.updateSettings({
       ...settingsRuntime.appSettings,
       fontFamily: "serif",
+      fontSize: 19,
       modelProvider: settingsRuntime.model.provider,
       modelId: settingsRuntime.model.id,
     })
     await runtime.syncSettings({ applyModelToActiveSession: true })
 
-    expect(runtime.appSettings.fontFamily).toBe("serif")
+    expect(runtime.appSettings).toMatchObject({ fontFamily: "serif", fontSize: 19 })
     expect(runtime.model).toMatchObject({ provider: "openai-codex", id: "gpt-5.6-terra" })
     expect(runtime.activeSession.model).toMatchObject({
       provider: "openai-codex",

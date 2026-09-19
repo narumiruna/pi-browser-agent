@@ -13,7 +13,7 @@ import {
 } from "../permissions.js"
 import { type RuntimeEvent, sendRuntimeRequest } from "../runtime/messages.js"
 import type { JsonObject } from "../runtime/types.js"
-import { FONT_FAMILIES, type FontFamily } from "../storage.js"
+import { FONT_FAMILIES, type FontFamily, MAX_FONT_SIZE, MIN_FONT_SIZE } from "../storage.js"
 import {
   imageContentSource,
   MAX_PASTED_IMAGE_BYTES,
@@ -54,6 +54,8 @@ const providerSelect = element<HTMLSelectElement>("provider")
 const modelSelect = element<HTMLSelectElement>("model")
 const modelCapabilities = element<HTMLElement>("model-capabilities")
 const fontFamilySelect = element<HTMLSelectElement>("font-family")
+const fontSizeInput = element<HTMLInputElement>("font-size")
+const fontSizeOutput = element<HTMLOutputElement>("font-size-value")
 const systemPrompt = element<HTMLTextAreaElement>("system-prompt")
 const agentInstructions = element<HTMLTextAreaElement>("agent-instructions")
 const sendButton = element<HTMLButtonElement>("send")
@@ -92,8 +94,21 @@ function selectedFontFamily(): FontFamily {
   return FONT_FAMILIES.find((fontFamily) => fontFamily === fontFamilySelect.value) ?? "system"
 }
 
-function applyFontFamily(fontFamily: FontFamily): void {
+function selectedFontSize(): number {
+  const value = Math.round(Number(fontSizeInput.value))
+  if (!Number.isFinite(value)) return 16
+  return Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, value))
+}
+
+function applyFontSize(fontSize: number): void {
+  document.documentElement.dataset.fontSize = String(fontSize)
+  document.documentElement.style.setProperty("--app-font-size", `${fontSize}px`)
+  fontSizeOutput.value = `${fontSize} px`
+}
+
+function applyAppearance(fontFamily: FontFamily, fontSize: number): void {
   document.documentElement.dataset.fontFamily = fontFamily
+  applyFontSize(fontSize)
 }
 
 function setRunStatus(text: string, running = runtime.agent.state.isStreaming): void {
@@ -806,6 +821,8 @@ function populateSettings(): void {
   syncModelControls()
   updateProviderConfigurationButton()
   fontFamilySelect.value = runtime.appSettings.fontFamily
+  fontSizeInput.value = String(runtime.appSettings.fontSize)
+  fontSizeOutput.value = `${runtime.appSettings.fontSize} px`
   systemPrompt.value = runtime.appSettings.systemPrompt
   agentInstructions.value = runtime.appSettings.agentInstructions
 }
@@ -855,14 +872,14 @@ function openSettingsTab(): void {
 }
 
 element<HTMLButtonElement>("open-settings").addEventListener("click", openSettingsTab)
-closeSettingsButton.addEventListener("click", () => {
+function discardSettingsChanges(): void {
   populateSettings()
+  applyAppearance(runtime.appSettings.fontFamily, runtime.appSettings.fontSize)
   closeSettingsPage()
-})
-element<HTMLButtonElement>("cancel-settings").addEventListener("click", () => {
-  populateSettings()
-  closeSettingsPage()
-})
+}
+
+closeSettingsButton.addEventListener("click", discardSettingsChanges)
+element<HTMLButtonElement>("cancel-settings").addEventListener("click", discardSettingsChanges)
 document.addEventListener("keydown", (event) => {
   if (
     event.key !== "Escape" ||
@@ -871,9 +888,10 @@ document.addEventListener("keydown", (event) => {
   )
     return
   event.preventDefault()
-  populateSettings()
-  closeSettingsPage()
+  discardSettingsChanges()
 })
+
+fontSizeInput.addEventListener("input", () => applyFontSize(selectedFontSize()))
 
 providerSelect.addEventListener("change", () => {
   renderModelOptions(providerSelect.value)
@@ -891,10 +909,12 @@ element<HTMLButtonElement>("save-settings").addEventListener("click", () => {
       await runtime.selectModel(providerId, modelId)
     }
     const fontFamily = selectedFontFamily()
+    const fontSize = selectedFontSize()
     await runtime.updateSettings({
       systemPrompt: systemPrompt.value,
       agentInstructions: agentInstructions.value,
       fontFamily,
+      fontSize,
       modelProvider: providerId,
       modelId,
     })
@@ -907,7 +927,7 @@ element<HTMLButtonElement>("save-settings").addEventListener("click", () => {
         } satisfies RuntimeEvent)
         .catch(() => undefined)
     }
-    applyFontFamily(fontFamily)
+    applyAppearance(fontFamily, fontSize)
     await refreshAuth(providerId)
     setRunStatus("Settings saved")
     closeSettingsPage()
@@ -1008,7 +1028,7 @@ chrome.runtime.onMessage.addListener((message: unknown) => {
   ) {
     void run(async () => {
       await runtime.syncSettings({ applyModelToActiveSession: true })
-      applyFontFamily(runtime.appSettings.fontFamily)
+      applyAppearance(runtime.appSettings.fontFamily, runtime.appSettings.fontSize)
       syncModelControls()
       await refreshAuth()
       setRunStatus("Settings saved")
@@ -1059,7 +1079,7 @@ if (!isSettingsTab) {
     if (areaName !== "local" || !("piChromeSettings" in changes)) return
     void run(async () => {
       await runtime.syncSettings()
-      applyFontFamily(runtime.appSettings.fontFamily)
+      applyAppearance(runtime.appSettings.fontFamily, runtime.appSettings.fontSize)
       setRunStatus("Settings saved")
     })
   })
@@ -1073,14 +1093,14 @@ void run(async () => {
       id: locationParams.get("modelId") ?? "",
     })
     populateSettings()
-    applyFontFamily(runtime.appSettings.fontFamily)
+    applyAppearance(runtime.appSettings.fontFamily, runtime.appSettings.fontSize)
     openSettingsPage()
     return
   }
 
   await runtime.initialize()
   populateSettings()
-  applyFontFamily(runtime.appSettings.fontFamily)
+  applyAppearance(runtime.appSettings.fontFamily, runtime.appSettings.fontSize)
   renderMessages()
   resizePromptInput()
   setRunStatus("Ready", false)

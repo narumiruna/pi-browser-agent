@@ -14,7 +14,7 @@ afterEach(() => {
 })
 
 describe("browser storage", () => {
-  test("persists a validated font preference and migrates older settings", async () => {
+  test("persists validated appearance preferences and migrates older settings", async () => {
     const values: Record<string, unknown> = {}
     vi.stubGlobal("chrome", {
       storage: {
@@ -26,8 +26,8 @@ describe("browser storage", () => {
     })
 
     await expect(getSettings()).resolves.toEqual(DEFAULT_SETTINGS)
-    await saveSettings({ ...DEFAULT_SETTINGS, fontFamily: "serif" })
-    await expect(getSettings()).resolves.toMatchObject({ fontFamily: "serif" })
+    await saveSettings({ ...DEFAULT_SETTINGS, fontFamily: "serif", fontSize: 19 })
+    await expect(getSettings()).resolves.toMatchObject({ fontFamily: "serif", fontSize: 19 })
 
     values.piChromeSettings = {
       systemPrompt: "Older prompt",
@@ -37,11 +37,12 @@ describe("browser storage", () => {
       systemPrompt: "Older prompt",
       agentInstructions: "Older instructions",
       fontFamily: "system",
+      fontSize: 16,
       modelProvider: "openai-codex",
       modelId: "gpt-5.6-terra",
     })
 
-    values.piChromeSettings = { ...DEFAULT_SETTINGS, fontFamily: "invalid" }
+    values.piChromeSettings = { ...DEFAULT_SETTINGS, fontFamily: "invalid", fontSize: 25 }
     await expect(getSettings()).resolves.toEqual(DEFAULT_SETTINGS)
   })
 
