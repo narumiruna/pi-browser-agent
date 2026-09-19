@@ -55,7 +55,7 @@ The agent can read visible text and selection, capture the visible viewport, cli
 
 The Side Panel supports creating, resuming, renaming, and deleting sessions. Complete transcript boundaries, including confirmed bookmark tool results, are stored in versioned IndexedDB records. Storage keeps at most 50 sessions and limits each record to 5 MB. **Clear all session data** removes transcripts and embedded images.
 
-The system prompt and AGENTS-style instructions are editable in the Side Panel and apply to the next run. The extension does not discover instructions from the local filesystem.
+The Side Panel settings let you choose a system, sans-serif, serif, or monospace interface font. The selected font persists across Side Panel and Chrome restarts. The system prompt and AGENTS-style instructions are also editable and apply to the next run. The extension does not discover instructions from the local filesystem.
 
 ## Development
 

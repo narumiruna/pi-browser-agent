@@ -145,7 +145,7 @@ flowchart TB
 ### 4. Create the browser agent runtime
 
 - [x] Construct a single Side Panel `Agent` using `pi-agent-core`, `pi-ai`, `openaiCodexProvider()`, the browser credential store, a currently supported ChatGPT Codex model, and forced `transport: "sse"`; verify a mocked prompt streams lifecycle events in order.
-- [x] Add editable system prompt and AGENTS-style instruction settings, compose them deterministically into the agent system prompt, and persist them without filesystem discovery; verify changes apply to the next run.
+- [x] Add editable system prompt, AGENTS-style instructions, and interface font settings; compose instructions deterministically into the agent system prompt and persist settings without filesystem discovery; verify instruction changes apply to the next run and the font survives restart.
 - [x] Wrap the existing bounded browser capabilities as `AgentTool` definitions with the current schemas, output limits, and error semantics; verify tool arguments are validated before any Chrome operation.
 - [x] Implement confirmation handling through `beforeToolCall` or an equivalent Side Panel gate for form submission, downloads, cross-origin navigation, and every WebMCP call; verify cancellation and stale tab context prevent execution.
 - [x] Preserve untrusted-content wrappers for page text, selection, screenshots metadata, and WebMCP results; verify browser content cannot enter the system-prompt channel.

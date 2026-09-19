@@ -1,8 +1,11 @@
 import { afterEach, describe, expect, test, vi } from "vitest"
 import {
+  DEFAULT_SETTINGS,
   getActiveSessionId,
+  getSettings,
   saveActiveSessionId,
   savePendingSelection,
+  saveSettings,
   takePendingSelection,
 } from "../../src/browser/storage.js"
 
@@ -11,6 +14,35 @@ afterEach(() => {
 })
 
 describe("browser storage", () => {
+  test("persists a validated font preference and migrates older settings", async () => {
+    const values: Record<string, unknown> = {}
+    vi.stubGlobal("chrome", {
+      storage: {
+        local: {
+          get: vi.fn(async (key: string) => ({ [key]: values[key] })),
+          set: vi.fn(async (items: Record<string, unknown>) => Object.assign(values, items)),
+        },
+      },
+    })
+
+    await expect(getSettings()).resolves.toEqual(DEFAULT_SETTINGS)
+    await saveSettings({ ...DEFAULT_SETTINGS, fontFamily: "serif" })
+    await expect(getSettings()).resolves.toMatchObject({ fontFamily: "serif" })
+
+    values.piChromeSettings = {
+      systemPrompt: "Older prompt",
+      agentInstructions: "Older instructions",
+    }
+    await expect(getSettings()).resolves.toEqual({
+      systemPrompt: "Older prompt",
+      agentInstructions: "Older instructions",
+      fontFamily: "system",
+    })
+
+    values.piChromeSettings = { ...DEFAULT_SETTINGS, fontFamily: "invalid" }
+    await expect(getSettings()).resolves.toEqual(DEFAULT_SETTINGS)
+  })
+
   test("persists the active session ID in local extension storage", async () => {
     const values: Record<string, unknown> = {}
     vi.stubGlobal("chrome", {
