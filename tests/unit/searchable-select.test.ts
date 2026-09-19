@@ -59,6 +59,28 @@ describe("SearchableSelect", () => {
     expect(changed).toHaveBeenCalledOnce()
   })
 
+  test("reopens after a mouse selection leaves the input focused", () => {
+    const { dom, input, listbox, picker } = setup()
+    picker.setOptions([
+      { value: "first", label: "First item" },
+      { value: "second", label: "Second item" },
+    ])
+
+    input.focus()
+    const secondOption = listbox.querySelectorAll<HTMLElement>("[role='option']").item(1)
+    secondOption.dispatchEvent(
+      new dom.window.MouseEvent("mousedown", { bubbles: true, cancelable: true }),
+    )
+
+    expect(input.ownerDocument.activeElement).toBe(input)
+    expect(listbox.hidden).toBe(true)
+
+    input.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }))
+
+    expect(listbox.hidden).toBe(false)
+    expect(listbox.querySelectorAll("[role='option']")).toHaveLength(2)
+  })
+
   test("restores the selected label and consumes Escape when a search is cancelled", () => {
     const { dom, input, select, listbox, picker } = setup()
     const documentKeyDown = vi.fn()

@@ -25,6 +25,12 @@ export class SearchableSelect {
       this.open("")
     })
     input.addEventListener("input", () => this.open(input.value))
+    input.addEventListener("click", () => {
+      if (elements.listbox.hidden) {
+        input.select()
+        this.open("")
+      }
+    })
     input.addEventListener("keydown", (event) => this.onKeyDown(event))
     input.addEventListener("blur", () => {
       if (!container.contains(input.ownerDocument.activeElement)) this.close(true)
