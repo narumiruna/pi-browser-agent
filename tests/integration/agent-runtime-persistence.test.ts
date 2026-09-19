@@ -145,6 +145,46 @@ describe("browser agent session persistence", () => {
     expect(runtime.appSettings.modelId).toBe("gpt-5.6-terra")
   })
 
+  test("seeds full-tab Settings from the active session model", async () => {
+    const locks = new FakeLockManager() as unknown as LockManager
+    const runtime = createRuntime(locks)
+    await runtime.initialize()
+    const older = createSession("gpt-5.6-terra")
+    await runtime.sessions.put(older)
+    const anthropic = runtime.getModels("anthropic")[0]
+    if (!anthropic) throw new Error("Anthropic test model unavailable")
+    await runtime.selectModel(anthropic.provider, anthropic.id)
+    await runtime.resumeSession(older.id)
+    const settingsRuntime = createRuntime(locks)
+
+    await settingsRuntime.initializeSettings({
+      provider: runtime.model.provider,
+      id: runtime.model.id,
+    })
+
+    expect(settingsRuntime.model).toMatchObject({ provider: "openai-codex", id: "gpt-5.6-terra" })
+    expect(settingsRuntime.appSettings).toMatchObject({
+      modelProvider: anthropic.provider,
+      modelId: anthropic.id,
+    })
+
+    await settingsRuntime.updateSettings({
+      ...settingsRuntime.appSettings,
+      fontFamily: "serif",
+      modelProvider: settingsRuntime.model.provider,
+      modelId: settingsRuntime.model.id,
+    })
+    await runtime.syncSettings({ applyModelToActiveSession: true })
+
+    expect(runtime.appSettings.fontFamily).toBe("serif")
+    expect(runtime.model).toMatchObject({ provider: "openai-codex", id: "gpt-5.6-terra" })
+    expect(runtime.activeSession.model).toMatchObject({
+      provider: "openai-codex",
+      id: "gpt-5.6-terra",
+    })
+    await runtime.shutdown()
+  })
+
   test("synchronizes settings saved by a full-tab Settings page", async () => {
     const locks = new FakeLockManager() as unknown as LockManager
     const runtime = createRuntime(locks)

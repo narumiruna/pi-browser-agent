@@ -839,6 +839,8 @@ function openSettingsTab(): void {
   const url = new URL(window.location.href)
   url.searchParams.set("view", "settings")
   url.searchParams.set("source", settingsContextId)
+  url.searchParams.set("modelProvider", runtime.model.provider)
+  url.searchParams.set("modelId", runtime.model.id)
   url.hash = ""
   void run(async () => {
     const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true })
@@ -1063,7 +1065,10 @@ if (!isSettingsTab) {
 void run(async () => {
   if (isSettingsTab) {
     document.title = "Settings · Pi Chrome"
-    await runtime.initializeSettings()
+    await runtime.initializeSettings({
+      provider: locationParams.get("modelProvider") ?? "",
+      id: locationParams.get("modelId") ?? "",
+    })
     populateSettings()
     applyFontFamily(runtime.appSettings.fontFamily)
     openSettingsPage()

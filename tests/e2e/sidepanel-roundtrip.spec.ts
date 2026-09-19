@@ -349,7 +349,7 @@ test("opens Settings in a full browser tab and persists the selected interface f
   const settingsError = settingsTab.locator("#settings-error")
 
   await expect(settingsTab).toHaveTitle("Settings · Pi Chrome")
-  expect(settingsTab.url()).toContain("?view=settings")
+  expect(new URL(settingsTab.url()).searchParams.get("view")).toBe("settings")
   await expect(settingsPage).toBeVisible()
   await expect(accountDisclosure).toHaveJSProperty("open", false)
   await expect(settingsPage.getByRole("heading", { name: "Appearance" })).toBeVisible()
@@ -456,6 +456,12 @@ test("synchronizes provider controls when a new session restores the latest mode
 
   await sessionSelect.selectOption(initialSessionId)
   await expect(controller.locator("#provider")).toHaveValue("openai-codex")
+  const restoredSessionSettingsTab = await openSettingsTab()
+  await expect(restoredSessionSettingsTab.locator("#provider")).toHaveValue("openai-codex")
+  await expect(restoredSessionSettingsTab.locator("#model")).toHaveValue("gpt-5.6-terra")
+  const restoredSessionSettingsTabClosed = restoredSessionSettingsTab.waitForEvent("close")
+  await restoredSessionSettingsTab.locator("#cancel-settings").click()
+  await restoredSessionSettingsTabClosed
   await controller.locator("#new-session").click()
 
   await expect(controller.locator("#provider")).toHaveValue("anthropic")
