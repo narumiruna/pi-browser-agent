@@ -409,6 +409,34 @@ test("opens a dedicated settings page and persists the selected interface font",
     .toBe("system")
 })
 
+test("synchronizes provider controls when a new session restores the latest model", async () => {
+  const sessionSelect = controller.locator("#sessions")
+  const initialSessionId = await sessionSelect.inputValue()
+  await controller.locator("#new-session").click()
+  await expect.poll(() => sessionSelect.inputValue()).not.toBe(initialSessionId)
+
+  await controller.locator("#account-menu-trigger").click()
+  await controller.locator("#open-settings").click()
+  await controller.locator("#provider").selectOption("anthropic")
+  const anthropicModelId = await controller.locator("#model").inputValue()
+  expect(anthropicModelId).not.toBe("")
+  await controller.locator("#save-settings").click()
+
+  await sessionSelect.selectOption(initialSessionId)
+  await expect(controller.locator("#provider")).toHaveValue("openai-codex")
+  await controller.locator("#new-session").click()
+
+  await expect(controller.locator("#provider")).toHaveValue("anthropic")
+  await expect(controller.locator("#model")).toHaveValue(anthropicModelId)
+  await expect(controller.locator("#auth-status")).toHaveText("Anthropic not configured")
+
+  await controller.locator("#account-menu-trigger").click()
+  await controller.locator("#open-settings").click()
+  await controller.locator("#provider").selectOption("openai-codex")
+  await controller.locator("#model").selectOption("gpt-5.6-terra")
+  await controller.locator("#save-settings").click()
+})
+
 test("keeps page context and controls usable at normal and narrow widths", async () => {
   const originalViewport = controller.viewportSize() ?? { width: 1280, height: 720 }
   const tabStatus = controller.locator("#tab-status")

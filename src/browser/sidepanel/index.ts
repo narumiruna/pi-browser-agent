@@ -869,20 +869,23 @@ element<HTMLButtonElement>("save-settings").addEventListener("click", () => {
   }, setSettingsError)
 })
 
+async function refreshActiveSessionUi(): Promise<void> {
+  syncModelControls()
+  renderMessages()
+  await Promise.all([refreshSessions(), refreshAuth(runtime.model.provider)])
+}
+
 element<HTMLButtonElement>("new-session").addEventListener("click", () => {
   void run(async () => {
     await runtime.newSession()
-    renderMessages()
-    await refreshSessions()
+    await refreshActiveSessionUi()
   })
 })
 
 sessionSelect.addEventListener("change", () => {
   void run(async () => {
     await runtime.resumeSession(sessionSelect.value)
-    syncModelControls()
-    renderMessages()
-    await Promise.all([refreshSessions(), refreshAuth()])
+    await refreshActiveSessionUi()
   })
 })
 
@@ -899,8 +902,7 @@ element<HTMLButtonElement>("delete-session").addEventListener("click", () => {
   if (!confirm("Delete this session and its stored images?")) return
   void run(async () => {
     await runtime.deleteSession(sessionSelect.value)
-    renderMessages()
-    await refreshSessions()
+    await refreshActiveSessionUi()
   })
 })
 
@@ -908,8 +910,7 @@ element<HTMLButtonElement>("clear-sessions").addEventListener("click", () => {
   if (!confirm("Delete every saved session and image?")) return
   void run(async () => {
     await runtime.clearSessions()
-    renderMessages()
-    await refreshSessions()
+    await refreshActiveSessionUi()
   })
 })
 
