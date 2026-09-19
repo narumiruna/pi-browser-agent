@@ -62,7 +62,7 @@ body {
 
 body {
   display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
   min-width: 320px;
   margin: 0;
   overflow-x: hidden;
@@ -194,7 +194,6 @@ button.text-button:hover:not(:disabled) {
 }
 
 .eyebrow,
-.summary-hint,
 #composer-hint {
   color: var(--text-muted);
   font-size: 0.78rem;
@@ -314,6 +313,13 @@ body[data-state="running"] .status-dot {
   text-align: left;
 }
 
+.separated-menu-item {
+  padding-top: 8px;
+  margin-top: 4px;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 7px 7px;
+}
+
 .page-context {
   display: flex;
   align-items: center;
@@ -392,8 +398,7 @@ body[data-state="running"] .status-dot {
   border-radius: 0 0 7px 7px;
 }
 
-.session-panel,
-.settings-panel {
+.session-panel {
   border-bottom: 1px solid var(--border);
   background: var(--surface);
 }
@@ -418,55 +423,94 @@ select {
   flex: 1;
 }
 
-.settings-panel {
-  max-height: 42vh;
-  overflow-y: auto;
+.settings-page {
+  display: grid;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  background: var(--background);
 }
 
-.settings-panel summary {
-  display: flex;
-  align-items: center;
-  min-height: 44px;
-  padding: 9px 16px;
-  cursor: pointer;
-  font-weight: 650;
-  list-style: none;
-}
-
-.settings-panel summary::-webkit-details-marker {
+.settings-page[hidden] {
   display: none;
 }
 
-.settings-panel summary::before {
-  margin-right: 8px;
-  color: var(--text-muted);
-  content: "›";
-  font-size: 1.2rem;
-  transition: transform 120ms ease;
+body[data-view="settings"] {
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
 }
 
-.settings-panel[open] summary::before {
-  transform: rotate(90deg);
+:where(
+  body[data-view="settings"] > .app-header,
+  body[data-view="settings"] > .session-panel,
+  body[data-view="settings"] > #transcript,
+  body[data-view="settings"] > .composer
+) {
+  display: none;
 }
 
-.summary-hint {
-  margin-left: auto;
-  font-weight: 400;
+.settings-page-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.settings-page-header h1 {
+  margin: 0;
+  font-size: 1.15rem;
+  line-height: 1.3;
 }
 
 .settings-content {
-  padding: 0 16px 14px;
+  width: min(100%, 640px);
+  min-height: 0;
+  padding: 16px 12px 24px;
+  margin-inline: auto;
+  overflow-y: auto;
+}
+
+.settings-section {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.settings-section + .settings-section {
+  margin-top: 12px;
+}
+
+:where(.settings-section h2) {
+  margin: 0;
+  font-size: 1rem;
+}
+
+:where(.settings-section p) {
+  margin: 4px 0 14px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
 }
 
 .settings-content label {
   display: block;
-  margin: 9px 0 5px;
+  margin: 12px 0 5px;
   font-size: 0.875rem;
   font-weight: 650;
 }
 
 .settings-content select {
   width: 100%;
+}
+
+.settings-page-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
 }
 
 textarea {
@@ -817,7 +861,6 @@ dialog p {
 }
 
 @media (max-width: 480px) {
-  .summary-hint,
   #composer-hint {
     display: none;
   }
@@ -853,7 +896,6 @@ dialog p {
   }
 
   button,
-  .settings-panel summary::before,
   .composer-shell {
     transition: none;
   }

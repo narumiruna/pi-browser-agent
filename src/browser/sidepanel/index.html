@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Pi Chrome</title>
   </head>
-  <body data-state="idle">
+  <body data-state="idle" data-view="conversation">
     <header class="app-header">
       <div class="header-row">
         <div class="page-context">
@@ -26,8 +26,8 @@
           <summary
             id="account-menu-trigger"
             class="icon-button account-trigger"
-            aria-label="Account and site access"
-            title="Account and site access"
+            aria-label="More options"
+            title="More options"
           >
             <svg class="radix-icon dot-icon" viewBox="0 0 15 15" aria-hidden="true">
               <circle cx="3" cy="7.5" r="1" />
@@ -41,6 +41,9 @@
             <button type="button" id="refresh-token" class="menu-item" hidden>Refresh credential</button>
             <button type="button" id="logout" class="menu-item" hidden>Log out</button>
             <button type="button" id="grant-site" class="menu-item">Allow current site</button>
+            <button type="button" id="open-settings" class="menu-item separated-menu-item">
+              Settings
+            </button>
           </div>
         </details>
       </div>
@@ -79,27 +82,6 @@
         </details>
       </div>
     </section>
-
-    <details class="settings-panel">
-      <summary>
-        <span>Settings</span>
-        <span class="summary-hint">Appearance and instructions</span>
-      </summary>
-      <div class="settings-content">
-        <label for="font-family">Font</label>
-        <select id="font-family">
-          <option value="system">System default</option>
-          <option value="sans">Sans serif</option>
-          <option value="serif">Serif</option>
-          <option value="monospace">Monospace</option>
-        </select>
-        <label for="system-prompt">System prompt</label>
-        <textarea id="system-prompt" rows="4"></textarea>
-        <label for="agent-instructions">AGENTS-style instructions</label>
-        <textarea id="agent-instructions" rows="4"></textarea>
-        <button type="button" id="save-settings" class="primary">Save settings</button>
-      </div>
-    </details>
 
     <main id="transcript" aria-live="polite" aria-label="Conversation"></main>
 
@@ -140,6 +122,48 @@
       </div>
       <p id="error" role="alert"></p>
     </footer>
+
+    <section id="settings-page" class="settings-page" aria-labelledby="settings-title" hidden>
+      <header class="settings-page-header">
+        <button
+          type="button"
+          id="close-settings"
+          class="icon-button"
+          aria-label="Back to conversation"
+          title="Back to conversation"
+        >
+          <svg class="radix-icon" viewBox="0 0 15 15" aria-hidden="true">
+            <path d="M13.5 7.5h-12M6.5 2.5l-5 5 5 5" />
+          </svg>
+        </button>
+        <h1 id="settings-title">Settings</h1>
+      </header>
+      <main class="settings-content">
+        <section class="settings-section" aria-labelledby="appearance-title">
+          <h2 id="appearance-title">Appearance</h2>
+          <p>Choose the font used throughout the interface.</p>
+          <label for="font-family">Font</label>
+          <select id="font-family">
+            <option value="system">System default</option>
+            <option value="sans">Sans serif</option>
+            <option value="serif">Serif</option>
+            <option value="monospace">Monospace</option>
+          </select>
+        </section>
+        <section class="settings-section" aria-labelledby="instructions-title">
+          <h2 id="instructions-title">Instructions</h2>
+          <p>These instructions apply to the next run.</p>
+          <label for="system-prompt">System prompt</label>
+          <textarea id="system-prompt" rows="6"></textarea>
+          <label for="agent-instructions">AGENTS-style instructions</label>
+          <textarea id="agent-instructions" rows="6"></textarea>
+        </section>
+      </main>
+      <footer class="settings-page-actions">
+        <button type="button" id="cancel-settings" class="subtle">Cancel</button>
+        <button type="button" id="save-settings" class="primary">Save settings</button>
+      </footer>
+    </section>
 
     <dialog id="confirm-dialog">
       <form method="dialog">
