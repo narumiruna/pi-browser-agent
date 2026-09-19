@@ -611,6 +611,7 @@ function populateSettings(): void {
 }
 
 function openSettingsPage(): void {
+  voiceInput?.abort()
   populateSettings()
   settingsPage.hidden = false
   document.body.dataset.view = "settings"

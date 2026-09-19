@@ -299,14 +299,60 @@ test("loads the Side Panel without uncaught errors", async () => {
 })
 
 test("opens a dedicated settings page and persists the selected interface font", async () => {
+  await controller.addInitScript(() => {
+    const state = globalThis as typeof globalThis & {
+      settingsVoiceAbortCount: number
+      SpeechRecognition?: new () => FakeSpeechRecognition
+      webkitSpeechRecognition?: new () => FakeSpeechRecognition
+    }
+    class FakeSpeechRecognition {
+      continuous = false
+      interimResults = false
+      lang = ""
+      onresult = null
+      onerror = null
+      onend: (() => void) | null = null
+
+      start(): void {}
+
+      stop(): void {
+        this.onend?.()
+      }
+
+      abort(): void {
+        state.settingsVoiceAbortCount += 1
+        this.onend?.()
+      }
+    }
+    state.settingsVoiceAbortCount = 0
+    for (const property of ["SpeechRecognition", "webkitSpeechRecognition"] as const) {
+      Object.defineProperty(state, property, {
+        configurable: true,
+        value: FakeSpeechRecognition,
+      })
+    }
+  })
+  await controller.reload()
+
   const settingsPage = controller.locator("#settings-page")
+  const voiceButton = controller.locator("#voice-input")
+  await expect(voiceButton).toBeEnabled()
+  await voiceButton.click()
+  await expect(voiceButton).toHaveAttribute("aria-pressed", "true")
   await controller.locator("#account-menu-trigger").click()
   await expect(controller.locator("#open-settings")).toBeVisible()
   await controller.locator("#open-settings").click()
 
   await expect(settingsPage).toBeVisible()
+  await expect(settingsPage).not.toContainText("Pi Chrome")
   await expect(settingsPage.getByRole("heading", { name: "Appearance" })).toBeVisible()
   await expect(settingsPage.getByRole("heading", { name: "Instructions" })).toBeVisible()
+  await expect(voiceButton).toHaveAttribute("aria-pressed", "false")
+  expect(
+    await controller.evaluate(
+      () => (window as typeof window & { settingsVoiceAbortCount: number }).settingsVoiceAbortCount,
+    ),
+  ).toBe(1)
   await expect(controller.locator("#transcript")).toBeHidden()
   await controller.locator("#font-family").selectOption("serif")
   await controller.locator("#save-settings").click()

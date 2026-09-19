@@ -463,11 +463,6 @@ body[data-view="settings"] {
   line-height: 1.3;
 }
 
-.settings-page-header .eyebrow {
-  display: block;
-  line-height: 1.2;
-}
-
 .settings-content {
   width: min(100%, 640px);
   min-height: 0;
