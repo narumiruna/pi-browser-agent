@@ -298,6 +298,35 @@ test("loads the Side Panel without uncaught errors", async () => {
   await controller.evaluate(() => window.scrollTo(0, 0))
 })
 
+test("applies and persists the selected interface font", async () => {
+  const settingsPanel = controller.locator(".settings-panel")
+  await settingsPanel.locator("summary").click()
+  await controller.locator("#font-family").selectOption("serif")
+  await controller.locator("#save-settings").click()
+
+  await expect(controller.locator("#run-status")).toHaveText("Settings saved")
+  await expect
+    .poll(() => controller.evaluate(() => document.documentElement.dataset.fontFamily))
+    .toBe("serif")
+  expect(
+    await controller.evaluate(() => getComputedStyle(document.documentElement).fontFamily),
+  ).toContain("Georgia")
+
+  await controller.reload()
+  await expect(controller.locator("#font-family")).toHaveValue("serif")
+  await expect
+    .poll(() => controller.evaluate(() => document.documentElement.dataset.fontFamily))
+    .toBe("serif")
+
+  await settingsPanel.locator("summary").click()
+  await controller.locator("#font-family").selectOption("system")
+  await controller.locator("#save-settings").click()
+  await expect
+    .poll(() => controller.evaluate(() => document.documentElement.dataset.fontFamily))
+    .toBe("system")
+  await settingsPanel.locator("summary").click()
+})
+
 test("keeps page context and controls usable at normal and narrow widths", async () => {
   const originalViewport = controller.viewportSize() ?? { width: 1280, height: 720 }
   const tabStatus = controller.locator("#tab-status")

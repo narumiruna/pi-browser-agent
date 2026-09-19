@@ -11,6 +11,7 @@ import {
 } from "../permissions.js"
 import { type RuntimeEvent, sendRuntimeRequest } from "../runtime/messages.js"
 import type { JsonObject } from "../runtime/types.js"
+import { FONT_FAMILIES, type FontFamily } from "../storage.js"
 import {
   imageContentSource,
   MAX_PASTED_IMAGE_BYTES,
@@ -42,6 +43,7 @@ const confirmError = element<HTMLElement>("confirm-error")
 const confirmActionButton = element<HTMLButtonElement>("confirm-action")
 const loginDialog = element<HTMLDialogElement>("login-dialog")
 const deviceCode = element<HTMLOutputElement>("device-code")
+const fontFamilySelect = element<HTMLSelectElement>("font-family")
 const systemPrompt = element<HTMLTextAreaElement>("system-prompt")
 const agentInstructions = element<HTMLTextAreaElement>("agent-instructions")
 const sendButton = element<HTMLButtonElement>("send")
@@ -63,6 +65,14 @@ const renderedImages = new WeakMap<ImageContent, HTMLImageElement>()
 
 function setError(error?: unknown): void {
   errorOutput.textContent = error === undefined ? "" : safeErrorMessage(error)
+}
+
+function selectedFontFamily(): FontFamily {
+  return FONT_FAMILIES.find((fontFamily) => fontFamily === fontFamilySelect.value) ?? "system"
+}
+
+function applyFontFamily(fontFamily: FontFamily): void {
+  document.documentElement.dataset.fontFamily = fontFamily
 }
 
 function setRunStatus(text: string, running = runtime.agent.state.isStreaming): void {
@@ -594,11 +604,14 @@ abortButton.addEventListener("click", () => runtime.abort())
 
 element<HTMLButtonElement>("save-settings").addEventListener("click", () => {
   void run(async () => {
+    const fontFamily = selectedFontFamily()
     await runtime.updateSettings({
       systemPrompt: systemPrompt.value,
       agentInstructions: agentInstructions.value,
+      fontFamily,
     })
-    setRunStatus("Instructions saved")
+    applyFontFamily(fontFamily)
+    setRunStatus("Settings saved")
   })
 })
 
@@ -727,6 +740,8 @@ window.addEventListener("pagehide", () => {
 
 void run(async () => {
   await runtime.initialize()
+  fontFamilySelect.value = runtime.appSettings.fontFamily
+  applyFontFamily(runtime.appSettings.fontFamily)
   systemPrompt.value = runtime.appSettings.systemPrompt
   agentInstructions.value = runtime.appSettings.agentInstructions
   renderMessages()

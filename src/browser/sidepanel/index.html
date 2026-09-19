@@ -80,17 +80,24 @@
       </div>
     </section>
 
-    <details class="instruction-panel">
+    <details class="settings-panel">
       <summary>
-        <span>Instructions</span>
-        <span class="summary-hint">System and project guidance</span>
+        <span>Settings</span>
+        <span class="summary-hint">Appearance and instructions</span>
       </summary>
       <div class="settings-content">
+        <label for="font-family">Font</label>
+        <select id="font-family">
+          <option value="system">System default</option>
+          <option value="sans">Sans serif</option>
+          <option value="serif">Serif</option>
+          <option value="monospace">Monospace</option>
+        </select>
         <label for="system-prompt">System prompt</label>
         <textarea id="system-prompt" rows="4"></textarea>
         <label for="agent-instructions">AGENTS-style instructions</label>
         <textarea id="agent-instructions" rows="4"></textarea>
-        <button type="button" id="save-settings" class="primary">Save instructions</button>
+        <button type="button" id="save-settings" class="primary">Save settings</button>
       </div>
     </details>
 

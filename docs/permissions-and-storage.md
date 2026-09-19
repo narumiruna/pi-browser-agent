@@ -27,7 +27,7 @@ The extension CSP permits connections only to `auth.openai.com` and `chatgpt.com
 
 | Store | Data | Lifetime |
 | --- | --- | --- |
-| `chrome.storage.local` | OpenAI credential, system prompt, AGENTS-style instructions, active session ID | Until logout, settings change, session selection, or extension data removal |
+| `chrome.storage.local` | OpenAI credential, interface font preference, system prompt, AGENTS-style instructions, active session ID | Until logout, settings change, session selection, or extension data removal |
 | `chrome.storage.session` | An undelivered context-menu selection | Browser session |
 | IndexedDB `pi-chrome-sessions` | Versioned complete messages and tool results, including confirmed bookmark titles and URLs, model state, names, timestamps, embedded screenshot and pasted-image content | Until retention deletion or user clear |
 | Memory | Live agent, partial stream, confirmations, login cancellation, unsent pasted-image previews | Side Panel lifetime |

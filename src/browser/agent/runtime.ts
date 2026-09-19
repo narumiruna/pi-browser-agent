@@ -39,7 +39,9 @@ export interface RuntimeCallbacks {
   onPersistenceError?: (message: string) => void
 }
 
-export function composeSystemPrompt(settings: AppSettings): string {
+export function composeSystemPrompt(
+  settings: Pick<AppSettings, "systemPrompt" | "agentInstructions">,
+): string {
   return [
     settings.systemPrompt.trim(),
     "",
