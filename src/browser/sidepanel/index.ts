@@ -90,6 +90,8 @@ let voiceInput: VoiceInputController | undefined
 let settingsModelChanged = false
 let authStatusRequest = 0
 let providerConfigurationRequest = 0
+let providerConfigurationInProgress = false
+let providerConfigurationError: string | undefined
 const renderedImages = new WeakMap<ImageContent, HTMLImageElement>()
 
 function setError(error?: unknown): void {
@@ -97,7 +99,20 @@ function setError(error?: unknown): void {
 }
 
 function setSettingsError(error?: unknown): void {
+  providerConfigurationError = undefined
   settingsErrorOutput.textContent = error === undefined ? "" : safeErrorMessage(error)
+}
+
+function setProviderConfigurationError(error?: unknown): void {
+  if (error === undefined) {
+    if (settingsErrorOutput.textContent === providerConfigurationError) {
+      settingsErrorOutput.textContent = ""
+    }
+    providerConfigurationError = undefined
+    return
+  }
+  providerConfigurationError = safeErrorMessage(error)
+  settingsErrorOutput.textContent = providerConfigurationError
 }
 
 function selectedFontFamily(): FontFamily {
@@ -628,6 +643,8 @@ async function run(
 }
 
 function configureProvider(providerId: string, button: HTMLButtonElement): void {
+  if (providerConfigurationInProgress) return
+  providerConfigurationInProgress = true
   button.disabled = true
   void run(async () => {
     const provider = providerSummary(providerId)
@@ -663,6 +680,7 @@ function configureProvider(providerId: string, button: HTMLButtonElement): void 
       loginController = undefined
     }
   }).finally(() => {
+    providerConfigurationInProgress = false
     button.disabled = false
   })
 }
@@ -832,20 +850,30 @@ async function updateProviderConfigurationButton(): Promise<void> {
   const provider = providerSummary(providerId)
   const configurable = provider && (provider.apiKey || provider.oauth)
 
-  configureProviderButton.disabled = !configurable
+  configureProviderButton.disabled = providerConfigurationInProgress || !configurable
   configureProviderButton.textContent = `Configure ${provider?.name ?? "selected provider"}`
-  if (!provider?.oauth) return
+  if (!provider?.oauth) {
+    setProviderConfigurationError()
+    return
+  }
 
-  const status = await validatedAuthStatus(providerId)
-  if (request !== providerConfigurationRequest || providerSelect.value !== providerId) return
-  configureProviderButton.disabled = false
-  configureProviderButton.textContent = status.loggedIn
-    ? `Reconnect ${provider.name}`
-    : `Log in to ${provider.name}`
+  try {
+    const status = await validatedAuthStatus(providerId)
+    if (request !== providerConfigurationRequest || providerSelect.value !== providerId) return
+    setProviderConfigurationError()
+    configureProviderButton.disabled = providerConfigurationInProgress
+    configureProviderButton.textContent = status.loggedIn
+      ? `Reconnect ${provider.name}`
+      : `Log in to ${provider.name}`
+  } catch (error) {
+    if (request === providerConfigurationRequest && providerSelect.value === providerId) {
+      setProviderConfigurationError(error)
+    }
+  }
 }
 
 function refreshProviderConfigurationButton(): void {
-  void updateProviderConfigurationButton().catch(setSettingsError)
+  void updateProviderConfigurationButton()
 }
 
 function populateSettings(): void {

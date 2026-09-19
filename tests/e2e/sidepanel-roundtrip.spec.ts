@@ -370,6 +370,54 @@ test("opens Settings in a full browser tab and persists the selected interface f
   await expect(configureProvider).toHaveText("Configure OpenAI Codex")
   await settingsTab.locator("#provider").dispatchEvent("change")
   await expect(configureProvider).toHaveText("Log in to OpenAI Codex")
+  await expect(settingsError).toBeEmpty()
+
+  await settingsTab.evaluate(() => {
+    const originalRequest = chrome.permissions.request
+    let markEntered: () => void = () => undefined
+    let release: (granted: boolean) => void = () => undefined
+    const entered = new Promise<void>((resolve) => {
+      markEntered = resolve
+    })
+    const gate = new Promise<boolean>((resolve) => {
+      release = resolve
+    })
+    chrome.permissions.request = (async () => {
+      markEntered()
+      const granted = await gate
+      chrome.permissions.request = originalRequest
+      return granted
+    }) as typeof chrome.permissions.request
+    ;(
+      window as typeof window & {
+        providerLoginGate?: { entered: Promise<void>; release: (granted: boolean) => void }
+      }
+    ).providerLoginGate = { entered, release }
+  })
+  await configureProvider.click()
+  await settingsTab.evaluate(async () => {
+    const gate = (
+      window as typeof window & {
+        providerLoginGate?: { entered: Promise<void> }
+      }
+    ).providerLoginGate
+    if (!gate) throw new Error("Provider login gate is not installed")
+    await gate.entered
+  })
+  await controller.evaluate(async () => {
+    await chrome.storage.local.set({ piChromeCredentialsV1: {} })
+  })
+  await expect(configureProvider).toBeDisabled()
+  await settingsTab.evaluate(() => {
+    const state = window as typeof window & {
+      providerLoginGate?: { release: (granted: boolean) => void }
+    }
+    state.providerLoginGate?.release(false)
+    delete state.providerLoginGate
+  })
+  await expect(configureProvider).toBeEnabled()
+  await controller.evaluate(async () => chrome.storage.local.remove("piChromeCredentialsV1"))
+
   await settingsTab.locator("#model").selectOption(initialModelId)
   await expect(voiceButton).toHaveAttribute("aria-pressed", "false")
   expect(
