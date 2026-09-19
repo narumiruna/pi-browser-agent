@@ -53,6 +53,8 @@ const accountMenuTrigger = element<HTMLElement>("account-menu-trigger")
 const pastedImages = element<HTMLElement>("pasted-images")
 const voiceButton = element<HTMLButtonElement>("voice-input")
 const voiceStatus = element<HTMLElement>("voice-status")
+const settingsPage = element<HTMLElement>("settings-page")
+const closeSettingsButton = element<HTMLButtonElement>("close-settings")
 let loginController: AbortController | undefined
 let verificationUri = ""
 let activeTabUrl: string | undefined
@@ -602,6 +604,46 @@ promptInput.addEventListener("keydown", (event) => {
 
 abortButton.addEventListener("click", () => runtime.abort())
 
+function populateSettings(): void {
+  fontFamilySelect.value = runtime.appSettings.fontFamily
+  systemPrompt.value = runtime.appSettings.systemPrompt
+  agentInstructions.value = runtime.appSettings.agentInstructions
+}
+
+function openSettingsPage(): void {
+  populateSettings()
+  settingsPage.hidden = false
+  document.body.dataset.view = "settings"
+  closeSettingsButton.focus()
+}
+
+function closeSettingsPage(): void {
+  settingsPage.hidden = true
+  document.body.dataset.view = "conversation"
+  accountMenuTrigger.focus()
+}
+
+element<HTMLButtonElement>("open-settings").addEventListener("click", openSettingsPage)
+closeSettingsButton.addEventListener("click", () => {
+  populateSettings()
+  closeSettingsPage()
+})
+element<HTMLButtonElement>("cancel-settings").addEventListener("click", () => {
+  populateSettings()
+  closeSettingsPage()
+})
+document.addEventListener("keydown", (event) => {
+  if (
+    event.key !== "Escape" ||
+    settingsPage.hidden ||
+    document.querySelector("dialog[open]") !== null
+  )
+    return
+  event.preventDefault()
+  populateSettings()
+  closeSettingsPage()
+})
+
 element<HTMLButtonElement>("save-settings").addEventListener("click", () => {
   void run(async () => {
     const fontFamily = selectedFontFamily()
@@ -612,6 +654,7 @@ element<HTMLButtonElement>("save-settings").addEventListener("click", () => {
     })
     applyFontFamily(fontFamily)
     setRunStatus("Settings saved")
+    closeSettingsPage()
   })
 })
 
@@ -740,10 +783,8 @@ window.addEventListener("pagehide", () => {
 
 void run(async () => {
   await runtime.initialize()
-  fontFamilySelect.value = runtime.appSettings.fontFamily
+  populateSettings()
   applyFontFamily(runtime.appSettings.fontFamily)
-  systemPrompt.value = runtime.appSettings.systemPrompt
-  agentInstructions.value = runtime.appSettings.agentInstructions
   renderMessages()
   resizePromptInput()
   setRunStatus("Ready", false)

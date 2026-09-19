@@ -298,12 +298,21 @@ test("loads the Side Panel without uncaught errors", async () => {
   await controller.evaluate(() => window.scrollTo(0, 0))
 })
 
-test("applies and persists the selected interface font", async () => {
-  const settingsPanel = controller.locator(".settings-panel")
-  await settingsPanel.locator("summary").click()
+test("opens a dedicated settings page and persists the selected interface font", async () => {
+  const settingsPage = controller.locator("#settings-page")
+  await controller.locator("#account-menu-trigger").click()
+  await expect(controller.locator("#open-settings")).toBeVisible()
+  await controller.locator("#open-settings").click()
+
+  await expect(settingsPage).toBeVisible()
+  await expect(settingsPage.getByRole("heading", { name: "Appearance" })).toBeVisible()
+  await expect(settingsPage.getByRole("heading", { name: "Instructions" })).toBeVisible()
+  await expect(controller.locator("#transcript")).toBeHidden()
   await controller.locator("#font-family").selectOption("serif")
   await controller.locator("#save-settings").click()
 
+  await expect(settingsPage).toBeHidden()
+  await expect(controller.locator("#transcript")).toBeVisible()
   await expect(controller.locator("#run-status")).toHaveText("Settings saved")
   await expect
     .poll(() => controller.evaluate(() => document.documentElement.dataset.fontFamily))
@@ -313,18 +322,18 @@ test("applies and persists the selected interface font", async () => {
   ).toContain("Georgia")
 
   await controller.reload()
+  await controller.locator("#account-menu-trigger").click()
+  await controller.locator("#open-settings").click()
   await expect(controller.locator("#font-family")).toHaveValue("serif")
   await expect
     .poll(() => controller.evaluate(() => document.documentElement.dataset.fontFamily))
     .toBe("serif")
 
-  await settingsPanel.locator("summary").click()
   await controller.locator("#font-family").selectOption("system")
   await controller.locator("#save-settings").click()
   await expect
     .poll(() => controller.evaluate(() => document.documentElement.dataset.fontFamily))
     .toBe("system")
-  await settingsPanel.locator("summary").click()
 })
 
 test("keeps page context and controls usable at normal and narrow widths", async () => {
