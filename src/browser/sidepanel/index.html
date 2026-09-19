@@ -142,10 +142,48 @@
         <section class="settings-section" aria-labelledby="model-title">
           <h2 id="model-title">Model</h2>
           <p>Choose the provider and model used for this session.</p>
-          <label for="provider">Provider</label>
-          <select id="provider"></select>
-          <label for="model">Model</label>
-          <select id="model"></select>
+          <label for="provider-search">Provider</label>
+          <div id="provider-picker" class="searchable-select">
+            <input
+              id="provider-search"
+              type="search"
+              role="combobox"
+              aria-autocomplete="list"
+              aria-controls="provider-options"
+              aria-expanded="false"
+              autocomplete="off"
+              data-placeholder="Search providers"
+              placeholder="Search providers"
+            />
+            <select id="provider" tabindex="-1" aria-hidden="true"></select>
+            <div
+              id="provider-options"
+              class="searchable-select-options"
+              role="listbox"
+              hidden
+            ></div>
+          </div>
+          <label for="model-search">Model</label>
+          <div id="model-picker" class="searchable-select">
+            <input
+              id="model-search"
+              type="search"
+              role="combobox"
+              aria-autocomplete="list"
+              aria-controls="model-options"
+              aria-expanded="false"
+              autocomplete="off"
+              data-placeholder="Search models"
+              placeholder="Search models"
+            />
+            <select id="model" tabindex="-1" aria-hidden="true"></select>
+            <div
+              id="model-options"
+              class="searchable-select-options"
+              role="listbox"
+              hidden
+            ></div>
+          </div>
           <p id="model-capabilities" class="field-hint"></p>
           <button type="button" id="configure-provider" class="subtle">
             Configure selected provider
