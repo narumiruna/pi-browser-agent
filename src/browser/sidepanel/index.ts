@@ -32,6 +32,12 @@ function element<T extends HTMLElement>(id: string): T {
 const locationParams = new URLSearchParams(window.location.search)
 const isSettingsTab = locationParams.get("view") === "settings"
 const settingsContextId = locationParams.get("source") ?? crypto.randomUUID()
+const initialModelProvider = locationParams.get("modelProvider")
+const initialModelId = locationParams.get("modelId")
+const initialSettingsModel =
+  initialModelProvider && initialModelId
+    ? { provider: initialModelProvider, id: initialModelId }
+    : undefined
 
 const transcript = element<HTMLElement>("transcript")
 const promptInput = element<HTMLTextAreaElement>("prompt")
@@ -80,6 +86,7 @@ let pendingPasteOperations = 0
 let pasteQueue = Promise.resolve()
 let composerImages: Array<PastedImage & { id: string }> = []
 let voiceInput: VoiceInputController | undefined
+let settingsModelChanged = false
 const renderedImages = new WeakMap<ImageContent, HTMLImageElement>()
 
 function setError(error?: unknown): void {
@@ -825,6 +832,7 @@ function populateSettings(): void {
   fontSizeOutput.value = `${runtime.appSettings.fontSize} px`
   systemPrompt.value = runtime.appSettings.systemPrompt
   agentInstructions.value = runtime.appSettings.agentInstructions
+  settingsModelChanged = false
 }
 
 function openSettingsPage(): void {
@@ -894,16 +902,26 @@ document.addEventListener("keydown", (event) => {
 fontSizeInput.addEventListener("input", () => applyFontSize(selectedFontSize()))
 
 providerSelect.addEventListener("change", () => {
+  settingsModelChanged = true
   renderModelOptions(providerSelect.value)
   updateProviderConfigurationButton()
 })
 
-modelSelect.addEventListener("change", updateModelCapabilities)
+modelSelect.addEventListener("change", () => {
+  settingsModelChanged = true
+  updateModelCapabilities()
+})
 
 element<HTMLButtonElement>("save-settings").addEventListener("click", () => {
   void run(async () => {
-    const providerId = providerSelect.value
-    const modelId = modelSelect.value
+    const applyModelToActiveSession = isSettingsTab && settingsModelChanged
+    let providerId = providerSelect.value
+    let modelId = modelSelect.value
+    if (isSettingsTab && !applyModelToActiveSession) {
+      await runtime.syncSettings()
+      providerId = runtime.appSettings.modelProvider
+      modelId = runtime.appSettings.modelId
+    }
     if (!modelId) throw new Error("Configure the selected provider and choose a model")
     if (!isSettingsTab && (providerId !== runtime.model.provider || modelId !== runtime.model.id)) {
       await runtime.selectModel(providerId, modelId)
@@ -923,7 +941,7 @@ element<HTMLButtonElement>("save-settings").addEventListener("click", () => {
         .sendMessage({
           kind: "event",
           name: "settings.saved",
-          payload: { settingsContextId },
+          payload: { settingsContextId, applyModelToActiveSession },
         } satisfies RuntimeEvent)
         .catch(() => undefined)
     }
@@ -1027,7 +1045,9 @@ chrome.runtime.onMessage.addListener((message: unknown) => {
     event.payload?.settingsContextId === settingsContextId
   ) {
     void run(async () => {
-      await runtime.syncSettings({ applyModelToActiveSession: true })
+      await runtime.syncSettings({
+        applyModelToActiveSession: event.payload?.applyModelToActiveSession === true,
+      })
       applyAppearance(runtime.appSettings.fontFamily, runtime.appSettings.fontSize)
       syncModelControls()
       await refreshAuth()
@@ -1088,10 +1108,7 @@ if (!isSettingsTab) {
 void run(async () => {
   if (isSettingsTab) {
     document.title = "Settings · Pi Chrome"
-    await runtime.initializeSettings({
-      provider: locationParams.get("modelProvider") ?? "",
-      id: locationParams.get("modelId") ?? "",
-    })
+    await runtime.initializeSettings(initialSettingsModel)
     populateSettings()
     applyAppearance(runtime.appSettings.fontFamily, runtime.appSettings.fontSize)
     openSettingsPage()
