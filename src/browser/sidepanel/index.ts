@@ -3,6 +3,7 @@ import "./styles.css"
 import type { AuthEvent, AuthPrompt, ImageContent } from "@earendil-works/pi-ai"
 import { BrowserAgentRuntime } from "../agent/runtime.js"
 import { AUTH_ORIGINS, OPENAI_PROVIDER_ID } from "../auth/codex-oauth.js"
+import { CREDENTIALS_KEY } from "../auth/credential-store.js"
 import { safeErrorMessage } from "../auth/redaction.js"
 import {
   BOOKMARKS_PERMISSION,
@@ -506,9 +507,7 @@ async function refreshSessions(): Promise<void> {
   }
 }
 
-async function refreshAuth(providerId = providerSelect.value): Promise<void> {
-  const provider = providerSummary(providerId)
-  if (!provider) return
+async function validatedAuthStatus(providerId: string) {
   let status = await runtime.authStatus(providerId)
   if (
     providerId === OPENAI_PROVIDER_ID &&
@@ -518,6 +517,13 @@ async function refreshAuth(providerId = providerSelect.value): Promise<void> {
     await runtime.invalidateCredential(providerId)
     status = { loggedIn: false }
   }
+  return status
+}
+
+async function refreshAuth(providerId = providerSelect.value): Promise<void> {
+  const provider = providerSummary(providerId)
+  if (!provider) return
+  const status = await validatedAuthStatus(providerId)
   loginButton.hidden = status.loggedIn || (!provider.apiKey && !provider.oauth)
   loginButton.textContent = provider.oauth
     ? `Log in to ${provider.name}`
@@ -664,7 +670,7 @@ refreshTokenButton.addEventListener("click", () => {
   refreshTokenButton.disabled = true
   void run(async () => {
     await runtime.refreshCredential(providerSelect.value)
-    await refreshAuth()
+    await Promise.all([refreshAuth(), updateProviderConfigurationButton()])
   }).finally(() => {
     refreshTokenButton.disabled = false
   })
@@ -674,7 +680,7 @@ logoutButton.addEventListener("click", () => {
   logoutButton.disabled = true
   void run(async () => {
     await runtime.logout(providerSelect.value)
-    await refreshAuth()
+    await Promise.all([refreshAuth(), updateProviderConfigurationButton()])
   }).finally(() => {
     logoutButton.disabled = false
   })
@@ -808,13 +814,11 @@ async function updateProviderConfigurationButton(): Promise<void> {
   const provider = providerSummary(providerId)
   const configurable = provider && (provider.apiKey || provider.oauth)
 
-  configureProviderButton.disabled = !configurable || provider?.oauth === true
-  configureProviderButton.textContent = provider?.oauth
-    ? `Checking ${provider.name} connection`
-    : `Configure ${provider?.name ?? "selected provider"}`
+  configureProviderButton.disabled = !configurable
+  configureProviderButton.textContent = `Configure ${provider?.name ?? "selected provider"}`
   if (!provider?.oauth) return
 
-  const status = await runtime.authStatus(providerId)
+  const status = await validatedAuthStatus(providerId)
   if (request !== providerConfigurationRequest || providerSelect.value !== providerId) return
   configureProviderButton.disabled = false
   configureProviderButton.textContent = status.loggedIn
@@ -1079,7 +1083,7 @@ chrome.permissions.onRemoved.addListener((permissions) => {
     loginController?.abort()
     void run(async () => {
       await runtime.invalidateCredential()
-      await refreshAuth()
+      await Promise.all([refreshAuth(), updateProviderConfigurationButton()])
       setError("OpenAI host access was revoked. Log in again to continue.")
     })
   }
@@ -1091,16 +1095,26 @@ window.addEventListener("pagehide", () => {
   if (!isSettingsTab) void runtime.shutdown()
 })
 
-if (!isSettingsTab) {
-  chrome.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName !== "local" || !("piChromeSettings" in changes)) return
-    void run(async () => {
-      await runtime.syncSettings()
-      applyFontFamily(runtime.appSettings.fontFamily)
-      setRunStatus("Settings saved")
-    })
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== "local") return
+  if (CREDENTIALS_KEY in changes) {
+    void run(
+      async () => {
+        await Promise.all([
+          refreshAuth(runtime.model.provider),
+          updateProviderConfigurationButton(),
+        ])
+      },
+      isSettingsTab ? setSettingsError : setError,
+    )
+  }
+  if (isSettingsTab || !("piChromeSettings" in changes)) return
+  void run(async () => {
+    await runtime.syncSettings()
+    applyFontFamily(runtime.appSettings.fontFamily)
+    setRunStatus("Settings saved")
   })
-}
+})
 
 void run(async () => {
   if (isSettingsTab) {

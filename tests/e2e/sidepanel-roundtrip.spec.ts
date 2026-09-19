@@ -354,7 +354,23 @@ test("opens Settings in a full browser tab and persists the selected interface f
   await expect(accountDisclosure).toHaveJSProperty("open", false)
   await expect(settingsPage.getByRole("heading", { name: "Appearance" })).toBeVisible()
   await expect(settingsPage.getByRole("heading", { name: "Instructions" })).toBeVisible()
-  await expect(settingsTab.locator("#configure-provider")).toHaveText("Log in to OpenAI Codex")
+  const configureProvider = settingsTab.locator("#configure-provider")
+  const initialModelId = await settingsTab.locator("#model").inputValue()
+  await expect(configureProvider).toHaveText("Log in to OpenAI Codex")
+  await settingsTab.evaluate(() => {
+    const originalGet = chrome.storage.local.get
+    chrome.storage.local.get = (async () => {
+      chrome.storage.local.get = originalGet
+      throw new Error("Test auth status failed")
+    }) as typeof chrome.storage.local.get
+  })
+  await settingsTab.locator("#provider").dispatchEvent("change")
+  await expect(settingsError).toHaveText("Test auth status failed")
+  await expect(configureProvider).toBeEnabled()
+  await expect(configureProvider).toHaveText("Configure OpenAI Codex")
+  await settingsTab.locator("#provider").dispatchEvent("change")
+  await expect(configureProvider).toHaveText("Log in to OpenAI Codex")
+  await settingsTab.locator("#model").selectOption(initialModelId)
   await expect(voiceButton).toHaveAttribute("aria-pressed", "false")
   expect(
     await controller.evaluate(
@@ -625,22 +641,18 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
   const fakePayload = btoa(
     JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "test-account" } }),
   )
-  await controller.evaluate(
-    async ({ access, expires }) => {
-      await chrome.storage.local.set({
-        piChromeCredentialsV1: {
-          "openai-codex": {
-            type: "oauth",
-            access,
-            refresh: "test-refresh-token",
-            expires,
-            accountId: "test-account",
-          },
-        },
-      })
-    },
-    { access: `e30.${fakePayload}.signature`, expires: Date.now() + 3_600_000 },
-  )
+  const credential = {
+    type: "oauth",
+    access: `e30.${fakePayload}.signature`,
+    refresh: "test-refresh-token",
+    expires: Date.now() + 3_600_000,
+    accountId: "test-account",
+  }
+  await controller.evaluate(async (credential) => {
+    await chrome.storage.local.set({
+      piChromeCredentialsV1: { "openai-codex": credential },
+    })
+  }, credential)
   await controller.reload()
   await expect(controller.locator("#auth-status")).toContainText("OpenAI Codex configured")
 
@@ -648,7 +660,21 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
   const settingsTabPromise = context.waitForEvent("page")
   await controller.locator("#open-settings").click()
   const settingsTab = await settingsTabPromise
-  await expect(settingsTab.locator("#configure-provider")).toHaveText("Reconnect OpenAI Codex")
+  const configureProvider = settingsTab.locator("#configure-provider")
+  await expect(configureProvider).toHaveText("Reconnect OpenAI Codex")
+
+  await controller.evaluate(async () => chrome.storage.local.remove("piChromeCredentialsV1"))
+  await expect(configureProvider).toHaveText("Log in to OpenAI Codex")
+  await expect(controller.locator("#auth-status")).toHaveText("OpenAI Codex not configured")
+
+  await controller.evaluate(async (credential) => {
+    await chrome.storage.local.set({
+      piChromeCredentialsV1: { "openai-codex": credential },
+    })
+  }, credential)
+  await expect(configureProvider).toHaveText("Reconnect OpenAI Codex")
+  await expect(controller.locator("#auth-status")).toHaveText("OpenAI Codex configured")
+
   const settingsTabClosed = settingsTab.waitForEvent("close")
   await settingsTab.locator("#cancel-settings").click()
   await settingsTabClosed

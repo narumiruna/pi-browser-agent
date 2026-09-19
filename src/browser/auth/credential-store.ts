@@ -5,7 +5,7 @@ import type {
   CredentialStore,
 } from "@earendil-works/pi-ai"
 
-const CREDENTIALS_KEY = "piChromeCredentialsV1"
+export const CREDENTIALS_KEY = "piChromeCredentialsV1"
 const CREDENTIALS_WRITE_LOCK = "pi-chrome-credentials-write"
 
 type StorageArea = Pick<chrome.storage.StorageArea, "get" | "set" | "remove">
