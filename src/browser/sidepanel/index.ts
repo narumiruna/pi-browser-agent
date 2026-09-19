@@ -85,6 +85,7 @@ let pasteQueue = Promise.resolve()
 let composerImages: Array<PastedImage & { id: string }> = []
 let voiceInput: VoiceInputController | undefined
 let settingsModelChanged = false
+let providerConfigurationRequest = 0
 const renderedImages = new WeakMap<ImageContent, HTMLImageElement>()
 
 function setError(error?: unknown): void {
@@ -632,7 +633,7 @@ function configureProvider(providerId: string, button: HTMLButtonElement): void 
         providerId,
         providerId === runtime.model.provider ? runtime.model.id : undefined,
       )
-      await refreshAuth(runtime.model.provider)
+      await Promise.all([refreshAuth(runtime.model.provider), updateProviderConfigurationButton()])
       setRunStatus("Ready", false)
     } finally {
       loginController = undefined
@@ -801,17 +802,33 @@ promptInput.addEventListener("keydown", (event) => {
 
 abortButton.addEventListener("click", () => runtime.abort())
 
-function updateProviderConfigurationButton(): void {
-  const provider = providerSummary(providerSelect.value)
-  configureProviderButton.disabled = !provider || (!provider.apiKey && !provider.oauth)
+async function updateProviderConfigurationButton(): Promise<void> {
+  const request = ++providerConfigurationRequest
+  const providerId = providerSelect.value
+  const provider = providerSummary(providerId)
+  const configurable = provider && (provider.apiKey || provider.oauth)
+
+  configureProviderButton.disabled = !configurable || provider?.oauth === true
   configureProviderButton.textContent = provider?.oauth
-    ? `Log in to ${provider.name}`
+    ? `Checking ${provider.name} connection`
     : `Configure ${provider?.name ?? "selected provider"}`
+  if (!provider?.oauth) return
+
+  const status = await runtime.authStatus(providerId)
+  if (request !== providerConfigurationRequest || providerSelect.value !== providerId) return
+  configureProviderButton.disabled = false
+  configureProviderButton.textContent = status.loggedIn
+    ? `Reconnect ${provider.name}`
+    : `Log in to ${provider.name}`
+}
+
+function refreshProviderConfigurationButton(): void {
+  void updateProviderConfigurationButton().catch(setSettingsError)
 }
 
 function populateSettings(): void {
   syncModelControls()
-  updateProviderConfigurationButton()
+  refreshProviderConfigurationButton()
   fontFamilySelect.value = runtime.appSettings.fontFamily
   systemPrompt.value = runtime.appSettings.systemPrompt
   agentInstructions.value = runtime.appSettings.agentInstructions
@@ -886,7 +903,7 @@ document.addEventListener("keydown", (event) => {
 providerSelect.addEventListener("change", () => {
   settingsModelChanged = true
   renderModelOptions(providerSelect.value)
-  updateProviderConfigurationButton()
+  refreshProviderConfigurationButton()
 })
 
 modelSelect.addEventListener("change", () => {

@@ -354,6 +354,7 @@ test("opens Settings in a full browser tab and persists the selected interface f
   await expect(accountDisclosure).toHaveJSProperty("open", false)
   await expect(settingsPage.getByRole("heading", { name: "Appearance" })).toBeVisible()
   await expect(settingsPage.getByRole("heading", { name: "Instructions" })).toBeVisible()
+  await expect(settingsTab.locator("#configure-provider")).toHaveText("Log in to OpenAI Codex")
   await expect(voiceButton).toHaveAttribute("aria-pressed", "false")
   expect(
     await controller.evaluate(
@@ -642,6 +643,15 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
   )
   await controller.reload()
   await expect(controller.locator("#auth-status")).toContainText("OpenAI Codex configured")
+
+  await controller.locator("#account-menu-trigger").click()
+  const settingsTabPromise = context.waitForEvent("page")
+  await controller.locator("#open-settings").click()
+  const settingsTab = await settingsTabPromise
+  await expect(settingsTab.locator("#configure-provider")).toHaveText("Reconnect OpenAI Codex")
+  const settingsTabClosed = settingsTab.waitForEvent("close")
+  await settingsTab.locator("#cancel-settings").click()
+  await settingsTabClosed
 
   const codexUrl = "https://chatgpt.com/backend-api/codex/responses"
   let markFirstRequestStarted: () => void = () => undefined
