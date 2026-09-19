@@ -298,7 +298,7 @@ test("loads the Side Panel without uncaught errors", async () => {
   await controller.evaluate(() => window.scrollTo(0, 0))
 })
 
-test("opens a dedicated settings page and persists the selected interface font", async () => {
+test("opens Settings in a full browser tab and persists the selected interface font", async () => {
   await controller.addInitScript(() => {
     const state = globalThis as typeof globalThis & {
       settingsVoiceAbortCount: number
@@ -334,20 +334,24 @@ test("opens a dedicated settings page and persists the selected interface font",
   })
   await controller.reload()
 
-  const settingsPage = controller.locator("#settings-page")
-  const settingsError = controller.locator("#settings-error")
   const accountDisclosure = controller.locator(".account-disclosure")
   const voiceButton = controller.locator("#voice-input")
+  const sessionCount = await controller.locator("#sessions option").count()
   await expect(voiceButton).toBeEnabled()
   await voiceButton.click()
   await expect(voiceButton).toHaveAttribute("aria-pressed", "true")
   await controller.locator("#account-menu-trigger").click()
   await expect(controller.locator("#open-settings")).toBeVisible()
+  const settingsTabPromise = context.waitForEvent("page")
   await controller.locator("#open-settings").click()
+  const settingsTab = await settingsTabPromise
+  const settingsPage = settingsTab.locator("#settings-page")
+  const settingsError = settingsTab.locator("#settings-error")
 
+  await expect(settingsTab).toHaveTitle("Settings · Pi Chrome")
+  expect(settingsTab.url()).toContain("?view=settings")
   await expect(settingsPage).toBeVisible()
   await expect(accountDisclosure).toHaveJSProperty("open", false)
-  await expect(settingsPage).not.toContainText("Pi Chrome")
   await expect(settingsPage.getByRole("heading", { name: "Appearance" })).toBeVisible()
   await expect(settingsPage.getByRole("heading", { name: "Instructions" })).toBeVisible()
   await expect(voiceButton).toHaveAttribute("aria-pressed", "false")
@@ -356,9 +360,10 @@ test("opens a dedicated settings page and persists the selected interface font",
       () => (window as typeof window & { settingsVoiceAbortCount: number }).settingsVoiceAbortCount,
     ),
   ).toBe(1)
-  await expect(controller.locator("#transcript")).toBeHidden()
-  await controller.locator("#font-family").selectOption("serif")
-  await controller.evaluate(() => {
+  await expect(controller.locator("#transcript")).toBeVisible()
+  await expect(controller.locator("#sessions option")).toHaveCount(sessionCount)
+  await settingsTab.locator("#font-family").selectOption("serif")
+  await settingsTab.evaluate(() => {
     const state = window as typeof window & { restoreSettingsStorage?: () => void }
     const originalSet = chrome.storage.local.set.bind(chrome.storage.local)
     state.restoreSettingsStorage = () => {
@@ -370,23 +375,23 @@ test("opens a dedicated settings page and persists the selected interface font",
     }) as typeof chrome.storage.local.set
   })
   try {
-    await controller.locator("#save-settings").click()
+    await settingsTab.locator("#save-settings").click()
     await expect(settingsPage).toBeVisible()
     await expect(settingsError).toHaveText("Test settings save failed")
   } finally {
-    await controller.evaluate(() => {
+    await settingsTab.evaluate(() => {
       const state = window as typeof window & { restoreSettingsStorage?: () => void }
       state.restoreSettingsStorage?.()
       delete state.restoreSettingsStorage
     })
   }
-  await controller.locator("#save-settings").click()
+  const settingsTabClosed = settingsTab.waitForEvent("close")
+  await settingsTab.locator("#save-settings").click()
+  await settingsTabClosed
 
-  await expect(settingsPage).toBeHidden()
-  await expect(settingsError).toBeHidden()
   await expect(accountDisclosure).toHaveJSProperty("open", false)
   await expect(controller.locator("#transcript")).toBeVisible()
-  await expect(controller.locator("#run-status")).toHaveText("Settings saved")
+  await expect(controller.locator("#sessions option")).toHaveCount(sessionCount)
   await expect
     .poll(() => controller.evaluate(() => document.documentElement.dataset.fontFamily))
     .toBe("serif")
@@ -396,14 +401,18 @@ test("opens a dedicated settings page and persists the selected interface font",
 
   await controller.reload()
   await controller.locator("#account-menu-trigger").click()
+  const reopenedSettingsTabPromise = context.waitForEvent("page")
   await controller.locator("#open-settings").click()
-  await expect(controller.locator("#font-family")).toHaveValue("serif")
+  const reopenedSettingsTab = await reopenedSettingsTabPromise
+  await expect(reopenedSettingsTab.locator("#font-family")).toHaveValue("serif")
   await expect
     .poll(() => controller.evaluate(() => document.documentElement.dataset.fontFamily))
     .toBe("serif")
 
-  await controller.locator("#font-family").selectOption("system")
-  await controller.locator("#save-settings").click()
+  await reopenedSettingsTab.locator("#font-family").selectOption("system")
+  const reopenedSettingsTabClosed = reopenedSettingsTab.waitForEvent("close")
+  await reopenedSettingsTab.locator("#save-settings").click()
+  await reopenedSettingsTabClosed
   await expect
     .poll(() => controller.evaluate(() => document.documentElement.dataset.fontFamily))
     .toBe("system")
