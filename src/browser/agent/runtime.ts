@@ -155,8 +155,13 @@ export class BrowserAgentRuntime {
     this.agent.state.model = this.currentModel
   }
 
-  async initializeSettings(): Promise<void> {
+  async initializeSettings(modelSelection?: { provider: string; id: string }): Promise<void> {
     await this.initializeConfiguration()
+    if (!modelSelection) return
+    const model = this.models.getModel(modelSelection.provider, modelSelection.id)
+    if (!model) return
+    this.currentModel = model
+    this.agent.state.model = model
   }
 
   async initialize(sessionId?: string): Promise<void> {
