@@ -364,27 +364,40 @@ test("opens Settings in a full browser tab and persists the selected interface f
   await expect(controller.locator("#sessions option")).toHaveCount(sessionCount)
   await settingsTab.locator("#font-family").selectOption("serif")
   await settingsTab.evaluate(() => {
-    const state = window as typeof window & { restoreSettingsStorage?: () => void }
-    const originalSet = chrome.storage.local.set.bind(chrome.storage.local)
+    const state = window as typeof window & {
+      originalSettingsStorageSet?: typeof chrome.storage.local.set
+      restoreSettingsStorage?: () => void
+    }
+    const originalSet = chrome.storage.local.set
+    const callOriginalSet = originalSet.bind(chrome.storage.local)
+    state.originalSettingsStorageSet = originalSet
     state.restoreSettingsStorage = () => {
       chrome.storage.local.set = originalSet
     }
     chrome.storage.local.set = (async (items) => {
       if (Object.hasOwn(items, "piChromeSettings")) throw new Error("Test settings save failed")
-      await originalSet(items)
+      await callOriginalSet(items)
     }) as typeof chrome.storage.local.set
   })
+  let storageMethodRestored = false
   try {
     await settingsTab.locator("#save-settings").click()
     await expect(settingsPage).toBeVisible()
     await expect(settingsError).toHaveText("Test settings save failed")
   } finally {
-    await settingsTab.evaluate(() => {
-      const state = window as typeof window & { restoreSettingsStorage?: () => void }
+    storageMethodRestored = await settingsTab.evaluate(() => {
+      const state = window as typeof window & {
+        originalSettingsStorageSet?: typeof chrome.storage.local.set
+        restoreSettingsStorage?: () => void
+      }
       state.restoreSettingsStorage?.()
+      const restored = chrome.storage.local.set === state.originalSettingsStorageSet
+      delete state.originalSettingsStorageSet
       delete state.restoreSettingsStorage
+      return restored
     })
   }
+  expect(storageMethodRestored).toBe(true)
   const settingsTabClosed = settingsTab.waitForEvent("close")
   await settingsTab.locator("#save-settings").click()
   await settingsTabClosed
@@ -419,17 +432,25 @@ test("opens Settings in a full browser tab and persists the selected interface f
 })
 
 test("synchronizes provider controls when a new session restores the latest model", async () => {
+  async function openSettingsTab(): Promise<Page> {
+    await controller.locator("#account-menu-trigger").click()
+    const settingsTabPromise = context.waitForEvent("page")
+    await controller.locator("#open-settings").click()
+    return settingsTabPromise
+  }
+
   const sessionSelect = controller.locator("#sessions")
   const initialSessionId = await sessionSelect.inputValue()
   await controller.locator("#new-session").click()
   await expect.poll(() => sessionSelect.inputValue()).not.toBe(initialSessionId)
 
-  await controller.locator("#account-menu-trigger").click()
-  await controller.locator("#open-settings").click()
-  await controller.locator("#provider").selectOption("anthropic")
-  const anthropicModelId = await controller.locator("#model").inputValue()
+  const settingsTab = await openSettingsTab()
+  await settingsTab.locator("#provider").selectOption("anthropic")
+  const anthropicModelId = await settingsTab.locator("#model").inputValue()
   expect(anthropicModelId).not.toBe("")
-  await controller.locator("#save-settings").click()
+  const settingsTabClosed = settingsTab.waitForEvent("close")
+  await settingsTab.locator("#save-settings").click()
+  await settingsTabClosed
 
   await sessionSelect.selectOption(initialSessionId)
   await expect(controller.locator("#provider")).toHaveValue("openai-codex")
@@ -439,11 +460,12 @@ test("synchronizes provider controls when a new session restores the latest mode
   await expect(controller.locator("#model")).toHaveValue(anthropicModelId)
   await expect(controller.locator("#auth-status")).toHaveText("Anthropic not configured")
 
-  await controller.locator("#account-menu-trigger").click()
-  await controller.locator("#open-settings").click()
-  await controller.locator("#provider").selectOption("openai-codex")
-  await controller.locator("#model").selectOption("gpt-5.6-terra")
-  await controller.locator("#save-settings").click()
+  const restoreSettingsTab = await openSettingsTab()
+  await restoreSettingsTab.locator("#provider").selectOption("openai-codex")
+  await restoreSettingsTab.locator("#model").selectOption("gpt-5.6-terra")
+  const restoreSettingsTabClosed = restoreSettingsTab.waitForEvent("close")
+  await restoreSettingsTab.locator("#save-settings").click()
+  await restoreSettingsTabClosed
 })
 
 test("keeps page context and controls usable at normal and narrow widths", async () => {
