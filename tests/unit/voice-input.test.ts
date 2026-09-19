@@ -62,10 +62,11 @@ describe("voice input", () => {
     expect(callbacks.onListeningChange).toHaveBeenLastCalledWith(false)
   })
 
-  test("discards late recognition results after a manual edit", () => {
+  test("makes repeated stops idempotent and still discards late results", () => {
     const { callbacks, controller, recognition } = setup()
 
     controller.start("Draft")
+    controller.stop()
     controller.stop({ discardResults: true })
     recognition.emitResult("late final result")
 

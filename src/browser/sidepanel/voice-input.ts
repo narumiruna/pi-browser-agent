@@ -71,6 +71,7 @@ export class VoiceInputController {
   private baseText = ""
   private discardingResults = false
   private ignoringAbortError = false
+  private stopping = false
   active = false
 
   constructor(
@@ -96,6 +97,7 @@ export class VoiceInputController {
     this.baseText = existingText
     this.discardingResults = false
     this.ignoringAbortError = false
+    this.stopping = false
     this.setActive(true)
     try {
       this.recognition.start()
@@ -109,7 +111,9 @@ export class VoiceInputController {
 
   stop(options: StopVoiceInputOptions = {}): void {
     if (!this.active) return
-    this.discardingResults = options.discardResults === true
+    if (options.discardResults) this.discardingResults = true
+    if (this.stopping) return
+    this.stopping = true
     try {
       this.recognition.stop()
     } catch (error) {
@@ -148,6 +152,7 @@ export class VoiceInputController {
   private setActive(active: boolean): void {
     if (this.active === active) return
     this.active = active
+    if (!active) this.stopping = false
     this.callbacks.onListeningChange(active)
   }
 }
