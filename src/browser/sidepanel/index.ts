@@ -1,13 +1,15 @@
 import type { AgentEvent, AgentMessage } from "@earendil-works/pi-agent-core"
 import "./styles.css"
-import type { AuthEvent, ImageContent } from "@earendil-works/pi-ai"
+import type { AuthEvent, AuthPrompt, ImageContent } from "@earendil-works/pi-ai"
 import { BrowserAgentRuntime } from "../agent/runtime.js"
-import { AUTH_ORIGINS } from "../auth/codex-oauth.js"
+import { AUTH_ORIGINS, OPENAI_PROVIDER_ID } from "../auth/codex-oauth.js"
 import { safeErrorMessage } from "../auth/redaction.js"
 import {
   BOOKMARKS_PERMISSION,
+  hasHostPermissions,
   requestBookmarkPermission,
   requestHostPermission,
+  requestHostPermissions,
 } from "../permissions.js"
 import { type RuntimeEvent, sendRuntimeRequest } from "../runtime/messages.js"
 import type { JsonObject } from "../runtime/types.js"
@@ -27,6 +29,10 @@ function element<T extends HTMLElement>(id: string): T {
   return value as T
 }
 
+const locationParams = new URLSearchParams(window.location.search)
+const isSettingsTab = locationParams.get("view") === "settings"
+const settingsContextId = locationParams.get("source") ?? crypto.randomUUID()
+
 const transcript = element<HTMLElement>("transcript")
 const promptInput = element<HTMLTextAreaElement>("prompt")
 const errorOutput = element<HTMLElement>("error")
@@ -44,6 +50,9 @@ const confirmError = element<HTMLElement>("confirm-error")
 const confirmActionButton = element<HTMLButtonElement>("confirm-action")
 const loginDialog = element<HTMLDialogElement>("login-dialog")
 const deviceCode = element<HTMLOutputElement>("device-code")
+const providerSelect = element<HTMLSelectElement>("provider")
+const modelSelect = element<HTMLSelectElement>("model")
+const modelCapabilities = element<HTMLElement>("model-capabilities")
 const fontFamilySelect = element<HTMLSelectElement>("font-family")
 const systemPrompt = element<HTMLTextAreaElement>("system-prompt")
 const agentInstructions = element<HTMLTextAreaElement>("agent-instructions")
@@ -56,6 +65,11 @@ const voiceButton = element<HTMLButtonElement>("voice-input")
 const voiceStatus = element<HTMLElement>("voice-status")
 const settingsPage = element<HTMLElement>("settings-page")
 const closeSettingsButton = element<HTMLButtonElement>("close-settings")
+const configureProviderButton = element<HTMLButtonElement>("configure-provider")
+const authPromptDialog = element<HTMLDialogElement>("auth-prompt-dialog")
+const authPromptLabel = element<HTMLElement>("auth-prompt-label")
+const authPromptInput = element<HTMLInputElement>("auth-prompt-input")
+const authPromptSelect = element<HTMLSelectElement>("auth-prompt-select")
 let loginController: AbortController | undefined
 let verificationUri = ""
 let activeTabUrl: string | undefined
@@ -366,6 +380,112 @@ function renderMessages(streaming?: AgentMessage): void {
   transcript.scrollTop = transcript.scrollHeight
 }
 
+function promptForCredential(prompt: AuthPrompt): Promise<string> {
+  authPromptLabel.textContent = prompt.message
+  const isSelect = prompt.type === "select"
+  authPromptInput.hidden = isSelect
+  authPromptSelect.hidden = !isSelect
+  authPromptInput.value = ""
+  authPromptInput.type = prompt.type === "secret" ? "password" : "text"
+  authPromptInput.placeholder = "placeholder" in prompt ? (prompt.placeholder ?? "") : ""
+  authPromptInput.autocomplete = prompt.type === "secret" ? "off" : "on"
+  authPromptSelect.replaceChildren()
+  if (isSelect) {
+    for (const choice of prompt.options) {
+      const option = document.createElement("option")
+      option.value = choice.id
+      option.textContent = choice.description
+        ? `${choice.label} — ${choice.description}`
+        : choice.label
+      authPromptSelect.append(option)
+    }
+  }
+  authPromptDialog.showModal()
+  queueMicrotask(() => (isSelect ? authPromptSelect : authPromptInput).focus())
+
+  return new Promise((resolve, reject) => {
+    const signals = [prompt.signal, loginController?.signal].filter(
+      (signal): signal is AbortSignal => signal !== undefined,
+    )
+    const cleanup = (): void => {
+      authPromptDialog.removeEventListener("close", finish)
+      for (const signal of signals) signal.removeEventListener("abort", abort)
+    }
+    const finish = (): void => {
+      cleanup()
+      if (authPromptDialog.returnValue !== "confirm") {
+        reject(new DOMException("Provider setup cancelled", "AbortError"))
+        return
+      }
+      resolve(isSelect ? authPromptSelect.value : authPromptInput.value)
+    }
+    const abort = (): void => {
+      if (authPromptDialog.open) authPromptDialog.close("cancel")
+      else {
+        cleanup()
+        reject(new DOMException("Provider setup cancelled", "AbortError"))
+      }
+    }
+    authPromptDialog.addEventListener("close", finish, { once: true })
+    for (const signal of signals) signal.addEventListener("abort", abort, { once: true })
+    if (signals.some((signal) => signal.aborted)) abort()
+  })
+}
+
+function providerSummary(providerId: string) {
+  return runtime.getProviders().find((provider) => provider.id === providerId)
+}
+
+function renderProviderOptions(): void {
+  providerSelect.replaceChildren()
+  for (const provider of runtime.getProviders()) {
+    const option = document.createElement("option")
+    option.value = provider.id
+    option.textContent = `${provider.name} (${provider.modelCount})`
+    providerSelect.append(option)
+  }
+}
+
+function renderModelOptions(providerId: string, preferredId?: string): void {
+  modelSelect.replaceChildren()
+  const models = runtime.getModels(providerId)
+  for (const model of models) {
+    const option = document.createElement("option")
+    option.value = model.id
+    option.textContent = model.name === model.id ? model.id : `${model.name} — ${model.id}`
+    option.selected = model.id === preferredId
+    modelSelect.append(option)
+  }
+  modelSelect.disabled = models.length === 0
+  if (models.length === 0) {
+    const option = document.createElement("option")
+    option.textContent = "Configure provider to load models"
+    option.value = ""
+    modelSelect.append(option)
+  }
+  updateModelCapabilities()
+}
+
+function updateModelCapabilities(): void {
+  const model = runtime
+    .getModels(providerSelect.value)
+    .find((candidate) => candidate.id === modelSelect.value)
+  modelCapabilities.textContent = model
+    ? [
+        model.reasoning ? "Reasoning" : "No reasoning",
+        model.imageInput ? "Image input" : "Text input",
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : ""
+}
+
+function syncModelControls(): void {
+  renderProviderOptions()
+  providerSelect.value = runtime.model.provider
+  renderModelOptions(runtime.model.provider, runtime.model.id)
+}
+
 async function refreshSessions(): Promise<void> {
   const sessions = await runtime.listSessions()
   sessionSelect.replaceChildren()
@@ -378,12 +498,27 @@ async function refreshSessions(): Promise<void> {
   }
 }
 
-async function refreshAuth(): Promise<void> {
-  const status = await runtime.authStatus()
-  loginButton.hidden = status.loggedIn
+async function refreshAuth(providerId = providerSelect.value): Promise<void> {
+  const provider = providerSummary(providerId)
+  if (!provider) return
+  let status = await runtime.authStatus(providerId)
+  if (
+    providerId === OPENAI_PROVIDER_ID &&
+    status.loggedIn &&
+    !(await hasHostPermissions(AUTH_ORIGINS))
+  ) {
+    await runtime.invalidateCredential(providerId)
+    status = { loggedIn: false }
+  }
+  loginButton.hidden = status.loggedIn || (!provider.apiKey && !provider.oauth)
+  loginButton.textContent = provider.oauth
+    ? `Log in to ${provider.name}`
+    : `Configure ${provider.name}`
   logoutButton.hidden = !status.loggedIn
-  refreshTokenButton.hidden = !status.loggedIn
-  authStatus.textContent = status.loggedIn ? "OpenAI connected" : "OpenAI not connected"
+  refreshTokenButton.hidden = !status.loggedIn || !provider.oauth
+  authStatus.textContent = status.loggedIn
+    ? `${provider.name} configured`
+    : `${provider.name} not configured`
   authStatus.dataset.loggedIn = String(status.loggedIn)
   accountMenuTrigger.dataset.loggedIn = String(status.loggedIn)
 }
@@ -409,6 +544,8 @@ function onAuthEvent(event: AuthEvent): void {
     verificationUri = event.verificationUri
     deviceCode.textContent = event.userCode
     if (!loginDialog.open) loginDialog.showModal()
+  } else if (event.type === "progress" || event.type === "info") {
+    setRunStatus(event.message)
   }
 }
 
@@ -440,6 +577,9 @@ const runtime = new BrowserAgentRuntime({
   confirm: confirmation,
   onAuthEvent,
   onAgentEvent,
+  onSettingsModelChanged: () => {
+    void run(refreshActiveSessionUi)
+  },
   onPersistenceError: setError,
 })
 
@@ -455,22 +595,52 @@ async function run(
   }
 }
 
-loginButton.addEventListener("click", () => {
-  loginButton.disabled = true
+function configureProvider(providerId: string, button: HTMLButtonElement): void {
+  button.disabled = true
   void run(async () => {
-    const granted = await chrome.permissions.request({ origins: [...AUTH_ORIGINS] })
-    if (!granted) throw new Error("OpenAI host access is required for login")
+    const provider = providerSummary(providerId)
+    if (!provider) throw new Error("Select a provider before configuring it")
+    if (!provider.apiKey && !provider.oauth) {
+      throw new Error(`${provider.name} has no browser-compatible authentication method`)
+    }
+    if (provider.oauth) {
+      const granted = await chrome.permissions.request({ origins: [...AUTH_ORIGINS] })
+      if (!granted) throw new Error("OpenAI host access is required for login")
+    } else if (providerId === "radius") {
+      const granted = await requestHostPermissions(["https://radius.pi.dev"])
+      if (!granted) throw new Error("Radius host access is required to load its models")
+    }
     loginController = new AbortController()
     try {
-      await runtime.login(loginController.signal)
-      loginDialog.close()
-      await refreshAuth()
+      await runtime.login(
+        providerId,
+        provider.oauth ? "oauth" : "api_key",
+        loginController.signal,
+        promptForCredential,
+      )
+      if (loginDialog.open) loginDialog.close()
+      renderProviderOptions()
+      providerSelect.value = providerId
+      renderModelOptions(
+        providerId,
+        providerId === runtime.model.provider ? runtime.model.id : undefined,
+      )
+      await refreshAuth(runtime.model.provider)
+      setRunStatus("Ready", false)
     } finally {
       loginController = undefined
     }
   }).finally(() => {
-    loginButton.disabled = false
+    button.disabled = false
   })
+}
+
+loginButton.addEventListener("click", () => {
+  configureProvider(runtime.model.provider, loginButton)
+})
+
+configureProviderButton.addEventListener("click", () => {
+  configureProvider(providerSelect.value, configureProviderButton)
 })
 
 element<HTMLButtonElement>("cancel-login").addEventListener("click", () => {
@@ -485,7 +655,7 @@ element<HTMLButtonElement>("open-verification").addEventListener("click", () => 
 refreshTokenButton.addEventListener("click", () => {
   refreshTokenButton.disabled = true
   void run(async () => {
-    await runtime.refreshCredential()
+    await runtime.refreshCredential(providerSelect.value)
     await refreshAuth()
   }).finally(() => {
     refreshTokenButton.disabled = false
@@ -495,7 +665,7 @@ refreshTokenButton.addEventListener("click", () => {
 logoutButton.addEventListener("click", () => {
   logoutButton.disabled = true
   void run(async () => {
-    await runtime.logout()
+    await runtime.logout(providerSelect.value)
     await refreshAuth()
   }).finally(() => {
     logoutButton.disabled = false
@@ -511,6 +681,15 @@ async function requestActiveSiteAccess(): Promise<void> {
   if (!currentTabUrl) throw new Error("Open an HTTP or HTTPS page before granting site access")
   if (!(await requestSiteAccess(currentTabUrl))) {
     throw new Error("Site access is required to work with the current page")
+  }
+}
+
+async function requestRunAccess(): Promise<void> {
+  const currentTabUrl = await refreshTab()
+  if (!currentTabUrl) throw new Error("Open an HTTP or HTTPS page before sending a prompt")
+  const modelEndpoints = await runtime.requiredModelEndpointUrls()
+  if (!(await requestHostPermissions([currentTabUrl, ...modelEndpoints]))) {
+    throw new Error("Current-page and model-provider access are required for this request")
   }
 }
 
@@ -534,18 +713,21 @@ function submitPrompt(queueAfterCurrentTask = false): void {
     content: { ...image.content },
   }))
   if (!text && submittedImages.length === 0) return
+  if (submittedImages.length > 0 && !runtime.model.input.includes("image")) {
+    setError(`${runtime.model.name} does not support image input`)
+    return
+  }
   const submittedWhileStreaming = runtime.agent.state.isStreaming
   const submissionGuard = {}
   activeSubmissionGuard = submissionGuard
   updateSendButton()
   void run(async () => {
     try {
-      await requestActiveSiteAccess()
-      const hasPermission = await chrome.permissions.contains({ origins: [...AUTH_ORIGINS] })
-      if (!hasPermission)
-        throw new Error("OpenAI host access was revoked. Log in again to continue.")
       if (!(await runtime.authStatus()).loggedIn)
-        throw new Error("Log in to OpenAI before sending a prompt")
+        throw new Error(
+          `Configure ${providerSummary(runtime.model.provider)?.name ?? "the provider"} before sending a prompt`,
+        )
+      await requestRunAccess()
       if (submittedWhileStreaming !== runtime.agent.state.isStreaming) {
         throw new Error(
           submittedWhileStreaming
@@ -612,7 +794,17 @@ promptInput.addEventListener("keydown", (event) => {
 
 abortButton.addEventListener("click", () => runtime.abort())
 
+function updateProviderConfigurationButton(): void {
+  const provider = providerSummary(providerSelect.value)
+  configureProviderButton.disabled = !provider || (!provider.apiKey && !provider.oauth)
+  configureProviderButton.textContent = provider?.oauth
+    ? `Log in to ${provider.name}`
+    : `Configure ${provider?.name ?? "selected provider"}`
+}
+
 function populateSettings(): void {
+  syncModelControls()
+  updateProviderConfigurationButton()
   fontFamilySelect.value = runtime.appSettings.fontFamily
   systemPrompt.value = runtime.appSettings.systemPrompt
   agentInstructions.value = runtime.appSettings.agentInstructions
@@ -628,12 +820,41 @@ function openSettingsPage(): void {
 }
 
 function closeSettingsPage(): void {
+  if (isSettingsTab) {
+    void chrome.tabs
+      .getCurrent()
+      .then(async (tab) => {
+        if (tab?.openerTabId !== undefined) {
+          await chrome.tabs.update(tab.openerTabId, { active: true })
+        }
+      })
+      .catch(setSettingsError)
+      .finally(() => window.close())
+    return
+  }
   settingsPage.hidden = true
   document.body.dataset.view = "conversation"
   accountMenuTrigger.focus()
 }
 
-element<HTMLButtonElement>("open-settings").addEventListener("click", openSettingsPage)
+function openSettingsTab(): void {
+  voiceInput?.abort()
+  const url = new URL(window.location.href)
+  url.searchParams.set("view", "settings")
+  url.searchParams.set("source", settingsContextId)
+  url.searchParams.set("modelProvider", runtime.model.provider)
+  url.searchParams.set("modelId", runtime.model.id)
+  url.hash = ""
+  void run(async () => {
+    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true })
+    await chrome.tabs.create({
+      url: url.href,
+      ...(activeTab?.id === undefined ? {} : { openerTabId: activeTab.id }),
+    })
+  })
+}
+
+element<HTMLButtonElement>("open-settings").addEventListener("click", openSettingsTab)
 closeSettingsButton.addEventListener("click", () => {
   populateSettings()
   closeSettingsPage()
@@ -654,33 +875,62 @@ document.addEventListener("keydown", (event) => {
   closeSettingsPage()
 })
 
+providerSelect.addEventListener("change", () => {
+  renderModelOptions(providerSelect.value)
+  updateProviderConfigurationButton()
+})
+
+modelSelect.addEventListener("change", updateModelCapabilities)
+
 element<HTMLButtonElement>("save-settings").addEventListener("click", () => {
   void run(async () => {
+    const providerId = providerSelect.value
+    const modelId = modelSelect.value
+    if (!modelId) throw new Error("Configure the selected provider and choose a model")
+    if (!isSettingsTab && (providerId !== runtime.model.provider || modelId !== runtime.model.id)) {
+      await runtime.selectModel(providerId, modelId)
+    }
     const fontFamily = selectedFontFamily()
     await runtime.updateSettings({
       systemPrompt: systemPrompt.value,
       agentInstructions: agentInstructions.value,
       fontFamily,
+      modelProvider: providerId,
+      modelId,
     })
+    if (isSettingsTab) {
+      await chrome.runtime
+        .sendMessage({
+          kind: "event",
+          name: "settings.saved",
+          payload: { settingsContextId },
+        } satisfies RuntimeEvent)
+        .catch(() => undefined)
+    }
     applyFontFamily(fontFamily)
+    await refreshAuth(providerId)
     setRunStatus("Settings saved")
     closeSettingsPage()
   }, setSettingsError)
 })
 
+async function refreshActiveSessionUi(): Promise<void> {
+  syncModelControls()
+  renderMessages()
+  await Promise.all([refreshSessions(), refreshAuth(runtime.model.provider)])
+}
+
 element<HTMLButtonElement>("new-session").addEventListener("click", () => {
   void run(async () => {
     await runtime.newSession()
-    renderMessages()
-    await refreshSessions()
+    await refreshActiveSessionUi()
   })
 })
 
 sessionSelect.addEventListener("change", () => {
   void run(async () => {
     await runtime.resumeSession(sessionSelect.value)
-    renderMessages()
-    await refreshSessions()
+    await refreshActiveSessionUi()
   })
 })
 
@@ -697,8 +947,7 @@ element<HTMLButtonElement>("delete-session").addEventListener("click", () => {
   if (!confirm("Delete this session and its stored images?")) return
   void run(async () => {
     await runtime.deleteSession(sessionSelect.value)
-    renderMessages()
-    await refreshSessions()
+    await refreshActiveSessionUi()
   })
 })
 
@@ -706,8 +955,7 @@ element<HTMLButtonElement>("clear-sessions").addEventListener("click", () => {
   if (!confirm("Delete every saved session and image?")) return
   void run(async () => {
     await runtime.clearSessions()
-    renderMessages()
-    await refreshSessions()
+    await refreshActiveSessionUi()
   })
 })
 
@@ -753,6 +1001,20 @@ async function pullPendingSelection(expectedWindowId?: number): Promise<void> {
 chrome.runtime.onMessage.addListener((message: unknown) => {
   const event = message as Partial<RuntimeEvent>
   if (event.kind !== "event") return false
+  if (
+    event.name === "settings.saved" &&
+    !isSettingsTab &&
+    event.payload?.settingsContextId === settingsContextId
+  ) {
+    void run(async () => {
+      await runtime.syncSettings({ applyModelToActiveSession: true })
+      applyFontFamily(runtime.appSettings.fontFamily)
+      syncModelControls()
+      await refreshAuth()
+      setRunStatus("Settings saved")
+    })
+    return false
+  }
   if (event.name === "tab.changed") void refreshTab()
   if (event.name === "operation.progress" && event.payload) {
     setRunStatus(
@@ -788,10 +1050,34 @@ chrome.permissions.onRemoved.addListener((permissions) => {
 
 window.addEventListener("pagehide", () => {
   voiceInput?.abort()
-  void runtime.shutdown()
+  loginController?.abort()
+  if (!isSettingsTab) void runtime.shutdown()
 })
 
+if (!isSettingsTab) {
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== "local" || !("piChromeSettings" in changes)) return
+    void run(async () => {
+      await runtime.syncSettings()
+      applyFontFamily(runtime.appSettings.fontFamily)
+      setRunStatus("Settings saved")
+    })
+  })
+}
+
 void run(async () => {
+  if (isSettingsTab) {
+    document.title = "Settings · Pi Chrome"
+    await runtime.initializeSettings({
+      provider: locationParams.get("modelProvider") ?? "",
+      id: locationParams.get("modelId") ?? "",
+    })
+    populateSettings()
+    applyFontFamily(runtime.appSettings.fontFamily)
+    openSettingsPage()
+    return
+  }
+
   await runtime.initialize()
   populateSettings()
   applyFontFamily(runtime.appSettings.fontFamily)

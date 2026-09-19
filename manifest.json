@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Pi Chrome",
-  "description": "A Chrome-native Codex assistant for the page you are viewing.",
+  "description": "A Chrome-native AI assistant for the page you are viewing.",
   "version": "0.1.0",
   "minimum_chrome_version": "116",
   "icons": {
@@ -33,6 +33,6 @@
     "default_path": "src/browser/sidepanel/index.html"
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; connect-src https://auth.openai.com https://chatgpt.com"
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src http: https:"
   }
 }

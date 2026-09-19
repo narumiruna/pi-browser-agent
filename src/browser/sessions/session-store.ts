@@ -222,7 +222,7 @@ export class SessionStore {
   }
 }
 
-export function createSession(modelId: string): SessionRecord {
+export function createSession(modelId: string, provider = "openai-codex"): SessionRecord {
   const now = Date.now()
   return {
     schemaVersion: 1,
@@ -231,7 +231,7 @@ export function createSession(modelId: string): SessionRecord {
     createdAt: now,
     updatedAt: now,
     status: "idle",
-    model: { provider: "openai-codex", id: modelId, thinkingLevel: "medium" },
+    model: { provider, id: modelId, thinkingLevel: "medium" },
     messages: [],
   }
 }

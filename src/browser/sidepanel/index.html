@@ -36,10 +36,10 @@
             </svg>
           </summary>
           <div class="disclosure-menu account-menu">
-            <span id="auth-status" class="auth-status">Not logged in</span>
-            <button type="button" id="login" class="menu-item">Log in</button>
+            <span id="auth-status" class="auth-status">Provider not configured</span>
+            <button type="button" id="login" class="menu-item">Configure provider</button>
             <button type="button" id="refresh-token" class="menu-item" hidden>Refresh credential</button>
-            <button type="button" id="logout" class="menu-item" hidden>Log out</button>
+            <button type="button" id="logout" class="menu-item" hidden>Remove credential</button>
             <button type="button" id="grant-site" class="menu-item">Allow current site</button>
             <button type="button" id="open-settings" class="menu-item separated-menu-item">
               Settings
@@ -139,6 +139,18 @@
         <h1 id="settings-title">Settings</h1>
       </header>
       <main class="settings-content">
+        <section class="settings-section" aria-labelledby="model-title">
+          <h2 id="model-title">Model</h2>
+          <p>Choose the provider and model used for this session.</p>
+          <label for="provider">Provider</label>
+          <select id="provider"></select>
+          <label for="model">Model</label>
+          <select id="model"></select>
+          <p id="model-capabilities" class="field-hint"></p>
+          <button type="button" id="configure-provider" class="subtle">
+            Configure selected provider
+          </button>
+        </section>
         <section class="settings-section" aria-labelledby="appearance-title">
           <h2 id="appearance-title">Appearance</h2>
           <p>Choose the font used throughout the interface.</p>
@@ -190,6 +202,19 @@
           Open verification page
         </button>
       </div>
+    </dialog>
+
+    <dialog id="auth-prompt-dialog">
+      <form method="dialog" id="auth-prompt-form">
+        <h2>Configure provider</h2>
+        <span id="auth-prompt-label">Credential</span>
+        <input id="auth-prompt-input" aria-labelledby="auth-prompt-label" autocomplete="off" />
+        <select id="auth-prompt-select" aria-labelledby="auth-prompt-label" hidden></select>
+        <div class="dialog-actions">
+          <button type="submit" value="cancel" class="subtle">Cancel</button>
+          <button type="submit" value="confirm" class="primary">Continue</button>
+        </div>
+      </form>
     </dialog>
 
     <script type="module" src="./index.ts"></script>

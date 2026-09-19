@@ -151,7 +151,7 @@ async function pastePngIntoComposer(): Promise<void> {
 
 async function gateNextSubmissionPreflight(): Promise<void> {
   await controller.evaluate(() => {
-    const originalContains = chrome.permissions.contains.bind(chrome.permissions)
+    const originalRequest = chrome.permissions.request.bind(chrome.permissions)
     let markEntered: () => void = () => undefined
     let release: () => void = () => undefined
     const entered = new Promise<void>((resolve) => {
@@ -160,12 +160,12 @@ async function gateNextSubmissionPreflight(): Promise<void> {
     const gate = new Promise<void>((resolve) => {
       release = resolve
     })
-    chrome.permissions.contains = (async (permissions) => {
+    chrome.permissions.request = (async (permissions) => {
       markEntered()
       await gate
-      chrome.permissions.contains = originalContains
-      return originalContains(permissions)
-    }) as typeof chrome.permissions.contains
+      chrome.permissions.request = originalRequest
+      return originalRequest(permissions)
+    }) as typeof chrome.permissions.request
     ;(
       window as typeof window & {
         submissionGate?: { entered: Promise<void>; release: () => void }
@@ -298,7 +298,7 @@ test("loads the Side Panel without uncaught errors", async () => {
   await controller.evaluate(() => window.scrollTo(0, 0))
 })
 
-test("opens a dedicated settings page and persists the selected interface font", async () => {
+test("opens Settings in a full browser tab and persists the selected interface font", async () => {
   await controller.addInitScript(() => {
     const state = globalThis as typeof globalThis & {
       settingsVoiceAbortCount: number
@@ -334,20 +334,24 @@ test("opens a dedicated settings page and persists the selected interface font",
   })
   await controller.reload()
 
-  const settingsPage = controller.locator("#settings-page")
-  const settingsError = controller.locator("#settings-error")
   const accountDisclosure = controller.locator(".account-disclosure")
   const voiceButton = controller.locator("#voice-input")
+  const sessionCount = await controller.locator("#sessions option").count()
   await expect(voiceButton).toBeEnabled()
   await voiceButton.click()
   await expect(voiceButton).toHaveAttribute("aria-pressed", "true")
   await controller.locator("#account-menu-trigger").click()
   await expect(controller.locator("#open-settings")).toBeVisible()
+  const settingsTabPromise = context.waitForEvent("page")
   await controller.locator("#open-settings").click()
+  const settingsTab = await settingsTabPromise
+  const settingsPage = settingsTab.locator("#settings-page")
+  const settingsError = settingsTab.locator("#settings-error")
 
+  await expect(settingsTab).toHaveTitle("Settings · Pi Chrome")
+  expect(new URL(settingsTab.url()).searchParams.get("view")).toBe("settings")
   await expect(settingsPage).toBeVisible()
   await expect(accountDisclosure).toHaveJSProperty("open", false)
-  await expect(settingsPage).not.toContainText("Pi Chrome")
   await expect(settingsPage.getByRole("heading", { name: "Appearance" })).toBeVisible()
   await expect(settingsPage.getByRole("heading", { name: "Instructions" })).toBeVisible()
   await expect(voiceButton).toHaveAttribute("aria-pressed", "false")
@@ -356,9 +360,10 @@ test("opens a dedicated settings page and persists the selected interface font",
       () => (window as typeof window & { settingsVoiceAbortCount: number }).settingsVoiceAbortCount,
     ),
   ).toBe(1)
-  await expect(controller.locator("#transcript")).toBeHidden()
-  await controller.locator("#font-family").selectOption("serif")
-  await controller.evaluate(() => {
+  await expect(controller.locator("#transcript")).toBeVisible()
+  await expect(controller.locator("#sessions option")).toHaveCount(sessionCount)
+  await settingsTab.locator("#font-family").selectOption("serif")
+  await settingsTab.evaluate(() => {
     const state = window as typeof window & {
       originalSettingsStorageSet?: typeof chrome.storage.local.set
       restoreSettingsStorage?: () => void
@@ -376,11 +381,11 @@ test("opens a dedicated settings page and persists the selected interface font",
   })
   let storageMethodRestored = false
   try {
-    await controller.locator("#save-settings").click()
+    await settingsTab.locator("#save-settings").click()
     await expect(settingsPage).toBeVisible()
     await expect(settingsError).toHaveText("Test settings save failed")
   } finally {
-    storageMethodRestored = await controller.evaluate(() => {
+    storageMethodRestored = await settingsTab.evaluate(() => {
       const state = window as typeof window & {
         originalSettingsStorageSet?: typeof chrome.storage.local.set
         restoreSettingsStorage?: () => void
@@ -393,13 +398,13 @@ test("opens a dedicated settings page and persists the selected interface font",
     })
   }
   expect(storageMethodRestored).toBe(true)
-  await controller.locator("#save-settings").click()
+  const settingsTabClosed = settingsTab.waitForEvent("close")
+  await settingsTab.locator("#save-settings").click()
+  await settingsTabClosed
 
-  await expect(settingsPage).toBeHidden()
-  await expect(settingsError).toBeHidden()
   await expect(accountDisclosure).toHaveJSProperty("open", false)
   await expect(controller.locator("#transcript")).toBeVisible()
-  await expect(controller.locator("#run-status")).toHaveText("Settings saved")
+  await expect(controller.locator("#sessions option")).toHaveCount(sessionCount)
   await expect
     .poll(() => controller.evaluate(() => document.documentElement.dataset.fontFamily))
     .toBe("serif")
@@ -409,17 +414,66 @@ test("opens a dedicated settings page and persists the selected interface font",
 
   await controller.reload()
   await controller.locator("#account-menu-trigger").click()
+  const reopenedSettingsTabPromise = context.waitForEvent("page")
   await controller.locator("#open-settings").click()
-  await expect(controller.locator("#font-family")).toHaveValue("serif")
+  const reopenedSettingsTab = await reopenedSettingsTabPromise
+  await expect(reopenedSettingsTab.locator("#font-family")).toHaveValue("serif")
   await expect
     .poll(() => controller.evaluate(() => document.documentElement.dataset.fontFamily))
     .toBe("serif")
 
-  await controller.locator("#font-family").selectOption("system")
-  await controller.locator("#save-settings").click()
+  await reopenedSettingsTab.locator("#font-family").selectOption("system")
+  const reopenedSettingsTabClosed = reopenedSettingsTab.waitForEvent("close")
+  await reopenedSettingsTab.locator("#save-settings").click()
+  await reopenedSettingsTabClosed
   await expect
     .poll(() => controller.evaluate(() => document.documentElement.dataset.fontFamily))
     .toBe("system")
+})
+
+test("synchronizes provider controls when a new session restores the latest model", async () => {
+  async function openSettingsTab(): Promise<Page> {
+    await controller.locator("#account-menu-trigger").click()
+    const settingsTabPromise = context.waitForEvent("page")
+    await controller.locator("#open-settings").click()
+    return settingsTabPromise
+  }
+
+  const sessionSelect = controller.locator("#sessions")
+  const initialSessionId = await sessionSelect.inputValue()
+  await controller.locator("#new-session").click()
+  await expect.poll(() => sessionSelect.inputValue()).not.toBe(initialSessionId)
+
+  const settingsTab = await openSettingsTab()
+  await settingsTab.locator("#provider").selectOption("anthropic")
+  const anthropicModelId = await settingsTab.locator("#model").inputValue()
+  expect(anthropicModelId).not.toBe("")
+  const settingsTabClosed = settingsTab.waitForEvent("close")
+  await settingsTab.locator("#save-settings").click()
+  await settingsTabClosed
+  await expect(controller.locator("#provider")).toHaveValue("anthropic")
+  await expect(controller.locator("#model")).toHaveValue(anthropicModelId)
+
+  await sessionSelect.selectOption(initialSessionId)
+  await expect(controller.locator("#provider")).toHaveValue("openai-codex")
+  const restoredSessionSettingsTab = await openSettingsTab()
+  await expect(restoredSessionSettingsTab.locator("#provider")).toHaveValue("openai-codex")
+  await expect(restoredSessionSettingsTab.locator("#model")).toHaveValue("gpt-5.6-terra")
+  const restoredSessionSettingsTabClosed = restoredSessionSettingsTab.waitForEvent("close")
+  await restoredSessionSettingsTab.locator("#cancel-settings").click()
+  await restoredSessionSettingsTabClosed
+  await controller.locator("#new-session").click()
+
+  await expect(controller.locator("#provider")).toHaveValue("anthropic")
+  await expect(controller.locator("#model")).toHaveValue(anthropicModelId)
+  await expect(controller.locator("#auth-status")).toHaveText("Anthropic not configured")
+
+  const restoreSettingsTab = await openSettingsTab()
+  await restoreSettingsTab.locator("#provider").selectOption("openai-codex")
+  await restoreSettingsTab.locator("#model").selectOption("gpt-5.6-terra")
+  const restoreSettingsTabClosed = restoreSettingsTab.waitForEvent("close")
+  await restoreSettingsTab.locator("#save-settings").click()
+  await restoreSettingsTabClosed
 })
 
 test("keeps page context and controls usable at normal and narrow widths", async () => {
@@ -577,7 +631,7 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
     { access: `e30.${fakePayload}.signature`, expires: Date.now() + 3_600_000 },
   )
   await controller.reload()
-  await expect(controller.locator("#auth-status")).toContainText("OpenAI connected")
+  await expect(controller.locator("#auth-status")).toContainText("OpenAI Codex configured")
 
   const codexUrl = "https://chatgpt.com/backend-api/codex/responses"
   let markFirstRequestStarted: () => void = () => undefined
@@ -724,7 +778,9 @@ test("confirms and returns bounded bookmark data through a mocked model call", a
   await controller.locator("#prompt").fill("Find the test bookmark")
   await controller.locator("#send").click()
   await expect(controller.locator("#confirm-dialog")).toBeVisible()
-  await expect(controller.locator("#confirm-message")).toContainText("sent to OpenAI")
+  await expect(controller.locator("#confirm-message")).toContainText(
+    "sent to the selected model provider",
+  )
   await expect(controller.locator("#confirm-message")).toContainText("pichromebookmarkneedle")
   await controller.locator('#confirm-dialog button[value="confirm"]').click()
 

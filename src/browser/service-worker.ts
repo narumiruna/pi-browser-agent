@@ -377,7 +377,7 @@ async function runBookmarkRead(
     const subject = operation === "search" ? "matching" : "recent"
     throw new RuntimeError(
       "CONFIRMATION_REQUIRED",
-      `Read ${subject} Chrome bookmark titles and URLs? Results will be sent to OpenAI and saved in this session.`,
+      `Read ${subject} Chrome bookmark titles and URLs? Results will be sent to the selected model provider and saved in this session.`,
       details,
     )
   }

@@ -3,8 +3,10 @@ import {
   BOOKMARKS_PERMISSION,
   hasBookmarkPermission,
   hasHostPermission,
+  hasHostPermissions,
   requestBookmarkPermission,
   requestHostPermission,
+  requestHostPermissions,
   toHostPermissionPattern,
 } from "../../src/browser/permissions.js"
 
@@ -39,14 +41,36 @@ describe("browser permissions", () => {
     vi.stubGlobal("chrome", { permissions: { contains } })
 
     await expect(hasHostPermission("http://localhost:3000/path")).resolves.toBe(false)
-    expect(contains).toHaveBeenCalledWith({ origins: ["http://localhost/*"] })
+    expect(contains).toHaveBeenNthCalledWith(1, { origins: ["http://localhost/*"] })
+
+    await expect(
+      hasHostPermissions([
+        "https://auth.openai.com/*",
+        "https://chatgpt.com/backend-api",
+        "https://auth.openai.com/oauth/token",
+      ]),
+    ).resolves.toBe(false)
+    expect(contains).toHaveBeenNthCalledWith(2, {
+      origins: ["https://auth.openai.com/*", "https://chatgpt.com/*"],
+    })
   })
 
-  test("requests only the normalized destination permission", async () => {
+  test("requests only normalized, deduplicated destination permissions", async () => {
     const request = vi.fn().mockResolvedValue(true)
     vi.stubGlobal("chrome", { permissions: { request } })
 
     await expect(requestHostPermission("https://example.test:8443/path")).resolves.toBe(true)
-    expect(request).toHaveBeenCalledWith({ origins: ["https://example.test/*"] })
+    expect(request).toHaveBeenNthCalledWith(1, { origins: ["https://example.test/*"] })
+
+    await expect(
+      requestHostPermissions([
+        "https://example.test/one",
+        "https://api.example.test/v1",
+        "https://example.test/two",
+      ]),
+    ).resolves.toBe(true)
+    expect(request).toHaveBeenNthCalledWith(2, {
+      origins: ["https://example.test/*", "https://api.example.test/*"],
+    })
   })
 })

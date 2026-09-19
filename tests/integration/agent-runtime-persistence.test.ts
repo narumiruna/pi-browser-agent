@@ -52,12 +52,17 @@ function installChromeStorage(): void {
   })
 }
 
-function createRuntime(locks: LockManager, warnings: string[] = []): BrowserAgentRuntime {
+function createRuntime(
+  locks: LockManager,
+  warnings: string[] = [],
+  onSettingsModelChanged = vi.fn(),
+): BrowserAgentRuntime {
   return new BrowserAgentRuntime(
     {
       confirm: vi.fn(async () => false),
       onAuthEvent: vi.fn(),
       onAgentEvent: vi.fn(),
+      onSettingsModelChanged,
       onPersistenceError: (warning) => warnings.push(warning),
     },
     new SessionLease(locks),
@@ -133,6 +138,221 @@ describe("browser agent session persistence", () => {
     const prompt = vi.spyOn(runtime.agent, "prompt").mockResolvedValue()
     await expect(runtime.submit("", "steer", [image])).resolves.toBe("prompt")
     expect(prompt).toHaveBeenCalledWith(expectedMessage)
+    await runtime.shutdown()
+  })
+
+  test("loads Settings without creating or claiming a conversation session", async () => {
+    const runtime = createRuntime(new FakeLockManager() as unknown as LockManager)
+
+    await runtime.initializeSettings()
+
+    await expect(runtime.listSessions()).resolves.toEqual([])
+    expect(runtime.appSettings.modelId).toBe("gpt-5.6-terra")
+  })
+
+  test("seeds full-tab Settings from the active session model", async () => {
+    const locks = new FakeLockManager() as unknown as LockManager
+    const runtime = createRuntime(locks)
+    await runtime.initialize()
+    const older = createSession("gpt-5.6-terra")
+    await runtime.sessions.put(older)
+    const anthropic = runtime.getModels("anthropic")[0]
+    if (!anthropic) throw new Error("Anthropic test model unavailable")
+    await runtime.selectModel(anthropic.provider, anthropic.id)
+    await runtime.resumeSession(older.id)
+    const settingsRuntime = createRuntime(locks)
+
+    await settingsRuntime.initializeSettings({
+      provider: runtime.model.provider,
+      id: runtime.model.id,
+    })
+
+    expect(settingsRuntime.model).toMatchObject({ provider: "openai-codex", id: "gpt-5.6-terra" })
+    expect(settingsRuntime.appSettings).toMatchObject({
+      modelProvider: anthropic.provider,
+      modelId: anthropic.id,
+    })
+
+    await settingsRuntime.updateSettings({
+      ...settingsRuntime.appSettings,
+      fontFamily: "serif",
+      modelProvider: settingsRuntime.model.provider,
+      modelId: settingsRuntime.model.id,
+    })
+    await runtime.syncSettings({ applyModelToActiveSession: true })
+
+    expect(runtime.appSettings.fontFamily).toBe("serif")
+    expect(runtime.model).toMatchObject({ provider: "openai-codex", id: "gpt-5.6-terra" })
+    expect(runtime.activeSession.model).toMatchObject({
+      provider: "openai-codex",
+      id: "gpt-5.6-terra",
+    })
+    await runtime.shutdown()
+  })
+
+  test("synchronizes settings saved by a full-tab Settings page", async () => {
+    const locks = new FakeLockManager() as unknown as LockManager
+    const onSettingsModelChanged = vi.fn()
+    const runtime = createRuntime(locks, [], onSettingsModelChanged)
+    await runtime.initialize()
+    const settingsRuntime = createRuntime(locks)
+    await settingsRuntime.initializeSettings()
+    const anthropic = settingsRuntime.getModels("anthropic")[0]
+    if (!anthropic) throw new Error("Anthropic test model unavailable")
+
+    await settingsRuntime.updateSettings({
+      ...settingsRuntime.appSettings,
+      fontFamily: "serif",
+      modelProvider: anthropic.provider,
+      modelId: anthropic.id,
+    })
+    await runtime.syncSettings({ applyModelToActiveSession: true })
+
+    expect(runtime.appSettings.fontFamily).toBe("serif")
+    expect(runtime.model).toMatchObject({ provider: "anthropic", id: anthropic.id })
+    expect(runtime.activeSession.model).toMatchObject({ provider: "anthropic", id: anthropic.id })
+    await expect(runtime.sessions.get(runtime.activeSession.id)).resolves.toMatchObject({
+      model: { provider: "anthropic", id: anthropic.id },
+    })
+    expect(onSettingsModelChanged).toHaveBeenCalledOnce()
+    await runtime.shutdown()
+  })
+
+  test("keeps synchronized model changes scoped to the Settings opener", async () => {
+    const locks = new FakeLockManager() as unknown as LockManager
+    const opener = createRuntime(locks)
+    await opener.initialize()
+    const other = createRuntime(locks)
+    await other.initialize()
+    const settingsRuntime = createRuntime(locks)
+    await settingsRuntime.initializeSettings()
+    const anthropic = settingsRuntime.getModels("anthropic")[0]
+    if (!anthropic) throw new Error("Anthropic test model unavailable")
+    const otherSessionId = other.activeSession.id
+
+    await settingsRuntime.updateSettings({
+      ...settingsRuntime.appSettings,
+      modelProvider: anthropic.provider,
+      modelId: anthropic.id,
+    })
+    await opener.syncSettings({ applyModelToActiveSession: true })
+    await other.syncSettings()
+
+    expect(opener.model).toMatchObject({ provider: "anthropic", id: anthropic.id })
+    expect(other.model.provider).toBe("openai-codex")
+    expect(other.activeSession.model.provider).toBe("openai-codex")
+    await expect(other.sessions.get(otherSessionId)).resolves.toMatchObject({
+      model: { provider: "openai-codex" },
+    })
+    expect(other.appSettings).toMatchObject({
+      modelProvider: anthropic.provider,
+      modelId: anthropic.id,
+    })
+
+    await other.newSession()
+    expect(other.model).toMatchObject({ provider: anthropic.provider, id: anthropic.id })
+    await opener.shutdown()
+    await other.shutdown()
+  })
+
+  test("refreshes Radius before resolving synchronized settings", async () => {
+    const locks = new FakeLockManager() as unknown as LockManager
+    const runtime = createRuntime(locks)
+    await runtime.initialize()
+    const settingsRuntime = createRuntime(locks)
+    await settingsRuntime.initializeSettings()
+    const refresh = vi
+      .spyOn(runtime.models, "refresh")
+      .mockResolvedValue({ aborted: false, errors: new Map() })
+
+    await settingsRuntime.updateSettings({
+      ...settingsRuntime.appSettings,
+      modelProvider: "radius",
+      modelId: "dynamic-radius-model",
+    })
+    await runtime.syncSettings()
+
+    expect(refresh).toHaveBeenCalledWith({ providers: ["radius"] })
+    expect(runtime.appSettings).toMatchObject({
+      modelProvider: "radius",
+      modelId: "dynamic-radius-model",
+    })
+    await runtime.shutdown()
+  })
+
+  test("persists a selected pi-ai provider and model in the active session", async () => {
+    const runtime = createRuntime(new FakeLockManager() as unknown as LockManager)
+    await runtime.initialize()
+    const anthropic = runtime.getModels("anthropic")[0]
+    if (!anthropic) throw new Error("Anthropic test model unavailable")
+
+    await runtime.selectModel(anthropic.provider, anthropic.id)
+
+    expect(runtime.model).toMatchObject({ provider: "anthropic", id: anthropic.id })
+    expect(runtime.activeSession.model).toMatchObject({ provider: "anthropic", id: anthropic.id })
+    await expect(runtime.sessions.get(runtime.activeSession.id)).resolves.toMatchObject({
+      model: { provider: "anthropic", id: anthropic.id },
+    })
+    await runtime.shutdown()
+  })
+
+  test("creates new sessions from the latest selected model after resuming an older session", async () => {
+    const runtime = createRuntime(new FakeLockManager() as unknown as LockManager)
+    await runtime.initialize()
+    const anthropic = runtime.getModels("anthropic")[0]
+    if (!anthropic) throw new Error("Anthropic test model unavailable")
+    await runtime.selectModel(anthropic.provider, anthropic.id)
+
+    const older = createSession("gpt-5.6-terra")
+    await runtime.sessions.put(older)
+    await runtime.resumeSession(older.id)
+    expect(runtime.model.provider).toBe("openai-codex")
+
+    await runtime.newSession()
+
+    expect(runtime.model).toMatchObject({ provider: anthropic.provider, id: anthropic.id })
+    expect(runtime.activeSession.model).toMatchObject({
+      provider: anthropic.provider,
+      id: anthropic.id,
+    })
+    await runtime.shutdown()
+  })
+
+  test("rejects a saved session whose model is unavailable without changing the active model", async () => {
+    const runtime = createRuntime(new FakeLockManager() as unknown as LockManager)
+    await runtime.initialize()
+    const activeId = runtime.activeSession.id
+    const activeModel = runtime.model
+    const unavailable = createSession("retired-model", "radius")
+    await runtime.sessions.put(unavailable)
+
+    await expect(runtime.resumeSession(unavailable.id)).rejects.toThrow(
+      "Saved model is unavailable: radius/retired-model",
+    )
+
+    expect(runtime.activeSession.id).toBe(activeId)
+    expect(runtime.model).toBe(activeModel)
+    await expect(runtime.sessions.get(unavailable.id)).resolves.toMatchObject({
+      model: { provider: "radius", id: "retired-model" },
+    })
+    await runtime.shutdown()
+  })
+
+  test("rejects images before submitting them to a text-only model", async () => {
+    const runtime = createRuntime(new FakeLockManager() as unknown as LockManager)
+    await runtime.initialize()
+    const textOnly = runtime
+      .getProviders()
+      .flatMap((provider) => runtime.getModels(provider.id))
+      .find((model) => !model.imageInput)
+    if (!textOnly) throw new Error("Text-only test model unavailable")
+    await runtime.selectModel(textOnly.provider, textOnly.id)
+    const image = { type: "image" as const, data: "cG5n", mimeType: "image/png" }
+
+    await expect(runtime.submit("Inspect this", "steer", [image])).rejects.toThrow(
+      "does not support image input",
+    )
+    expect(runtime.agent.state.messages).toEqual([])
     await runtime.shutdown()
   })
 

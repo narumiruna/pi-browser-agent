@@ -16,10 +16,26 @@ export function toHostPermissionPattern(value: string | URL): string {
   return `${url.protocol}//${url.hostname}/*`
 }
 
+function hostPermissionPatterns(values: readonly (string | URL)[]): string[] {
+  return [...new Set(values.map(toHostPermissionPattern))]
+}
+
 export async function hasHostPermission(value: string | URL): Promise<boolean> {
-  return chrome.permissions.contains({ origins: [toHostPermissionPattern(value)] })
+  return hasHostPermissions([value])
+}
+
+export async function hasHostPermissions(values: readonly (string | URL)[]): Promise<boolean> {
+  const origins = hostPermissionPatterns(values)
+  if (origins.length === 0) return true
+  return chrome.permissions.contains({ origins })
 }
 
 export async function requestHostPermission(value: string | URL): Promise<boolean> {
-  return chrome.permissions.request({ origins: [toHostPermissionPattern(value)] })
+  return requestHostPermissions([value])
+}
+
+export async function requestHostPermissions(values: readonly (string | URL)[]): Promise<boolean> {
+  const origins = hostPermissionPatterns(values)
+  if (origins.length === 0) return true
+  return chrome.permissions.request({ origins })
 }

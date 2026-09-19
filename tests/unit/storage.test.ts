@@ -37,6 +37,8 @@ describe("browser storage", () => {
       systemPrompt: "Older prompt",
       agentInstructions: "Older instructions",
       fontFamily: "system",
+      modelProvider: "openai-codex",
+      modelId: "gpt-5.6-terra",
     })
 
     values.piChromeSettings = { ...DEFAULT_SETTINGS, fontFamily: "invalid" }

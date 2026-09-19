@@ -30,7 +30,7 @@ export interface RuntimeRequest {
 
 export interface RuntimeEvent {
   kind: "event"
-  name: "operation.progress" | "selection.queued" | "tab.changed"
+  name: "operation.progress" | "selection.queued" | "settings.saved" | "tab.changed"
   payload: JsonObject
   tabContext?: TabContext
 }

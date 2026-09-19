@@ -72,6 +72,7 @@ body {
 }
 
 button,
+input,
 select,
 textarea {
   color: inherit;
@@ -79,6 +80,7 @@ textarea {
 }
 
 button,
+input,
 select,
 textarea,
 dialog {
@@ -106,6 +108,7 @@ button:active:not(:disabled) {
 }
 
 button:focus-visible,
+input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
 summary:focus-visible {
@@ -407,12 +410,14 @@ body[data-state="running"] .status-dot {
   padding: 5px 12px;
 }
 
+input,
 select,
 textarea {
   border-radius: 9px;
   background: var(--surface);
 }
 
+input,
 select {
   min-height: 36px;
   padding: 6px 10px;
@@ -525,6 +530,12 @@ body[data-view="settings"] {
 
 #settings-error:empty {
   display: none;
+}
+
+.field-hint {
+  margin: 5px 0 9px;
+  color: var(--text-muted);
+  font-size: 0.78rem;
 }
 
 textarea {
@@ -845,6 +856,17 @@ dialog p {
   margin: 6px 0 16px;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
+}
+
+#auth-prompt-label {
+  display: block;
+  margin: 12px 0 6px;
+  font-weight: 650;
+}
+
+#auth-prompt-dialog input,
+#auth-prompt-dialog select {
+  width: 100%;
 }
 
 #confirm-error {
