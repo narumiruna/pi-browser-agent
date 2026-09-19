@@ -354,6 +354,71 @@ test("opens Settings in a full browser tab and persists the selected interface f
   await expect(accountDisclosure).toHaveJSProperty("open", false)
   await expect(settingsPage.getByRole("heading", { name: "Appearance" })).toBeVisible()
   await expect(settingsPage.getByRole("heading", { name: "Instructions" })).toBeVisible()
+  const configureProvider = settingsTab.locator("#configure-provider")
+  const initialModelId = await settingsTab.locator("#model").inputValue()
+  await expect(configureProvider).toHaveText("Log in to OpenAI Codex")
+  await settingsTab.evaluate(() => {
+    const originalGet = chrome.storage.local.get
+    chrome.storage.local.get = (async () => {
+      chrome.storage.local.get = originalGet
+      throw new Error("Test auth status failed")
+    }) as typeof chrome.storage.local.get
+  })
+  await settingsTab.locator("#provider").dispatchEvent("change")
+  await expect(settingsError).toHaveText("Test auth status failed")
+  await expect(configureProvider).toBeEnabled()
+  await expect(configureProvider).toHaveText("Configure OpenAI Codex")
+  await settingsTab.locator("#provider").dispatchEvent("change")
+  await expect(configureProvider).toHaveText("Log in to OpenAI Codex")
+  await expect(settingsError).toBeEmpty()
+
+  await settingsTab.evaluate(() => {
+    const originalRequest = chrome.permissions.request
+    let markEntered: () => void = () => undefined
+    let release: (granted: boolean) => void = () => undefined
+    const entered = new Promise<void>((resolve) => {
+      markEntered = resolve
+    })
+    const gate = new Promise<boolean>((resolve) => {
+      release = resolve
+    })
+    chrome.permissions.request = (async () => {
+      markEntered()
+      const granted = await gate
+      chrome.permissions.request = originalRequest
+      return granted
+    }) as typeof chrome.permissions.request
+    ;(
+      window as typeof window & {
+        providerLoginGate?: { entered: Promise<void>; release: (granted: boolean) => void }
+      }
+    ).providerLoginGate = { entered, release }
+  })
+  await configureProvider.click()
+  await settingsTab.evaluate(async () => {
+    const gate = (
+      window as typeof window & {
+        providerLoginGate?: { entered: Promise<void> }
+      }
+    ).providerLoginGate
+    if (!gate) throw new Error("Provider login gate is not installed")
+    await gate.entered
+  })
+  await controller.evaluate(async () => {
+    await chrome.storage.local.set({ piChromeCredentialsV1: {} })
+  })
+  await expect(configureProvider).toBeDisabled()
+  await settingsTab.evaluate(() => {
+    const state = window as typeof window & {
+      providerLoginGate?: { release: (granted: boolean) => void }
+    }
+    state.providerLoginGate?.release(false)
+    delete state.providerLoginGate
+  })
+  await expect(configureProvider).toBeEnabled()
+  await controller.evaluate(async () => chrome.storage.local.remove("piChromeCredentialsV1"))
+
+  await settingsTab.locator("#model").selectOption(initialModelId)
   await expect(voiceButton).toHaveAttribute("aria-pressed", "false")
   expect(
     await controller.evaluate(
@@ -657,24 +722,96 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
   const fakePayload = btoa(
     JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "test-account" } }),
   )
-  await controller.evaluate(
-    async ({ access, expires }) => {
-      await chrome.storage.local.set({
-        piChromeCredentialsV1: {
-          "openai-codex": {
-            type: "oauth",
-            access,
-            refresh: "test-refresh-token",
-            expires,
-            accountId: "test-account",
-          },
-        },
-      })
-    },
-    { access: `e30.${fakePayload}.signature`, expires: Date.now() + 3_600_000 },
-  )
+  const credential = {
+    type: "oauth",
+    access: `e30.${fakePayload}.signature`,
+    refresh: "test-refresh-token",
+    expires: Date.now() + 3_600_000,
+    accountId: "test-account",
+  }
+  await controller.evaluate(async (credential) => {
+    await chrome.storage.local.set({
+      piChromeCredentialsV1: { "openai-codex": credential },
+    })
+  }, credential)
   await controller.reload()
   await expect(controller.locator("#auth-status")).toContainText("OpenAI Codex configured")
+
+  await controller.locator("#account-menu-trigger").click()
+  const settingsTabPromise = context.waitForEvent("page")
+  await controller.locator("#open-settings").click()
+  const settingsTab = await settingsTabPromise
+  const configureProvider = settingsTab.locator("#configure-provider")
+  await expect(configureProvider).toHaveText("Reconnect OpenAI Codex")
+
+  await controller.evaluate(() => {
+    const originalGet = chrome.storage.local.get
+    const callOriginalGet = originalGet.bind(chrome.storage.local)
+    let markEntered: () => void = () => undefined
+    let release: () => void = () => undefined
+    const entered = new Promise<void>((resolve) => {
+      markEntered = resolve
+    })
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let getCount = 0
+    chrome.storage.local.get = (async (key: string) => {
+      getCount += 1
+      const result = await callOriginalGet(key)
+      if (getCount !== 3) return result
+      markEntered()
+      await gate
+      chrome.storage.local.get = originalGet
+      return result
+    }) as typeof chrome.storage.local.get
+    ;(
+      window as typeof window & {
+        authStatusGate?: { entered: Promise<void>; release: () => void }
+      }
+    ).authStatusGate = { entered, release }
+  })
+  await settingsTab.evaluate(async (credential) => {
+    await chrome.storage.local.set({
+      piChromeCredentialsV1: {
+        "openai-codex": { ...credential, refresh: "updated-test-refresh-token" },
+      },
+    })
+  }, credential)
+  await controller.evaluate(async () => {
+    const gate = (
+      window as typeof window & {
+        authStatusGate?: { entered: Promise<void> }
+      }
+    ).authStatusGate
+    if (!gate) throw new Error("Auth status gate is not installed")
+    await gate.entered
+  })
+
+  await settingsTab.evaluate(async () => chrome.storage.local.remove("piChromeCredentialsV1"))
+  await expect(configureProvider).toHaveText("Log in to OpenAI Codex")
+  await expect(controller.locator("#auth-status")).toHaveText("OpenAI Codex not configured")
+  await controller.evaluate(() => {
+    const state = window as typeof window & {
+      authStatusGate?: { release: () => void }
+    }
+    state.authStatusGate?.release()
+    delete state.authStatusGate
+  })
+  await controller.waitForTimeout(50)
+  await expect(controller.locator("#auth-status")).toHaveText("OpenAI Codex not configured")
+
+  await controller.evaluate(async (credential) => {
+    await chrome.storage.local.set({
+      piChromeCredentialsV1: { "openai-codex": credential },
+    })
+  }, credential)
+  await expect(configureProvider).toHaveText("Reconnect OpenAI Codex")
+  await expect(controller.locator("#auth-status")).toHaveText("OpenAI Codex configured")
+
+  const settingsTabClosed = settingsTab.waitForEvent("close")
+  await settingsTab.locator("#cancel-settings").click()
+  await settingsTabClosed
 
   const codexUrl = "https://chatgpt.com/backend-api/codex/responses"
   let markFirstRequestStarted: () => void = () => undefined

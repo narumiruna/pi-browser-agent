@@ -3,6 +3,7 @@ import "./styles.css"
 import type { AuthEvent, AuthPrompt, ImageContent } from "@earendil-works/pi-ai"
 import { BrowserAgentRuntime } from "../agent/runtime.js"
 import { AUTH_ORIGINS, OPENAI_PROVIDER_ID } from "../auth/codex-oauth.js"
+import { CREDENTIALS_KEY } from "../auth/credential-store.js"
 import { safeErrorMessage } from "../auth/redaction.js"
 import {
   BOOKMARKS_PERMISSION,
@@ -93,6 +94,10 @@ let pasteQueue = Promise.resolve()
 let composerImages: Array<PastedImage & { id: string }> = []
 let voiceInput: VoiceInputController | undefined
 let settingsModelChanged = false
+let authStatusRequest = 0
+let providerConfigurationRequest = 0
+let providerConfigurationInProgress = false
+let providerConfigurationError: string | undefined
 const renderedImages = new WeakMap<ImageContent, HTMLImageElement>()
 
 function setError(error?: unknown): void {
@@ -100,7 +105,20 @@ function setError(error?: unknown): void {
 }
 
 function setSettingsError(error?: unknown): void {
+  providerConfigurationError = undefined
   settingsErrorOutput.textContent = error === undefined ? "" : safeErrorMessage(error)
+}
+
+function setProviderConfigurationError(error?: unknown): void {
+  if (error === undefined) {
+    if (settingsErrorOutput.textContent === providerConfigurationError) {
+      settingsErrorOutput.textContent = ""
+    }
+    providerConfigurationError = undefined
+    return
+  }
+  providerConfigurationError = safeErrorMessage(error)
+  settingsErrorOutput.textContent = providerConfigurationError
 }
 
 function selectedFontFamily(): FontFamily {
@@ -526,9 +544,7 @@ async function refreshSessions(): Promise<void> {
   }
 }
 
-async function refreshAuth(providerId = providerSelect.value): Promise<void> {
-  const provider = providerSummary(providerId)
-  if (!provider) return
+async function validatedAuthStatus(providerId: string) {
   let status = await runtime.authStatus(providerId)
   if (
     providerId === OPENAI_PROVIDER_ID &&
@@ -538,6 +554,15 @@ async function refreshAuth(providerId = providerSelect.value): Promise<void> {
     await runtime.invalidateCredential(providerId)
     status = { loggedIn: false }
   }
+  return status
+}
+
+async function refreshAuth(providerId = providerSelect.value): Promise<void> {
+  const request = ++authStatusRequest
+  const provider = providerSummary(providerId)
+  if (!provider) return
+  const status = await validatedAuthStatus(providerId)
+  if (request !== authStatusRequest) return
   loginButton.hidden = status.loggedIn || (!provider.apiKey && !provider.oauth)
   loginButton.textContent = provider.oauth
     ? `Log in to ${provider.name}`
@@ -624,6 +649,8 @@ async function run(
 }
 
 function configureProvider(providerId: string, button: HTMLButtonElement): void {
+  if (providerConfigurationInProgress) return
+  providerConfigurationInProgress = true
   button.disabled = true
   void run(async () => {
     const provider = providerSummary(providerId)
@@ -653,12 +680,13 @@ function configureProvider(providerId: string, button: HTMLButtonElement): void 
         providerId,
         providerId === runtime.model.provider ? runtime.model.id : undefined,
       )
-      await refreshAuth(runtime.model.provider)
+      await Promise.all([refreshAuth(runtime.model.provider), updateProviderConfigurationButton()])
       setRunStatus("Ready", false)
     } finally {
       loginController = undefined
     }
   }).finally(() => {
+    providerConfigurationInProgress = false
     button.disabled = false
   })
 }
@@ -684,7 +712,7 @@ refreshTokenButton.addEventListener("click", () => {
   refreshTokenButton.disabled = true
   void run(async () => {
     await runtime.refreshCredential(providerSelect.value)
-    await refreshAuth()
+    await Promise.all([refreshAuth(), updateProviderConfigurationButton()])
   }).finally(() => {
     refreshTokenButton.disabled = false
   })
@@ -694,7 +722,7 @@ logoutButton.addEventListener("click", () => {
   logoutButton.disabled = true
   void run(async () => {
     await runtime.logout(providerSelect.value)
-    await refreshAuth()
+    await Promise.all([refreshAuth(), updateProviderConfigurationButton()])
   }).finally(() => {
     logoutButton.disabled = false
   })
@@ -822,17 +850,41 @@ promptInput.addEventListener("keydown", (event) => {
 
 abortButton.addEventListener("click", () => runtime.abort())
 
-function updateProviderConfigurationButton(): void {
-  const provider = providerSummary(providerSelect.value)
-  configureProviderButton.disabled = !provider || (!provider.apiKey && !provider.oauth)
-  configureProviderButton.textContent = provider?.oauth
-    ? `Log in to ${provider.name}`
-    : `Configure ${provider?.name ?? "selected provider"}`
+async function updateProviderConfigurationButton(): Promise<void> {
+  const request = ++providerConfigurationRequest
+  const providerId = providerSelect.value
+  const provider = providerSummary(providerId)
+  const configurable = provider && (provider.apiKey || provider.oauth)
+
+  configureProviderButton.disabled = providerConfigurationInProgress || !configurable
+  configureProviderButton.textContent = `Configure ${provider?.name ?? "selected provider"}`
+  if (!provider?.oauth) {
+    setProviderConfigurationError()
+    return
+  }
+
+  try {
+    const status = await validatedAuthStatus(providerId)
+    if (request !== providerConfigurationRequest || providerSelect.value !== providerId) return
+    setProviderConfigurationError()
+    configureProviderButton.disabled = providerConfigurationInProgress
+    configureProviderButton.textContent = status.loggedIn
+      ? `Reconnect ${provider.name}`
+      : `Log in to ${provider.name}`
+  } catch (error) {
+    if (request === providerConfigurationRequest && providerSelect.value === providerId) {
+      setProviderConfigurationError(error)
+    }
+  }
+}
+
+function refreshProviderConfigurationButton(): void {
+  void updateProviderConfigurationButton()
 }
 
 function populateSettings(): void {
   syncModelControls()
-  updateProviderConfigurationButton()
+  refreshProviderConfigurationButton()
   fontFamilySelect.value = runtime.appSettings.fontFamily
   fontSizeInput.value = String(runtime.appSettings.fontSize)
   fontSizeOutput.value = `${runtime.appSettings.fontSize} px`
@@ -910,7 +962,7 @@ fontSizeInput.addEventListener("input", () => applyFontSize(selectedFontSize()))
 providerSelect.addEventListener("change", () => {
   settingsModelChanged = true
   renderModelOptions(providerSelect.value)
-  updateProviderConfigurationButton()
+  refreshProviderConfigurationButton()
 })
 
 modelSelect.addEventListener("change", () => {
@@ -1088,7 +1140,7 @@ chrome.permissions.onRemoved.addListener((permissions) => {
     loginController?.abort()
     void run(async () => {
       await runtime.invalidateCredential()
-      await refreshAuth()
+      await Promise.all([refreshAuth(), updateProviderConfigurationButton()])
       setError("OpenAI host access was revoked. Log in again to continue.")
     })
   }
@@ -1100,16 +1152,26 @@ window.addEventListener("pagehide", () => {
   if (!isSettingsTab) void runtime.shutdown()
 })
 
-if (!isSettingsTab) {
-  chrome.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName !== "local" || !("piChromeSettings" in changes)) return
-    void run(async () => {
-      await runtime.syncSettings()
-      applyAppearance(runtime.appSettings.fontFamily, runtime.appSettings.fontSize)
-      setRunStatus("Settings saved")
-    })
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== "local") return
+  if (CREDENTIALS_KEY in changes) {
+    void run(
+      async () => {
+        await Promise.all([
+          refreshAuth(runtime.model.provider),
+          updateProviderConfigurationButton(),
+        ])
+      },
+      isSettingsTab ? setSettingsError : setError,
+    )
+  }
+  if (isSettingsTab || !("piChromeSettings" in changes)) return
+  void run(async () => {
+    await runtime.syncSettings()
+    applyAppearance(runtime.appSettings.fontFamily, runtime.appSettings.fontSize)
+    setRunStatus("Settings saved")
   })
-}
+})
 
 void run(async () => {
   if (isSettingsTab) {
