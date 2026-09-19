@@ -506,11 +506,25 @@ body[data-view="settings"] {
 
 .settings-page-actions {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
   gap: 8px;
   padding: 10px 12px;
   border-top: 1px solid var(--border);
   background: var(--surface);
+}
+
+#settings-error {
+  min-width: 0;
+  flex: 1;
+  margin: 0;
+  color: var(--danger);
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+#settings-error:empty {
+  display: none;
 }
 
 textarea {
