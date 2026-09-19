@@ -298,7 +298,7 @@ test("loads the Side Panel without uncaught errors", async () => {
   await controller.evaluate(() => window.scrollTo(0, 0))
 })
 
-test("opens Settings in a full browser tab and persists the selected interface font", async () => {
+test("opens Settings in a full browser tab and persists the selected interface font and size", async () => {
   await controller.addInitScript(() => {
     const state = globalThis as typeof globalThis & {
       settingsVoiceAbortCount: number
@@ -363,6 +363,18 @@ test("opens Settings in a full browser tab and persists the selected interface f
   await expect(controller.locator("#transcript")).toBeVisible()
   await expect(controller.locator("#sessions option")).toHaveCount(sessionCount)
   await settingsTab.locator("#font-family").selectOption("serif")
+  const fontSizeSlider = settingsTab.locator("#font-size")
+  await expect(fontSizeSlider).toHaveAttribute("min", "12")
+  await expect(fontSizeSlider).toHaveAttribute("max", "24")
+  await fontSizeSlider.focus()
+  await fontSizeSlider.press("ArrowRight")
+  await fontSizeSlider.press("ArrowRight")
+  await fontSizeSlider.press("ArrowRight")
+  await expect(fontSizeSlider).toHaveValue("19")
+  await expect(settingsTab.locator("#font-size-value")).toHaveText("19 px")
+  await expect
+    .poll(() => settingsTab.evaluate(() => getComputedStyle(document.documentElement).fontSize))
+    .toBe("19px")
   await settingsTab.evaluate(() => {
     const state = window as typeof window & {
       originalSettingsStorageSet?: typeof chrome.storage.local.set
@@ -408,9 +420,15 @@ test("opens Settings in a full browser tab and persists the selected interface f
   await expect
     .poll(() => controller.evaluate(() => document.documentElement.dataset.fontFamily))
     .toBe("serif")
+  await expect
+    .poll(() => controller.evaluate(() => document.documentElement.dataset.fontSize))
+    .toBe("19")
   expect(
     await controller.evaluate(() => getComputedStyle(document.documentElement).fontFamily),
   ).toContain("Georgia")
+  expect(await controller.evaluate(() => getComputedStyle(document.documentElement).fontSize)).toBe(
+    "19px",
+  )
 
   await controller.reload()
   await controller.locator("#account-menu-trigger").click()
@@ -418,17 +436,32 @@ test("opens Settings in a full browser tab and persists the selected interface f
   await controller.locator("#open-settings").click()
   const reopenedSettingsTab = await reopenedSettingsTabPromise
   await expect(reopenedSettingsTab.locator("#font-family")).toHaveValue("serif")
+  const reopenedFontSizeSlider = reopenedSettingsTab.locator("#font-size")
+  await expect(reopenedFontSizeSlider).toHaveValue("19")
   await expect
     .poll(() => controller.evaluate(() => document.documentElement.dataset.fontFamily))
     .toBe("serif")
+  await expect
+    .poll(() => controller.evaluate(() => document.documentElement.dataset.fontSize))
+    .toBe("19")
 
   await reopenedSettingsTab.locator("#font-family").selectOption("system")
+  await reopenedFontSizeSlider.focus()
+  await reopenedFontSizeSlider.press("Home")
+  await reopenedFontSizeSlider.press("ArrowRight")
+  await reopenedFontSizeSlider.press("ArrowRight")
+  await reopenedFontSizeSlider.press("ArrowRight")
+  await reopenedFontSizeSlider.press("ArrowRight")
+  await expect(reopenedFontSizeSlider).toHaveValue("16")
   const reopenedSettingsTabClosed = reopenedSettingsTab.waitForEvent("close")
   await reopenedSettingsTab.locator("#save-settings").click()
   await reopenedSettingsTabClosed
   await expect
     .poll(() => controller.evaluate(() => document.documentElement.dataset.fontFamily))
     .toBe("system")
+  await expect
+    .poll(() => controller.evaluate(() => document.documentElement.dataset.fontSize))
+    .toBe("16")
 })
 
 test("synchronizes provider controls when a new session restores the latest model", async () => {
