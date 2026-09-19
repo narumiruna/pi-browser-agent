@@ -109,6 +109,7 @@ export class BrowserAgentRuntime {
   private session!: SessionRecord
   private settings!: AppSettings
   private authChanging = false
+  private pendingSettingsModel = false
   private closing = false
   private persistChain: Promise<void> = Promise.resolve()
 
@@ -136,16 +137,28 @@ export class BrowserAgentRuntime {
       this.callbacks.onAgentEvent(event)
       if (event.type === "agent_start") await this.persist("running")
       if (event.type === "message_end") await this.persist("running")
-      if (event.type === "agent_end") await this.persist(this.closing ? "interrupted" : "idle")
+      if (event.type === "agent_end") {
+        await this.persist(this.closing ? "interrupted" : "idle")
+        if (!this.closing && this.pendingSettingsModel) await this.syncSettings()
+      }
     })
   }
 
-  async initialize(sessionId?: string): Promise<void> {
+  private async initializeConfiguration(): Promise<void> {
     await restrictLocalStorageToTrustedContexts()
     this.settings = await getSettings()
     await this.models.refresh({ providers: ["radius"] })
     this.currentModel =
       this.models.getModel(this.settings.modelProvider, this.settings.modelId) ?? this.currentModel
+    this.agent.state.model = this.currentModel
+  }
+
+  async initializeSettings(): Promise<void> {
+    await this.initializeConfiguration()
+  }
+
+  async initialize(sessionId?: string): Promise<void> {
+    await this.initializeConfiguration()
     const preferredId = sessionId ?? (await getActiveSessionId())
     let restored = preferredId ? await this.sessions.get(preferredId) : undefined
     if (restored) this.requireModel(restored.model.provider, restored.model.id)
@@ -188,6 +201,29 @@ export class BrowserAgentRuntime {
   async updateSettings(settings: AppSettings): Promise<void> {
     this.settings = { ...settings }
     await saveSettings(this.settings)
+  }
+
+  async syncSettings(): Promise<void> {
+    this.settings = await getSettings()
+    if (this.agent.state.isStreaming) {
+      this.pendingSettingsModel = true
+      return
+    }
+    this.pendingSettingsModel = false
+    const model = this.models.getModel(this.settings.modelProvider, this.settings.modelId)
+    if (
+      !model ||
+      (model.provider === this.currentModel.provider && model.id === this.currentModel.id)
+    )
+      return
+    this.currentModel = model
+    this.agent.state.model = model
+    this.session.model = {
+      provider: model.provider,
+      id: model.id,
+      thinkingLevel: this.agent.state.thinkingLevel,
+    }
+    await this.persist("idle")
   }
 
   getProviders(): ProviderSummary[] {

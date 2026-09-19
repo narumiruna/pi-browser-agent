@@ -29,6 +29,8 @@ function element<T extends HTMLElement>(id: string): T {
   return value as T
 }
 
+const isSettingsTab = new URLSearchParams(window.location.search).get("view") === "settings"
+
 const transcript = element<HTMLElement>("transcript")
 const promptInput = element<HTMLTextAreaElement>("prompt")
 const errorOutput = element<HTMLElement>("error")
@@ -813,12 +815,38 @@ function openSettingsPage(): void {
 }
 
 function closeSettingsPage(): void {
+  if (isSettingsTab) {
+    void chrome.tabs
+      .getCurrent()
+      .then(async (tab) => {
+        if (tab?.openerTabId !== undefined) {
+          await chrome.tabs.update(tab.openerTabId, { active: true })
+        }
+      })
+      .catch(setSettingsError)
+      .finally(() => window.close())
+    return
+  }
   settingsPage.hidden = true
   document.body.dataset.view = "conversation"
   accountMenuTrigger.focus()
 }
 
-element<HTMLButtonElement>("open-settings").addEventListener("click", openSettingsPage)
+function openSettingsTab(): void {
+  voiceInput?.abort()
+  const url = new URL(window.location.href)
+  url.searchParams.set("view", "settings")
+  url.hash = ""
+  void run(async () => {
+    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true })
+    await chrome.tabs.create({
+      url: url.href,
+      ...(activeTab?.id === undefined ? {} : { openerTabId: activeTab.id }),
+    })
+  })
+}
+
+element<HTMLButtonElement>("open-settings").addEventListener("click", openSettingsTab)
 closeSettingsButton.addEventListener("click", () => {
   populateSettings()
   closeSettingsPage()
@@ -851,7 +879,7 @@ element<HTMLButtonElement>("save-settings").addEventListener("click", () => {
     const providerId = providerSelect.value
     const modelId = modelSelect.value
     if (!modelId) throw new Error("Configure the selected provider and choose a model")
-    if (providerId !== runtime.model.provider || modelId !== runtime.model.id) {
+    if (!isSettingsTab && (providerId !== runtime.model.provider || modelId !== runtime.model.id)) {
       await runtime.selectModel(providerId, modelId)
     }
     const fontFamily = selectedFontFamily()
@@ -991,10 +1019,33 @@ chrome.permissions.onRemoved.addListener((permissions) => {
 
 window.addEventListener("pagehide", () => {
   voiceInput?.abort()
-  void runtime.shutdown()
+  loginController?.abort()
+  if (!isSettingsTab) void runtime.shutdown()
 })
 
+if (!isSettingsTab) {
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== "local" || !("piChromeSettings" in changes)) return
+    void run(async () => {
+      await runtime.syncSettings()
+      applyFontFamily(runtime.appSettings.fontFamily)
+      syncModelControls()
+      await refreshAuth()
+      setRunStatus("Settings saved")
+    })
+  })
+}
+
 void run(async () => {
+  if (isSettingsTab) {
+    document.title = "Settings · Pi Chrome"
+    await runtime.initializeSettings()
+    populateSettings()
+    applyFontFamily(runtime.appSettings.fontFamily)
+    openSettingsPage()
+    return
+  }
+
   await runtime.initialize()
   populateSettings()
   applyFontFamily(runtime.appSettings.fontFamily)

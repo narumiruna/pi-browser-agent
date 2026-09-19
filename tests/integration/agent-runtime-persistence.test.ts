@@ -136,6 +136,41 @@ describe("browser agent session persistence", () => {
     await runtime.shutdown()
   })
 
+  test("loads Settings without creating or claiming a conversation session", async () => {
+    const runtime = createRuntime(new FakeLockManager() as unknown as LockManager)
+
+    await runtime.initializeSettings()
+
+    await expect(runtime.listSessions()).resolves.toEqual([])
+    expect(runtime.appSettings.modelId).toBe("gpt-5.6-terra")
+  })
+
+  test("synchronizes settings saved by a full-tab Settings page", async () => {
+    const locks = new FakeLockManager() as unknown as LockManager
+    const runtime = createRuntime(locks)
+    await runtime.initialize()
+    const settingsRuntime = createRuntime(locks)
+    await settingsRuntime.initializeSettings()
+    const anthropic = settingsRuntime.getModels("anthropic")[0]
+    if (!anthropic) throw new Error("Anthropic test model unavailable")
+
+    await settingsRuntime.updateSettings({
+      ...settingsRuntime.appSettings,
+      fontFamily: "serif",
+      modelProvider: anthropic.provider,
+      modelId: anthropic.id,
+    })
+    await runtime.syncSettings()
+
+    expect(runtime.appSettings.fontFamily).toBe("serif")
+    expect(runtime.model).toMatchObject({ provider: "anthropic", id: anthropic.id })
+    expect(runtime.activeSession.model).toMatchObject({ provider: "anthropic", id: anthropic.id })
+    await expect(runtime.sessions.get(runtime.activeSession.id)).resolves.toMatchObject({
+      model: { provider: "anthropic", id: anthropic.id },
+    })
+    await runtime.shutdown()
+  })
+
   test("persists a selected pi-ai provider and model in the active session", async () => {
     const runtime = createRuntime(new FakeLockManager() as unknown as LockManager)
     await runtime.initialize()
