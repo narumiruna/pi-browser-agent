@@ -14,6 +14,7 @@ import {
   type PastedImage,
   readPastedImage,
 } from "./images.js"
+import { createVoiceInput, type VoiceInputController } from "./voice-input.js"
 
 function element<T extends HTMLElement>(id: string): T {
   const value = document.getElementById(id)
@@ -43,6 +44,8 @@ const abortButton = element<HTMLButtonElement>("abort")
 const composerHint = element<HTMLElement>("composer-hint")
 const accountMenuTrigger = element<HTMLElement>("account-menu-trigger")
 const pastedImages = element<HTMLElement>("pasted-images")
+const voiceButton = element<HTMLButtonElement>("voice-input")
+const voiceStatus = element<HTMLElement>("voice-status")
 let loginController: AbortController | undefined
 let verificationUri = ""
 let activeTabUrl: string | undefined
@@ -50,6 +53,7 @@ let activeSubmissionGuard: object | undefined
 let pendingPasteOperations = 0
 let pasteQueue = Promise.resolve()
 let composerImages: Array<PastedImage & { id: string }> = []
+let voiceInput: VoiceInputController | undefined
 const renderedImages = new WeakMap<ImageContent, HTMLImageElement>()
 
 function setError(error?: unknown): void {
@@ -75,7 +79,9 @@ function resizePromptInput(): void {
 }
 
 function updateSendButton(): void {
-  sendButton.disabled = activeSubmissionGuard !== undefined || pendingPasteOperations > 0
+  sendButton.disabled =
+    activeSubmissionGuard !== undefined || pendingPasteOperations > 0 || voiceInput?.active === true
+  voiceButton.disabled = voiceInput === undefined || activeSubmissionGuard !== undefined
 }
 
 function releaseSubmissionGuard(guard: object): void {
@@ -83,6 +89,28 @@ function releaseSubmissionGuard(guard: object): void {
   activeSubmissionGuard = undefined
   updateSendButton()
 }
+
+voiceInput = createVoiceInput({
+  onTranscript(text) {
+    promptInput.value = text
+    resizePromptInput()
+  },
+  onListeningChange(listening) {
+    voiceButton.classList.toggle("listening", listening)
+    voiceButton.ariaLabel = listening ? "Stop voice input" : "Start voice input"
+    voiceButton.title = voiceButton.ariaLabel
+    voiceButton.setAttribute("aria-pressed", String(listening))
+    voiceStatus.textContent = listening ? "Listening for voice input" : "Voice input stopped"
+    updateSendButton()
+    if (!listening) promptInput.focus()
+  },
+  onError: setError,
+})
+if (!voiceInput) {
+  voiceButton.title = "Voice input is not supported by this browser"
+  voiceButton.ariaLabel = voiceButton.title
+}
+updateSendButton()
 
 function renderComposerImages(): void {
   pastedImages.replaceChildren()
@@ -451,6 +479,10 @@ element<HTMLButtonElement>("grant-site").addEventListener("click", () => {
 
 function submitPrompt(queueAfterCurrentTask = false): void {
   if (activeSubmissionGuard) return
+  if (voiceInput?.active) {
+    setError("Stop voice input before sending")
+    return
+  }
   if (pendingPasteOperations > 0) {
     setError("Wait for the pasted image preview before sending")
     return
@@ -500,6 +532,10 @@ function submitPrompt(queueAfterCurrentTask = false): void {
 }
 
 sendButton.addEventListener("click", () => submitPrompt())
+voiceButton.addEventListener("click", () => {
+  setError()
+  voiceInput?.toggle(promptInput.value)
+})
 
 promptInput.addEventListener("paste", (event) => {
   const files = Array.from(event.clipboardData?.items ?? [])
@@ -518,7 +554,10 @@ promptInput.addEventListener("paste", (event) => {
   })
 })
 
-promptInput.addEventListener("input", resizePromptInput)
+promptInput.addEventListener("input", () => {
+  voiceInput?.stop()
+  resizePromptInput()
+})
 promptInput.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && runtime.agent.state.isStreaming) {
     event.preventDefault()
@@ -656,7 +695,10 @@ chrome.permissions.onRemoved.addListener((permissions) => {
   }
 })
 
-window.addEventListener("pagehide", () => void runtime.shutdown())
+window.addEventListener("pagehide", () => {
+  voiceInput?.abort()
+  void runtime.shutdown()
+})
 
 void run(async () => {
   await runtime.initialize()

@@ -109,6 +109,20 @@
         <div class="composer-toolbar">
           <span id="composer-hint">Enter to send · Shift+Enter for a new line</span>
           <div class="row composer-actions">
+            <span id="voice-status" class="visually-hidden" aria-live="polite"></span>
+            <button
+              type="button"
+              id="voice-input"
+              class="icon-button voice-button"
+              aria-label="Start voice input"
+              aria-pressed="false"
+              title="Start voice input"
+            >
+              <svg class="radix-icon" viewBox="0 0 15 15" aria-hidden="true">
+                <rect x="5" y="1.25" width="5" height="8" rx="2.5" />
+                <path d="M2.75 7.25a4.75 4.75 0 0 0 9.5 0M7.5 12v2M5.25 14h4.5" />
+              </svg>
+            </button>
             <button type="button" id="abort" class="stop-button" hidden>Stop</button>
             <button type="button" id="send" class="primary send-button">
               <span>Send</span>

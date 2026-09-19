@@ -32,8 +32,9 @@ Load the production artifact:
 3. Open the HTTP or HTTPS page you want to use. Pi Chrome follows the visible tab automatically.
 4. Enter a prompt. Pi Chrome requests access to that site when needed.
 5. To include an image, paste it into the composer, review the preview, and send it with optional text.
+6. To dictate a prompt, select the microphone, speak, then select it again before reviewing and sending the transcript.
 
-The model transport is always SSE. Closing the Side Panel aborts the active run and marks the session interrupted; reopening never automatically repeats a browser mutation.
+Voice input uses Chrome's Web Speech service in the browser language. Spoken audio may be processed by the browser's speech provider; only the resulting editable transcript is submitted to Pi when you select **Send**. The model transport is always SSE. Closing the Side Panel aborts the active run and marks the session interrupted; reopening never automatically repeats a browser mutation.
 
 ## Browser safety
 
@@ -72,6 +73,7 @@ npm audit --omit=dev
 - **Stale context:** the visible tab changed or navigated after the tool request began. Retry after the Side Panel shows the current URL.
 - **Login pending:** finish the device flow before its 15-minute expiry. Cancel and restart if the code expires or is denied.
 - **Refresh failed:** log out, then complete device login again. The extension does not fall back to another provider.
+- **Voice input unavailable:** use a Chrome version that exposes the Web Speech API, and allow microphone access for Pi Chrome when prompted. Voice recognition may require network access.
 - **Interrupted session:** review the transcript before continuing. Mutation tools are never replayed automatically.
 
 ## Documentation
