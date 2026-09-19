@@ -31,7 +31,9 @@ describe("browser pi-ai providers", () => {
     expect(ids).toContain("radius")
     expect(ids).not.toContain(BROWSER_EXCLUDED_PROVIDERS[0])
     expect(providers.find((candidate) => candidate.id === "openai-codex")?.auth.oauth).toBeDefined()
-    expect(providers.find((candidate) => candidate.id === "anthropic")?.auth.oauth).toBeUndefined()
+    for (const provider of providers.filter((candidate) => candidate.id !== "openai-codex")) {
+      expect(provider.auth.oauth, provider.id).toBeUndefined()
+    }
   })
 
   test("collects Azure browser configuration in its stored credential", async () => {

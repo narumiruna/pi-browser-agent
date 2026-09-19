@@ -19,6 +19,31 @@ class MemoryStorage {
   }
 }
 
+class SerialLockManager {
+  private readonly tails = new Map<string, Promise<void>>()
+
+  async request<T>(
+    name: string,
+    _options: LockOptions,
+    callback: (lock: Lock) => Promise<T>,
+  ): Promise<T> {
+    const previous = this.tails.get(name) ?? Promise.resolve()
+    let release = (): void => undefined
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const tail = previous.then(() => held)
+    this.tails.set(name, tail)
+    await previous
+    try {
+      return await callback({ name, mode: "exclusive" } as Lock)
+    } finally {
+      release()
+      if (this.tails.get(name) === tail) this.tails.delete(name)
+    }
+  }
+}
+
 describe("Chrome credential store", () => {
   test("serializes mutations and does not expose secrets from list", async () => {
     const area = new MemoryStorage()
@@ -42,6 +67,45 @@ describe("Chrome credential store", () => {
     await expect(store.list()).resolves.toEqual([{ providerId: "openai-codex", type: "oauth" }])
     await store.delete("openai-codex")
     await expect(store.read("openai-codex")).resolves.toBeUndefined()
+  })
+
+  test("serializes credential-map writes across providers and store instances", async () => {
+    const area = new MemoryStorage()
+    const locks = new SerialLockManager() as unknown as LockManager
+    const firstStore = new ChromeCredentialStore(
+      area as unknown as chrome.storage.StorageArea,
+      locks,
+    )
+    const secondStore = new ChromeCredentialStore(
+      area as unknown as chrome.storage.StorageArea,
+      locks,
+    )
+    let markFirstEntered = (): void => undefined
+    const firstEntered = new Promise<void>((resolve) => {
+      markFirstEntered = resolve
+    })
+    let releaseFirst = (): void => undefined
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve
+    })
+    const secondMutation = vi.fn(async () => ({ type: "api_key" as const, key: "second" }))
+
+    const first = firstStore.modify("first", async () => {
+      markFirstEntered()
+      await firstGate
+      return { type: "api_key", key: "first" }
+    })
+    await firstEntered
+    const second = secondStore.modify("second", secondMutation)
+    await Promise.resolve()
+    expect(secondMutation).not.toHaveBeenCalled()
+    releaseFirst()
+    await Promise.all([first, second])
+
+    await expect(firstStore.list()).resolves.toEqual([
+      { providerId: "first", type: "api_key" },
+      { providerId: "second", type: "api_key" },
+    ])
   })
 
   test("allows Models to perform one effective refresh for concurrent callers", async () => {

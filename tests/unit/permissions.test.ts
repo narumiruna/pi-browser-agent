@@ -3,6 +3,7 @@ import {
   BOOKMARKS_PERMISSION,
   hasBookmarkPermission,
   hasHostPermission,
+  hasHostPermissions,
   requestBookmarkPermission,
   requestHostPermission,
   requestHostPermissions,
@@ -40,7 +41,18 @@ describe("browser permissions", () => {
     vi.stubGlobal("chrome", { permissions: { contains } })
 
     await expect(hasHostPermission("http://localhost:3000/path")).resolves.toBe(false)
-    expect(contains).toHaveBeenCalledWith({ origins: ["http://localhost/*"] })
+    expect(contains).toHaveBeenNthCalledWith(1, { origins: ["http://localhost/*"] })
+
+    await expect(
+      hasHostPermissions([
+        "https://auth.openai.com/*",
+        "https://chatgpt.com/backend-api",
+        "https://auth.openai.com/oauth/token",
+      ]),
+    ).resolves.toBe(false)
+    expect(contains).toHaveBeenNthCalledWith(2, {
+      origins: ["https://auth.openai.com/*", "https://chatgpt.com/*"],
+    })
   })
 
   test("requests only normalized, deduplicated destination permissions", async () => {

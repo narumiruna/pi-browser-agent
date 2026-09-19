@@ -152,6 +152,66 @@ describe("browser agent session persistence", () => {
     await runtime.shutdown()
   })
 
+  test("creates new sessions from the latest selected model after resuming an older session", async () => {
+    const runtime = createRuntime(new FakeLockManager() as unknown as LockManager)
+    await runtime.initialize()
+    const anthropic = runtime.getModels("anthropic")[0]
+    if (!anthropic) throw new Error("Anthropic test model unavailable")
+    await runtime.selectModel(anthropic.provider, anthropic.id)
+
+    const older = createSession("gpt-5.6-terra")
+    await runtime.sessions.put(older)
+    await runtime.resumeSession(older.id)
+    expect(runtime.model.provider).toBe("openai-codex")
+
+    await runtime.newSession()
+
+    expect(runtime.model).toMatchObject({ provider: anthropic.provider, id: anthropic.id })
+    expect(runtime.activeSession.model).toMatchObject({
+      provider: anthropic.provider,
+      id: anthropic.id,
+    })
+    await runtime.shutdown()
+  })
+
+  test("rejects a saved session whose model is unavailable without changing the active model", async () => {
+    const runtime = createRuntime(new FakeLockManager() as unknown as LockManager)
+    await runtime.initialize()
+    const activeId = runtime.activeSession.id
+    const activeModel = runtime.model
+    const unavailable = createSession("retired-model", "radius")
+    await runtime.sessions.put(unavailable)
+
+    await expect(runtime.resumeSession(unavailable.id)).rejects.toThrow(
+      "Saved model is unavailable: radius/retired-model",
+    )
+
+    expect(runtime.activeSession.id).toBe(activeId)
+    expect(runtime.model).toBe(activeModel)
+    await expect(runtime.sessions.get(unavailable.id)).resolves.toMatchObject({
+      model: { provider: "radius", id: "retired-model" },
+    })
+    await runtime.shutdown()
+  })
+
+  test("rejects images before submitting them to a text-only model", async () => {
+    const runtime = createRuntime(new FakeLockManager() as unknown as LockManager)
+    await runtime.initialize()
+    const textOnly = runtime
+      .getProviders()
+      .flatMap((provider) => runtime.getModels(provider.id))
+      .find((model) => !model.imageInput)
+    if (!textOnly) throw new Error("Text-only test model unavailable")
+    await runtime.selectModel(textOnly.provider, textOnly.id)
+    const image = { type: "image" as const, data: "cG5n", mimeType: "image/png" }
+
+    await expect(runtime.submit("Inspect this", "steer", [image])).rejects.toThrow(
+      "does not support image input",
+    )
+    expect(runtime.agent.state.messages).toEqual([])
+    await runtime.shutdown()
+  })
+
   test("gives concurrent Side Panels distinct live sessions", async () => {
     const locks = new FakeLockManager() as unknown as LockManager
     const first = createRuntime(locks)

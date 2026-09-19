@@ -148,11 +148,13 @@ export class BrowserAgentRuntime {
       this.models.getModel(this.settings.modelProvider, this.settings.modelId) ?? this.currentModel
     const preferredId = sessionId ?? (await getActiveSessionId())
     let restored = preferredId ? await this.sessions.get(preferredId) : undefined
+    if (restored) this.requireModel(restored.model.provider, restored.model.id)
     if (restored && !(await this.sessionLease.claim(restored.id))) restored = undefined
     if (!restored && !preferredId) {
       const latest = (await this.sessions.list())[0]
       if (latest) {
         const candidate = await this.sessions.get(latest.id)
+        if (candidate) this.requireModel(candidate.model.provider, candidate.model.id)
         if (candidate && (await this.sessionLease.claim(candidate.id))) restored = candidate
       }
     }
@@ -294,6 +296,7 @@ export class BrowserAgentRuntime {
   async prompt(text: string, images: ImageContent[] = []): Promise<void> {
     if (this.authChanging) throw new Error("Wait for the authentication change to finish")
     if (this.agent.state.isStreaming) throw new Error("The agent is already running")
+    this.assertImageInput(images)
     this.agent.state.systemPrompt = composeSystemPrompt(this.settings)
     if (images.length > 0) await this.agent.prompt(multimodalUserMessage(text, images))
     else await this.agent.prompt(text)
@@ -305,6 +308,7 @@ export class BrowserAgentRuntime {
     images: ImageContent[] = [],
   ): Promise<SubmissionMode> {
     if (this.authChanging) throw new Error("Wait for the authentication change to finish")
+    this.assertImageInput(images)
     if (!this.agent.state.isStreaming) {
       if (images.length > 0) await this.prompt(text, images)
       else await this.prompt(text)
@@ -319,6 +323,7 @@ export class BrowserAgentRuntime {
   }
 
   steer(text: string, images: ImageContent[] = []): void {
+    this.assertImageInput(images)
     this.agent.steer(
       images.length > 0
         ? multimodalUserMessage(text, images)
@@ -327,6 +332,7 @@ export class BrowserAgentRuntime {
   }
 
   followUp(text: string, images: ImageContent[] = []): void {
+    this.assertImageInput(images)
     this.agent.followUp(
       images.length > 0
         ? multimodalUserMessage(text, images)
@@ -343,8 +349,9 @@ export class BrowserAgentRuntime {
   }
 
   async newSession(): Promise<void> {
+    const model = this.configuredModel()
     await this.stopAgent()
-    const record = createSession(this.currentModel.id, this.currentModel.provider)
+    const record = createSession(model.id, model.provider)
     if (!(await this.sessionLease.claim(record.id)))
       throw new Error("Unable to claim a new session")
     this.session = record
@@ -357,6 +364,7 @@ export class BrowserAgentRuntime {
     await this.stopAgent()
     let record = await this.sessions.get(id)
     if (!record) throw new Error("Session not found")
+    this.requireModel(record.model.provider, record.model.id)
     if (!(await this.sessionLease.claim(id))) {
       throw new Error("That session is open in another Side Panel")
     }
@@ -381,9 +389,10 @@ export class BrowserAgentRuntime {
       await this.sessions.delete(id)
       return
     }
+    const model = this.configuredModel()
     await this.stopAgent()
     await this.sessions.delete(id)
-    const replacement = createSession(this.currentModel.id, this.currentModel.provider)
+    const replacement = createSession(model.id, model.provider)
     if (!(await this.sessionLease.claim(replacement.id))) {
       throw new Error("Unable to claim a replacement session")
     }
@@ -394,9 +403,10 @@ export class BrowserAgentRuntime {
   }
 
   async clearSessions(): Promise<void> {
+    const model = this.configuredModel()
     await this.stopAgent()
     await this.sessions.clear()
-    const replacement = createSession(this.currentModel.id, this.currentModel.provider)
+    const replacement = createSession(model.id, model.provider)
     if (!(await this.sessionLease.claim(replacement.id))) {
       throw new Error("Unable to claim a replacement session")
     }
@@ -431,6 +441,22 @@ export class BrowserAgentRuntime {
     await this.persistChain
   }
 
+  private requireModel(providerId: string, modelId: string): Model<Api> {
+    const model = this.models.getModel(providerId, modelId)
+    if (!model) throw new Error(`Saved model is unavailable: ${providerId}/${modelId}`)
+    return model
+  }
+
+  private configuredModel(): Model<Api> {
+    return this.requireModel(this.settings.modelProvider, this.settings.modelId)
+  }
+
+  private assertImageInput(images: readonly ImageContent[]): void {
+    if (images.length > 0 && !this.currentModel.input.includes("image")) {
+      throw new Error(`${this.currentModel.name} does not support image input`)
+    }
+  }
+
   private async normalizeClaimedSession(record: SessionRecord): Promise<SessionRecord> {
     if (record.status !== "running") return record
     await this.sessions.markSessionInterrupted(record.id)
@@ -442,11 +468,11 @@ export class BrowserAgentRuntime {
   }
 
   private applySession(record: SessionRecord): void {
+    const model = this.requireModel(record.model.provider, record.model.id)
     this.agent.reset()
     this.agent.sessionId = record.id
-    this.currentModel =
-      this.models.getModel(record.model.provider, record.model.id) ?? this.currentModel
-    this.agent.state.model = this.currentModel
+    this.currentModel = model
+    this.agent.state.model = model
     this.agent.state.tools = createBrowserTools(this.callbacks.confirm)
     this.agent.state.messages = structuredClone(record.messages)
     this.agent.state.thinkingLevel = record.model.thinkingLevel

@@ -8,7 +8,7 @@ Trusted extension contexts are the Side Panel and MV3 service worker. Web pages,
 
 ## Authentication
 
-Provider setup requires an explicit user gesture. API-key prompts are provider-owned, and Pi Chrome stores their result under only that provider ID. OpenAI Codex login requests its two authentication origins and validates device-flow response shapes and the ChatGPT account claim. Polling handles pending, slowdown, denial, local or server expiry, and cancellation. Automatic refresh runs inside the credential store's serialized provider mutation, and a rotated refresh token replaces the old credential in one storage write.
+Provider setup requires an explicit user gesture. API-key prompts are provider-owned, and Pi Chrome stores their result under only that provider ID. OpenAI Codex login requests its two authentication origins and validates device-flow response shapes and the ChatGPT account claim. Polling handles pending, slowdown, denial, local or server expiry, and cancellation. Automatic refresh runs inside the credential store's cross-context serialized mutation, and a rotated refresh token replaces the old credential in one storage write.
 
 Credential removal first aborts the agent, waits for it to become idle, then removes only the selected provider credential. Before each run, Chrome asks for the selected model endpoint's exact origin. Requests cannot silently switch providers or hosts after auth failure.
 

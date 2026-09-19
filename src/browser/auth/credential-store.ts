@@ -6,6 +6,7 @@ import type {
 } from "@earendil-works/pi-ai"
 
 const CREDENTIALS_KEY = "piChromeCredentialsV1"
+const CREDENTIALS_WRITE_LOCK = "pi-chrome-credentials-write"
 
 type StorageArea = Pick<chrome.storage.StorageArea, "get" | "set" | "remove">
 
@@ -32,7 +33,12 @@ function isCredential(value: unknown): value is Credential {
 export class ChromeCredentialStore implements CredentialStore {
   private readonly chains = new Map<string, Promise<void>>()
 
-  constructor(private readonly area: StorageArea = chrome.storage.local) {}
+  constructor(
+    private readonly area: StorageArea = chrome.storage.local,
+    private readonly locks: LockManager | undefined = typeof navigator === "undefined"
+      ? undefined
+      : navigator.locks,
+  ) {}
 
   private async readAll(): Promise<Record<string, Credential>> {
     const stored = await this.area.get(CREDENTIALS_KEY)
@@ -45,7 +51,13 @@ export class ChromeCredentialStore implements CredentialStore {
 
   private enqueue<T>(providerId: string, operation: () => Promise<T>): Promise<T> {
     const previous = this.chains.get(providerId) ?? Promise.resolve()
-    const result = previous.catch(() => undefined).then(operation)
+    const result = previous
+      .catch(() => undefined)
+      .then(() =>
+        this.locks
+          ? this.locks.request(CREDENTIALS_WRITE_LOCK, { mode: "exclusive" }, operation)
+          : operation(),
+      )
     const settled = result.then(
       () => undefined,
       () => undefined,

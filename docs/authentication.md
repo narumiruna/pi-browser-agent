@@ -30,7 +30,7 @@ The browser module also contains a Web Crypto PKCE implementation for browser-sa
 
 `pi-ai` resolves the selected provider's credential through `ChromeCredentialStore`. Browser environment and filesystem lookups always return unavailable, so requests cannot silently pick up machine credentials. Before sending, Pi Chrome requests optional access to the exact selected model endpoint. It never inserts API keys into host-permission patterns, UI status, runtime messages, model messages, or diagnostics.
 
-If an OAuth access token is near expiry, refresh occurs inside `CredentialStore.modify()`. Concurrent requests for that provider serialize, and later callers reuse the newly refreshed credential. A rotated refresh token and access token are committed together. A refresh error preserves the previous credential for an explicit retry or new login; it does not trigger another provider or destination.
+If an OAuth access token is near expiry, refresh occurs inside `CredentialStore.modify()`. Credential-map mutations serialize across providers and Side Panel contexts through a Web Lock; later callers reuse a newly refreshed credential, and rotated refresh and access tokens are committed together. A refresh error preserves the previous credential for an explicit retry or new login; it does not trigger another provider or destination.
 
 ## Credential removal and revocation
 

@@ -94,7 +94,7 @@ function browserProvider(provider: Provider): Provider {
   if (provider.id === DEFAULT_PROVIDER_ID) return createBrowserCodexProvider()
   const withoutNodeOAuth: Provider = {
     ...provider,
-    auth: provider.auth.apiKey ? { apiKey: provider.auth.apiKey } : provider.auth,
+    auth: provider.auth.apiKey ? { apiKey: provider.auth.apiKey } : {},
   }
   if (provider.id === "azure-openai-responses") return browserAzureProvider(withoutNodeOAuth)
   if (provider.id === "google-vertex") return browserVertexProvider(withoutNodeOAuth)

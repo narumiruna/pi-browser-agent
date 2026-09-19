@@ -52,7 +52,7 @@ Use a production build from `npm run build`. Do not test login with development 
    - Expected: the operation waits for explicit confirmation.
 8. **Read-only bookmark access**
    - Add two distinctive test bookmarks and note their exact titles, URLs, and folders. Ask Pi to search for one distinctive title.
-   - Expected: Pi Chrome first shows an operation confirmation stating that returned titles and URLs go to OpenAI and the session. Cancel it and verify no result appears.
+   - Expected: Pi Chrome first shows an operation confirmation stating that returned titles and URLs go to the selected model provider and the session. Cancel it and verify no result appears.
    - Ask again, confirm the operation, and decline Chrome's native optional bookmark prompt. Expected: the confirmation stays open, an access error appears inside the dialog, and no bookmark result is sent.
    - Ask again, confirm the operation, and grant Chrome's optional bookmark prompt. Expected: only matching bounded results appear, labeled as untrusted bookmark data. Ask for recent bookmarks and approve its separate confirmation.
    - Revoke bookmark access in Chrome's extension settings and approve another read. Expected: the read fails without retrying, requesting background access, or changing any bookmark.
@@ -62,7 +62,7 @@ Use a production build from `npm run build`. Do not test login with development 
    - Expected: one refresh request succeeds, the session continues, and no credential appears in logs or storage outside trusted local storage.
 10. **Permission revocation**
    - Revoke either OpenAI origin in Chrome extension settings, then send a prompt.
-   - Expected: the active run aborts, the panel changes to **Not logged in**, and the next request is blocked until login. No fallback host is contacted.
+   - Expected: the active run aborts, the panel changes to **OpenAI Codex not configured**, and the next request is blocked until login. No fallback host is contacted.
 11. **Interruption and restart**
    - Start a response, close the Side Panel, reopen it, then restart Chrome.
    - Expected: the last complete transcript returns, the session is marked interrupted when applicable, and no click, type, navigation, or WebMCP call repeats automatically.

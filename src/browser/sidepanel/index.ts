@@ -2,10 +2,11 @@ import type { AgentEvent, AgentMessage } from "@earendil-works/pi-agent-core"
 import "./styles.css"
 import type { AuthEvent, AuthPrompt, ImageContent } from "@earendil-works/pi-ai"
 import { BrowserAgentRuntime } from "../agent/runtime.js"
-import { AUTH_ORIGINS } from "../auth/codex-oauth.js"
+import { AUTH_ORIGINS, OPENAI_PROVIDER_ID } from "../auth/codex-oauth.js"
 import { safeErrorMessage } from "../auth/redaction.js"
 import {
   BOOKMARKS_PERMISSION,
+  hasHostPermissions,
   requestBookmarkPermission,
   requestHostPermission,
   requestHostPermissions,
@@ -496,7 +497,15 @@ async function refreshSessions(): Promise<void> {
 async function refreshAuth(providerId = providerSelect.value): Promise<void> {
   const provider = providerSummary(providerId)
   if (!provider) return
-  const status = await runtime.authStatus(providerId)
+  let status = await runtime.authStatus(providerId)
+  if (
+    providerId === OPENAI_PROVIDER_ID &&
+    status.loggedIn &&
+    !(await hasHostPermissions(AUTH_ORIGINS))
+  ) {
+    await runtime.invalidateCredential(providerId)
+    status = { loggedIn: false }
+  }
   loginButton.hidden = status.loggedIn || (!provider.apiKey && !provider.oauth)
   loginButton.textContent = provider.oauth
     ? `Log in to ${provider.name}`
@@ -697,6 +706,10 @@ function submitPrompt(queueAfterCurrentTask = false): void {
     content: { ...image.content },
   }))
   if (!text && submittedImages.length === 0) return
+  if (submittedImages.length > 0 && !runtime.model.input.includes("image")) {
+    setError(`${runtime.model.name} does not support image input`)
+    return
+  }
   const submittedWhileStreaming = runtime.agent.state.isStreaming
   const submissionGuard = {}
   activeSubmissionGuard = submissionGuard
