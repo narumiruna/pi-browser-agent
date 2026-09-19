@@ -21,6 +21,7 @@ import {
   type PastedImage,
   readPastedImage,
 } from "./images.js"
+import { SearchableSelect } from "./searchable-select.js"
 import { createVoiceInput, type VoiceInputController } from "./voice-input.js"
 
 function element<T extends HTMLElement>(id: string): T {
@@ -58,6 +59,20 @@ const loginDialog = element<HTMLDialogElement>("login-dialog")
 const deviceCode = element<HTMLOutputElement>("device-code")
 const providerSelect = element<HTMLSelectElement>("provider")
 const modelSelect = element<HTMLSelectElement>("model")
+const providerPicker = new SearchableSelect({
+  container: element<HTMLElement>("provider-picker"),
+  input: element<HTMLInputElement>("provider-search"),
+  select: providerSelect,
+  listbox: element<HTMLElement>("provider-options"),
+  emptyText: "No providers available",
+})
+const modelPicker = new SearchableSelect({
+  container: element<HTMLElement>("model-picker"),
+  input: element<HTMLInputElement>("model-search"),
+  select: modelSelect,
+  listbox: element<HTMLElement>("model-options"),
+  emptyText: "Configure provider to load models",
+})
 const modelCapabilities = element<HTMLElement>("model-capabilities")
 const fontFamilySelect = element<HTMLSelectElement>("font-family")
 const fontSizeInput = element<HTMLInputElement>("font-size")
@@ -458,33 +473,25 @@ function providerSummary(providerId: string) {
   return runtime.getProviders().find((provider) => provider.id === providerId)
 }
 
-function renderProviderOptions(): void {
-  providerSelect.replaceChildren()
-  for (const provider of runtime.getProviders()) {
-    const option = document.createElement("option")
-    option.value = provider.id
-    option.textContent = `${provider.name} (${provider.modelCount})`
-    providerSelect.append(option)
-  }
+function renderProviderOptions(preferredId?: string): void {
+  providerPicker.setOptions(
+    runtime.getProviders().map((provider) => ({
+      value: provider.id,
+      label: `${provider.name} (${provider.modelCount})`,
+      keywords: [provider.id],
+    })),
+    preferredId,
+  )
 }
 
 function renderModelOptions(providerId: string, preferredId?: string): void {
-  modelSelect.replaceChildren()
-  const models = runtime.getModels(providerId)
-  for (const model of models) {
-    const option = document.createElement("option")
-    option.value = model.id
-    option.textContent = model.name === model.id ? model.id : `${model.name} — ${model.id}`
-    option.selected = model.id === preferredId
-    modelSelect.append(option)
-  }
-  modelSelect.disabled = models.length === 0
-  if (models.length === 0) {
-    const option = document.createElement("option")
-    option.textContent = "Configure provider to load models"
-    option.value = ""
-    modelSelect.append(option)
-  }
+  modelPicker.setOptions(
+    runtime.getModels(providerId).map((model) => ({
+      value: model.id,
+      label: model.name === model.id ? model.id : `${model.name} — ${model.id}`,
+    })),
+    preferredId,
+  )
   updateModelCapabilities()
 }
 
@@ -503,8 +510,7 @@ function updateModelCapabilities(): void {
 }
 
 function syncModelControls(): void {
-  renderProviderOptions()
-  providerSelect.value = runtime.model.provider
+  renderProviderOptions(runtime.model.provider)
   renderModelOptions(runtime.model.provider, runtime.model.id)
 }
 
@@ -641,8 +647,7 @@ function configureProvider(providerId: string, button: HTMLButtonElement): void 
         promptForCredential,
       )
       if (loginDialog.open) loginDialog.close()
-      renderProviderOptions()
-      providerSelect.value = providerId
+      renderProviderOptions(providerId)
       renderModelOptions(
         providerId,
         providerId === runtime.model.provider ? runtime.model.id : undefined,

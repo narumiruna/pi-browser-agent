@@ -506,8 +506,61 @@ body[data-view="settings"] {
   font-weight: 650;
 }
 
-.settings-content select {
+.settings-content select,
+.settings-content input {
   width: 100%;
+}
+
+.searchable-select {
+  position: relative;
+}
+
+.searchable-select > select[aria-hidden="true"] {
+  display: none;
+}
+
+.searchable-select-options {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 4px);
+  right: 0;
+  left: 0;
+  max-height: min(280px, 45vh);
+  padding: 4px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.searchable-select-options[hidden] {
+  display: none;
+}
+
+.searchable-select-option,
+.searchable-select-empty {
+  padding: 8px 9px;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+.searchable-select-option {
+  cursor: pointer;
+}
+
+.searchable-select-option:hover,
+.searchable-select-option[data-active="true"] {
+  background: var(--surface-hover);
+}
+
+.searchable-select-option[aria-selected="true"] {
+  font-weight: 650;
+}
+
+.searchable-select-empty {
+  color: var(--text-muted);
 }
 
 .font-size-control {
