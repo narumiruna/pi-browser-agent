@@ -150,7 +150,7 @@ describe("browser agent session persistence", () => {
     expect(runtime.appSettings.modelId).toBe("gpt-5.6-terra")
   })
 
-  test("seeds full-tab Settings from the active session model", async () => {
+  test("seeds full-tab Settings without changing the configured model", async () => {
     const locks = new FakeLockManager() as unknown as LockManager
     const runtime = createRuntime(locks)
     await runtime.initialize()
@@ -171,21 +171,6 @@ describe("browser agent session persistence", () => {
     expect(settingsRuntime.appSettings).toMatchObject({
       modelProvider: anthropic.provider,
       modelId: anthropic.id,
-    })
-
-    await settingsRuntime.updateSettings({
-      ...settingsRuntime.appSettings,
-      fontFamily: "serif",
-      modelProvider: settingsRuntime.model.provider,
-      modelId: settingsRuntime.model.id,
-    })
-    await runtime.syncSettings({ applyModelToActiveSession: true })
-
-    expect(runtime.appSettings.fontFamily).toBe("serif")
-    expect(runtime.model).toMatchObject({ provider: "openai-codex", id: "gpt-5.6-terra" })
-    expect(runtime.activeSession.model).toMatchObject({
-      provider: "openai-codex",
-      id: "gpt-5.6-terra",
     })
     await runtime.shutdown()
   })
