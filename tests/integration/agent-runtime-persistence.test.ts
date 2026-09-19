@@ -188,12 +188,13 @@ describe("browser agent session persistence", () => {
     await settingsRuntime.updateSettings({
       ...settingsRuntime.appSettings,
       fontFamily: "serif",
+      fontSize: 19,
       modelProvider: anthropic.provider,
       modelId: anthropic.id,
     })
     await runtime.syncSettings({ applyModelToActiveSession: true })
 
-    expect(runtime.appSettings.fontFamily).toBe("serif")
+    expect(runtime.appSettings).toMatchObject({ fontFamily: "serif", fontSize: 19 })
     expect(runtime.model).toMatchObject({ provider: "anthropic", id: anthropic.id })
     expect(runtime.activeSession.model).toMatchObject({ provider: "anthropic", id: anthropic.id })
     await expect(runtime.sessions.get(runtime.activeSession.id)).resolves.toMatchObject({

@@ -21,7 +21,7 @@ Use a production build from `npm run build`. Do not test login with development 
    - Confirm the action opens the Side Panel and no native or local process is running.
    - Expected: Chrome's native header shows one blue-purple Pi icon and one **Pi Chrome** title; the extension content does not repeat that branding.
    - Resize the Side Panel through normal and 320–360 px widths. Expected: the current URL, run status, and account menu remain usable with no horizontal page scrolling; long URLs truncate, and the account menu opens without clipping.
-   - Open the top-right three-dot menu, choose **Settings**, select a different font, and save. Expected: Settings opens in a new full browser tab while the Side Panel conversation remains intact; saving closes the Settings tab, returns to the previous tab, updates the full interface, and the choice remains after closing and reopening the Side Panel.
+   - Open the top-right three-dot menu, choose **Settings**, select a different font, drag the font-size slider, and save. Expected: Settings opens in a new full browser tab while the Side Panel conversation remains intact; saving closes the Settings tab, returns to the previous tab, updates the full interface, and both choices remain after closing and reopening the Side Panel.
    - Inspect the provider and model selectors. Expected: Amazon Bedrock is absent, Radius explains that configuration is needed before models load, and model capabilities identify reasoning and image input.
 2. **API-key provider and model**
    - Select a non-Codex provider and model, choose **Configure selected provider**, and enter a dedicated test API key.
