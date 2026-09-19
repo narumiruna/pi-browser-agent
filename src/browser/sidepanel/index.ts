@@ -577,6 +577,9 @@ const runtime = new BrowserAgentRuntime({
   confirm: confirmation,
   onAuthEvent,
   onAgentEvent,
+  onSettingsModelChanged: () => {
+    void run(refreshActiveSessionUi)
+  },
   onPersistenceError: setError,
 })
 

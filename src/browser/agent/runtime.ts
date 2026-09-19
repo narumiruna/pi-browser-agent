@@ -59,6 +59,7 @@ export interface RuntimeCallbacks {
   confirm: ConfirmationHandler
   onAuthEvent: (event: AuthEvent) => void
   onAgentEvent: (event: AgentEvent) => void
+  onSettingsModelChanged?: () => void
   onPersistenceError?: (message: string) => void
 }
 
@@ -229,6 +230,7 @@ export class BrowserAgentRuntime {
       thinkingLevel: this.agent.state.thinkingLevel,
     }
     await this.persist("idle")
+    this.callbacks.onSettingsModelChanged?.()
   }
 
   getProviders(): ProviderSummary[] {

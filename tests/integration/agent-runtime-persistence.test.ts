@@ -52,12 +52,17 @@ function installChromeStorage(): void {
   })
 }
 
-function createRuntime(locks: LockManager, warnings: string[] = []): BrowserAgentRuntime {
+function createRuntime(
+  locks: LockManager,
+  warnings: string[] = [],
+  onSettingsModelChanged = vi.fn(),
+): BrowserAgentRuntime {
   return new BrowserAgentRuntime(
     {
       confirm: vi.fn(async () => false),
       onAuthEvent: vi.fn(),
       onAgentEvent: vi.fn(),
+      onSettingsModelChanged,
       onPersistenceError: (warning) => warnings.push(warning),
     },
     new SessionLease(locks),
@@ -147,7 +152,8 @@ describe("browser agent session persistence", () => {
 
   test("synchronizes settings saved by a full-tab Settings page", async () => {
     const locks = new FakeLockManager() as unknown as LockManager
-    const runtime = createRuntime(locks)
+    const onSettingsModelChanged = vi.fn()
+    const runtime = createRuntime(locks, [], onSettingsModelChanged)
     await runtime.initialize()
     const settingsRuntime = createRuntime(locks)
     await settingsRuntime.initializeSettings()
@@ -168,6 +174,7 @@ describe("browser agent session persistence", () => {
     await expect(runtime.sessions.get(runtime.activeSession.id)).resolves.toMatchObject({
       model: { provider: "anthropic", id: anthropic.id },
     })
+    expect(onSettingsModelChanged).toHaveBeenCalledOnce()
     await runtime.shutdown()
   })
 
