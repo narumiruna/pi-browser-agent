@@ -359,27 +359,40 @@ test("opens a dedicated settings page and persists the selected interface font",
   await expect(controller.locator("#transcript")).toBeHidden()
   await controller.locator("#font-family").selectOption("serif")
   await controller.evaluate(() => {
-    const state = window as typeof window & { restoreSettingsStorage?: () => void }
-    const originalSet = chrome.storage.local.set.bind(chrome.storage.local)
+    const state = window as typeof window & {
+      originalSettingsStorageSet?: typeof chrome.storage.local.set
+      restoreSettingsStorage?: () => void
+    }
+    const originalSet = chrome.storage.local.set
+    const callOriginalSet = originalSet.bind(chrome.storage.local)
+    state.originalSettingsStorageSet = originalSet
     state.restoreSettingsStorage = () => {
       chrome.storage.local.set = originalSet
     }
     chrome.storage.local.set = (async (items) => {
       if (Object.hasOwn(items, "piChromeSettings")) throw new Error("Test settings save failed")
-      await originalSet(items)
+      await callOriginalSet(items)
     }) as typeof chrome.storage.local.set
   })
+  let storageMethodRestored = false
   try {
     await controller.locator("#save-settings").click()
     await expect(settingsPage).toBeVisible()
     await expect(settingsError).toHaveText("Test settings save failed")
   } finally {
-    await controller.evaluate(() => {
-      const state = window as typeof window & { restoreSettingsStorage?: () => void }
+    storageMethodRestored = await controller.evaluate(() => {
+      const state = window as typeof window & {
+        originalSettingsStorageSet?: typeof chrome.storage.local.set
+        restoreSettingsStorage?: () => void
+      }
       state.restoreSettingsStorage?.()
+      const restored = chrome.storage.local.set === state.originalSettingsStorageSet
+      delete state.originalSettingsStorageSet
       delete state.restoreSettingsStorage
+      return restored
     })
   }
+  expect(storageMethodRestored).toBe(true)
   await controller.locator("#save-settings").click()
 
   await expect(settingsPage).toBeHidden()
