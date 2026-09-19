@@ -96,7 +96,6 @@ voiceInput = createVoiceInput({
     resizePromptInput()
   },
   onListeningChange(listening) {
-    voiceButton.classList.toggle("listening", listening)
     voiceButton.ariaLabel = listening ? "Stop voice input" : "Start voice input"
     voiceButton.title = voiceButton.ariaLabel
     voiceButton.setAttribute("aria-pressed", String(listening))
@@ -555,7 +554,7 @@ promptInput.addEventListener("paste", (event) => {
 })
 
 promptInput.addEventListener("input", () => {
-  voiceInput?.stop()
+  voiceInput?.stop({ discardResults: true })
   resizePromptInput()
 })
 promptInput.addEventListener("keydown", (event) => {

@@ -62,6 +62,17 @@ describe("voice input", () => {
     expect(callbacks.onListeningChange).toHaveBeenLastCalledWith(false)
   })
 
+  test("discards late recognition results after a manual edit", () => {
+    const { callbacks, controller, recognition } = setup()
+
+    controller.start("Draft")
+    controller.stop({ discardResults: true })
+    recognition.emitResult("late final result")
+
+    expect(recognition.stop).toHaveBeenCalledOnce()
+    expect(callbacks.onTranscript).not.toHaveBeenCalled()
+  })
+
   test("stops an active session and reports microphone errors", () => {
     const { callbacks, controller, recognition } = setup()
 

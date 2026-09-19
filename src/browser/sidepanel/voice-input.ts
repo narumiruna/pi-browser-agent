@@ -12,6 +12,10 @@ export interface SpeechRecognitionResultListLike {
   item(index: number): SpeechRecognitionResultLike | null
 }
 
+export interface StopVoiceInputOptions {
+  discardResults?: boolean
+}
+
 export interface SpeechRecognitionLike {
   continuous: boolean
   interimResults: boolean
@@ -65,6 +69,7 @@ function appendTranscript(existingText: string, transcript: string): string {
 
 export class VoiceInputController {
   private baseText = ""
+  private discardingResults = false
   private ignoringAbortError = false
   active = false
 
@@ -89,6 +94,7 @@ export class VoiceInputController {
   start(existingText: string): void {
     if (this.active) return
     this.baseText = existingText
+    this.discardingResults = false
     this.ignoringAbortError = false
     this.setActive(true)
     try {
@@ -101,8 +107,9 @@ export class VoiceInputController {
     }
   }
 
-  stop(): void {
+  stop(options: StopVoiceInputOptions = {}): void {
     if (!this.active) return
+    this.discardingResults = options.discardResults === true
     try {
       this.recognition.stop()
     } catch (error) {
@@ -124,6 +131,7 @@ export class VoiceInputController {
   }
 
   private handleResult(results: SpeechRecognitionResultListLike): void {
+    if (this.discardingResults) return
     let transcript = ""
     for (let index = 0; index < results.length; index += 1) {
       transcript += results.item(index)?.item(0)?.transcript ?? ""
