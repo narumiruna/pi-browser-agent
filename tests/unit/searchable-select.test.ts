@@ -59,19 +59,24 @@ describe("SearchableSelect", () => {
     expect(changed).toHaveBeenCalledOnce()
   })
 
-  test("restores the selected label when a search is cancelled", () => {
+  test("restores the selected label and consumes Escape when a search is cancelled", () => {
     const { dom, input, select, listbox, picker } = setup()
+    const documentKeyDown = vi.fn()
+    input.ownerDocument.addEventListener("keydown", documentKeyDown)
     picker.setOptions([{ value: "first", label: "First item" }], "first")
 
     input.focus()
     input.value = "missing"
     input.dispatchEvent(new dom.window.Event("input", { bubbles: true }))
-    expect(listbox.textContent).toContain("No matches")
+    const emptyOption = listbox.querySelector("[role='option']")
+    expect(emptyOption?.textContent).toBe("No matches")
+    expect(emptyOption?.getAttribute("aria-disabled")).toBe("true")
 
     input.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }))
 
     expect(select.value).toBe("first")
     expect(input.value).toBe("First item")
     expect(listbox.hidden).toBe(true)
+    expect(documentKeyDown).not.toHaveBeenCalled()
   })
 })

@@ -88,6 +88,8 @@ export class SearchableSelect {
     if (this.filteredOptions.length === 0) {
       const empty = listbox.ownerDocument.createElement("div")
       empty.className = "searchable-select-empty"
+      empty.setAttribute("role", "option")
+      empty.setAttribute("aria-disabled", "true")
       empty.textContent = "No matches"
       listbox.append(empty)
       return
@@ -135,6 +137,7 @@ export class SearchableSelect {
     }
     if (event.key === "Escape" && !this.elements.listbox.hidden) {
       event.preventDefault()
+      event.stopPropagation()
       this.close(true)
     }
   }
