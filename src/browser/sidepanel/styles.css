@@ -726,6 +726,13 @@ button.remove-pasted-image {
   gap: 8px;
 }
 
+.voice-button[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--danger) 40%, var(--border));
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
 .stop-button {
   border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
   color: var(--danger);
@@ -828,7 +835,8 @@ dialog p {
     transition: none;
   }
 
-  body[data-state="running"] .status-dot {
+  body[data-state="running"] .status-dot,
+  .voice-button[aria-pressed="true"] {
     animation: none;
   }
 }
