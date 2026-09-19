@@ -30,6 +30,7 @@ function element<T extends HTMLElement>(id: string): T {
 const transcript = element<HTMLElement>("transcript")
 const promptInput = element<HTMLTextAreaElement>("prompt")
 const errorOutput = element<HTMLElement>("error")
+const settingsErrorOutput = element<HTMLElement>("settings-error")
 const runStatus = element<HTMLElement>("run-status")
 const authStatus = element<HTMLElement>("auth-status")
 const tabStatus = element<HTMLElement>("tab-status")
@@ -67,6 +68,10 @@ const renderedImages = new WeakMap<ImageContent, HTMLImageElement>()
 
 function setError(error?: unknown): void {
   errorOutput.textContent = error === undefined ? "" : safeErrorMessage(error)
+}
+
+function setSettingsError(error?: unknown): void {
+  settingsErrorOutput.textContent = error === undefined ? "" : safeErrorMessage(error)
 }
 
 function selectedFontFamily(): FontFamily {
@@ -438,12 +443,15 @@ const runtime = new BrowserAgentRuntime({
   onPersistenceError: setError,
 })
 
-async function run(action: () => Promise<void>): Promise<void> {
-  setError()
+async function run(
+  action: () => Promise<void>,
+  updateError: (error?: unknown) => void = setError,
+): Promise<void> {
+  updateError()
   try {
     await action()
   } catch (error) {
-    setError(error)
+    updateError(error)
   }
 }
 
@@ -612,6 +620,7 @@ function populateSettings(): void {
 
 function openSettingsPage(): void {
   voiceInput?.abort()
+  setSettingsError()
   populateSettings()
   settingsPage.hidden = false
   document.body.dataset.view = "settings"
@@ -656,7 +665,7 @@ element<HTMLButtonElement>("save-settings").addEventListener("click", () => {
     applyFontFamily(fontFamily)
     setRunStatus("Settings saved")
     closeSettingsPage()
-  })
+  }, setSettingsError)
 })
 
 element<HTMLButtonElement>("new-session").addEventListener("click", () => {

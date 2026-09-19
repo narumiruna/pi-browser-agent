@@ -335,6 +335,8 @@ test("opens a dedicated settings page and persists the selected interface font",
   await controller.reload()
 
   const settingsPage = controller.locator("#settings-page")
+  const settingsError = controller.locator("#settings-error")
+  const accountDisclosure = controller.locator(".account-disclosure")
   const voiceButton = controller.locator("#voice-input")
   await expect(voiceButton).toBeEnabled()
   await voiceButton.click()
@@ -344,6 +346,7 @@ test("opens a dedicated settings page and persists the selected interface font",
   await controller.locator("#open-settings").click()
 
   await expect(settingsPage).toBeVisible()
+  await expect(accountDisclosure).toHaveJSProperty("open", false)
   await expect(settingsPage).not.toContainText("Pi Chrome")
   await expect(settingsPage.getByRole("heading", { name: "Appearance" })).toBeVisible()
   await expect(settingsPage.getByRole("heading", { name: "Instructions" })).toBeVisible()
@@ -355,9 +358,33 @@ test("opens a dedicated settings page and persists the selected interface font",
   ).toBe(1)
   await expect(controller.locator("#transcript")).toBeHidden()
   await controller.locator("#font-family").selectOption("serif")
+  await controller.evaluate(() => {
+    const state = window as typeof window & { restoreSettingsStorage?: () => void }
+    const originalSet = chrome.storage.local.set.bind(chrome.storage.local)
+    state.restoreSettingsStorage = () => {
+      chrome.storage.local.set = originalSet
+    }
+    chrome.storage.local.set = (async (items) => {
+      if (Object.hasOwn(items, "piChromeSettings")) throw new Error("Test settings save failed")
+      await originalSet(items)
+    }) as typeof chrome.storage.local.set
+  })
+  try {
+    await controller.locator("#save-settings").click()
+    await expect(settingsPage).toBeVisible()
+    await expect(settingsError).toHaveText("Test settings save failed")
+  } finally {
+    await controller.evaluate(() => {
+      const state = window as typeof window & { restoreSettingsStorage?: () => void }
+      state.restoreSettingsStorage?.()
+      delete state.restoreSettingsStorage
+    })
+  }
   await controller.locator("#save-settings").click()
 
   await expect(settingsPage).toBeHidden()
+  await expect(settingsError).toBeHidden()
+  await expect(accountDisclosure).toHaveJSProperty("open", false)
   await expect(controller.locator("#transcript")).toBeVisible()
   await expect(controller.locator("#run-status")).toHaveText("Settings saved")
   await expect
