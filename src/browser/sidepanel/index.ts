@@ -29,7 +29,9 @@ function element<T extends HTMLElement>(id: string): T {
   return value as T
 }
 
-const isSettingsTab = new URLSearchParams(window.location.search).get("view") === "settings"
+const locationParams = new URLSearchParams(window.location.search)
+const isSettingsTab = locationParams.get("view") === "settings"
+const settingsContextId = locationParams.get("source") ?? crypto.randomUUID()
 
 const transcript = element<HTMLElement>("transcript")
 const promptInput = element<HTMLTextAreaElement>("prompt")
@@ -836,6 +838,7 @@ function openSettingsTab(): void {
   voiceInput?.abort()
   const url = new URL(window.location.href)
   url.searchParams.set("view", "settings")
+  url.searchParams.set("source", settingsContextId)
   url.hash = ""
   void run(async () => {
     const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true })
@@ -890,6 +893,15 @@ element<HTMLButtonElement>("save-settings").addEventListener("click", () => {
       modelProvider: providerId,
       modelId,
     })
+    if (isSettingsTab) {
+      await chrome.runtime
+        .sendMessage({
+          kind: "event",
+          name: "settings.saved",
+          payload: { settingsContextId },
+        } satisfies RuntimeEvent)
+        .catch(() => undefined)
+    }
     applyFontFamily(fontFamily)
     await refreshAuth(providerId)
     setRunStatus("Settings saved")
@@ -984,6 +996,20 @@ async function pullPendingSelection(expectedWindowId?: number): Promise<void> {
 chrome.runtime.onMessage.addListener((message: unknown) => {
   const event = message as Partial<RuntimeEvent>
   if (event.kind !== "event") return false
+  if (
+    event.name === "settings.saved" &&
+    !isSettingsTab &&
+    event.payload?.settingsContextId === settingsContextId
+  ) {
+    void run(async () => {
+      await runtime.syncSettings({ applyModelToActiveSession: true })
+      applyFontFamily(runtime.appSettings.fontFamily)
+      syncModelControls()
+      await refreshAuth()
+      setRunStatus("Settings saved")
+    })
+    return false
+  }
   if (event.name === "tab.changed") void refreshTab()
   if (event.name === "operation.progress" && event.payload) {
     setRunStatus(
@@ -1029,8 +1055,6 @@ if (!isSettingsTab) {
     void run(async () => {
       await runtime.syncSettings()
       applyFontFamily(runtime.appSettings.fontFamily)
-      syncModelControls()
-      await refreshAuth()
       setRunStatus("Settings saved")
     })
   })

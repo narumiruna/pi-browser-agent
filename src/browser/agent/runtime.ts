@@ -139,7 +139,8 @@ export class BrowserAgentRuntime {
       if (event.type === "message_end") await this.persist("running")
       if (event.type === "agent_end") {
         await this.persist(this.closing ? "interrupted" : "idle")
-        if (!this.closing && this.pendingSettingsModel) await this.syncSettings()
+        if (!this.closing && this.pendingSettingsModel)
+          await this.syncSettings({ applyModelToActiveSession: true })
       }
     })
   }
@@ -203,8 +204,12 @@ export class BrowserAgentRuntime {
     await saveSettings(this.settings)
   }
 
-  async syncSettings(): Promise<void> {
+  async syncSettings(options: { applyModelToActiveSession?: boolean } = {}): Promise<void> {
     this.settings = await getSettings()
+    if (this.settings.modelProvider === "radius") {
+      await this.models.refresh({ providers: ["radius"] })
+    }
+    if (!options.applyModelToActiveSession) return
     if (this.agent.state.isStreaming) {
       this.pendingSettingsModel = true
       return

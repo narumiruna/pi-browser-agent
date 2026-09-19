@@ -451,6 +451,8 @@ test("synchronizes provider controls when a new session restores the latest mode
   const settingsTabClosed = settingsTab.waitForEvent("close")
   await settingsTab.locator("#save-settings").click()
   await settingsTabClosed
+  await expect(controller.locator("#provider")).toHaveValue("anthropic")
+  await expect(controller.locator("#model")).toHaveValue(anthropicModelId)
 
   await sessionSelect.selectOption(initialSessionId)
   await expect(controller.locator("#provider")).toHaveValue("openai-codex")

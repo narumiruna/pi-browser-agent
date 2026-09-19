@@ -160,13 +160,75 @@ describe("browser agent session persistence", () => {
       modelProvider: anthropic.provider,
       modelId: anthropic.id,
     })
-    await runtime.syncSettings()
+    await runtime.syncSettings({ applyModelToActiveSession: true })
 
     expect(runtime.appSettings.fontFamily).toBe("serif")
     expect(runtime.model).toMatchObject({ provider: "anthropic", id: anthropic.id })
     expect(runtime.activeSession.model).toMatchObject({ provider: "anthropic", id: anthropic.id })
     await expect(runtime.sessions.get(runtime.activeSession.id)).resolves.toMatchObject({
       model: { provider: "anthropic", id: anthropic.id },
+    })
+    await runtime.shutdown()
+  })
+
+  test("keeps synchronized model changes scoped to the Settings opener", async () => {
+    const locks = new FakeLockManager() as unknown as LockManager
+    const opener = createRuntime(locks)
+    await opener.initialize()
+    const other = createRuntime(locks)
+    await other.initialize()
+    const settingsRuntime = createRuntime(locks)
+    await settingsRuntime.initializeSettings()
+    const anthropic = settingsRuntime.getModels("anthropic")[0]
+    if (!anthropic) throw new Error("Anthropic test model unavailable")
+    const otherSessionId = other.activeSession.id
+
+    await settingsRuntime.updateSettings({
+      ...settingsRuntime.appSettings,
+      modelProvider: anthropic.provider,
+      modelId: anthropic.id,
+    })
+    await opener.syncSettings({ applyModelToActiveSession: true })
+    await other.syncSettings()
+
+    expect(opener.model).toMatchObject({ provider: "anthropic", id: anthropic.id })
+    expect(other.model.provider).toBe("openai-codex")
+    expect(other.activeSession.model.provider).toBe("openai-codex")
+    await expect(other.sessions.get(otherSessionId)).resolves.toMatchObject({
+      model: { provider: "openai-codex" },
+    })
+    expect(other.appSettings).toMatchObject({
+      modelProvider: anthropic.provider,
+      modelId: anthropic.id,
+    })
+
+    await other.newSession()
+    expect(other.model).toMatchObject({ provider: anthropic.provider, id: anthropic.id })
+    await opener.shutdown()
+    await other.shutdown()
+  })
+
+  test("refreshes Radius before resolving synchronized settings", async () => {
+    const locks = new FakeLockManager() as unknown as LockManager
+    const runtime = createRuntime(locks)
+    await runtime.initialize()
+    const settingsRuntime = createRuntime(locks)
+    await settingsRuntime.initializeSettings()
+    const refresh = vi
+      .spyOn(runtime.models, "refresh")
+      .mockResolvedValue({ aborted: false, errors: new Map() })
+
+    await settingsRuntime.updateSettings({
+      ...settingsRuntime.appSettings,
+      modelProvider: "radius",
+      modelId: "dynamic-radius-model",
+    })
+    await runtime.syncSettings()
+
+    expect(refresh).toHaveBeenCalledWith({ providers: ["radius"] })
+    expect(runtime.appSettings).toMatchObject({
+      modelProvider: "radius",
+      modelId: "dynamic-radius-model",
     })
     await runtime.shutdown()
   })
