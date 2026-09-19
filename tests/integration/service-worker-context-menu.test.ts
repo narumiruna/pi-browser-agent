@@ -169,7 +169,7 @@ describe("service worker visible-tab targeting", () => {
       ok: false,
       error: {
         code: "CONFIRMATION_REQUIRED",
-        message: expect.stringContaining("sent to OpenAI"),
+        message: expect.stringContaining("sent to the selected model provider"),
       },
     })
     expect(searchBookmarks).not.toHaveBeenCalled()

@@ -1,6 +1,6 @@
 import { readdir, readFile, stat } from "node:fs/promises"
 import { join, relative, resolve } from "node:path"
-import { NODE_BUILTIN_IMPORT } from "../tooling/node-builtins.mjs"
+import { containsNodeBuiltinImport } from "../tooling/node-builtins.mjs"
 
 const root = resolve(process.env.PI_CHROME_ARTIFACT_ROOT ?? "dist/chrome")
 const files = []
@@ -19,8 +19,8 @@ const failures = []
 for (const path of files) {
   const name = relative(root, path)
   const contents = await readFile(path, "utf8").catch(() => "")
+  if (containsNodeBuiltinImport(contents)) failures.push(`${name}: Node built-in import`)
   const checks = [
-    [NODE_BUILTIN_IMPORT, "Node built-in import"],
     [/(?:ws|wss):\/\/(?:127\.0\.0\.1|localhost)|127\.0\.0\.1:17373/, "localhost bridge URL"],
     [/<script[^>]+src=["']https?:\/\//i, "remote executable script"],
     [/\.bookmarks\.(?:create|move|remove|removeTree|update)\s*\(/, "bookmark mutation call"],

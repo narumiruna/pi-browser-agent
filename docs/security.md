@@ -4,13 +4,13 @@
 
 Trusted extension contexts are the Side Panel and MV3 service worker. Web pages, injected page results, bookmark titles and URLs, model output, WebMCP definitions, and WebMCP results are untrusted.
 
-`chrome.storage.local` is restricted to `TRUSTED_CONTEXTS`. OAuth values never enter runtime messages, the service worker, injected functions, model messages, tool results, IndexedDB sessions, or logs. Diagnostic strings pass through credential redaction.
+`chrome.storage.local` is restricted to `TRUSTED_CONTEXTS`. API keys and OAuth values never enter runtime messages, the service worker, injected functions, model messages, tool results, IndexedDB sessions, or logs. Diagnostic strings pass through credential redaction.
 
 ## Authentication
 
-OpenAI access requires an explicit **Log in** gesture before Chrome requests the two provider origins. The device flow validates response shapes and the ChatGPT account claim. Polling handles pending, slowdown, denial, local or server expiry, and cancellation. Automatic refresh runs inside the credential store's serialized provider mutation, and a rotated refresh token replaces the old credential in one storage write.
+Provider setup requires an explicit user gesture. API-key prompts are provider-owned, and Pi Chrome stores their result under only that provider ID. OpenAI Codex login requests its two authentication origins and validates device-flow response shapes and the ChatGPT account claim. Polling handles pending, slowdown, denial, local or server expiry, and cancellation. Automatic refresh runs inside the credential store's serialized provider mutation, and a rotated refresh token replaces the old credential in one storage write.
 
-Logout first aborts the agent, waits for it to become idle, then removes persistent credentials. Requests cannot silently switch providers or hosts after auth failure.
+Credential removal first aborts the agent, waits for it to become idle, then removes only the selected provider credential. Before each run, Chrome asks for the selected model endpoint's exact origin. Requests cannot silently switch providers or hosts after auth failure.
 
 ## Current-tab controls
 
@@ -32,7 +32,7 @@ Mutation tools declare `replay: "never"` and execute sequentially. Interrupted s
 - Every bookmark search or recent-item read requires a fresh operation-specific confirmation. If permission is missing, only that Confirm-button gesture can request it.
 - The worker rejects bookmark requests carrying a page `TabContext`, rechecks permission before each read, and does not retry after revocation.
 - Production code calls only `chrome.bookmarks.search()` and `chrome.bookmarks.getRecent()`; runtime validation exposes no write or whole-tree method, and the artifact audit rejects bookmark mutation calls.
-- Confirmation explains that returned bookmark titles and URLs are sent to OpenAI and saved in the session. This limits prompt-injection-driven disclosure to a user-approved query and bounded result.
+- Confirmation explains that returned bookmark titles and URLs are sent to the selected model provider and saved in the session. This limits prompt-injection-driven disclosure to a user-approved query and bounded result.
 - The permission can be revoked from Chrome's extension settings. Chrome's permission itself covers the broader bookmarks API even though Pi Chrome implements reads only.
 
 Bookmark tools declare `replay: "never"` and execute sequentially so a resumed or parallel run cannot silently reuse one confirmation.
@@ -43,13 +43,14 @@ Visible page text, selection, screenshot metadata, tab metadata, bookmark data, 
 
 ## Build boundary
 
-The production build includes `pi-agent-core`, selected `pi-ai` provider code, and browser-owned OAuth. It excludes native processes, shell tools, filesystem discovery, dynamic remote code, and Node OAuth callback modules. `npm run audit:artifact` rejects executable Node built-in imports, loopback transport URLs, remote scripts, source maps, embedded credential patterns, bookmark mutation calls, and unexpected required, optional, or host permissions.
+The production build includes `pi-agent-core`, browser-compatible built-in `pi-ai` provider code, and browser-owned Codex OAuth. It excludes Amazon Bedrock's Node-only adapter, native processes, shell tools, filesystem discovery, dynamic remote code, and Node OAuth callback modules. The browser-boundary probe bundles all registered providers and their lazy API paths. `npm run audit:artifact` parses emitted JavaScript and rejects executable Node built-in imports while ignoring documentation strings, and also rejects loopback transport URLs, remote scripts, source maps, embedded credential patterns, bookmark mutation calls, and unexpected required, optional, or host permissions.
 
 `npm audit --omit=dev` is clean. A full development-dependency audit reports four high-severity denial-of-service advisories through Extension.js → Less → `image-size`. These parsers are not shipped in the Chrome artifact, and the build does not process untrusted Less input. The available forced fix downgrades Extension.js across a breaking boundary, so the development-only advisory is accepted until the toolchain updates its dependency.
 
 ## Residual risks
 
-- Codex subscription endpoints can change independently of this extension.
+- Provider APIs and catalogs can change independently of this extension, and an endpoint may decline extension-origin requests even after Chrome grants host access.
+- The complete static model catalog increases the packaged Side Panel size.
 - Browser-profile credential storage is less protected than an OS keychain.
 - Browser or panel termination can interrupt a stream; the last complete transcript remains recoverable, but partial content is not treated as complete.
 - Page confirmation describes an intended action, but the page can still change between inspection and execution. Link targets are rechecked immediately before controlled navigation.

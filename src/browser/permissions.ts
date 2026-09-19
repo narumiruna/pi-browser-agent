@@ -21,5 +21,11 @@ export async function hasHostPermission(value: string | URL): Promise<boolean> {
 }
 
 export async function requestHostPermission(value: string | URL): Promise<boolean> {
-  return chrome.permissions.request({ origins: [toHostPermissionPattern(value)] })
+  return requestHostPermissions([value])
+}
+
+export async function requestHostPermissions(values: readonly (string | URL)[]): Promise<boolean> {
+  const origins = [...new Set(values.map(toHostPermissionPattern))]
+  if (origins.length === 0) return true
+  return chrome.permissions.request({ origins })
 }

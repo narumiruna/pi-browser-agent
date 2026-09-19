@@ -14,7 +14,12 @@ describe("Node built-in import detection", () => {
     expect(containsNodeBuiltinImport(source)).toBe(true)
   })
 
-  test("does not reject ordinary browser imports", () => {
+  test("does not reject ordinary browser imports or documentation inside strings", () => {
     expect(containsNodeBuiltinImport('import value from "./browser.js"')).toBe(false)
+    expect(
+      containsNodeBuiltinImport(
+        'throw new Error("Set globalThis.File to `import(\\"node:buffer\\").File`")',
+      ),
+    ).toBe(false)
   })
 })

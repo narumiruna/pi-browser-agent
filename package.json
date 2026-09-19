@@ -1,13 +1,13 @@
 {
   "name": "pi-chrome",
   "version": "0.1.0",
-  "description": "A Chrome-native Codex assistant with bounded browser tools",
+  "description": "A Chrome-native AI assistant with bounded browser tools",
   "type": "module",
   "private": true,
   "keywords": [
     "chrome-extension",
     "browser-automation",
-    "codex"
+    "ai-assistant"
   ],
   "repository": {
     "type": "git",
@@ -37,6 +37,7 @@
     "@playwright/test": "^1.63.0",
     "@types/chrome": "^0.2.9",
     "@types/node": "^26.5.1",
+    "acorn": "^8.18.0",
     "esbuild": "^0.28.1",
     "extension": "^4.1.19",
     "fake-indexeddb": "^6.2.5",

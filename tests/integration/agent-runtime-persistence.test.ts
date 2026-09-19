@@ -136,6 +136,22 @@ describe("browser agent session persistence", () => {
     await runtime.shutdown()
   })
 
+  test("persists a selected pi-ai provider and model in the active session", async () => {
+    const runtime = createRuntime(new FakeLockManager() as unknown as LockManager)
+    await runtime.initialize()
+    const anthropic = runtime.getModels("anthropic")[0]
+    if (!anthropic) throw new Error("Anthropic test model unavailable")
+
+    await runtime.selectModel(anthropic.provider, anthropic.id)
+
+    expect(runtime.model).toMatchObject({ provider: "anthropic", id: anthropic.id })
+    expect(runtime.activeSession.model).toMatchObject({ provider: "anthropic", id: anthropic.id })
+    await expect(runtime.sessions.get(runtime.activeSession.id)).resolves.toMatchObject({
+      model: { provider: "anthropic", id: anthropic.id },
+    })
+    await runtime.shutdown()
+  })
+
   test("gives concurrent Side Panels distinct live sessions", async () => {
     const locks = new FakeLockManager() as unknown as LockManager
     const first = createRuntime(locks)

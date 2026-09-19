@@ -151,7 +151,7 @@ async function pastePngIntoComposer(): Promise<void> {
 
 async function gateNextSubmissionPreflight(): Promise<void> {
   await controller.evaluate(() => {
-    const originalContains = chrome.permissions.contains.bind(chrome.permissions)
+    const originalRequest = chrome.permissions.request.bind(chrome.permissions)
     let markEntered: () => void = () => undefined
     let release: () => void = () => undefined
     const entered = new Promise<void>((resolve) => {
@@ -160,12 +160,12 @@ async function gateNextSubmissionPreflight(): Promise<void> {
     const gate = new Promise<void>((resolve) => {
       release = resolve
     })
-    chrome.permissions.contains = (async (permissions) => {
+    chrome.permissions.request = (async (permissions) => {
       markEntered()
       await gate
-      chrome.permissions.contains = originalContains
-      return originalContains(permissions)
-    }) as typeof chrome.permissions.contains
+      chrome.permissions.request = originalRequest
+      return originalRequest(permissions)
+    }) as typeof chrome.permissions.request
     ;(
       window as typeof window & {
         submissionGate?: { entered: Promise<void>; release: () => void }
@@ -564,7 +564,7 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
     { access: `e30.${fakePayload}.signature`, expires: Date.now() + 3_600_000 },
   )
   await controller.reload()
-  await expect(controller.locator("#auth-status")).toContainText("OpenAI connected")
+  await expect(controller.locator("#auth-status")).toContainText("OpenAI Codex configured")
 
   const codexUrl = "https://chatgpt.com/backend-api/codex/responses"
   let markFirstRequestStarted: () => void = () => undefined
@@ -711,7 +711,9 @@ test("confirms and returns bounded bookmark data through a mocked model call", a
   await controller.locator("#prompt").fill("Find the test bookmark")
   await controller.locator("#send").click()
   await expect(controller.locator("#confirm-dialog")).toBeVisible()
-  await expect(controller.locator("#confirm-message")).toContainText("sent to OpenAI")
+  await expect(controller.locator("#confirm-message")).toContainText(
+    "sent to the selected model provider",
+  )
   await expect(controller.locator("#confirm-message")).toContainText("pichromebookmarkneedle")
   await controller.locator('#confirm-dialog button[value="confirm"]').click()
 
