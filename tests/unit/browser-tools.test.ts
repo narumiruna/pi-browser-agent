@@ -1,6 +1,7 @@
 import { Value } from "typebox/value"
 import { afterEach, describe, expect, test, vi } from "vitest"
 import { createBrowserTools } from "../../src/browser/agent/browser-tools.js"
+import { MAX_TEXT_RESULT_BYTES } from "../../src/browser/runtime/types.js"
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -43,6 +44,31 @@ describe("browser agent tools", () => {
         executionMode: "sequential",
       })
     }
+  })
+
+  test("caps the final formatted bookmark text after JSON escaping", async () => {
+    const sendMessage = vi.fn(async () => ({
+      ok: true,
+      result: {
+        text: `{"title":"${'\\"'.repeat(MAX_TEXT_RESULT_BYTES)}"}`,
+        truncated: true,
+      },
+    }))
+    vi.stubGlobal("chrome", { runtime: { sendMessage } })
+    vi.stubGlobal("crypto", { randomUUID: vi.fn(() => "request-id") })
+    const tool = createBrowserTools(vi.fn()).find(
+      (candidate) => candidate.name === "browser_search_bookmarks",
+    )
+    if (!tool) throw new Error("Missing bookmark search tool")
+
+    const result = await tool.execute("tool-id", { query: "large" }, undefined)
+    const content = result.content[0]
+    if (content?.type !== "text") throw new Error("Missing bookmark text result")
+
+    expect(new TextEncoder().encode(content.text).byteLength).toBeLessThanOrEqual(
+      MAX_TEXT_RESULT_BYTES,
+    )
+    expect(content.text).toMatch(/\[truncated\]$/)
   })
 
   test("confirms bookmark reads without requesting active-tab state", async () => {
