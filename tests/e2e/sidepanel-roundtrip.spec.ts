@@ -57,6 +57,7 @@ let panelPath: string
 let profileDirectory: string
 let savedSessionId: string
 let controllerErrors: string[]
+let testBookmarkIds: string[]
 let tabContext: { tabId: number; url: string; epoch: number }
 
 function sseResponse(item: Record<string, unknown>, index: number): string {
@@ -206,6 +207,10 @@ test.beforeAll(async () => {
   const manifestPath = join(extensionPath, "manifest.json")
   const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as Record<string, unknown>
   manifest.host_permissions = ["<all_urls>"]
+  manifest.permissions = [...((manifest.permissions as string[] | undefined) ?? []), "bookmarks"]
+  manifest.optional_permissions = (
+    (manifest.optional_permissions as string[] | undefined) ?? []
+  ).filter((permission) => permission !== "bookmarks")
   await writeFile(manifestPath, JSON.stringify(manifest))
 
   context = await chromium.launchPersistentContext(profileDirectory, {
@@ -225,6 +230,19 @@ test.beforeAll(async () => {
   }
   panelPath = builtManifest.side_panel?.default_path ?? "sidepanel/index.html"
   await controller.goto(`chrome-extension://${extensionId}/${panelPath}`)
+  testBookmarkIds = await controller.evaluate(async () => {
+    const bookmarks = await Promise.all([
+      chrome.bookmarks.create({
+        title: "Pi Chrome pichromebookmarkneedle",
+        url: "https://bookmark.example.test/matching",
+      }),
+      chrome.bookmarks.create({
+        title: "Private unrelated bookmark",
+        url: "https://bookmark.example.test/private",
+      }),
+    ])
+    return bookmarks.map((bookmark) => bookmark.id)
+  })
   const fixtureTabId = await controller.evaluate(async (fixtureUrl) => {
     const tabs = await chrome.tabs.query({})
     const tab = tabs.find((candidate) => candidate.url?.startsWith(fixtureUrl))
@@ -237,6 +255,14 @@ test.beforeAll(async () => {
 })
 
 test.afterAll(async () => {
+  if (!controller?.isClosed() && testBookmarkIds?.length > 0) {
+    await controller
+      .evaluate(
+        async (ids) => Promise.all(ids.map((id) => chrome.bookmarks.remove(id))),
+        testBookmarkIds,
+      )
+      .catch(() => undefined)
+  }
   await context?.close()
   await new Promise<void>((resolvePromise, reject) =>
     fixture?.server.close((error) => (error ? reject(error) : resolvePromise())),
@@ -545,6 +571,115 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
   await page.goto(`http://127.0.0.1:${fixture.port}/`)
   await page.bringToFront()
   tabContext = await waitForCurrentTab(`http://127.0.0.1:${fixture.port}/`)
+})
+
+test("confirms and returns bounded bookmark data through a mocked model call", async () => {
+  const codexUrl = "https://chatgpt.com/backend-api/codex/responses"
+  const responses = [
+    toolCall(20, "browser_search_bookmarks", {
+      query: "pichromebookmarkneedle",
+      limit: 10,
+    }),
+    finalText(21, "Bookmark lookup complete."),
+  ]
+  let requestCount = 0
+  await context.route(codexUrl, async (route) => {
+    const body = route.request().postDataJSON() as { tools?: Array<{ name?: string }> }
+    expect(body.tools?.map((tool) => tool.name)).toContain("browser_search_bookmarks")
+    const response = responses[requestCount]
+    requestCount += 1
+    if (!response) throw new Error(`Unexpected bookmark Codex request ${requestCount}`)
+    await route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      headers: { "cache-control": "no-cache" },
+      body: response,
+    })
+  })
+
+  await controller.locator("#prompt").fill("Find the test bookmark")
+  await controller.locator("#send").click()
+  await expect(controller.locator("#confirm-dialog")).toBeVisible()
+  await expect(controller.locator("#confirm-message")).toContainText("sent to OpenAI")
+  await expect(controller.locator("#confirm-message")).toContainText("pichromebookmarkneedle")
+  await controller.locator('#confirm-dialog button[value="confirm"]').click()
+
+  await expect(controller.locator("#transcript")).toContainText("Bookmark lookup complete.")
+  await expect(controller.locator("#transcript")).toContainText("Untrusted browser bookmark data")
+  await expect(controller.locator("#transcript")).toContainText("Pi Chrome pichromebookmarkneedle")
+  await expect(controller.locator("#transcript")).not.toContainText("Private unrelated bookmark")
+  expect(requestCount).toBe(responses.length)
+  const bookmarks = await controller.evaluate(
+    async (ids) => chrome.bookmarks.get(ids as [string, ...string[]]),
+    testBookmarkIds,
+  )
+  expect(bookmarks).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        id: testBookmarkIds[0],
+        title: "Pi Chrome pichromebookmarkneedle",
+        url: "https://bookmark.example.test/matching",
+      }),
+      expect.objectContaining({
+        id: testBookmarkIds[1],
+        title: "Private unrelated bookmark",
+        url: "https://bookmark.example.test/private",
+      }),
+    ]),
+  )
+  await context.unroute(codexUrl)
+})
+
+test("shows permission denial inside the open confirmation dialog", async () => {
+  const codexUrl = "https://chatgpt.com/backend-api/codex/responses"
+  const responses = [
+    toolCall(22, "browser_navigate", { url: "https://denied.example.test/" }),
+    finalText(23, "Denied navigation handled."),
+  ]
+  let requestCount = 0
+  await context.route(codexUrl, async (route) => {
+    const response = responses[requestCount]
+    requestCount += 1
+    if (!response) throw new Error(`Unexpected permission-denial Codex request ${requestCount}`)
+    await route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      headers: { "cache-control": "no-cache" },
+      body: response,
+    })
+  })
+
+  await controller.locator("#prompt").fill("Try a denied cross-origin navigation")
+  await controller.locator("#send").click()
+  await expect(controller.locator("#confirm-dialog")).toBeVisible()
+  await controller.evaluate(() => {
+    const state = window as typeof window & {
+      restorePermissionsRequest?: typeof chrome.permissions.request
+    }
+    state.restorePermissionsRequest = chrome.permissions.request.bind(chrome.permissions)
+    chrome.permissions.request = (async () => false) as typeof chrome.permissions.request
+  })
+  try {
+    await controller.locator('#confirm-dialog button[value="confirm"]').click()
+    await expect(controller.locator("#confirm-dialog")).toBeVisible()
+    await expect(controller.locator("#confirm-dialog #confirm-error")).toHaveText(
+      "Site access is required for that destination",
+    )
+  } finally {
+    await controller.evaluate(() => {
+      const state = window as typeof window & {
+        restorePermissionsRequest?: typeof chrome.permissions.request
+      }
+      if (state.restorePermissionsRequest) {
+        chrome.permissions.request = state.restorePermissionsRequest
+        delete state.restorePermissionsRequest
+      }
+    })
+  }
+  await controller.locator('#confirm-dialog button[value="cancel"]').click()
+  await expect(controller.locator("#transcript")).toContainText("Denied navigation handled.")
+  expect(requestCount).toBe(responses.length)
+  await context.unroute(codexUrl)
 })
 
 test("round-trips read, selection, screenshot, click, and type through the Side Panel path", async () => {

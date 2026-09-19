@@ -2,7 +2,7 @@ import { readdir, readFile, stat } from "node:fs/promises"
 import { join, relative, resolve } from "node:path"
 import { NODE_BUILTIN_IMPORT } from "../tooling/node-builtins.mjs"
 
-const root = resolve("dist/chrome")
+const root = resolve(process.env.PI_CHROME_ARTIFACT_ROOT ?? "dist/chrome")
 const files = []
 async function walk(directory) {
   for (const name of await readdir(directory)) {
@@ -23,6 +23,7 @@ for (const path of files) {
     [NODE_BUILTIN_IMPORT, "Node built-in import"],
     [/(?:ws|wss):\/\/(?:127\.0\.0\.1|localhost)|127\.0\.0\.1:17373/, "localhost bridge URL"],
     [/<script[^>]+src=["']https?:\/\//i, "remote executable script"],
+    [/\.bookmarks\.(?:create|move|remove|removeTree|update)\s*\(/, "bookmark mutation call"],
     [
       /(?:access_token|refresh_token)["']?\s*[:=]\s*["'][A-Za-z0-9._-]{20,}/i,
       "embedded credential",
@@ -58,6 +59,7 @@ const expectedPermissions = [
   "storage",
   "tabs",
 ]
+const expectedOptionalPermissions = ["bookmarks"]
 const expectedOrigins = [
   "https://auth.openai.com/*",
   "https://chatgpt.com/*",
@@ -67,6 +69,16 @@ const expectedOrigins = [
 for (const permission of manifest.permissions ?? []) {
   if (!expectedPermissions.includes(permission))
     failures.push(`manifest.json: unexpected permission ${permission}`)
+}
+for (const permission of manifest.optional_permissions ?? []) {
+  if (!expectedOptionalPermissions.includes(permission)) {
+    failures.push(`manifest.json: unexpected optional permission ${permission}`)
+  }
+}
+for (const permission of expectedOptionalPermissions) {
+  if (!(manifest.optional_permissions ?? []).includes(permission)) {
+    failures.push(`manifest.json: missing optional permission ${permission}`)
+  }
 }
 for (const origin of manifest.optional_host_permissions ?? []) {
   if (!expectedOrigins.includes(origin))

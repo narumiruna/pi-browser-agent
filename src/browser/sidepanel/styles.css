@@ -775,6 +775,15 @@ dialog p {
   white-space: pre-wrap;
 }
 
+#confirm-error {
+  color: var(--danger);
+  font-size: 0.875rem;
+}
+
+#confirm-error:empty {
+  display: none;
+}
+
 .dialog-actions {
   justify-content: flex-end;
   margin-top: 16px;

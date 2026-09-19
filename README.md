@@ -1,6 +1,6 @@
 # Pi Chrome
 
-Pi Chrome is a Chrome-native Codex assistant. The Side Panel runs `pi-agent-core` and `pi-ai`, signs in with a ChatGPT Plus/Pro device code, and exposes bounded tools for the active HTTP(S) tab in the focused Chrome window.
+Pi Chrome is a Chrome-native Codex assistant. The Side Panel runs `pi-agent-core` and `pi-ai`, signs in with a ChatGPT Plus/Pro device code, and exposes bounded tools for the active HTTP(S) tab in the focused Chrome window. With separate approval, it can also search or inspect recent Chrome bookmarks.
 
 No local agent process, native host, shell, filesystem access, pairing secret, or loopback connection is required.
 
@@ -33,6 +33,7 @@ Load the production artifact:
 4. Enter a prompt. Pi Chrome requests access to that site when needed.
 5. To include an image, paste it into the composer, review the preview, and send it with optional text.
 6. To dictate a prompt, select the microphone, speak, then select it again before reviewing and sending the transcript.
+7. When Pi requests a bookmark read, review the requested search or recent-item limit and confirm it. Chrome asks for the optional bookmark permission the first time.
 
 Voice input uses Chrome's Web Speech service in the browser language. Spoken audio may be processed by the browser's speech provider; only the resulting editable transcript is submitted to Pi when you select **Send**. The model transport is always SSE. Closing the Side Panel aborts the active run and marks the session interrupted; reopening never automatically repeats a browser mutation.
 
@@ -45,12 +46,14 @@ The agent can read visible text and selection, capture the visible viewport, cli
 - A request created before navigation or a visible-tab change is rejected as stale.
 - Visible text and selected text are capped at 50 KB; screenshots are capped at 3 MB.
 - A message accepts up to four pasted PNG, JPEG, WebP, or GIF images using at most 3 MB in total.
-- Page text, selections, screenshot metadata, and WebMCP results are labeled as untrusted model input.
+- Page text, selections, screenshot metadata, bookmark data, and WebMCP results are labeled as untrusted model input.
+- Bookmark access is optional and absent by default. Every search or recent-bookmark read requires confirmation, returns at most 50 items and 50 KB, and sends the returned titles and URLs to OpenAI as part of the conversation.
+- Chrome's bookmark permission covers reads and writes, but Pi Chrome exposes only search and recent-read operations; the production artifact audit rejects bookmark mutation calls.
 - Credentials stay in trusted extension storage and are never sent to the service worker, content injection, page context, transcript, or diagnostic export.
 
 ## Sessions and settings
 
-The Side Panel supports creating, resuming, renaming, and deleting sessions. Complete transcript boundaries are stored in versioned IndexedDB records. Storage keeps at most 50 sessions and limits each record to 5 MB. **Clear all session data** removes transcripts and embedded images.
+The Side Panel supports creating, resuming, renaming, and deleting sessions. Complete transcript boundaries, including confirmed bookmark tool results, are stored in versioned IndexedDB records. Storage keeps at most 50 sessions and limits each record to 5 MB. **Clear all session data** removes transcripts and embedded images.
 
 The system prompt and AGENTS-style instructions are editable in the Side Panel and apply to the next run. The extension does not discover instructions from the local filesystem.
 
@@ -70,6 +73,7 @@ npm audit --omit=dev
 
 - **OpenAI host access was revoked:** select **Log in** again and approve both requested OpenAI origins.
 - **A page tool is denied:** make the intended HTTP(S) page visible and send the prompt again. If access was previously declined, use **Account and site access → Allow current site**. Chrome internal pages cannot be controlled.
+- **A bookmark read is denied:** request it again and approve both Pi Chrome's operation confirmation and Chrome's optional permission prompt. Revoke bookmark access from Chrome's extension settings when it is no longer wanted.
 - **Stale context:** the visible tab changed or navigated after the tool request began. Retry after the Side Panel shows the current URL.
 - **Login pending:** finish the device flow before its 15-minute expiry. Cancel and restart if the code expires or is denied.
 - **Refresh failed:** log out, then complete device login again. The extension does not fall back to another provider.

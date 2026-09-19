@@ -4,7 +4,11 @@ import type { AuthEvent, ImageContent } from "@earendil-works/pi-ai"
 import { BrowserAgentRuntime } from "../agent/runtime.js"
 import { AUTH_ORIGINS } from "../auth/codex-oauth.js"
 import { safeErrorMessage } from "../auth/redaction.js"
-import { requestHostPermission } from "../permissions.js"
+import {
+  BOOKMARKS_PERMISSION,
+  requestBookmarkPermission,
+  requestHostPermission,
+} from "../permissions.js"
 import { type RuntimeEvent, sendRuntimeRequest } from "../runtime/messages.js"
 import type { JsonObject } from "../runtime/types.js"
 import {
@@ -34,6 +38,7 @@ const refreshTokenButton = element<HTMLButtonElement>("refresh-token")
 const sessionSelect = element<HTMLSelectElement>("sessions")
 const confirmDialog = element<HTMLDialogElement>("confirm-dialog")
 const confirmMessage = element<HTMLElement>("confirm-message")
+const confirmError = element<HTMLElement>("confirm-error")
 const confirmActionButton = element<HTMLButtonElement>("confirm-action")
 const loginDialog = element<HTMLDialogElement>("login-dialog")
 const deviceCode = element<HTMLOutputElement>("device-code")
@@ -157,36 +162,53 @@ function confirmation(
   signal?: AbortSignal,
 ): Promise<boolean> {
   confirmMessage.textContent = details ? `${message}\n${JSON.stringify(details, null, 2)}` : message
+  confirmError.textContent = ""
   confirmDialog.showModal()
   return new Promise((resolve) => {
-    const requestDestinationAccess = (event: MouseEvent): void => {
+    let finished = false
+    const requestRequiredAccess = (event: MouseEvent): void => {
       const targetUrl = details?.targetUrl
-      if (typeof targetUrl !== "string") return
-      let destination: URL
-      try {
-        destination = new URL(targetUrl)
-      } catch {
-        return
+      const requiredPermission = details?.requiredPermission
+      let requestAccess: (() => Promise<boolean>) | undefined
+      let denialMessage = "Required browser access was not granted"
+      if (typeof targetUrl === "string") {
+        let destination: URL
+        try {
+          destination = new URL(targetUrl)
+        } catch {
+          return
+        }
+        if (destination.protocol !== "http:" && destination.protocol !== "https:") return
+        requestAccess = () => requestSiteAccess(destination.href)
+        denialMessage = "Site access is required for that destination"
+      } else if (requiredPermission === BOOKMARKS_PERMISSION) {
+        requestAccess = requestBookmarkPermission
+        denialMessage = "Bookmark access is required for this read"
       }
-      if (destination.protocol !== "http:" && destination.protocol !== "https:") return
+      if (!requestAccess) return
       event.preventDefault()
-      void requestSiteAccess(destination.href)
+      void requestAccess()
         .then((granted) => {
+          if (finished || !confirmDialog.open) return
           if (granted) confirmDialog.close("confirm")
-          else setError("Site access is required for that destination")
+          else confirmError.textContent = denialMessage
         })
-        .catch(setError)
+        .catch((error) => {
+          if (!finished && confirmDialog.open) confirmError.textContent = safeErrorMessage(error)
+        })
     }
     const finish = (): void => {
+      if (finished) return
+      finished = true
       signal?.removeEventListener("abort", cancel)
-      confirmActionButton.removeEventListener("click", requestDestinationAccess)
+      confirmActionButton.removeEventListener("click", requestRequiredAccess)
       resolve(confirmDialog.returnValue === "confirm" && !signal?.aborted)
     }
     const cancel = (): void => {
       if (confirmDialog.open) confirmDialog.close("cancel")
       else finish()
     }
-    confirmActionButton.addEventListener("click", requestDestinationAccess)
+    confirmActionButton.addEventListener("click", requestRequiredAccess)
     confirmDialog.addEventListener("close", finish, { once: true })
     signal?.addEventListener("abort", cancel, { once: true })
     if (signal?.aborted) cancel()

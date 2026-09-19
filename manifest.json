@@ -11,6 +11,7 @@
     "128": "icons/icon-128.png"
   },
   "permissions": ["activeTab", "contextMenus", "scripting", "sidePanel", "storage", "tabs"],
+  "optional_permissions": ["bookmarks"],
   "optional_host_permissions": [
     "https://auth.openai.com/*",
     "https://chatgpt.com/*",

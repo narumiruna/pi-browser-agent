@@ -1,3 +1,13 @@
+export const BOOKMARKS_PERMISSION = "bookmarks" as const
+
+export function hasBookmarkPermission(): Promise<boolean> {
+  return chrome.permissions.contains({ permissions: [BOOKMARKS_PERMISSION] })
+}
+
+export function requestBookmarkPermission(): Promise<boolean> {
+  return chrome.permissions.request({ permissions: [BOOKMARKS_PERMISSION] })
+}
+
 export function toHostPermissionPattern(value: string | URL): string {
   const url = typeof value === "string" ? new URL(value) : value
   if (url.protocol !== "http:" && url.protocol !== "https:") {

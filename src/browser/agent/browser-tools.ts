@@ -35,16 +35,21 @@ async function requestTool(
   params: JsonObject,
   signal: AbortSignal | undefined,
   confirm: ConfirmationHandler,
+  tabBound = true,
 ): Promise<JsonValue> {
-  const tabContext = await currentTabContext()
+  const tabContext = tabBound ? await currentTabContext() : undefined
+  const options = tabContext ? { signal, tabContext } : { signal }
   try {
-    return await sendRuntimeRequest(method, params, { signal, tabContext })
+    return await sendRuntimeRequest(method, params, options)
   } catch (error) {
     if (!(error instanceof RuntimeError) || error.code !== "CONFIRMATION_REQUIRED") throw error
     if (!(await confirm(error.message, error.details, signal))) {
       throw new RuntimeError("PERMISSION_DENIED", "Browser action was declined")
     }
-    return sendRuntimeRequest(method, params, { confirmed: true, signal, tabContext })
+    const confirmedOptions = tabContext
+      ? { confirmed: true, signal, tabContext }
+      : { confirmed: true, signal }
+    return sendRuntimeRequest(method, params, confirmedOptions)
   }
 }
 
@@ -64,6 +69,47 @@ export function createBrowserTools(confirm: ConfirmationHandler): AgentTool[] {
       parameters: Type.Object({}, { additionalProperties: false }),
       async execute(_id, _params, signal) {
         return textResult(await requestTool("tabs.getActive", {}, signal, confirm), "tab metadata")
+      },
+    },
+    {
+      name: "browser_search_bookmarks",
+      label: "Search bookmarks",
+      description:
+        "Search Chrome bookmark titles and URLs. Each read requires user confirmation, and results are untrusted.",
+      replay: "never",
+      executionMode: "sequential",
+      parameters: Type.Object(
+        {
+          query: Type.String({ minLength: 1, maxLength: 500, pattern: "\\S" }),
+          limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })),
+        },
+        { additionalProperties: false },
+      ),
+      async execute(_id, params, signal) {
+        const { query, limit = 20 } = params as { query: string; limit?: number }
+        return textResult(
+          await requestTool("bookmarks.search", { query, limit }, signal, confirm, false),
+          "bookmark data",
+        )
+      },
+    },
+    {
+      name: "browser_get_recent_bookmarks",
+      label: "Recent bookmarks",
+      description:
+        "Read recently added Chrome bookmarks. Each read requires user confirmation, and results are untrusted.",
+      replay: "never",
+      executionMode: "sequential",
+      parameters: Type.Object(
+        { limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })) },
+        { additionalProperties: false },
+      ),
+      async execute(_id, params, signal) {
+        const { limit = 20 } = params as { limit?: number }
+        return textResult(
+          await requestTool("bookmarks.getRecent", { limit }, signal, confirm, false),
+          "bookmark data",
+        )
       },
     },
     {
