@@ -13,7 +13,13 @@ import {
 } from "../permissions.js"
 import { type RuntimeEvent, sendRuntimeRequest } from "../runtime/messages.js"
 import type { JsonObject } from "../runtime/types.js"
-import { FONT_FAMILIES, type FontFamily, MAX_FONT_SIZE, MIN_FONT_SIZE } from "../storage.js"
+import {
+  DEFAULT_SETTINGS,
+  FONT_FAMILIES,
+  type FontFamily,
+  MAX_FONT_SIZE,
+  MIN_FONT_SIZE,
+} from "../storage.js"
 import {
   imageContentSource,
   MAX_PASTED_IMAGE_BYTES,
@@ -103,7 +109,7 @@ function selectedFontFamily(): FontFamily {
 
 function selectedFontSize(): number {
   const value = Math.round(Number(fontSizeInput.value))
-  if (!Number.isFinite(value)) return 16
+  if (!Number.isFinite(value)) return DEFAULT_SETTINGS.fontSize
   return Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, value))
 }
 
