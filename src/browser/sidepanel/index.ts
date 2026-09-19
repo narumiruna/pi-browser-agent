@@ -38,6 +38,7 @@ const refreshTokenButton = element<HTMLButtonElement>("refresh-token")
 const sessionSelect = element<HTMLSelectElement>("sessions")
 const confirmDialog = element<HTMLDialogElement>("confirm-dialog")
 const confirmMessage = element<HTMLElement>("confirm-message")
+const confirmError = element<HTMLElement>("confirm-error")
 const confirmActionButton = element<HTMLButtonElement>("confirm-action")
 const loginDialog = element<HTMLDialogElement>("login-dialog")
 const deviceCode = element<HTMLOutputElement>("device-code")
@@ -161,6 +162,7 @@ function confirmation(
   signal?: AbortSignal,
 ): Promise<boolean> {
   confirmMessage.textContent = details ? `${message}\n${JSON.stringify(details, null, 2)}` : message
+  confirmError.textContent = ""
   confirmDialog.showModal()
   return new Promise((resolve) => {
     let finished = false
@@ -189,10 +191,10 @@ function confirmation(
         .then((granted) => {
           if (finished || !confirmDialog.open) return
           if (granted) confirmDialog.close("confirm")
-          else setError(denialMessage)
+          else confirmError.textContent = denialMessage
         })
         .catch((error) => {
-          if (!finished) setError(error)
+          if (!finished && confirmDialog.open) confirmError.textContent = safeErrorMessage(error)
         })
     }
     const finish = (): void => {

@@ -630,6 +630,58 @@ test("confirms and returns bounded bookmark data through a mocked model call", a
   await context.unroute(codexUrl)
 })
 
+test("shows permission denial inside the open confirmation dialog", async () => {
+  const codexUrl = "https://chatgpt.com/backend-api/codex/responses"
+  const responses = [
+    toolCall(22, "browser_navigate", { url: "https://denied.example.test/" }),
+    finalText(23, "Denied navigation handled."),
+  ]
+  let requestCount = 0
+  await context.route(codexUrl, async (route) => {
+    const response = responses[requestCount]
+    requestCount += 1
+    if (!response) throw new Error(`Unexpected permission-denial Codex request ${requestCount}`)
+    await route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      headers: { "cache-control": "no-cache" },
+      body: response,
+    })
+  })
+
+  await controller.locator("#prompt").fill("Try a denied cross-origin navigation")
+  await controller.locator("#send").click()
+  await expect(controller.locator("#confirm-dialog")).toBeVisible()
+  await controller.evaluate(() => {
+    const state = window as typeof window & {
+      restorePermissionsRequest?: typeof chrome.permissions.request
+    }
+    state.restorePermissionsRequest = chrome.permissions.request.bind(chrome.permissions)
+    chrome.permissions.request = (async () => false) as typeof chrome.permissions.request
+  })
+  try {
+    await controller.locator('#confirm-dialog button[value="confirm"]').click()
+    await expect(controller.locator("#confirm-dialog")).toBeVisible()
+    await expect(controller.locator("#confirm-dialog #confirm-error")).toHaveText(
+      "Site access is required for that destination",
+    )
+  } finally {
+    await controller.evaluate(() => {
+      const state = window as typeof window & {
+        restorePermissionsRequest?: typeof chrome.permissions.request
+      }
+      if (state.restorePermissionsRequest) {
+        chrome.permissions.request = state.restorePermissionsRequest
+        delete state.restorePermissionsRequest
+      }
+    })
+  }
+  await controller.locator('#confirm-dialog button[value="cancel"]').click()
+  await expect(controller.locator("#transcript")).toContainText("Denied navigation handled.")
+  expect(requestCount).toBe(responses.length)
+  await context.unroute(codexUrl)
+})
+
 test("round-trips read, selection, screenshot, click, and type through the Side Panel path", async () => {
   const active = await request("tabs.getActive")
   expect(active.title).toBe("Pi Chrome fixture")
