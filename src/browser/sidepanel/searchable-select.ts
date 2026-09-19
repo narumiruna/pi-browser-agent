@@ -152,11 +152,14 @@ export class SearchableSelect {
     const option = this.filteredOptions[index]
     if (!option) return
     const { input, select } = this.elements
+    const changed = select.value !== option.value
     select.value = option.value
     input.value = option.label
     this.close()
-    const EventConstructor = select.ownerDocument.defaultView?.Event ?? Event
-    select.dispatchEvent(new EventConstructor("change", { bubbles: true }))
+    if (changed) {
+      const EventConstructor = select.ownerDocument.defaultView?.Event ?? Event
+      select.dispatchEvent(new EventConstructor("change", { bubbles: true }))
+    }
   }
 
   private setActiveIndex(index: number): void {

@@ -418,7 +418,10 @@ test("opens Settings in a full browser tab and persists the selected interface f
   await expect(configureProvider).toBeEnabled()
   await controller.evaluate(async () => chrome.storage.local.remove("piChromeCredentialsV1"))
 
-  await settingsTab.locator("#model").selectOption(initialModelId)
+  const modelSearch = settingsTab.locator("#model-search")
+  await modelSearch.fill(initialModelId)
+  await modelSearch.press("Enter")
+  await expect(settingsTab.locator("#model")).toHaveValue(initialModelId)
   await expect(voiceButton).toHaveAttribute("aria-pressed", "false")
   expect(
     await controller.evaluate(
