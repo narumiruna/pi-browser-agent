@@ -24,6 +24,22 @@ describe("internal runtime messages", () => {
         params: { windowId: 3 },
       }),
     ).toMatchObject({ method: "selection.takePending", params: { windowId: 3 } })
+    expect(
+      parseRuntimeRequest({
+        kind: "request",
+        requestId: "request-3",
+        method: "bookmarks.search",
+        params: { query: "docs", limit: 20 },
+      }),
+    ).toMatchObject({ method: "bookmarks.search", params: { query: "docs", limit: 20 } })
+    expect(
+      parseRuntimeRequest({
+        kind: "request",
+        requestId: "request-4",
+        method: "bookmarks.getRecent",
+        params: { limit: 5 },
+      }),
+    ).toMatchObject({ method: "bookmarks.getRecent", params: { limit: 5 } })
   })
 
   test.each([
@@ -38,6 +54,31 @@ describe("internal runtime messages", () => {
     },
     { kind: "request", requestId: "", method: "page.type", params: {} },
     { kind: "request", requestId: "1", method: "selection.takePending", params: {} },
+    {
+      kind: "request",
+      requestId: "1",
+      method: "bookmarks.search",
+      params: { query: "   ", limit: 10 },
+    },
+    {
+      kind: "request",
+      requestId: "1",
+      method: "bookmarks.search",
+      params: { query: "docs", limit: 51 },
+    },
+    {
+      kind: "request",
+      requestId: "1",
+      method: "bookmarks.getRecent",
+      params: { limit: 10, extra: true },
+    },
+    {
+      kind: "request",
+      requestId: "1",
+      method: "bookmarks.getRecent",
+      params: { limit: 10 },
+      tabContext: { tabId: 1, url: "https://example.test", epoch: 1 },
+    },
     { kind: "event", name: "tab.changed", payload: {} },
   ])("rejects malformed or unknown message %#", (message) => {
     expect(() => parseRuntimeRequest(message)).toThrow("Malformed or unknown")

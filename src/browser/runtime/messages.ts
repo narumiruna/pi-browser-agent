@@ -4,6 +4,8 @@ export const RUNTIME_METHODS = [
   "app.getState",
   "tabs.getActive",
   "tabs.navigate",
+  "bookmarks.search",
+  "bookmarks.getRecent",
   "selection.takePending",
   "requests.cancel",
   "page.getVisibleText",
@@ -86,6 +88,23 @@ function hasValidParams(method: RuntimeMethod, params: Record<string, unknown>):
         Number.isSafeInteger(params.windowId) &&
         (params.windowId as number) >= 0
       )
+    case "bookmarks.search":
+      return (
+        hasOnlyKeys(params, ["limit", "query"]) &&
+        typeof params.query === "string" &&
+        params.query.trim().length > 0 &&
+        params.query.length <= 500 &&
+        Number.isSafeInteger(params.limit) &&
+        (params.limit as number) >= 1 &&
+        (params.limit as number) <= 50
+      )
+    case "bookmarks.getRecent":
+      return (
+        hasOnlyKeys(params, ["limit"]) &&
+        Number.isSafeInteger(params.limit) &&
+        (params.limit as number) >= 1 &&
+        (params.limit as number) <= 50
+      )
     case "tabs.navigate":
       return (
         hasOnlyKeys(params, ["url"]) &&
@@ -140,6 +159,8 @@ export function parseRuntimeRequest(value: unknown): RuntimeRequest {
     !isRecord(value.params) ||
     !isJsonValue(value.params) ||
     !hasValidParams(value.method as RuntimeMethod, value.params) ||
+    (["bookmarks.search", "bookmarks.getRecent"].includes(value.method) &&
+      value.tabContext !== undefined) ||
     (value.tabContext !== undefined && !isTabContext(value.tabContext)) ||
     (value.confirmed !== undefined && typeof value.confirmed !== "boolean")
   ) {

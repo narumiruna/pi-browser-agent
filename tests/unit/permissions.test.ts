@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, test, vi } from "vitest"
 import {
+  BOOKMARKS_PERMISSION,
+  hasBookmarkPermission,
   hasHostPermission,
+  requestBookmarkPermission,
   requestHostPermission,
   toHostPermissionPattern,
 } from "../../src/browser/permissions.js"
@@ -9,7 +12,18 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe("browser host permissions", () => {
+describe("browser permissions", () => {
+  test("checks and requests only optional bookmark access", async () => {
+    const contains = vi.fn().mockResolvedValue(false)
+    const request = vi.fn().mockResolvedValue(true)
+    vi.stubGlobal("chrome", { permissions: { contains, request } })
+
+    await expect(hasBookmarkPermission()).resolves.toBe(false)
+    await expect(requestBookmarkPermission()).resolves.toBe(true)
+    expect(contains).toHaveBeenCalledWith({ permissions: [BOOKMARKS_PERMISSION] })
+    expect(request).toHaveBeenCalledWith({ permissions: [BOOKMARKS_PERMISSION] })
+  })
+
   test("normalizes HTTP and HTTPS URLs to origin patterns without ports", () => {
     expect(toHostPermissionPattern("http://localhost:3000/path")).toBe("http://localhost/*")
     expect(toHostPermissionPattern("https://example.test:8443/path")).toBe("https://example.test/*")

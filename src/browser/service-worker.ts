@@ -1,6 +1,7 @@
+import { getRecentBookmarks, searchBookmarks } from "./bookmarks.js"
 import { executePageOperation, type PageOperation } from "./content/page-operations.js"
 import { assertTabContext } from "./content/tab-context.js"
-import { hasHostPermission } from "./permissions.js"
+import { BOOKMARKS_PERMISSION, hasBookmarkPermission, hasHostPermission } from "./permissions.js"
 import { parseRuntimeRequest, type RuntimeEvent, type RuntimeRequest } from "./runtime/messages.js"
 import { type JsonValue, RuntimeError, type TabContext, truncateUtf8 } from "./runtime/types.js"
 import {
@@ -358,6 +359,39 @@ async function captureVisible(request: RuntimeRequest): Promise<JsonValue> {
   return { dataUrl, mimeType: "image/png", tabContext: context }
 }
 
+async function runBookmarkRead(
+  operation: "getRecent" | "search",
+  request: RuntimeRequest,
+): Promise<JsonValue> {
+  const permissionGranted = await hasBookmarkPermission().catch(() => false)
+  const limit = request.params.limit
+  if (typeof limit !== "number") {
+    throw new RuntimeError("INVALID_REQUEST", "A bookmark result limit is required")
+  }
+  if (!request.confirmed) {
+    const details: Record<string, JsonValue> = { limit, operation }
+    if (!permissionGranted) details.requiredPermission = BOOKMARKS_PERMISSION
+    if (operation === "search" && typeof request.params.query === "string") {
+      details.query = request.params.query
+    }
+    const subject = operation === "search" ? "matching" : "recent"
+    throw new RuntimeError(
+      "CONFIRMATION_REQUIRED",
+      `Read ${subject} Chrome bookmark titles and URLs? Results will be sent to OpenAI and saved in this session.`,
+      details,
+    )
+  }
+  if (!permissionGranted) {
+    throw new RuntimeError("PERMISSION_DENIED", "Chrome bookmark access is not granted")
+  }
+  if (operation === "getRecent") return getRecentBookmarks(limit)
+  const query = request.params.query
+  if (typeof query !== "string") {
+    throw new RuntimeError("INVALID_REQUEST", "A bookmark search query is required")
+  }
+  return searchBookmarks(query, limit)
+}
+
 async function navigate(request: RuntimeRequest): Promise<JsonValue> {
   const context = await refreshBoundContext()
   assertTabContext(request.tabContext, context)
@@ -403,6 +437,12 @@ async function dispatch(request: RuntimeRequest, signal: AbortSignal): Promise<J
       break
     case "tabs.navigate":
       result = await navigate(request)
+      break
+    case "bookmarks.search":
+      result = truncateStructuredResult(await runBookmarkRead("search", request))
+      break
+    case "bookmarks.getRecent":
+      result = truncateStructuredResult(await runBookmarkRead("getRecent", request))
       break
     case "selection.takePending": {
       const windowId = request.params.windowId

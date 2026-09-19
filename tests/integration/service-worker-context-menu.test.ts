@@ -36,7 +36,24 @@ describe("service worker visible-tab targeting", () => {
     const executeScript = vi.fn()
     const updateTab = vi.fn(async () => activeTab)
     let permissionCheck: Promise<boolean> | undefined
-    const contains = vi.fn(async () => permissionCheck ?? true)
+    let bookmarkPermission = true
+    const contains = vi.fn(async (requested: { permissions?: string[] }) =>
+      requested.permissions?.includes("bookmarks") ? bookmarkPermission : (permissionCheck ?? true),
+    )
+    const searchBookmarks = vi.fn(async () => [
+      {
+        id: "bookmark-1",
+        title: "Service worker bookmark",
+        url: "https://bookmark.test",
+      },
+    ])
+    const getRecentBookmarks = vi.fn(async () => [
+      {
+        id: "bookmark-2",
+        title: "Recent bookmark",
+        url: "https://recent.test",
+      },
+    ])
     let focusedWindowId = 3
     let delayedWindowLookup: Promise<void> | undefined
     const getWindow = vi.fn(async (windowId: number) => {
@@ -67,6 +84,7 @@ describe("service worker visible-tab targeting", () => {
         },
       },
       permissions: { contains },
+      bookmarks: { search: searchBookmarks, getRecent: getRecentBookmarks },
       runtime: {
         id: "test-extension",
         onInstalled: {
@@ -133,6 +151,83 @@ describe("service worker visible-tab targeting", () => {
       ok: true,
       result: { tabContext: { tabId: 1, url: "https://old.test/page" } },
     })
+
+    const bookmarkRequest = (
+      requestId: string,
+      method: "bookmarks.getRecent" | "bookmarks.search",
+      params: Record<string, unknown>,
+      confirmed = false,
+    ): Promise<unknown> =>
+      request({ kind: "request", requestId, method, params, ...(confirmed ? { confirmed } : {}) })
+
+    await expect(
+      bookmarkRequest("bookmark-confirmation", "bookmarks.search", {
+        query: "service worker",
+        limit: 10,
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: {
+        code: "CONFIRMATION_REQUIRED",
+        message: expect.stringContaining("sent to OpenAI"),
+      },
+    })
+    expect(searchBookmarks).not.toHaveBeenCalled()
+    await expect(
+      bookmarkRequest(
+        "bookmark-search",
+        "bookmarks.search",
+        { query: "service worker", limit: 10 },
+        true,
+      ),
+    ).resolves.toMatchObject({
+      ok: true,
+      result: {
+        items: [{ title: "Service worker bookmark" }],
+        truncated: false,
+      },
+    })
+    expect(searchBookmarks).toHaveBeenCalledWith("service worker")
+    searchBookmarks.mockResolvedValueOnce([
+      {
+        id: "bookmark-large",
+        title: "x".repeat(60 * 1024),
+        url: "https://large.test",
+      },
+    ])
+    await expect(
+      bookmarkRequest(
+        "bookmark-byte-limit",
+        "bookmarks.search",
+        { query: "large", limit: 10 },
+        true,
+      ),
+    ).resolves.toMatchObject({
+      ok: true,
+      result: { text: expect.stringContaining("[truncated]"), truncated: true },
+    })
+    await expect(
+      bookmarkRequest("bookmark-recent", "bookmarks.getRecent", { limit: 10 }, true),
+    ).resolves.toMatchObject({
+      ok: true,
+      result: { items: [{ title: "Recent bookmark" }] },
+    })
+    expect(getRecentBookmarks).toHaveBeenCalledWith(11)
+
+    bookmarkPermission = false
+    await expect(
+      bookmarkRequest("bookmark-needs-permission", "bookmarks.getRecent", { limit: 10 }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: {
+        code: "CONFIRMATION_REQUIRED",
+        details: { requiredPermission: "bookmarks" },
+      },
+    })
+    await expect(
+      bookmarkRequest("bookmark-denied", "bookmarks.getRecent", { limit: 10 }, true),
+    ).resolves.toMatchObject({ ok: false, error: { code: "PERMISSION_DENIED" } })
+    bookmarkPermission = true
 
     activeTab = { id: 7, url: "https://example.test/page", windowId: 3 }
     listeners.activated?.({ tabId: 7, windowId: 3 })
