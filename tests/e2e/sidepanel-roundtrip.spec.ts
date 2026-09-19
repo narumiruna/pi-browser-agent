@@ -459,18 +459,28 @@ test("synchronizes provider controls when a new session restores the latest mode
   const restoredSessionSettingsTab = await openSettingsTab()
   await expect(restoredSessionSettingsTab.locator("#provider")).toHaveValue("openai-codex")
   await expect(restoredSessionSettingsTab.locator("#model")).toHaveValue("gpt-5.6-terra")
-  const restoredSessionSettingsTabClosed = restoredSessionSettingsTab.waitForEvent("close")
-  await restoredSessionSettingsTab.locator("#cancel-settings").click()
-  await restoredSessionSettingsTabClosed
   await controller.locator("#new-session").click()
+  await expect(controller.locator("#provider")).toHaveValue("anthropic")
+  await expect(controller.locator("#model")).toHaveValue(anthropicModelId)
+
+  await restoredSessionSettingsTab.locator("#font-family").selectOption("serif")
+  const restoredSessionSettingsTabClosed = restoredSessionSettingsTab.waitForEvent("close")
+  await restoredSessionSettingsTab.locator("#save-settings").click()
+  await restoredSessionSettingsTabClosed
 
   await expect(controller.locator("#provider")).toHaveValue("anthropic")
   await expect(controller.locator("#model")).toHaveValue(anthropicModelId)
   await expect(controller.locator("#auth-status")).toHaveText("Anthropic not configured")
+  await expect
+    .poll(() => controller.evaluate(() => document.documentElement.dataset.fontFamily))
+    .toBe("serif")
 
   const restoreSettingsTab = await openSettingsTab()
+  await expect(restoreSettingsTab.locator("#provider")).toHaveValue("anthropic")
+  await expect(restoreSettingsTab.locator("#model")).toHaveValue(anthropicModelId)
   await restoreSettingsTab.locator("#provider").selectOption("openai-codex")
   await restoreSettingsTab.locator("#model").selectOption("gpt-5.6-terra")
+  await restoreSettingsTab.locator("#font-family").selectOption("system")
   const restoreSettingsTabClosed = restoreSettingsTab.waitForEvent("close")
   await restoreSettingsTab.locator("#save-settings").click()
   await restoreSettingsTabClosed
