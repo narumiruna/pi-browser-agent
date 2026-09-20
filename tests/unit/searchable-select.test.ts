@@ -59,6 +59,27 @@ describe("SearchableSelect", () => {
     expect(changed).toHaveBeenCalledOnce()
   })
 
+  test("does not emit change when choosing the selected option", () => {
+    const { dom, input, select, listbox, picker } = setup()
+    const changed = vi.fn()
+    select.addEventListener("change", changed)
+    picker.setOptions(
+      [
+        { value: "first", label: "First item" },
+        { value: "second", label: "Second item" },
+      ],
+      "second",
+    )
+
+    input.focus()
+    input.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }))
+
+    expect(select.value).toBe("second")
+    expect(input.value).toBe("Second item")
+    expect(listbox.hidden).toBe(true)
+    expect(changed).not.toHaveBeenCalled()
+  })
+
   test("reopens after a mouse selection leaves the input focused", () => {
     const { dom, input, listbox, picker } = setup()
     picker.setOptions([
