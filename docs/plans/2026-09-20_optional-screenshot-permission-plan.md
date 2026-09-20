@@ -43,7 +43,7 @@ The broad host capability remains optional. Pi Chrome continues to reject non-HT
 - [x] Extend the Side Panel confirmation gesture to request screenshot access and keep the dialog open with a clear denial message when Chrome declines it; Chrome E2E verifies the in-dialog denial.
 - [x] Strengthen the screenshot tool description and unit coverage so the model attempts the tool and receives image content after the permission flow; tool tests verify the confirmed retry and PNG content.
 - [x] Update README, architecture, permissions/storage, security, troubleshooting, and manual acceptance documentation with the optional broad grant, data flow, revocation behavior, and current-tab limitation.
-- [x] Run formatting/lint checks, unit tests, typecheck, production build and artifact audit, and Chrome E2E coverage; `npm run ci` passes with 132 unit tests and 14 E2E tests. Native stable-Chrome grant/decline/revoke acceptance remains recorded as manual-only.
+- [x] Run formatting/lint checks, unit tests, typecheck, production build and artifact audit, and Chrome E2E coverage; `npm run ci` passes with 132 unit tests and 14 E2E tests. A manual grant produced a PNG that the model read successfully; native decline, revocation, and explicit cross-tab acceptance remain manual-only.
 
 ## Risks
 
@@ -55,6 +55,6 @@ The broad host capability remains optional. Pi Chrome continues to reject non-HT
 
 - [x] A production build declares optional `<all_urls>` and no required host permission.
 - [x] First screenshot without the grant explains and requests access from the Confirm click; automated coverage verifies routing and denial, while the Chrome-owned native prompt remains manual acceptance.
-- [ ] Granting access returns a PNG tool result; automated capture and tool-result paths pass, but native stable-Chrome grant and revocation remain pending.
+- [ ] Granting access returns a PNG tool result, while denial or revocation fails without background permission requests; automated coverage passes, and a 2026-09-20 manual grant produced a PNG and successful model translation after one expected stale-context retry. Native revocation and explicit cross-tab acceptance remain pending.
 - [x] Existing page, bookmark, provider, session, security, and E2E checks pass in `npm run ci`.
 - [x] Documentation clearly states the breadth of Chrome's grant and Pi Chrome's narrower runtime behavior.

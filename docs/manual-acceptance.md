@@ -12,7 +12,8 @@ Use a production build from `npm run build`. Do not test login with development 
 - Real-account device login: passed on 2026-09-16; account tier was not recorded
 - Authenticated SSE and browser-tool round trip: pending; the first request exposed a retired `gpt-5.4` default, which was replaced with `gpt-5.6-terra` before retry
 - Optional bookmark permission and read-only bookmark round trip: pending for this change
-- Optional screenshot `<all_urls>` grant, denial, revocation, and cross-tab capture: pending for this change
+- Optional screenshot `<all_urls>` grant and PNG/model round trip: passed on 2026-09-20; browser version was not recorded. The first capture detected a visible-tab change as stale, and the model retried successfully against the current tab.
+- Optional screenshot native decline, revocation, and explicit cross-tab capture: pending for this change
 - Non-Codex provider/model selection and authenticated request: pending for this change
 
 ## Procedure
