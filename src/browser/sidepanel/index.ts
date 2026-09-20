@@ -117,6 +117,7 @@ for (const [buttonId, returnValue] of [
   ["auth-provider-confirm", "confirm"],
 ] as const) {
   element<HTMLButtonElement>(buttonId).addEventListener("click", () => {
+    if (returnValue === "confirm" && !authProviderPicker.commitActiveOption()) return
     authProviderDialog.close(returnValue)
   })
 }

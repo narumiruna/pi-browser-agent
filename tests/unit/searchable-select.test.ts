@@ -67,6 +67,35 @@ describe("SearchableSelect", () => {
     expect(changed).toHaveBeenCalledOnce()
   })
 
+  test("commits the active filtered option and rejects an empty result", () => {
+    const { dom, input, select, listbox, picker } = setup()
+    const changed = vi.fn()
+    select.addEventListener("change", changed)
+    picker.setOptions(
+      [
+        { value: "first", label: "First item" },
+        { value: "second", label: "Second item" },
+      ],
+      "first",
+    )
+
+    input.focus()
+    input.value = "second"
+    input.dispatchEvent(new dom.window.Event("input", { bubbles: true }))
+
+    expect(picker.commitActiveOption()).toBe(true)
+    expect(select.value).toBe("second")
+    expect(listbox.hidden).toBe(true)
+    expect(changed).toHaveBeenCalledOnce()
+
+    input.value = "missing"
+    input.dispatchEvent(new dom.window.Event("input", { bubbles: true }))
+
+    expect(picker.commitActiveOption()).toBe(false)
+    expect(select.value).toBe("second")
+    expect(listbox.hidden).toBe(false)
+  })
+
   test("does not emit change when choosing the selected option", () => {
     const { dom, input, select, listbox, picker } = setup()
     const changed = vi.fn()
@@ -110,13 +139,14 @@ describe("SearchableSelect", () => {
     expect(listbox.querySelectorAll("[role='option']")).toHaveLength(2)
   })
 
-  test("keeps options open while focus moves within an interaction boundary", () => {
+  test("keeps options open while focus moves within an interaction boundary", async () => {
     const { dom, input, listbox, action, outside, picker } = setup(true)
     picker.setOptions([{ value: "first", label: "First item" }], "first")
 
     input.focus()
     action.dispatchEvent(new dom.window.MouseEvent("mousedown", { bubbles: true }))
     action.focus()
+    await Promise.resolve()
 
     expect(listbox.hidden).toBe(false)
 

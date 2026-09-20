@@ -34,8 +34,10 @@ export class SearchableSelect {
       }
     })
     input.addEventListener("keydown", (event) => this.onKeyDown(event))
-    input.addEventListener("blur", (event) => {
-      if (!interactionBoundary.contains(event.relatedTarget as Node | null)) this.close(true)
+    input.addEventListener("blur", () => {
+      if (!elements.interactionBoundary && !container.contains(input.ownerDocument.activeElement)) {
+        this.close(true)
+      }
     })
     select.addEventListener("change", () => {
       this.syncInputToSelection()
@@ -44,6 +46,14 @@ export class SearchableSelect {
     input.ownerDocument.addEventListener("mousedown", (event) => {
       if (!interactionBoundary.contains(event.target as Node)) this.close(true)
     })
+  }
+
+  commitActiveOption(): boolean {
+    const { listbox, select } = this.elements
+    if (listbox.hidden) return this.options.some((option) => option.value === select.value)
+    if (this.activeIndex < 0) return false
+    this.choose(this.activeIndex)
+    return true
   }
 
   setOptions(options: SearchableSelectOption[], preferredValue?: string): void {
