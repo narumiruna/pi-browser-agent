@@ -17,15 +17,18 @@
     "audit:artifact": "node scripts/audit-artifact.mjs",
     "build": "npm run probe:browser && npm run build:chrome && npm run typecheck && npm run audit:artifact",
     "build:chrome": "extension build --browser=chrome",
+    "changeset": "changeset",
     "check": "biome ci .",
     "ci": "npm run check && npm test && npm run build && npm run test:e2e",
     "dev:chrome": "extension dev --browser=chrome",
     "pack": "npm run build && extension build --browser=chrome --zip --zip-filename=pi-chrome.zip",
     "prepare": "husky",
     "probe:browser": "node scripts/probe-browser-boundary.mjs",
+    "release": "changeset publish",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "version-packages": "changeset version"
   },
   "dependencies": {
     "@earendil-works/pi-agent-core": "^0.85.1",
@@ -34,6 +37,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.13",
+    "@changesets/cli": "^3.0.3",
     "@playwright/test": "^1.63.0",
     "@types/chrome": "^0.2.9",
     "@types/jsdom": "^30.0.0",
