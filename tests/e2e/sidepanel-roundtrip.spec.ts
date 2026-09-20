@@ -315,6 +315,37 @@ test("loads the Side Panel without uncaught errors", async () => {
   await controller.evaluate(() => window.scrollTo(0, 0))
 })
 
+test("grants microphone access from a full extension page", async () => {
+  const microphonePage = await context.newPage()
+  const pageErrors: string[] = []
+  microphonePage.on("pageerror", (error) => pageErrors.push(error.message))
+  await microphonePage.addInitScript(() => {
+    Object.defineProperty(navigator, "permissions", {
+      configurable: true,
+      value: { query: async () => ({ state: "prompt" }) },
+    })
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        getUserMedia: async () => ({ getTracks: () => [{ stop: () => undefined }] }),
+      },
+    })
+  })
+  await microphonePage.goto(`chrome-extension://${extensionId}/${panelPath}?view=microphone`)
+
+  await expect(microphonePage).toHaveTitle("Microphone access · Pi Chrome")
+  await expect(microphonePage.locator("#microphone-access-page")).toBeVisible()
+  await expect(microphonePage.locator("#microphone-access-status")).toContainText(
+    "Select Allow microphone access",
+  )
+  await microphonePage.locator("#allow-microphone").click()
+  await expect(microphonePage.locator("#microphone-access-status")).toContainText(
+    "Microphone access is allowed",
+  )
+  expect(pageErrors).toEqual([])
+  await microphonePage.close()
+})
+
 test("opens Settings in a full browser tab and persists the selected interface font and size", async () => {
   await controller.addInitScript(() => {
     const state = globalThis as typeof globalThis & {
@@ -342,6 +373,10 @@ test("opens Settings in a full browser tab and persists the selected interface f
       }
     }
     state.settingsVoiceAbortCount = 0
+    Object.defineProperty(navigator, "permissions", {
+      configurable: true,
+      value: { query: async () => ({ state: "granted" }) },
+    })
     for (const property of ["SpeechRecognition", "webkitSpeechRecognition"] as const) {
       Object.defineProperty(state, property, {
         configurable: true,

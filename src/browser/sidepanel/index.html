@@ -213,6 +213,37 @@
       </footer>
     </section>
 
+    <section
+      id="microphone-access-page"
+      class="microphone-access-page"
+      aria-labelledby="microphone-access-title"
+      hidden
+    >
+      <main class="microphone-access-card">
+        <svg class="microphone-access-icon" viewBox="0 0 15 15" aria-hidden="true">
+          <rect x="5" y="1.25" width="5" height="8" rx="2.5" />
+          <path d="M2.75 7.25a4.75 4.75 0 0 0 9.5 0M7.5 12v2M5.25 14h4.5" />
+        </svg>
+        <h1 id="microphone-access-title">Allow microphone access</h1>
+        <p>
+          Pi Chrome needs microphone access to turn speech into an editable prompt. Audio is
+          processed by Chrome's speech service and is not sent to the selected model provider.
+        </p>
+        <p id="microphone-access-status" role="status" aria-live="polite"></p>
+        <div class="microphone-access-actions">
+          <button type="button" id="allow-microphone" class="primary">
+            Allow microphone access
+          </button>
+          <button type="button" id="open-microphone-settings" class="subtle" hidden>
+            Open Chrome microphone settings
+          </button>
+          <button type="button" id="close-microphone-access" class="subtle">
+            Close tab
+          </button>
+        </div>
+      </main>
+    </section>
+
     <dialog id="confirm-dialog">
       <form method="dialog">
         <h2>Confirm browser action</h2>

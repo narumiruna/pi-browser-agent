@@ -1,5 +1,7 @@
 import { describe, expect, test, vi } from "vitest"
 import {
+  getMicrophonePermissionState,
+  requestMicrophoneAccess,
   type SpeechRecognitionLike,
   type SpeechRecognitionResultListLike,
   VoiceInputController,
@@ -46,6 +48,23 @@ function setup() {
 }
 
 describe("voice input", () => {
+  test("checks the microphone content permission", async () => {
+    const query = vi.fn(async () => ({ state: "granted" as const }))
+
+    await expect(getMicrophonePermissionState(query)).resolves.toBe("granted")
+    expect(query).toHaveBeenCalledWith({ name: "microphone" })
+  })
+
+  test("requests microphone access and immediately releases the stream", async () => {
+    const stop = vi.fn()
+    const getUserMedia = vi.fn(async () => ({ getTracks: () => [{ stop }, { stop }] }))
+
+    await requestMicrophoneAccess(getUserMedia)
+
+    expect(getUserMedia).toHaveBeenCalledWith({ audio: true })
+    expect(stop).toHaveBeenCalledTimes(2)
+  })
+
   test("configures continuous interim recognition and appends the transcript", () => {
     const { callbacks, controller, recognition } = setup()
 

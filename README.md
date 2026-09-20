@@ -33,7 +33,7 @@ Load the production artifact:
 4. Enter a prompt. Pi Chrome approves only the current page and selected provider endpoint for ordinary access when needed.
 5. To include an image, paste it into the composer, review the preview, and send it with optional text. Choose a model marked **Image input**.
 6. To let Pi inspect the visible page, ask it to capture the screen and confirm the first screenshot request. Chrome asks for optional all-sites access because its screenshot API requires `<all_urls>` after the temporary `activeTab` grant ends; Pi Chrome still captures only the current visible HTTP(S) viewport.
-7. To dictate a prompt, select the microphone, speak, then select it again before reviewing and sending the transcript.
+7. To dictate a prompt, select the microphone. The first use opens a full Pi Chrome tab where Chrome can request microphone access; approve it, close that tab, select the microphone again, and speak. Select it once more before reviewing and sending the transcript.
 8. When Pi requests a bookmark read, review the requested search or recent-item limit and confirm it. Chrome asks for the optional bookmark permission the first time.
 
 Voice input uses Chrome's Web Speech service in the browser language. Spoken audio may be processed by the browser's speech provider; only the resulting editable transcript is submitted to Pi when you select **Send**. The model transport is always SSE. Closing the Side Panel aborts the active run and marks the session interrupted; reopening never automatically repeats a browser mutation.
@@ -84,7 +84,7 @@ npm audit --omit=dev
 - **Stale context:** the visible tab changed or navigated after the tool request began. Return to the intended page and retry; Pi Chrome automatically tracks the visible supported tab.
 - **Login pending:** finish the device flow before its 15-minute expiry. Cancel and restart if the code expires or is denied.
 - **Refresh failed:** remove the affected credential, then configure that provider again. The extension does not silently fall back to another provider.
-- **Voice input unavailable:** use a Chrome version that exposes the Web Speech API, and allow microphone access for Pi Chrome when prompted. Voice recognition may require network access.
+- **Voice input unavailable:** select the microphone to open Pi Chrome's access tab, choose **Allow microphone access**, and approve Chrome's prompt. If access is blocked, use that tab's **Open Chrome microphone settings** button, remove Pi Chrome from **Not allowed**, and retry. Also allow Chrome to use the microphone in your operating-system settings. Voice recognition requires a Chrome version with the Web Speech API and may require network access.
 - **Interrupted session:** review the transcript before continuing. Mutation tools are never replayed automatically.
 
 ## Documentation
