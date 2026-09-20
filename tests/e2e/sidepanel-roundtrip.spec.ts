@@ -472,7 +472,9 @@ test("opens Settings in a full browser tab and persists the selected interface f
 
   const accountDisclosure = controller.locator(".account-disclosure")
   const voiceButton = controller.locator("#voice-input")
-  const sessionCount = await controller.locator("#sessions option").count()
+  const sessionOptions = controller.locator("#sessions option")
+  await expect(sessionOptions).toHaveCount(1)
+  const sessionCount = await sessionOptions.count()
   await expect(voiceButton).toBeEnabled()
   await voiceButton.click()
   await expect(voiceButton).toHaveAttribute("aria-pressed", "true")
