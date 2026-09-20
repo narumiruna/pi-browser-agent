@@ -138,35 +138,14 @@ button.subtle {
   background: transparent;
 }
 
-button.danger,
-button.text-button.danger {
+button.danger {
   color: var(--danger);
-}
-
-button.text-button {
-  min-height: auto;
-  padding: 3px 0;
-  border: 0;
-  border-radius: 4px;
-  color: var(--text-muted);
-  background: transparent;
-  font-size: 0.875rem;
-}
-
-button.text-button:hover:not(:disabled) {
-  color: var(--text);
-  background: transparent;
-  text-decoration: underline;
 }
 
 .row {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.wrap {
-  flex-wrap: wrap;
 }
 
 .visually-hidden {
@@ -195,11 +174,6 @@ button.text-button:hover:not(:disabled) {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-}
-
-.eyebrow {
-  color: var(--text-muted);
-  font-size: 0.78rem;
 }
 
 .status-pill {

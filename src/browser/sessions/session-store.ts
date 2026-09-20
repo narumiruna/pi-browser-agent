@@ -222,7 +222,7 @@ export class SessionStore {
   }
 }
 
-export function createSession(modelId: string, provider = "openai-codex"): SessionRecord {
+export function createSession(modelId: string, provider: string): SessionRecord {
   const now = Date.now()
   return {
     schemaVersion: 1,

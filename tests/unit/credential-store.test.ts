@@ -69,6 +69,38 @@ describe("Chrome credential store", () => {
     await expect(store.read("openai-codex")).resolves.toBeUndefined()
   })
 
+  test("serializes fallback writes across providers and store instances", async () => {
+    const area = new MemoryStorage()
+    const firstStore = new ChromeCredentialStore(area as unknown as chrome.storage.StorageArea)
+    const secondStore = new ChromeCredentialStore(area as unknown as chrome.storage.StorageArea)
+    let markFirstEntered = (): void => undefined
+    const firstEntered = new Promise<void>((resolve) => {
+      markFirstEntered = resolve
+    })
+    let releaseFirst = (): void => undefined
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve
+    })
+    const secondMutation = vi.fn(async () => ({ type: "api_key" as const, key: "second" }))
+
+    const first = firstStore.modify("first", async () => {
+      markFirstEntered()
+      await firstGate
+      return { type: "api_key", key: "first" }
+    })
+    await firstEntered
+    const second = secondStore.modify("second", secondMutation)
+    await Promise.resolve()
+    expect(secondMutation).not.toHaveBeenCalled()
+    releaseFirst()
+    await Promise.all([first, second])
+
+    await expect(firstStore.list()).resolves.toEqual([
+      { providerId: "first", type: "api_key" },
+      { providerId: "second", type: "api_key" },
+    ])
+  })
+
   test("serializes credential-map writes across providers and store instances", async () => {
     const area = new MemoryStorage()
     const locks = new SerialLockManager() as unknown as LockManager

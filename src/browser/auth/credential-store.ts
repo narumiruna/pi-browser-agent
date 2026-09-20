@@ -4,6 +4,7 @@ import type {
   CredentialInfo,
   CredentialStore,
 } from "@earendil-works/pi-ai"
+import { withExclusiveStorageWrite } from "../storage-lock.js"
 
 export const CREDENTIALS_KEY = "piChromeCredentialsV1"
 const CREDENTIALS_WRITE_LOCK = "pi-chrome-credentials-write"
@@ -31,8 +32,6 @@ function isCredential(value: unknown): value is Credential {
 }
 
 export class ChromeCredentialStore implements CredentialStore {
-  private readonly chains = new Map<string, Promise<void>>()
-
   constructor(
     private readonly area: StorageArea = chrome.storage.local,
     private readonly locks: LockManager | undefined = typeof navigator === "undefined"
@@ -49,24 +48,8 @@ export class ChromeCredentialStore implements CredentialStore {
     )
   }
 
-  private enqueue<T>(providerId: string, operation: () => Promise<T>): Promise<T> {
-    const previous = this.chains.get(providerId) ?? Promise.resolve()
-    const result = previous
-      .catch(() => undefined)
-      .then(() =>
-        this.locks
-          ? this.locks.request(CREDENTIALS_WRITE_LOCK, { mode: "exclusive" }, operation)
-          : operation(),
-      )
-    const settled = result.then(
-      () => undefined,
-      () => undefined,
-    )
-    this.chains.set(providerId, settled)
-    void settled.finally(() => {
-      if (this.chains.get(providerId) === settled) this.chains.delete(providerId)
-    })
-    return result
+  private enqueue<T>(operation: () => Promise<T>): Promise<T> {
+    return withExclusiveStorageWrite(CREDENTIALS_WRITE_LOCK, operation, this.locks)
   }
 
   async read(providerId: string, options?: AuthOperationOptions): Promise<Credential | undefined> {
@@ -91,7 +74,7 @@ export class ChromeCredentialStore implements CredentialStore {
     fn: (current: Credential | undefined) => Promise<Credential | undefined>,
     options?: AuthOperationOptions,
   ): Promise<Credential | undefined> {
-    return this.enqueue(providerId, async () => {
+    return this.enqueue(async () => {
       throwIfAborted(options)
       const all = await this.readAll()
       const current = all[providerId]
@@ -105,7 +88,7 @@ export class ChromeCredentialStore implements CredentialStore {
   }
 
   delete(providerId: string, options?: AuthOperationOptions): Promise<void> {
-    return this.enqueue(providerId, async () => {
+    return this.enqueue(async () => {
       throwIfAborted(options)
       const all = await this.readAll()
       if (!(providerId in all)) return

@@ -10,10 +10,8 @@ import {
 } from "@earendil-works/pi-ai"
 import { builtinProviders } from "@earendil-works/pi-ai/providers/all"
 import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex"
+import { DEFAULT_MODEL_SELECTION } from "../defaults.js"
 import { createBrowserCodexOAuth } from "./codex-oauth.js"
-
-export const DEFAULT_PROVIDER_ID = "openai-codex"
-export const DEFAULT_MODEL_ID = "gpt-5.6-terra"
 export const RADIUS_CONFIG_URL = "https://radius.pi.dev/v1/config"
 
 /** The pi-ai Bedrock adapter intentionally loads a Node-only AWS SDK module. */
@@ -91,7 +89,7 @@ function browserVertexProvider(provider: Provider): Provider {
 }
 
 function browserProvider(provider: Provider): Provider {
-  if (provider.id === DEFAULT_PROVIDER_ID) return createBrowserCodexProvider()
+  if (provider.id === DEFAULT_MODEL_SELECTION.provider) return createBrowserCodexProvider()
   const withoutNodeOAuth: Provider = {
     ...provider,
     auth: provider.auth.apiKey ? { apiKey: provider.auth.apiKey } : {},
@@ -134,10 +132,10 @@ export function createBrowserModels(credentials: CredentialStore): BrowserModelR
     },
   })
   for (const provider of createBrowserProviders()) models.setProvider(provider)
-  const defaultModel = models.getModel(DEFAULT_PROVIDER_ID, DEFAULT_MODEL_ID)
+  const defaultModel = models.getModel(DEFAULT_MODEL_SELECTION.provider, DEFAULT_MODEL_SELECTION.id)
   if (!defaultModel) {
     throw new Error(
-      `Bundled default model is unavailable: ${DEFAULT_PROVIDER_ID}/${DEFAULT_MODEL_ID}`,
+      `Bundled default model is unavailable: ${DEFAULT_MODEL_SELECTION.provider}/${DEFAULT_MODEL_SELECTION.id}`,
     )
   }
   return { models, defaultModel }
