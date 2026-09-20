@@ -829,6 +829,7 @@ allowMicrophoneButton.addEventListener("click", () => {
   microphoneAccessStatus.textContent = "Waiting for Chrome's microphone prompt…"
   void requestMicrophoneAccess()
     .then(() => {
+      allowMicrophoneButton.disabled = false
       allowMicrophoneButton.hidden = true
       microphoneAccessStatus.textContent =
         "Microphone access is allowed. Close this tab and select the microphone in Pi Chrome."

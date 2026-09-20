@@ -320,14 +320,19 @@ test("grants microphone access from a full extension page", async () => {
   const pageErrors: string[] = []
   microphonePage.on("pageerror", (error) => pageErrors.push(error.message))
   await microphonePage.addInitScript(() => {
+    const state = window as typeof window & { testMicrophonePermission: PermissionState }
+    state.testMicrophonePermission = "prompt"
     Object.defineProperty(navigator, "permissions", {
       configurable: true,
-      value: { query: async () => ({ state: "prompt" }) },
+      value: { query: async () => ({ state: state.testMicrophonePermission }) },
     })
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
       value: {
-        getUserMedia: async () => ({ getTracks: () => [{ stop: () => undefined }] }),
+        getUserMedia: async () => {
+          state.testMicrophonePermission = "granted"
+          return { getTracks: () => [{ stop: () => undefined }] }
+        },
       },
     })
   })
@@ -342,6 +347,15 @@ test("grants microphone access from a full extension page", async () => {
   await expect(microphonePage.locator("#microphone-access-status")).toContainText(
     "Microphone access is allowed",
   )
+
+  await microphonePage.evaluate(() => {
+    ;(
+      window as typeof window & { testMicrophonePermission: PermissionState }
+    ).testMicrophonePermission = "prompt"
+    window.dispatchEvent(new Event("focus"))
+  })
+  await expect(microphonePage.locator("#allow-microphone")).toBeVisible()
+  await expect(microphonePage.locator("#allow-microphone")).toBeEnabled()
 
   const pendingSelectionKey = await controller.evaluate(async () => {
     const windowId = (await chrome.windows.getCurrent()).id
