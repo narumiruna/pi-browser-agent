@@ -45,6 +45,10 @@ describe("browser agent tools", () => {
         executionMode: "sequential",
       })
     }
+    expect(tools.find((tool) => tool.name === "browser_capture_visible")).toMatchObject({
+      replay: "safe",
+      executionMode: "sequential",
+    })
   })
 
   test("confirms optional screenshot access and returns PNG content", async () => {

@@ -18,8 +18,8 @@ Credential removal first aborts the agent, waits for it to become idle, then rem
 - Tab and window activation automatically update the target; unsupported pages clear it.
 - Tab ID, URL, and context epoch identify the operation context.
 - Navigation or a visible-tab change after request creation causes `STALE_CONTEXT`.
-- Ordinary host access is requested from a user gesture and scoped to a selected origin.
-- Screenshot capture separately requests optional `<all_urls>` from its confirmation gesture because Chrome requires it when `activeTab` is no longer live. The worker still captures only the active visible HTTP(S) viewport and rechecks the grant before each capture.
+- Ordinary host access is approved from an explicit user gesture and scoped to selected exact origins in trusted extension storage. The worker requires both that app-level approval and Chrome host permission.
+- Screenshot capture separately requests optional `<all_urls>` from its confirmation gesture because Chrome requires it when `activeTab` is no longer live. Although Chrome treats that grant as satisfying narrower host checks, Pi Chrome does not add exact app approvals from it. The worker still captures only the active visible HTTP(S) viewport and rechecks the grant before each capture.
 - Password and file inputs are always denied.
 - Form submissions, downloads, cross-origin links, cross-origin navigation, and WebMCP calls require confirmation.
 - Cross-origin navigation additionally requires destination host permission.

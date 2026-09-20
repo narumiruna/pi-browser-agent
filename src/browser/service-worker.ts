@@ -236,6 +236,12 @@ async function runPageOperation(
 ): Promise<JsonValue> {
   const context = await refreshBoundContext()
   assertTabContext(request.tabContext, context)
+  if (!(await hasHostPermission(context.url))) {
+    throw new RuntimeError(
+      "PERMISSION_DENIED",
+      "Grant access to the current site before using page tools",
+    )
+  }
   let results: chrome.scripting.InjectionResult<Awaited<ReturnType<typeof executePageOperation>>>[]
   try {
     results = await chrome.scripting.executeScript({
@@ -315,6 +321,12 @@ function truncateStructuredResult(value: JsonValue): JsonValue {
 async function runWebMcp(operation: WebMcpOperation, request: RuntimeRequest): Promise<JsonValue> {
   const context = await refreshBoundContext()
   assertTabContext(request.tabContext, context)
+  if (!(await hasHostPermission(context.url))) {
+    throw new RuntimeError(
+      "PERMISSION_DENIED",
+      "Grant access to the current site before using WebMCP",
+    )
+  }
   let results: chrome.scripting.InjectionResult<
     Awaited<ReturnType<typeof executeWebMcpOperation>>
   >[]
@@ -357,7 +369,7 @@ async function captureVisible(request: RuntimeRequest): Promise<JsonValue> {
   if (!permissionGranted && !request.confirmed) {
     throw new RuntimeError(
       "CONFIRMATION_REQUIRED",
-      "Allow screenshots of visible HTTP(S) tabs? Chrome grants access to all sites, but Pi Chrome captures only the current visible viewport. Screenshots are sent to the selected model provider and saved in this session.",
+      "Allow screenshots of visible HTTP(S) tabs? Chrome grants access to all sites, but Pi Chrome captures only the current visible viewport and separately limits ordinary access to exact origins approved through explicit actions. Screenshots are sent to the selected model provider and saved in this session.",
       { requiredPermission: SCREENSHOT_HOST_PERMISSION },
     )
   }
@@ -371,8 +383,11 @@ async function captureVisible(request: RuntimeRequest): Promise<JsonValue> {
   let dataUrl: string
   try {
     dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" })
-  } catch {
-    throw new RuntimeError("PERMISSION_DENIED", "Chrome denied screenshot access")
+  } catch (error) {
+    throw new RuntimeError(
+      "INTERNAL_ERROR",
+      error instanceof Error ? error.message : "Chrome could not capture the visible tab",
+    )
   }
   await revalidateRequestContext(request, context)
   if (dataUrl.length > 3_000_000) {
@@ -430,7 +445,7 @@ async function navigate(request: RuntimeRequest): Promise<JsonValue> {
       { targetUrl: targetUrl.href },
     )
   }
-  if (crossOrigin && !(await hasHostPermission(targetUrl))) {
+  if (!(await hasHostPermission(targetUrl))) {
     throw new RuntimeError(
       "PERMISSION_DENIED",
       "Grant access to the destination before navigating",

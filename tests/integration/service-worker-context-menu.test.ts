@@ -27,6 +27,9 @@ afterEach(() => {
 describe("service worker visible-tab targeting", () => {
   test("tracks the visible page, rejects stale contexts, and persists a sent selection", async () => {
     const listeners: ListenerMap = {}
+    const local: Record<string, unknown> = {
+      piChromeApprovedHostPermissions: ["https://destination.test/*", "https://example.test/*"],
+    }
     const session: Record<string, unknown> = {}
     const create = vi.fn()
     const open = vi.fn(async () => undefined)
@@ -68,7 +71,11 @@ describe("service worker visible-tab targeting", () => {
 
     vi.stubGlobal("chrome", {
       storage: {
-        local: { setAccessLevel: vi.fn(async () => undefined) },
+        local: {
+          get: vi.fn(async (key: string) => ({ [key]: local[key] })),
+          set: vi.fn(async (items: Record<string, unknown>) => Object.assign(local, items)),
+          setAccessLevel: vi.fn(async () => undefined),
+        },
         session: {
           get: vi.fn(async (key: string) => {
             if (key === "piChromePendingSelection:3" && failPendingRead) {
@@ -83,7 +90,7 @@ describe("service worker visible-tab targeting", () => {
           }),
         },
       },
-      permissions: { contains },
+      permissions: { contains, getAll: vi.fn(async () => ({ origins: [] })) },
       bookmarks: { search: searchBookmarks, getRecent: getRecentBookmarks },
       runtime: {
         id: "test-extension",

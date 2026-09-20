@@ -672,7 +672,7 @@ function configureProvider(providerId: string, button: HTMLButtonElement): void 
       throw new Error(`${provider.name} has no browser-compatible authentication method`)
     }
     if (provider.oauth) {
-      const granted = await chrome.permissions.request({ origins: [...AUTH_ORIGINS] })
+      const granted = await requestHostPermissions(AUTH_ORIGINS)
       if (!granted) throw new Error("OpenAI host access is required for login")
     } else if (providerId === "radius") {
       const granted = await requestHostPermissions(["https://radius.pi.dev"])
