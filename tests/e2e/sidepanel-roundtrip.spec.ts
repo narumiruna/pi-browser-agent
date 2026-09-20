@@ -408,8 +408,26 @@ test("opens Settings in a full browser tab and persists the selected interface f
     expires: Date.now() + 3_600_000,
     accountId: "existing-test-account",
   }
+  const previousHostApprovals = await settingsTab.evaluate(async () => {
+    const stored = await chrome.storage.local.get("piChromeApprovedHostPermissions")
+    const approvals = stored.piChromeApprovedHostPermissions
+    return Array.isArray(approvals)
+      ? approvals.filter((approval): approval is string => typeof approval === "string")
+      : []
+  })
   await settingsTab.evaluate(async (credential) => {
-    await chrome.storage.local.set({ piChromeCredentialsV1: { "openai-codex": credential } })
+    const stored = await chrome.storage.local.get("piChromeApprovedHostPermissions")
+    const approvals = Array.isArray(stored.piChromeApprovedHostPermissions)
+      ? stored.piChromeApprovedHostPermissions.filter(
+          (approval): approval is string => typeof approval === "string",
+        )
+      : []
+    await chrome.storage.local.set({
+      piChromeApprovedHostPermissions: [
+        ...new Set([...approvals, "https://auth.openai.com/*", "https://chatgpt.com/*"]),
+      ],
+      piChromeCredentialsV1: { "openai-codex": credential },
+    })
   }, existingCodexCredential)
   await settingsTab.evaluate(() => {
     const originalRequest = chrome.permissions.request
@@ -481,7 +499,10 @@ test("opens Settings in a full browser tab and persists the selected interface f
       }),
     )
     .toEqual(existingCodexCredential)
-  await controller.evaluate(async () => chrome.storage.local.remove("piChromeCredentialsV1"))
+  await controller.evaluate(async (hostApprovals) => {
+    await chrome.storage.local.set({ piChromeApprovedHostPermissions: hostApprovals })
+    await chrome.storage.local.remove("piChromeCredentialsV1")
+  }, previousHostApprovals)
 
   const modelSearch = settingsTab.locator("#model-search")
   await modelSearch.fill(initialModelId)
