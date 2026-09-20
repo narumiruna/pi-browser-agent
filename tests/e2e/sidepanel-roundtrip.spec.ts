@@ -603,11 +603,15 @@ test("synchronizes provider controls when a new session restores the latest mode
 test("keeps header and composer controls usable at normal and narrow widths", async () => {
   const testInfo = test.info()
   const originalViewport = controller.viewportSize() ?? { width: 1280, height: 720 }
-  const originalUi = await controller.evaluate(() => ({
-    fontSize: document.documentElement.style.getPropertyValue("--app-font-size"),
-    status: document.querySelector("#run-status")?.textContent ?? "Ready",
-    state: document.body.dataset.state ?? "idle",
-  }))
+  const originalUi = await controller.evaluate(() => {
+    const status = document.querySelector<HTMLElement>("#run-status")
+    return {
+      fontSize: document.documentElement.style.getPropertyValue("--app-font-size"),
+      status: status?.textContent ?? "Ready",
+      statusTitle: status?.title ?? "",
+      state: document.body.dataset.state ?? "idle",
+    }
+  })
 
   try {
     await controller.setViewportSize({ width: 480, height: 720 })
@@ -652,9 +656,12 @@ test("keeps header and composer controls usable at normal and narrow widths", as
               ({ fontSize, running }) => {
                 document.documentElement.style.setProperty("--app-font-size", `${fontSize}px`)
                 document.body.dataset.state = running ? "running" : "idle"
-                const status = document.querySelector("#run-status")
-                if (status)
-                  status.textContent = running ? "Using browser_read_visible_page_text" : "Ready"
+                const status = document.querySelector<HTMLElement>("#run-status")
+                if (status) {
+                  const text = running ? "Using browser_read_visible_page_text" : "Ready"
+                  status.textContent = text
+                  status.title = text
+                }
                 const abort = document.querySelector<HTMLButtonElement>("#abort")
                 if (abort) abort.hidden = !running
               },
@@ -755,8 +762,11 @@ test("keeps header and composer controls usable at normal and narrow widths", as
     await controller.evaluate((original) => {
       document.documentElement.style.setProperty("--app-font-size", original.fontSize)
       document.body.dataset.state = original.state
-      const status = document.querySelector("#run-status")
-      if (status) status.textContent = original.status
+      const status = document.querySelector<HTMLElement>("#run-status")
+      if (status) {
+        status.textContent = original.status
+        status.title = original.statusTitle
+      }
       const abort = document.querySelector<HTMLButtonElement>("#abort")
       if (abort) abort.hidden = original.state !== "running"
     }, originalUi)
