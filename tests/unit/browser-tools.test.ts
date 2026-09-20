@@ -30,6 +30,20 @@ describe("browser agent tools", () => {
     expect(recentBookmarks && Value.Check(recentBookmarks.parameters, { limit: 0 })).toBe(false)
   })
 
+  test.each([
+    ["browser_click", "selector", 2048, {}],
+    ["browser_type", "selector", 2048, { text: "" }],
+    ["browser_type", "text", 50_000, { selector: "#x" }],
+    ["browser_navigate", "url", 16_384, {}],
+    ["browser_search_bookmarks", "query", 500, {}],
+    ["browser_webmcp", "name", 256, { action: "call" }],
+  ] as const)("preserves %s schema bounds for %s", (name, key, limit, rest) => {
+    const tool = createBrowserTools(vi.fn()).find((candidate) => candidate.name === name)
+    if (!tool) throw new Error(`Missing tool: ${name}`)
+    expect(Value.Check(tool.parameters, { ...rest, [key]: "x".repeat(limit) })).toBe(true)
+    expect(Value.Check(tool.parameters, { ...rest, [key]: "x".repeat(limit + 1) })).toBe(false)
+  })
+
   test("marks mutating and confirmation-gated tools as never replayable and sequential", () => {
     const tools = createBrowserTools(vi.fn().mockResolvedValue(false))
     for (const name of [
@@ -106,6 +120,78 @@ describe("browser agent tools", () => {
       { type: "image", data: "iVBORw==", mimeType: "image/png" },
     ])
   })
+
+  test.each(["list", "call"] as const)(
+    "confirms WebMCP %s before any worker execution, retaining captured context",
+    async (action) => {
+      const tabContext = { tabId: 1, url: "https://example.test/", epoch: 0 }
+      const order: string[] = []
+      const sendMessage = vi.fn(async (message: { method: string }) => {
+        order.push(message.method)
+        if (message.method === "app.getState") return { ok: true, result: { tabContext } }
+        // Each worker request emits progress; there must be no unconfirmed preflight request.
+        return { ok: false, error: { code: "PERMISSION_DENIED", message: "Missing host access" } }
+      })
+      vi.stubGlobal("chrome", { runtime: { sendMessage } })
+      const controller = new AbortController()
+      const confirm = vi.fn(async () => {
+        order.push("confirm")
+        return true
+      })
+      const tool = createBrowserTools(confirm).find(
+        (candidate) => candidate.name === "browser_webmcp",
+      )
+      if (!tool) throw new Error("Missing WebMCP tool")
+      const params =
+        action === "list" ? { action } : { action, name: "lookup", arguments: { id: 1 } }
+
+      await expect(tool.execute("tool-id", params, controller.signal)).rejects.toThrow(
+        "Missing host access",
+      )
+
+      expect(order).toEqual([
+        "app.getState",
+        "confirm",
+        action === "list" ? "webmcp.listTools" : "webmcp.callTool",
+      ])
+      expect(confirm).toHaveBeenCalledExactlyOnceWith(
+        action === "list"
+          ? "List the tools provided by this page through WebMCP?"
+          : "Call this page-provided WebMCP tool?",
+        { action, name: action === "list" ? "" : "lookup" },
+        controller.signal,
+      )
+      expect(sendMessage).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          confirmed: true,
+          tabContext,
+          params: action === "list" ? {} : { name: "lookup", arguments: { id: 1 } },
+        }),
+      )
+    },
+  )
+
+  test.each(["decline", "abort"])(
+    "does not execute WebMCP after confirmation %s",
+    async (outcome) => {
+      const sendMessage = vi.fn(async () => ({
+        ok: true,
+        result: { tabContext: { tabId: 1, url: "https://example.test/", epoch: 0 } },
+      }))
+      vi.stubGlobal("chrome", { runtime: { sendMessage } })
+      const controller = new AbortController()
+      const tool = createBrowserTools(async () => {
+        if (outcome === "abort") controller.abort()
+        return outcome !== "decline"
+      }).find((candidate) => candidate.name === "browser_webmcp")
+      if (!tool) throw new Error("Missing WebMCP tool")
+
+      await expect(tool.execute("tool-id", { action: "list" }, controller.signal)).rejects.toThrow(
+        outcome === "decline" ? "WebMCP access was declined" : "cancelled",
+      )
+      expect(sendMessage).toHaveBeenCalledOnce()
+    },
+  )
 
   test("caps the final formatted bookmark text after JSON escaping", async () => {
     const sendMessage = vi.fn(async () => ({

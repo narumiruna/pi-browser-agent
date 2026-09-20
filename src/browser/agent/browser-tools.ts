@@ -1,6 +1,6 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core"
 import { Type } from "typebox"
-import { type RuntimeMethod, sendRuntimeRequest } from "../runtime/messages.js"
+import { REQUEST_LIMITS, type RuntimeMethod, sendRuntimeRequest } from "../runtime/messages.js"
 import {
   formatUntrusted,
   type JsonObject,
@@ -80,8 +80,14 @@ export function createBrowserTools(confirm: ConfirmationHandler): AgentTool[] {
       executionMode: "sequential",
       parameters: Type.Object(
         {
-          query: Type.String({ minLength: 1, maxLength: 500, pattern: "\\S" }),
-          limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })),
+          query: Type.String({
+            minLength: 1,
+            maxLength: REQUEST_LIMITS.bookmarkQuery,
+            pattern: "\\S",
+          }),
+          limit: Type.Optional(
+            Type.Integer({ minimum: 1, maximum: REQUEST_LIMITS.bookmarkResults }),
+          ),
         },
         { additionalProperties: false },
       ),
@@ -101,7 +107,11 @@ export function createBrowserTools(confirm: ConfirmationHandler): AgentTool[] {
       replay: "never",
       executionMode: "sequential",
       parameters: Type.Object(
-        { limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })) },
+        {
+          limit: Type.Optional(
+            Type.Integer({ minimum: 1, maximum: REQUEST_LIMITS.bookmarkResults }),
+          ),
+        },
         { additionalProperties: false },
       ),
       async execute(_id, params, signal) {
@@ -175,7 +185,7 @@ export function createBrowserTools(confirm: ConfirmationHandler): AgentTool[] {
       replay: "never",
       executionMode: "sequential",
       parameters: Type.Object(
-        { selector: Type.String({ minLength: 1, maxLength: 2048 }) },
+        { selector: Type.String({ minLength: 1, maxLength: REQUEST_LIMITS.selector }) },
         { additionalProperties: false },
       ),
       async execute(_id, params, signal) {
@@ -192,8 +202,8 @@ export function createBrowserTools(confirm: ConfirmationHandler): AgentTool[] {
       executionMode: "sequential",
       parameters: Type.Object(
         {
-          selector: Type.String({ minLength: 1, maxLength: 2048 }),
-          text: Type.String({ maxLength: 50_000 }),
+          selector: Type.String({ minLength: 1, maxLength: REQUEST_LIMITS.selector }),
+          text: Type.String({ maxLength: REQUEST_LIMITS.typedText }),
         },
         { additionalProperties: false },
       ),
@@ -210,7 +220,7 @@ export function createBrowserTools(confirm: ConfirmationHandler): AgentTool[] {
       replay: "never",
       executionMode: "sequential",
       parameters: Type.Object(
-        { url: Type.String({ minLength: 1, maxLength: 16_384 }) },
+        { url: Type.String({ minLength: 1, maxLength: REQUEST_LIMITS.url }) },
         { additionalProperties: false },
       ),
       async execute(_id, params, signal) {
@@ -227,7 +237,7 @@ export function createBrowserTools(confirm: ConfirmationHandler): AgentTool[] {
       parameters: Type.Object(
         {
           action: Type.Union([Type.Literal("list"), Type.Literal("call")]),
-          name: Type.Optional(Type.String({ minLength: 1, maxLength: 256 })),
+          name: Type.Optional(Type.String({ minLength: 1, maxLength: REQUEST_LIMITS.webMcpName })),
           arguments: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
         },
         { additionalProperties: false },

@@ -19,14 +19,43 @@ export const RUNTIME_METHODS = [
 
 export type RuntimeMethod = (typeof RUNTIME_METHODS)[number]
 
-export interface RuntimeRequest {
-  kind: "request"
-  requestId: string
-  method: RuntimeMethod
-  params: JsonObject
-  tabContext?: TabContext
-  confirmed?: boolean
+export const REQUEST_LIMITS = {
+  selector: 2048,
+  typedText: 50_000,
+  url: 16_384,
+  bookmarkQuery: 500,
+  bookmarkResults: 50,
+  requestId: 256,
+  webMcpName: 256,
+} as const
+
+type RuntimeParams = {
+  "app.getState": Record<string, never>
+  "tabs.getActive": Record<string, never>
+  "tabs.navigate": { url: string }
+  "bookmarks.search": { query: string; limit: number }
+  "bookmarks.getRecent": { limit: number }
+  "selection.takePending": { windowId: number }
+  "requests.cancel": { requestId: string }
+  "page.getVisibleText": Record<string, never>
+  "page.getSelection": Record<string, never>
+  "page.captureVisible": Record<string, never>
+  "page.click": { selector: string }
+  "page.type": { selector: string; text: string }
+  "webmcp.listTools": Record<string, never>
+  "webmcp.callTool": { name: string; arguments: JsonObject }
 }
+
+export type RuntimeRequest<M extends RuntimeMethod = RuntimeMethod> = {
+  [K in M]: {
+    kind: "request"
+    requestId: string
+    method: K
+    params: RuntimeParams[K]
+    tabContext?: TabContext
+    confirmed?: boolean
+  }
+}[M]
 
 export interface RuntimeEvent {
   kind: "event"
@@ -63,7 +92,7 @@ function isTabContext(value: unknown): value is TabContext {
     (value.tabId as number) >= 0 &&
     typeof value.url === "string" &&
     value.url.length > 0 &&
-    value.url.length <= 16_384 &&
+    value.url.length <= REQUEST_LIMITS.url &&
     Number.isSafeInteger(value.epoch) &&
     (value.epoch as number) >= 0
   )
@@ -93,80 +122,87 @@ function hasValidParams(method: RuntimeMethod, params: Record<string, unknown>):
         hasOnlyKeys(params, ["limit", "query"]) &&
         typeof params.query === "string" &&
         params.query.trim().length > 0 &&
-        params.query.length <= 500 &&
+        params.query.length <= REQUEST_LIMITS.bookmarkQuery &&
         Number.isSafeInteger(params.limit) &&
         (params.limit as number) >= 1 &&
-        (params.limit as number) <= 50
+        (params.limit as number) <= REQUEST_LIMITS.bookmarkResults
       )
     case "bookmarks.getRecent":
       return (
         hasOnlyKeys(params, ["limit"]) &&
         Number.isSafeInteger(params.limit) &&
         (params.limit as number) >= 1 &&
-        (params.limit as number) <= 50
+        (params.limit as number) <= REQUEST_LIMITS.bookmarkResults
       )
     case "tabs.navigate":
       return (
         hasOnlyKeys(params, ["url"]) &&
         typeof params.url === "string" &&
         params.url.length > 0 &&
-        params.url.length <= 16_384
+        params.url.length <= REQUEST_LIMITS.url
       )
     case "requests.cancel":
       return (
         hasOnlyKeys(params, ["requestId"]) &&
         typeof params.requestId === "string" &&
         params.requestId.length > 0 &&
-        params.requestId.length <= 256
+        params.requestId.length <= REQUEST_LIMITS.requestId
       )
     case "page.click":
       return (
         hasOnlyKeys(params, ["selector"]) &&
         typeof params.selector === "string" &&
         params.selector.length > 0 &&
-        params.selector.length <= 2048
+        params.selector.length <= REQUEST_LIMITS.selector
       )
     case "page.type":
       return (
         hasOnlyKeys(params, ["selector", "text"]) &&
         typeof params.selector === "string" &&
         params.selector.length > 0 &&
-        params.selector.length <= 2048 &&
+        params.selector.length <= REQUEST_LIMITS.selector &&
         typeof params.text === "string" &&
-        params.text.length <= 50_000
+        params.text.length <= REQUEST_LIMITS.typedText
       )
     case "webmcp.callTool":
       return (
         hasOnlyKeys(params, ["arguments", "name"]) &&
         typeof params.name === "string" &&
         params.name.length > 0 &&
-        params.name.length <= 256 &&
+        params.name.length <= REQUEST_LIMITS.webMcpName &&
         isRecord(params.arguments) &&
         isJsonValue(params.arguments)
       )
   }
 }
 
+function isRuntimeMethod(value: unknown): value is RuntimeMethod {
+  return RUNTIME_METHODS.some((method) => method === value)
+}
+
+function isRuntimeRequest(value: unknown): value is RuntimeRequest {
+  return (
+    isRecord(value) &&
+    value.kind === "request" &&
+    typeof value.requestId === "string" &&
+    value.requestId.length > 0 &&
+    value.requestId.length <= REQUEST_LIMITS.requestId &&
+    isRuntimeMethod(value.method) &&
+    isRecord(value.params) &&
+    isJsonValue(value.params) &&
+    hasValidParams(value.method, value.params) &&
+    (!["bookmarks.search", "bookmarks.getRecent"].includes(value.method) ||
+      value.tabContext === undefined) &&
+    (value.tabContext === undefined || isTabContext(value.tabContext)) &&
+    (value.confirmed === undefined || typeof value.confirmed === "boolean")
+  )
+}
+
 export function parseRuntimeRequest(value: unknown): RuntimeRequest {
-  if (
-    !isRecord(value) ||
-    value.kind !== "request" ||
-    typeof value.requestId !== "string" ||
-    value.requestId.length === 0 ||
-    value.requestId.length > 256 ||
-    typeof value.method !== "string" ||
-    !RUNTIME_METHODS.includes(value.method as RuntimeMethod) ||
-    !isRecord(value.params) ||
-    !isJsonValue(value.params) ||
-    !hasValidParams(value.method as RuntimeMethod, value.params) ||
-    (["bookmarks.search", "bookmarks.getRecent"].includes(value.method) &&
-      value.tabContext !== undefined) ||
-    (value.tabContext !== undefined && !isTabContext(value.tabContext)) ||
-    (value.confirmed !== undefined && typeof value.confirmed !== "boolean")
-  ) {
+  if (!isRuntimeRequest(value)) {
     throw new RuntimeError("INVALID_REQUEST", "Malformed or unknown extension runtime message")
   }
-  return value as unknown as RuntimeRequest
+  return value
 }
 
 export async function sendRuntimeRequest(
@@ -176,7 +212,7 @@ export async function sendRuntimeRequest(
 ): Promise<JsonValue> {
   const { signal, ...requestOptions } = options
   if (signal?.aborted) throw new RuntimeError("REQUEST_CANCELLED", "Browser request was cancelled")
-  const request: RuntimeRequest = {
+  const request = {
     kind: "request",
     requestId: crypto.randomUUID(),
     method,

@@ -231,7 +231,7 @@ async function assertCurrentMutationTarget(
 
 async function runPageOperation(
   operation: PageOperation,
-  request: RuntimeRequest,
+  request: RuntimeRequest<"page.getVisibleText" | "page.getSelection" | "page.click" | "page.type">,
   trustedLinkTargetUrl: string | null = null,
 ): Promise<JsonValue> {
   const context = await refreshBoundContext()
@@ -267,7 +267,7 @@ async function runPageOperation(
   return outcome.result
 }
 
-async function runClick(request: RuntimeRequest): Promise<JsonValue> {
+async function runClick(request: RuntimeRequest<"page.click">): Promise<JsonValue> {
   if (!request.confirmed) return runPageOperation("click", request)
   const inspection = await runPageOperation("inspectClick", request)
   const data =
@@ -318,7 +318,10 @@ function truncateStructuredResult(value: JsonValue): JsonValue {
   return truncated.truncated ? { text: truncated.text, truncated: true } : value
 }
 
-async function runWebMcp(operation: WebMcpOperation, request: RuntimeRequest): Promise<JsonValue> {
+async function runWebMcp(
+  operation: WebMcpOperation,
+  request: RuntimeRequest<"webmcp.listTools" | "webmcp.callTool">,
+): Promise<JsonValue> {
   const context = await refreshBoundContext()
   assertTabContext(request.tabContext, context)
   if (!(await hasHostPermission(context.url))) {
@@ -354,7 +357,7 @@ async function runWebMcp(operation: WebMcpOperation, request: RuntimeRequest): P
   return outcome.result
 }
 
-async function getActiveTab(request: RuntimeRequest): Promise<JsonValue> {
+async function getActiveTab(request: RuntimeRequest<"tabs.getActive">): Promise<JsonValue> {
   const context = await refreshBoundContext()
   assertTabContext(request.tabContext, context)
   const tab = await chrome.tabs.get(context.tabId)
@@ -362,7 +365,7 @@ async function getActiveTab(request: RuntimeRequest): Promise<JsonValue> {
   return { ...context, active: tab.active, title: tab.title ?? "", windowId: tab.windowId }
 }
 
-async function captureVisible(request: RuntimeRequest): Promise<JsonValue> {
+async function captureVisible(request: RuntimeRequest<"page.captureVisible">): Promise<JsonValue> {
   const context = await refreshBoundContext()
   assertTabContext(request.tabContext, context)
   const permissionGranted = await hasScreenshotPermission().catch(() => false)
@@ -397,18 +400,15 @@ async function captureVisible(request: RuntimeRequest): Promise<JsonValue> {
 }
 
 async function runBookmarkRead(
-  operation: "getRecent" | "search",
-  request: RuntimeRequest,
+  request: RuntimeRequest<"bookmarks.search" | "bookmarks.getRecent">,
 ): Promise<JsonValue> {
   const permissionGranted = await hasBookmarkPermission().catch(() => false)
   const limit = request.params.limit
-  if (typeof limit !== "number") {
-    throw new RuntimeError("INVALID_REQUEST", "A bookmark result limit is required")
-  }
+  const operation = request.method === "bookmarks.search" ? "search" : "getRecent"
   if (!request.confirmed) {
     const details: Record<string, JsonValue> = { limit, operation }
     if (!permissionGranted) details.requiredPermission = BOOKMARKS_PERMISSION
-    if (operation === "search" && typeof request.params.query === "string") {
+    if (request.method === "bookmarks.search") {
       details.query = request.params.query
     }
     const subject = operation === "search" ? "matching" : "recent"
@@ -421,19 +421,15 @@ async function runBookmarkRead(
   if (!permissionGranted) {
     throw new RuntimeError("PERMISSION_DENIED", "Chrome bookmark access is not granted")
   }
-  if (operation === "getRecent") return getRecentBookmarks(limit)
-  const query = request.params.query
-  if (typeof query !== "string") {
-    throw new RuntimeError("INVALID_REQUEST", "A bookmark search query is required")
-  }
-  return searchBookmarks(query, limit)
+  if (request.method === "bookmarks.getRecent") return getRecentBookmarks(limit)
+  return searchBookmarks(request.params.query, limit)
 }
 
-async function navigate(request: RuntimeRequest): Promise<JsonValue> {
+async function navigate(request: RuntimeRequest<"tabs.navigate">): Promise<JsonValue> {
   const context = await refreshBoundContext()
   assertTabContext(request.tabContext, context)
   const target = request.params.url
-  if (typeof target !== "string" || !isSupportedPageUrl(target)) {
+  if (!isSupportedPageUrl(target)) {
     throw new RuntimeError("INVALID_REQUEST", "Navigation requires an HTTP or HTTPS URL")
   }
   const targetUrl = new URL(target)
@@ -476,26 +472,16 @@ async function dispatch(request: RuntimeRequest, signal: AbortSignal): Promise<J
       result = await navigate(request)
       break
     case "bookmarks.search":
-      result = truncateStructuredResult(await runBookmarkRead("search", request))
-      break
     case "bookmarks.getRecent":
-      result = truncateStructuredResult(await runBookmarkRead("getRecent", request))
+      result = truncateStructuredResult(await runBookmarkRead(request))
       break
-    case "selection.takePending": {
-      const windowId = request.params.windowId
-      if (typeof windowId !== "number")
-        throw new RuntimeError("INVALID_REQUEST", "windowId is required")
-      result = await consumePendingSelection(windowId)
+    case "selection.takePending":
+      result = await consumePendingSelection(request.params.windowId)
       break
-    }
-    case "requests.cancel": {
-      const requestId = request.params.requestId
-      if (typeof requestId !== "string")
-        throw new RuntimeError("INVALID_REQUEST", "requestId is required")
-      activeRequests.get(requestId)?.abort()
+    case "requests.cancel":
+      activeRequests.get(request.params.requestId)?.abort()
       result = { cancelled: true }
       break
-    }
     case "page.getVisibleText": {
       const value = await runPageOperation("getVisibleText", request)
       if (
@@ -535,6 +521,10 @@ async function dispatch(request: RuntimeRequest, signal: AbortSignal): Promise<J
     case "webmcp.callTool":
       result = truncateStructuredResult(await runWebMcp("webmcp.callTool", request))
       break
+    default: {
+      const unhandled: never = request
+      throw new Error(`Unhandled runtime request: ${unhandled}`)
+    }
   }
   if (signal.aborted) throw new RuntimeError("REQUEST_CANCELLED", "Browser request was cancelled")
   return result

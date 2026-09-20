@@ -322,7 +322,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   })
 
   function providerName(providerId: string): string | undefined {
-    return runtime.getProviders().find((provider) => provider.id === providerId)?.name
+    return runtime.configuration.getProviders().find((provider) => provider.id === providerId)?.name
   }
 
   function renderComposerImages(): void {
@@ -392,7 +392,9 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   async function requestRunAccess(): Promise<void> {
     const currentTabUrl = await refreshTab()
     if (!currentTabUrl) throw new Error("Open an HTTP or HTTPS page before sending a prompt")
-    const modelEndpoints = await runtime.requiredModelEndpointUrls()
+    const modelEndpoints = await runtime.configuration.requiredModelEndpointUrls(
+      () => runtime.model,
+    )
     if (!(await requestHostPermissions([currentTabUrl, ...modelEndpoints]))) {
       throw new Error("Current-page and model-provider access are required for this request")
     }
@@ -456,7 +458,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     updateSendButton()
     void run(async () => {
       try {
-        if (!(await runtime.authStatus()).loggedIn) {
+        if (!(await runtime.configuration.authStatus(runtime.model.provider)).loggedIn) {
           throw new Error(
             `Configure ${providerName(runtime.model.provider) ?? "the provider"} before sending a prompt`,
           )
@@ -537,7 +539,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   }
 
   authentication = new AuthenticationController({
-    runtime,
+    configuration: runtime.configuration,
     currentProviderId: () => runtime.model.provider,
     updateError: setError,
     onStatus: (text) => setRunStatus(text),
@@ -669,7 +671,10 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
         await runtime.syncSettings({
           applyModelToActiveSession: event.payload?.applyModelToActiveSession === true,
         })
-        applyAppearance(runtime.appSettings.fontFamily, runtime.appSettings.fontSize)
+        applyAppearance(
+          runtime.configuration.appSettings.fontFamily,
+          runtime.configuration.appSettings.fontSize,
+        )
         await authentication?.refresh()
         setRunStatus("Settings saved")
       }, setError)
@@ -697,7 +702,10 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     if (areaName !== "local" || !(SETTINGS_KEY in changes)) return
     void run(async () => {
       await runtime.syncSettings()
-      applyAppearance(runtime.appSettings.fontFamily, runtime.appSettings.fontSize)
+      applyAppearance(
+        runtime.configuration.appSettings.fontFamily,
+        runtime.configuration.appSettings.fontSize,
+      )
       setRunStatus("Settings saved")
     }, setError)
   })
@@ -708,7 +716,10 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   })
 
   await runtime.initialize()
-  applyAppearance(runtime.appSettings.fontFamily, runtime.appSettings.fontSize)
+  applyAppearance(
+    runtime.configuration.appSettings.fontFamily,
+    runtime.configuration.appSettings.fontSize,
+  )
   renderMessages()
   resizePromptInput()
   setRunStatus("Ready", false)
