@@ -1,6 +1,6 @@
 import type { AgentEvent, AgentMessage } from "@earendil-works/pi-agent-core"
 import "./styles.css"
-import type { AuthEvent, AuthPrompt, ImageContent } from "@earendil-works/pi-ai"
+import type { AuthEvent, AuthPrompt, AuthType, ImageContent } from "@earendil-works/pi-ai"
 import { BrowserAgentRuntime } from "../agent/runtime.js"
 import { AUTH_ORIGINS, OPENAI_PROVIDER_ID } from "../auth/codex-oauth.js"
 import { CREDENTIALS_KEY } from "../auth/credential-store.js"
@@ -97,6 +97,28 @@ const voiceStatus = element<HTMLElement>("voice-status")
 const settingsPage = element<HTMLElement>("settings-page")
 const closeSettingsButton = element<HTMLButtonElement>("close-settings")
 const configureProviderButton = element<HTMLButtonElement>("configure-provider")
+const authMethodDialog = element<HTMLDialogElement>("auth-method-dialog")
+const accountAuthMethodButton = element<HTMLButtonElement>("account-auth-method")
+const apiKeyAuthMethodButton = element<HTMLButtonElement>("api-key-auth-method")
+const authProviderDialog = element<HTMLDialogElement>("auth-provider-dialog")
+const authProviderDescription = element<HTMLElement>("auth-provider-description")
+const authProviderSelect = element<HTMLSelectElement>("auth-provider")
+const authProviderPicker = new SearchableSelect({
+  container: element<HTMLElement>("auth-provider-picker"),
+  input: element<HTMLInputElement>("auth-provider-search"),
+  select: authProviderSelect,
+  listbox: element<HTMLElement>("auth-provider-options"),
+  emptyText: "No providers support this authentication method",
+})
+for (const [buttonId, returnValue] of [
+  ["auth-provider-back", "back"],
+  ["auth-provider-cancel", "cancel"],
+  ["auth-provider-confirm", "confirm"],
+] as const) {
+  element<HTMLButtonElement>(buttonId).addEventListener("click", () => {
+    authProviderDialog.close(returnValue)
+  })
+}
 const authPromptDialog = element<HTMLDialogElement>("auth-prompt-dialog")
 const authPromptLabel = element<HTMLElement>("auth-prompt-label")
 const authPromptInput = element<HTMLInputElement>("auth-prompt-input")
@@ -451,6 +473,59 @@ function renderMessages(streaming?: AgentMessage): void {
   transcript.scrollTop = transcript.scrollHeight
 }
 
+const AUTH_METHOD_LABELS: Record<AuthType, string> = {
+  oauth: "Sign in with an account",
+  api_key: "Sign in with an API key",
+}
+
+function waitForDialog(dialog: HTMLDialogElement): Promise<string> {
+  return new Promise((resolve) => {
+    dialog.addEventListener("close", () => resolve(dialog.returnValue), { once: true })
+  })
+}
+
+async function selectAuthMethod(): Promise<AuthType | undefined> {
+  accountAuthMethodButton.hidden = runtime.getProviders("oauth").length === 0
+  apiKeyAuthMethodButton.hidden = runtime.getProviders("api_key").length === 0
+  authMethodDialog.returnValue = ""
+  authMethodDialog.showModal()
+  queueMicrotask(() =>
+    (accountAuthMethodButton.hidden ? apiKeyAuthMethodButton : accountAuthMethodButton).focus(),
+  )
+  const selection = await waitForDialog(authMethodDialog)
+  return selection === "oauth" || selection === "api_key" ? selection : undefined
+}
+
+type AuthProviderSelection = { providerId: string } | { back: true } | undefined
+
+async function selectAuthProvider(
+  authType: AuthType,
+  preferredProviderId?: string,
+): Promise<AuthProviderSelection> {
+  const providers = runtime.getProviders(authType)
+  if (providers.length === 0)
+    throw new Error(`No providers support ${AUTH_METHOD_LABELS[authType]}`)
+  authProviderDescription.textContent = `Providers available for ${AUTH_METHOD_LABELS[authType].toLowerCase()}.`
+  authProviderPicker.setOptions(
+    providers.map((provider) => {
+      const method = provider.authMethods.find((candidate) => candidate.type === authType)
+      return {
+        value: provider.id,
+        label: method ? `${provider.name} — ${method.label}` : provider.name,
+        keywords: [provider.name, provider.id],
+      }
+    }),
+    preferredProviderId,
+  )
+  authProviderDialog.returnValue = ""
+  authProviderDialog.showModal()
+  queueMicrotask(() => element<HTMLInputElement>("auth-provider-search").focus())
+  const selection = await waitForDialog(authProviderDialog)
+  if (selection === "back") return { back: true }
+  if (selection !== "confirm") return undefined
+  return { providerId: authProviderSelect.value }
+}
+
 function promptForCredential(prompt: AuthPrompt): Promise<string> {
   authPromptLabel.textContent = prompt.message
   const isSelect = prompt.type === "select"
@@ -485,15 +560,19 @@ function promptForCredential(prompt: AuthPrompt): Promise<string> {
     const finish = (): void => {
       cleanup()
       if (authPromptDialog.returnValue !== "confirm") {
+        authPromptInput.value = ""
         reject(new DOMException("Provider setup cancelled", "AbortError"))
         return
       }
-      resolve(isSelect ? authPromptSelect.value : authPromptInput.value)
+      const response = isSelect ? authPromptSelect.value : authPromptInput.value
+      authPromptInput.value = ""
+      resolve(response)
     }
     const abort = (): void => {
       if (authPromptDialog.open) authPromptDialog.close("cancel")
       else {
         cleanup()
+        authPromptInput.value = ""
         reject(new DOMException("Provider setup cancelled", "AbortError"))
       }
     }
@@ -579,14 +658,14 @@ async function refreshAuth(providerId = providerSelect.value): Promise<void> {
   if (!provider) return
   const status = await validatedAuthStatus(providerId)
   if (request !== authStatusRequest) return
-  loginButton.hidden = status.loggedIn || (!provider.apiKey && !provider.oauth)
-  loginButton.textContent = provider.oauth
-    ? `Log in to ${provider.name}`
-    : `Configure ${provider.name}`
+  loginButton.hidden = runtime
+    .getProviders()
+    .every((candidate) => candidate.authMethods.length === 0)
+  loginButton.textContent = "Add credential"
   logoutButton.hidden = !status.loggedIn
-  refreshTokenButton.hidden = !status.loggedIn || !provider.oauth
+  refreshTokenButton.hidden = !status.loggedIn || status.type !== "oauth"
   authStatus.textContent = status.loggedIn
-    ? `${provider.name} configured`
+    ? `${provider.name} configured with ${status.type === "oauth" ? "an account" : "an API key"}`
     : `${provider.name} not configured`
   authStatus.dataset.loggedIn = String(status.loggedIn)
 }
@@ -661,54 +740,76 @@ async function run(
   }
 }
 
-function configureProvider(providerId: string, button: HTMLButtonElement): void {
+async function requestProviderSetupPermission(
+  providerId: string,
+  authType: AuthType,
+): Promise<void> {
+  if (authType === "oauth") {
+    if (providerId !== OPENAI_PROVIDER_ID) {
+      throw new Error(`Account login is not configured for ${providerId} in Chrome`)
+    }
+    const granted = await requestHostPermissions(AUTH_ORIGINS)
+    if (!granted) throw new Error("OpenAI host access is required for login")
+    return
+  }
+  if (providerId === "radius") {
+    const granted = await requestHostPermissions(["https://radius.pi.dev"])
+    if (!granted) throw new Error("Radius host access is required to load its models")
+  }
+}
+
+function configureAuthentication(preferredProviderId: string, button: HTMLButtonElement): void {
   if (providerConfigurationInProgress) return
   providerConfigurationInProgress = true
-  button.disabled = true
+  loginButton.disabled = true
+  configureProviderButton.disabled = true
+  const updateError = button === configureProviderButton ? setProviderConfigurationError : setError
   void run(async () => {
-    const provider = providerSummary(providerId)
+    let selected: { authType: AuthType; providerId: string } | undefined
+    while (!selected) {
+      const authType = await selectAuthMethod()
+      if (!authType) return
+      const selection = await selectAuthProvider(authType, preferredProviderId)
+      if (!selection) return
+      if ("back" in selection) continue
+      selected = { authType, providerId: selection.providerId }
+    }
+
+    const { authType, providerId } = selected
+    const provider = runtime.getProviders(authType).find((candidate) => candidate.id === providerId)
     if (!provider) throw new Error("Select a provider before configuring it")
-    if (!provider.apiKey && !provider.oauth) {
-      throw new Error(`${provider.name} has no browser-compatible authentication method`)
-    }
-    if (provider.oauth) {
-      const granted = await requestHostPermissions(AUTH_ORIGINS)
-      if (!granted) throw new Error("OpenAI host access is required for login")
-    } else if (providerId === "radius") {
-      const granted = await requestHostPermissions(["https://radius.pi.dev"])
-      if (!granted) throw new Error("Radius host access is required to load its models")
-    }
+    const selectedProviderId = providerSelect.value
+    const selectedModelId = modelSelect.value
+    await requestProviderSetupPermission(providerId, authType)
     loginController = new AbortController()
     try {
-      await runtime.login(
-        providerId,
-        provider.oauth ? "oauth" : "api_key",
-        loginController.signal,
-        promptForCredential,
-      )
+      await runtime.login(providerId, authType, loginController.signal, promptForCredential)
       if (loginDialog.open) loginDialog.close()
-      renderProviderOptions(providerId)
-      renderModelOptions(
-        providerId,
-        providerId === runtime.model.provider ? runtime.model.id : undefined,
-      )
+      renderProviderOptions(selectedProviderId)
+      renderModelOptions(selectedProviderId, selectedModelId)
       await Promise.all([refreshAuth(runtime.model.provider), updateProviderConfigurationButton()])
-      setRunStatus("Ready", false)
+      setRunStatus(
+        `${provider.name} configured with ${authType === "oauth" ? "an account" : "an API key"}`,
+        false,
+      )
     } finally {
       loginController = undefined
     }
-  }).finally(() => {
+  }, updateError).finally(() => {
     providerConfigurationInProgress = false
-    button.disabled = false
+    loginButton.disabled = false
+    configureProviderButton.disabled = !runtime
+      .getProviders()
+      .some((provider) => provider.authMethods.length > 0)
   })
 }
 
 loginButton.addEventListener("click", () => {
-  configureProvider(runtime.model.provider, loginButton)
+  configureAuthentication(runtime.model.provider, loginButton)
 })
 
 configureProviderButton.addEventListener("click", () => {
-  configureProvider(providerSelect.value, configureProviderButton)
+  configureAuthentication(providerSelect.value, configureProviderButton)
 })
 
 element<HTMLButtonElement>("cancel-login").addEventListener("click", () => {
@@ -866,23 +967,20 @@ async function updateProviderConfigurationButton(): Promise<void> {
   const request = ++providerConfigurationRequest
   const providerId = providerSelect.value
   const provider = providerSummary(providerId)
-  const configurable = provider && (provider.apiKey || provider.oauth)
+  const configurable = runtime.getProviders().some((candidate) => candidate.authMethods.length > 0)
 
   configureProviderButton.disabled = providerConfigurationInProgress || !configurable
-  configureProviderButton.textContent = `Configure ${provider?.name ?? "selected provider"}`
-  if (!provider?.oauth) {
+  configureProviderButton.textContent = "Configure authentication"
+  if (!provider) {
     setProviderConfigurationError()
     return
   }
 
   try {
-    const status = await validatedAuthStatus(providerId)
+    await validatedAuthStatus(providerId)
     if (request !== providerConfigurationRequest || providerSelect.value !== providerId) return
     setProviderConfigurationError()
     configureProviderButton.disabled = providerConfigurationInProgress
-    configureProviderButton.textContent = status.loggedIn
-      ? `Reconnect ${provider.name}`
-      : `Log in to ${provider.name}`
   } catch (error) {
     if (request === providerConfigurationRequest && providerSelect.value === providerId) {
       setProviderConfigurationError(error)

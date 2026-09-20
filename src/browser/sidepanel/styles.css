@@ -951,15 +951,43 @@ dialog p {
   white-space: pre-wrap;
 }
 
+.auth-method-options {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.auth-method-options button {
+  justify-content: flex-start;
+  width: 100%;
+  text-align: left;
+}
+
+#auth-provider-dialog .searchable-select {
+  margin-top: 12px;
+}
+
+#auth-provider-dialog .searchable-select-options {
+  position: static;
+  max-height: min(240px, 35vh);
+  margin-top: 4px;
+}
+
+#auth-provider-dialog .searchable-select-options[hidden] {
+  display: block;
+  visibility: hidden;
+}
+
+#auth-provider-dialog input,
+#auth-prompt-dialog input,
+#auth-prompt-dialog select {
+  width: 100%;
+}
+
 #auth-prompt-label {
   display: block;
   margin: 12px 0 6px;
   font-weight: 650;
-}
-
-#auth-prompt-dialog input,
-#auth-prompt-dialog select {
-  width: 100%;
 }
 
 #confirm-error {

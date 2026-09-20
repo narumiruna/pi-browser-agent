@@ -30,7 +30,12 @@ describe("browser pi-ai providers", () => {
     expect(ids).toContain("openrouter")
     expect(ids).toContain("radius")
     expect(ids).not.toContain(BROWSER_EXCLUDED_PROVIDERS[0])
-    expect(providers.find((candidate) => candidate.id === "openai-codex")?.auth.oauth).toBeDefined()
+    const codex = providers.find((candidate) => candidate.id === "openai-codex")
+    const openai = providers.find((candidate) => candidate.id === "openai")
+    expect(codex?.auth.oauth).toBeDefined()
+    expect(codex?.auth.apiKey).toBeUndefined()
+    expect(openai?.auth.apiKey?.login).toBeDefined()
+    expect(openai?.auth.oauth).toBeUndefined()
     for (const provider of providers.filter((candidate) => candidate.id !== "openai-codex")) {
       expect(provider.auth.oauth, provider.id).toBeUndefined()
     }
