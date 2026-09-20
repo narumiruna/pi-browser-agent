@@ -57,7 +57,7 @@ The agent can read visible text and selection, capture the visible viewport, cli
 
 The Side Panel supports creating, resuming, renaming, and deleting sessions. Complete transcript boundaries, including confirmed bookmark tool results, are stored in versioned IndexedDB records. Storage keeps at most 50 sessions and limits each record to 5 MB. **Clear all session data** removes transcripts and embedded images.
 
-Open **More options** (the three-dot button in the top-right) and choose **Settings** to open settings in a full browser tab. The settings page lets you choose a provider, model, interface font, and a text size from 12 to 24 px using a slider. Save or close the page to return to the previous tab; the Side Panel conversation remains open. The selected model is saved in each session, while the latest selection is used for new sessions. Settings persist across Side Panel and Chrome restarts. The system prompt and AGENTS-style instructions are also editable and apply to the next run. The extension does not discover instructions from the local filesystem.
+Open **More options** (the gear button in the top-right) and choose **Settings** to open settings in a full browser tab. The settings page lets you choose a provider, model, interface font, and a text size from 12 to 24 px using a slider. Save or close the page to return to the previous tab; the Side Panel conversation remains open. The selected model is saved in each session, while the latest selection is used for new sessions. Settings persist across Side Panel and Chrome restarts. The system prompt and AGENTS-style instructions are also editable and apply to the next run. The extension does not discover instructions from the local filesystem.
 
 ## Development
 
@@ -77,7 +77,7 @@ npm audit --omit=dev
 - **OpenAI Codex host access was revoked:** select **Log in to OpenAI Codex** again and approve both requested OpenAI origins.
 - **A page tool is denied:** make the intended HTTP(S) page visible and send the prompt again. If access was previously declined, use **Account and site access → Allow current site**. Chrome internal pages cannot be controlled.
 - **A bookmark read is denied:** request it again and approve both Pi Chrome's operation confirmation and Chrome's optional permission prompt. Revoke bookmark access from Chrome's extension settings when it is no longer wanted.
-- **Stale context:** the visible tab changed or navigated after the tool request began. Retry after the Side Panel shows the current URL.
+- **Stale context:** the visible tab changed or navigated after the tool request began. Return to the intended page and retry; Pi Chrome automatically tracks the visible supported tab.
 - **Login pending:** finish the device flow before its 15-minute expiry. Cancel and restart if the code expires or is denied.
 - **Refresh failed:** remove the affected credential, then configure that provider again. The extension does not silently fall back to another provider.
 - **Voice input unavailable:** use a Chrome version that exposes the Web Speech API, and allow microphone access for Pi Chrome when prompted. Voice recognition may require network access.
