@@ -377,16 +377,17 @@ test("grants microphone access from a full extension page", async () => {
 test("shows only microphone settings after access is denied", async () => {
   const microphonePage = await context.newPage()
   await microphonePage.addInitScript(() => {
-    let permissionState: PermissionState = "prompt"
+    const state = window as typeof window & { testMicrophonePermission: PermissionState }
+    state.testMicrophonePermission = "prompt"
     Object.defineProperty(navigator, "permissions", {
       configurable: true,
-      value: { query: async () => ({ state: permissionState }) },
+      value: { query: async () => ({ state: state.testMicrophonePermission }) },
     })
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
       value: {
         getUserMedia: async () => {
-          permissionState = "denied"
+          state.testMicrophonePermission = "denied"
           throw new DOMException("Permission denied", "NotAllowedError")
         },
       },
@@ -399,6 +400,18 @@ test("shows only microphone settings after access is denied", async () => {
   await expect(microphonePage.locator("#open-microphone-settings")).toBeVisible()
   await expect(microphonePage.locator("#microphone-access-status")).toContainText(
     "Chrome blocked microphone access",
+  )
+
+  await microphonePage.evaluate(() => {
+    ;(
+      window as typeof window & { testMicrophonePermission: PermissionState }
+    ).testMicrophonePermission = "prompt"
+    window.dispatchEvent(new Event("focus"))
+  })
+  await expect(microphonePage.locator("#allow-microphone")).toBeVisible()
+  await expect(microphonePage.locator("#open-microphone-settings")).toBeHidden()
+  await expect(microphonePage.locator("#microphone-access-status")).toContainText(
+    "Select Allow microphone access",
   )
   await microphonePage.close()
 })

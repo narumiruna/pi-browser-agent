@@ -782,26 +782,23 @@ function microphoneAccessErrorMessage(error: unknown): string {
   return `Microphone access failed: ${safeErrorMessage(error)}`
 }
 
+async function refreshMicrophoneAccessPage(): Promise<void> {
+  const state = await getMicrophonePermissionState().catch(() => "prompt" as const)
+  allowMicrophoneButton.hidden = state !== "prompt"
+  openMicrophoneSettingsButton.hidden = state !== "denied"
+  microphoneAccessStatus.textContent =
+    state === "granted"
+      ? "Microphone access is allowed. Close this tab and select the microphone in Pi Chrome."
+      : state === "denied"
+        ? "Microphone access is blocked. Open Chrome microphone settings to allow it."
+        : "Select Allow microphone access, then approve Chrome's prompt."
+}
+
 async function initializeMicrophoneAccessPage(): Promise<void> {
   document.title = "Microphone access · Pi Chrome"
   document.body.dataset.view = "microphone"
   microphoneAccessPage.hidden = false
-  const state = await getMicrophonePermissionState().catch(() => "prompt" as const)
-  if (state === "granted") {
-    allowMicrophoneButton.hidden = true
-    microphoneAccessStatus.textContent =
-      "Microphone access is allowed. Close this tab and select the microphone in Pi Chrome."
-    return
-  }
-  if (state === "denied") {
-    allowMicrophoneButton.hidden = true
-    openMicrophoneSettingsButton.hidden = false
-    microphoneAccessStatus.textContent =
-      "Microphone access is blocked. Open Chrome microphone settings to allow it."
-    return
-  }
-  microphoneAccessStatus.textContent =
-    "Select Allow microphone access, then approve Chrome's prompt."
+  await refreshMicrophoneAccessPage()
 }
 
 async function startVoiceInput(): Promise<void> {
@@ -851,6 +848,15 @@ openMicrophoneSettingsButton.addEventListener("click", () => {
 
 element<HTMLButtonElement>("close-microphone-access").addEventListener("click", () => {
   window.close()
+})
+
+window.addEventListener("focus", () => {
+  if (isMicrophoneAccessTab) void refreshMicrophoneAccessPage()
+})
+document.addEventListener("visibilitychange", () => {
+  if (isMicrophoneAccessTab && document.visibilityState === "visible") {
+    void refreshMicrophoneAccessPage()
+  }
 })
 
 async function requestProviderSetupPermission(
