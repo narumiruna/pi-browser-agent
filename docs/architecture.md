@@ -30,7 +30,7 @@ flowchart TB
 
 ### Side Panel
 
-The Side Panel owns the live `Agent`, provider/model selectors, model stream, credential UI, confirmation UI, editable instructions, queue controls, and active session. It registers browser-compatible `pi-ai` providers, strips their Node-only OAuth paths, and replaces OpenAI Codex OAuth with the browser device flow. It requests optional screenshot or bookmark access only from the corresponding Confirm-button gesture. Explicit Send, login, site-access, catalog-load, and cross-origin confirmation actions record app approval for their normalized exact origins. `pi-agent-core` receives `transport: "sse"`; browser WebSocket transport is not used.
+The Side Panel owns the live `Agent`, provider/model selectors, model stream, credential UI, confirmation UI, editable instructions, queue controls, and active session. It registers browser-compatible `pi-ai` providers, strips their Node-only OAuth paths, and replaces OpenAI Codex OAuth with the browser device flow. It requests optional screenshot or bookmark access only from the corresponding Confirm-button gesture. Explicit Send, login, site-access, catalog-load, and cross-origin confirmation actions record app approval for their normalized exact origins. A profile-wide Web Lock serializes approval updates across the Side Panel and Settings tabs. `pi-agent-core` receives `transport: "sse"`; browser WebSocket transport is not used.
 
 Closing the panel aborts the active agent. Complete messages and tool results are persisted at event barriers. A record left in `running` state is changed to `interrupted` on the next startup and is never continued automatically.
 

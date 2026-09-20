@@ -144,4 +144,34 @@ describe("browser permissions", () => {
       piChromeApprovedHostPermissions: ["https://api.example.test/*", "https://example.test/*"],
     })
   })
+
+  test("serializes concurrent host approval updates", async () => {
+    const request = vi.fn().mockResolvedValue(true)
+    const lockRequest = vi.fn(
+      async (_name: string, _options: LockOptions, operation: () => Promise<void>) => operation(),
+    )
+    let approved: string[] = []
+    const get = vi.fn(async () => ({ piChromeApprovedHostPermissions: approved }))
+    const set = vi.fn(async (value: { piChromeApprovedHostPermissions: string[] }) => {
+      approved = value.piChromeApprovedHostPermissions
+    })
+    vi.stubGlobal("chrome", {
+      permissions: { request },
+      storage: { local: { get, set } },
+    })
+    vi.stubGlobal("navigator", { locks: { request: lockRequest } })
+
+    await Promise.all([
+      requestHostPermission("https://one.example.test/path"),
+      requestHostPermission("https://two.example.test/path"),
+    ])
+
+    expect(approved).toEqual(["https://one.example.test/*", "https://two.example.test/*"])
+    expect(lockRequest).toHaveBeenCalledTimes(2)
+    expect(lockRequest).toHaveBeenCalledWith(
+      "pi-chrome-approved-host-permissions-write",
+      { mode: "exclusive" },
+      expect.any(Function),
+    )
+  })
 })

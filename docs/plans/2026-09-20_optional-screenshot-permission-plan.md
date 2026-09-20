@@ -43,10 +43,10 @@ The broad host capability remains optional. Pi Chrome continues to reject non-HT
 - [x] Extend the Side Panel confirmation gesture to request screenshot access and keep the dialog open with a clear denial message when Chrome declines it; Chrome E2E verifies the in-dialog denial.
 - [x] Strengthen the screenshot tool description and unit coverage so the model attempts the tool and receives image content after the permission flow; tool tests verify the confirmed retry and PNG content.
 - [x] Update README, architecture, permissions/storage, security, troubleshooting, and manual acceptance documentation with the optional broad grant, data flow, revocation behavior, and current-tab limitation.
-- [x] Add a trusted app-level exact-origin approval list and require it in page, navigation, WebMCP, authentication, and provider permission paths so screenshot `<all_urls>` access alone cannot authorize ordinary host access; unit, integration, and Chrome E2E tests cover broad-only denial and exact approval.
+- [x] Add a trusted app-level exact-origin approval list and require it in page, navigation, WebMCP, authentication, and provider permission paths so screenshot `<all_urls>` access alone cannot authorize ordinary host access; serialize additions across trusted extension contexts with a profile-wide Web Lock; unit, integration, and Chrome E2E tests cover broad-only denial, exact approval, and concurrent additions.
 - [x] Serialize screenshot tool execution through the singleton confirmation UI and preserve non-permission `captureVisibleTab()` errors as `INTERNAL_ERROR`; metadata unit coverage and Chrome E2E verify both changes.
 - [x] Correct permission and security documentation to explain Chrome's native prompt suppression after `<all_urls>` and the independent exact-origin approval layer.
-- [x] Run formatting/lint checks, unit tests, typecheck, production build and artifact audit, and Chrome E2E coverage after review fixes; `npm run ci` passes with 135 unit/integration tests and 16 E2E tests. A manual grant produced a PNG that the model read successfully; native decline, revocation, and explicit cross-tab acceptance remain manual-only.
+- [x] Run formatting/lint checks, unit tests, typecheck, production build and artifact audit, and Chrome E2E coverage after review fixes; `npm run ci` passes with 136 unit/integration tests and 16 E2E tests. A manual grant produced a PNG that the model read successfully; native decline, revocation, and explicit cross-tab acceptance remain manual-only.
 
 ## Risks
 
@@ -59,5 +59,5 @@ The broad host capability remains optional. Pi Chrome continues to reject non-HT
 - [x] A production build declares optional `<all_urls>` and no required host permission.
 - [x] First screenshot without the grant explains and requests access from the Confirm click; automated coverage verifies routing and denial, while the Chrome-owned native prompt remains manual acceptance.
 - [ ] Granting access returns a PNG tool result, while denial or revocation fails without background permission requests; automated coverage passes, and a 2026-09-20 manual grant produced a PNG and successful model translation after one expected stale-context retry. Native revocation and explicit cross-tab acceptance remain pending.
-- [x] Existing page, bookmark, provider, session, security, and E2E checks pass in the final review-fix `npm run ci` with 135 unit/integration tests and 16 E2E tests.
+- [x] Existing page, bookmark, provider, session, security, and E2E checks pass in the final review-fix `npm run ci` with 136 unit/integration tests and 16 E2E tests.
 - [x] Documentation clearly states the breadth of Chrome's grant, Chrome's suppression of narrower native prompts, and Pi Chrome's independent exact-origin approval and runtime constraints.

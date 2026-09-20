@@ -1,6 +1,8 @@
 export const BOOKMARKS_PERMISSION = "bookmarks" as const
 export const SCREENSHOT_HOST_PERMISSION = "<all_urls>" as const
 const APPROVED_HOST_PERMISSIONS_KEY = "piChromeApprovedHostPermissions"
+const APPROVED_HOST_PERMISSIONS_LOCK = "pi-chrome-approved-host-permissions-write"
+let approvalWriteChain: Promise<void> = Promise.resolve()
 
 export function hasBookmarkPermission(): Promise<boolean> {
   return chrome.permissions.contains({ permissions: [BOOKMARKS_PERMISSION] })
@@ -45,11 +47,29 @@ async function approvedHostPermissions(): Promise<Set<string>> {
   return new Set(Array.isArray(value) ? value.filter(isNormalizedHostPermission) : [])
 }
 
-async function approveHostPermissions(origins: readonly string[]): Promise<void> {
-  const approved = await approvedHostPermissions()
-  for (const origin of origins) approved.add(origin)
-  await chrome.storage.local.set({
-    [APPROVED_HOST_PERMISSIONS_KEY]: [...approved].sort(),
+function withHostApprovalWriteLock<T>(operation: () => Promise<T>): Promise<T> {
+  const result = approvalWriteChain
+    .catch(() => undefined)
+    .then(() => {
+      const locks = typeof navigator === "undefined" ? undefined : navigator.locks
+      return locks
+        ? locks.request(APPROVED_HOST_PERMISSIONS_LOCK, { mode: "exclusive" }, operation)
+        : operation()
+    })
+  approvalWriteChain = result.then(
+    () => undefined,
+    () => undefined,
+  )
+  return result
+}
+
+function approveHostPermissions(origins: readonly string[]): Promise<void> {
+  return withHostApprovalWriteLock(async () => {
+    const approved = await approvedHostPermissions()
+    for (const origin of origins) approved.add(origin)
+    await chrome.storage.local.set({
+      [APPROVED_HOST_PERMISSIONS_KEY]: [...approved].sort(),
+    })
   })
 }
 
