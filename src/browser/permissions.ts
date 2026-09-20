@@ -1,4 +1,5 @@
 export const BOOKMARKS_PERMISSION = "bookmarks" as const
+export const SCREENSHOT_HOST_PERMISSION = "<all_urls>" as const
 
 export function hasBookmarkPermission(): Promise<boolean> {
   return chrome.permissions.contains({ permissions: [BOOKMARKS_PERMISSION] })
@@ -6,6 +7,14 @@ export function hasBookmarkPermission(): Promise<boolean> {
 
 export function requestBookmarkPermission(): Promise<boolean> {
   return chrome.permissions.request({ permissions: [BOOKMARKS_PERMISSION] })
+}
+
+export function hasScreenshotPermission(): Promise<boolean> {
+  return chrome.permissions.contains({ origins: [SCREENSHOT_HOST_PERMISSION] })
+}
+
+export function requestScreenshotPermission(): Promise<boolean> {
+  return chrome.permissions.request({ origins: [SCREENSHOT_HOST_PERMISSION] })
 }
 
 export function toHostPermissionPattern(value: string | URL): string {

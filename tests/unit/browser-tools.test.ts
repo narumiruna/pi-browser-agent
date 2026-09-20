@@ -1,6 +1,7 @@
 import { Value } from "typebox/value"
 import { afterEach, describe, expect, test, vi } from "vitest"
 import { createBrowserTools } from "../../src/browser/agent/browser-tools.js"
+import { SCREENSHOT_HOST_PERMISSION } from "../../src/browser/permissions.js"
 import { MAX_TEXT_RESULT_BYTES } from "../../src/browser/runtime/types.js"
 
 afterEach(() => {
@@ -44,6 +45,62 @@ describe("browser agent tools", () => {
         executionMode: "sequential",
       })
     }
+  })
+
+  test("confirms optional screenshot access and returns PNG content", async () => {
+    const tabContext = { tabId: 1, url: "https://example.test/", epoch: 0 }
+    const sendMessage = vi.fn(async (message: { confirmed?: boolean; method: string }) => {
+      if (message.method === "app.getState") {
+        return { ok: true, result: { tabContext } }
+      }
+      if (message.method === "page.captureVisible" && !message.confirmed) {
+        return {
+          ok: false,
+          error: {
+            code: "CONFIRMATION_REQUIRED",
+            message: "Allow screenshots?",
+            details: { requiredPermission: SCREENSHOT_HOST_PERMISSION },
+          },
+        }
+      }
+      return {
+        ok: true,
+        result: {
+          dataUrl: "data:image/png;base64,iVBORw==",
+          mimeType: "image/png",
+          tabContext,
+        },
+      }
+    })
+    vi.stubGlobal("chrome", { runtime: { sendMessage } })
+    vi.stubGlobal("crypto", { randomUUID: vi.fn(() => "request-id") })
+    const confirm = vi.fn().mockResolvedValue(true)
+    const tool = createBrowserTools(confirm).find(
+      (candidate) => candidate.name === "browser_capture_visible",
+    )
+    if (!tool) throw new Error("Missing screenshot tool")
+
+    const result = await tool.execute("tool-id", {}, undefined)
+
+    expect(confirm).toHaveBeenCalledWith(
+      "Allow screenshots?",
+      { requiredPermission: SCREENSHOT_HOST_PERMISSION },
+      undefined,
+    )
+    expect(sendMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        method: "page.captureVisible",
+        confirmed: true,
+        tabContext,
+      }),
+    )
+    expect(result.content).toEqual([
+      {
+        type: "text",
+        text: expect.stringContaining("Untrusted browser screenshot metadata"),
+      },
+      { type: "image", data: "iVBORw==", mimeType: "image/png" },
+    ])
   })
 
   test("caps the final formatted bookmark text after JSON escaping", async () => {

@@ -11,6 +11,8 @@ import {
   requestBookmarkPermission,
   requestHostPermission,
   requestHostPermissions,
+  requestScreenshotPermission,
+  SCREENSHOT_HOST_PERMISSION,
 } from "../permissions.js"
 import { type RuntimeEvent, sendRuntimeRequest } from "../runtime/messages.js"
 import type { JsonObject } from "../runtime/types.js"
@@ -276,6 +278,9 @@ function confirmation(
       } else if (requiredPermission === BOOKMARKS_PERMISSION) {
         requestAccess = requestBookmarkPermission
         denialMessage = "Bookmark access is required for this read"
+      } else if (requiredPermission === SCREENSHOT_HOST_PERMISSION) {
+        requestAccess = requestScreenshotPermission
+        denialMessage = "All-sites access is required to capture screenshots after tab changes"
       }
       if (!requestAccess) return
       event.preventDefault()

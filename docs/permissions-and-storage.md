@@ -11,6 +11,14 @@
 | `storage` | Store settings, credentials, and undelivered context-menu selections. |
 | `tabs` | Identify the active tab and its URL when the user switches tabs or windows. |
 
+## Optional host permissions
+
+| Permission | Purpose |
+| --- | --- |
+| `<all_urls>` | Satisfy Chrome's `captureVisibleTab()` requirement after temporary `activeTab` access ends. Requested only from the first screenshot confirmation. |
+
+Chrome describes `<all_urls>` as access to all sites. Pi Chrome declares it as optional rather than required, requests it only from the screenshot confirmation's Confirm gesture, and rechecks it before every capture. The runtime continues to target only the active visible HTTP(S) tab in the focused window, reject stale tab contexts, capture only the viewport, and cap the PNG at 3 MB. Denial leaves the confirmation open; revocation causes the next screenshot request to ask again. Screenshot content is sent to the selected model provider and stored in the session transcript.
+
 ## Optional API permissions
 
 | Permission | Purpose |
@@ -19,9 +27,9 @@
 
 `bookmarks` is absent by default. A bookmark tool request first opens Pi Chrome's operation confirmation. If access has not been granted, its Confirm button requests the optional permission from the user gesture; denial leaves the operation unapproved. The service worker checks the grant again before every read. Chrome grants the bookmarks API as one capability that can also support writes, but Pi Chrome has no create, update, move, remove, tree-read, import, or export runtime method. The production artifact audit rejects bookmark mutation calls.
 
-Optional host patterns cover the two OpenAI authentication origins and HTTP(S) page/provider origins. OpenAI authentication origins are requested together only from **Log in to OpenAI Codex**. When the user submits a prompt, the Side Panel requests the visible page origin and the exact selected model endpoint origin in one user gesture before starting or queueing the task. Radius requests `radius.pi.dev` while loading its dynamic catalog. The account menu keeps **Allow current site** as a manual retry. Confirming cross-origin navigation or a cross-origin link requests the destination origin as part of that confirmation. Selecting the extension action also grants temporary `activeTab` access to the page visible at that time. There is no production `host_permissions` grant and no host access request occurs without a user gesture.
+Optional host patterns cover `<all_urls>`, the two OpenAI authentication origins, and HTTP(S) page/provider origins. `<all_urls>` is requested only for screenshot capture; ordinary page and provider requests continue to ask for narrower origins. OpenAI authentication origins are requested together only from **Log in to OpenAI Codex**. When the user submits a prompt, the Side Panel requests the visible page origin and the exact selected model endpoint origin in one user gesture before starting or queueing the task. Radius requests `radius.pi.dev` while loading its dynamic catalog. The account menu keeps **Allow current site** as a manual retry. Confirming cross-origin navigation or a cross-origin link requests the destination origin as part of that confirmation. Selecting the extension action also grants temporary `activeTab` access to the page visible at that time. There is no production `host_permissions` grant and no host access request occurs without a user gesture.
 
-The extension CSP permits HTTP(S) connections so a user-selected built-in provider can operate after Chrome grants its optional host permission. It still permits scripts only from the packaged extension and does not permit remote scripts. Bookmark access can be revoked separately from Chrome's extension settings. A later read fails without an automatic retry or background permission request.
+The extension CSP permits HTTP(S) connections so a user-selected built-in provider can operate after Chrome grants its optional host permission. It still permits scripts only from the packaged extension and does not permit remote scripts. Screenshot and bookmark access can be revoked separately from Chrome's extension settings. A later protected operation fails or returns to its explicit confirmation flow without an automatic background permission request.
 
 ## Storage
 

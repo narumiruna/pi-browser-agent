@@ -137,7 +137,8 @@ export function createBrowserTools(confirm: ConfirmationHandler): AgentTool[] {
     {
       name: "browser_capture_visible",
       label: "Capture viewport",
-      description: "Capture the visible viewport of the current tab as PNG.",
+      description:
+        "Capture the visible viewport of the current HTTP(S) tab as PNG. Use this to inspect or translate visible on-screen content instead of claiming screenshot access is unavailable. The first capture may ask the user to grant optional all-sites access.",
       replay: "safe",
       parameters: Type.Object({}, { additionalProperties: false }),
       async execute(_id, _params, signal) {

@@ -1119,6 +1119,80 @@ test("shows permission denial inside the open confirmation dialog", async () => 
   await context.unroute(codexUrl)
 })
 
+test("shows optional screenshot permission denial inside the confirmation dialog", async () => {
+  const codexUrl = "https://chatgpt.com/backend-api/codex/responses"
+  const responses = [
+    toolCall(24, "browser_capture_visible", {}),
+    finalText(25, "Denied screenshot handled."),
+  ]
+  let requestCount = 0
+  await context.route(codexUrl, async (route) => {
+    const response = responses[requestCount]
+    requestCount += 1
+    if (!response) throw new Error(`Unexpected screenshot-denial Codex request ${requestCount}`)
+    await route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      headers: { "cache-control": "no-cache" },
+      body: response,
+    })
+  })
+
+  await worker.evaluate(() => {
+    const state = globalThis as typeof globalThis & {
+      restoreScreenshotContains?: typeof chrome.permissions.contains
+    }
+    state.restoreScreenshotContains = chrome.permissions.contains.bind(chrome.permissions)
+    chrome.permissions.contains = (async (permissions) => {
+      if (permissions.origins?.includes("<all_urls>")) return false
+      return state.restoreScreenshotContains?.(permissions) ?? false
+    }) as typeof chrome.permissions.contains
+  })
+  try {
+    await controller.locator("#prompt").fill("Capture the visible page")
+    await controller.locator("#send").click()
+    await expect(controller.locator("#confirm-dialog")).toBeVisible()
+    await expect(controller.locator("#confirm-message")).toContainText(
+      "Chrome grants access to all sites",
+    )
+    await controller.evaluate(() => {
+      const state = window as typeof window & {
+        restorePermissionsRequest?: typeof chrome.permissions.request
+      }
+      state.restorePermissionsRequest = chrome.permissions.request.bind(chrome.permissions)
+      chrome.permissions.request = (async () => false) as typeof chrome.permissions.request
+    })
+    await controller.locator('#confirm-dialog button[value="confirm"]').click()
+    await expect(controller.locator("#confirm-dialog")).toBeVisible()
+    await expect(controller.locator("#confirm-dialog #confirm-error")).toHaveText(
+      "All-sites access is required to capture screenshots after tab changes",
+    )
+    await controller.locator('#confirm-dialog button[value="cancel"]').click()
+    await expect(controller.locator("#transcript")).toContainText("Denied screenshot handled.")
+    expect(requestCount).toBe(responses.length)
+  } finally {
+    await controller.evaluate(() => {
+      const state = window as typeof window & {
+        restorePermissionsRequest?: typeof chrome.permissions.request
+      }
+      if (state.restorePermissionsRequest) {
+        chrome.permissions.request = state.restorePermissionsRequest
+        delete state.restorePermissionsRequest
+      }
+    })
+    await worker.evaluate(() => {
+      const state = globalThis as typeof globalThis & {
+        restoreScreenshotContains?: typeof chrome.permissions.contains
+      }
+      if (state.restoreScreenshotContains) {
+        chrome.permissions.contains = state.restoreScreenshotContains
+        delete state.restoreScreenshotContains
+      }
+    })
+    await context.unroute(codexUrl)
+  }
+})
+
 test("round-trips read, selection, screenshot, click, and type through the Side Panel path", async () => {
   const active = await request("tabs.getActive")
   expect(active.title).toBe("Pi Chrome fixture")

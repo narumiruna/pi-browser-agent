@@ -32,8 +32,9 @@ Load the production artifact:
 3. Open the HTTP or HTTPS page you want to use. Pi Chrome follows the visible tab automatically.
 4. Enter a prompt. Pi Chrome requests access only to the current page and selected provider endpoint when needed.
 5. To include an image, paste it into the composer, review the preview, and send it with optional text. Choose a model marked **Image input**.
-6. To dictate a prompt, select the microphone, speak, then select it again before reviewing and sending the transcript.
-7. When Pi requests a bookmark read, review the requested search or recent-item limit and confirm it. Chrome asks for the optional bookmark permission the first time.
+6. To let Pi inspect the visible page, ask it to capture the screen and confirm the first screenshot request. Chrome asks for optional all-sites access because its screenshot API requires `<all_urls>` after the temporary `activeTab` grant ends; Pi Chrome still captures only the current visible HTTP(S) viewport.
+7. To dictate a prompt, select the microphone, speak, then select it again before reviewing and sending the transcript.
+8. When Pi requests a bookmark read, review the requested search or recent-item limit and confirm it. Chrome asks for the optional bookmark permission the first time.
 
 Voice input uses Chrome's Web Speech service in the browser language. Spoken audio may be processed by the browser's speech provider; only the resulting editable transcript is submitted to Pi when you select **Send**. The model transport is always SSE. Closing the Side Panel aborts the active run and marks the session interrupted; reopening never automatically repeats a browser mutation.
 
@@ -47,6 +48,7 @@ The agent can read visible text and selection, capture the visible viewport, cli
 - Form submissions, downloads, cross-origin links, cross-origin navigation, and all WebMCP calls require confirmation.
 - A request created before navigation or a visible-tab change is rejected as stale.
 - Visible text and selected text are capped at 50 KB; screenshots are capped at 3 MB.
+- Screenshot access is optional. Its first confirmation requests Chrome's broad `<all_urls>` capability, but the runtime accepts only the active visible HTTP(S) tab and captures only its viewport.
 - A message accepts up to four pasted PNG, JPEG, WebP, or GIF images using at most 3 MB in total.
 - Page text, selections, screenshot metadata, bookmark data, and WebMCP results are labeled as untrusted model input.
 - Bookmark access is optional and absent by default. Every search or recent-bookmark read requires confirmation, returns at most 50 items and 50 KB, and sends the returned titles and URLs to the selected model provider as part of the conversation.
@@ -76,6 +78,7 @@ npm audit --omit=dev
 - **Provider host access was declined or revoked:** send again and approve the selected endpoint, or reconfigure the provider if its endpoint changed.
 - **OpenAI Codex host access was revoked:** select **Log in to OpenAI Codex** again and approve both requested OpenAI origins.
 - **A page tool is denied:** make the intended HTTP(S) page visible and send the prompt again. If access was previously declined, use **Account and site access → Allow current site**. Chrome internal pages cannot be controlled.
+- **A screenshot is denied:** request it again, confirm Pi Chrome's explanation, and approve Chrome's optional all-sites prompt. If the grant was revoked, Chrome asks again; ordinary per-site access is not enough for `captureVisibleTab()`.
 - **A bookmark read is denied:** request it again and approve both Pi Chrome's operation confirmation and Chrome's optional permission prompt. Revoke bookmark access from Chrome's extension settings when it is no longer wanted.
 - **Stale context:** the visible tab changed or navigated after the tool request began. Return to the intended page and retry; Pi Chrome automatically tracks the visible supported tab.
 - **Login pending:** finish the device flow before its 15-minute expiry. Cancel and restart if the code expires or is denied.

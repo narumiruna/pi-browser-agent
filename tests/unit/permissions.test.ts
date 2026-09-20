@@ -4,9 +4,12 @@ import {
   hasBookmarkPermission,
   hasHostPermission,
   hasHostPermissions,
+  hasScreenshotPermission,
   requestBookmarkPermission,
   requestHostPermission,
   requestHostPermissions,
+  requestScreenshotPermission,
+  SCREENSHOT_HOST_PERMISSION,
   toHostPermissionPattern,
 } from "../../src/browser/permissions.js"
 
@@ -24,6 +27,17 @@ describe("browser permissions", () => {
     await expect(requestBookmarkPermission()).resolves.toBe(true)
     expect(contains).toHaveBeenCalledWith({ permissions: [BOOKMARKS_PERMISSION] })
     expect(request).toHaveBeenCalledWith({ permissions: [BOOKMARKS_PERMISSION] })
+  })
+
+  test("checks and requests optional all-sites screenshot access", async () => {
+    const contains = vi.fn().mockResolvedValue(false)
+    const request = vi.fn().mockResolvedValue(true)
+    vi.stubGlobal("chrome", { permissions: { contains, request } })
+
+    await expect(hasScreenshotPermission()).resolves.toBe(false)
+    await expect(requestScreenshotPermission()).resolves.toBe(true)
+    expect(contains).toHaveBeenCalledWith({ origins: [SCREENSHOT_HOST_PERMISSION] })
+    expect(request).toHaveBeenCalledWith({ origins: [SCREENSHOT_HOST_PERMISSION] })
   })
 
   test("normalizes HTTP and HTTPS URLs to origin patterns without ports", () => {
