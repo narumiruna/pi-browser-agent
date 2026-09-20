@@ -12,6 +12,8 @@ Use a production build from `npm run build`. Do not test login with development 
 - Real-account device login: passed on 2026-09-16; account tier was not recorded
 - Authenticated SSE and browser-tool round trip: pending; the first request exposed a retired `gpt-5.4` default, which was replaced with `gpt-5.6-terra` before retry
 - Optional bookmark permission and read-only bookmark round trip: pending for this change
+- Optional screenshot `<all_urls>` grant and PNG/model round trip: passed on 2026-09-20; browser version was not recorded. The first capture detected a visible-tab change as stale, and the model retried successfully against the current tab.
+- Optional screenshot native decline, revocation, and explicit cross-tab capture: pending for this change
 - Non-Codex provider/model selection and authenticated request: pending for this change
 
 ## Procedure
@@ -45,9 +47,11 @@ Use a production build from `npm run build`. Do not test login with development 
    - Select the microphone in the composer, allow microphone access if Chrome asks, and dictate a short phrase.
    - Expected: the button shows a listening state, interim text appears in the composer, and selecting the microphone again leaves an editable transcript without sending it.
    - Deny microphone access in a clean profile. Expected: the panel reports a clear permission error and text entry remains usable.
-7. **Browser tool round trip**
-   - Ask the agent to read a unique heading, capture the visible page, type into a non-sensitive test field, and click an ordinary button.
-   - Switch to another HTTP(S) tab and confirm the Side Panel follows it; switch to an internal Chrome page and confirm no page remains targeted.
+7. **Browser tool and optional screenshot round trip**
+   - In a clean profile, ask the agent to read a unique heading, capture the visible page, type into a non-sensitive test field, and click an ordinary button.
+   - Expected on the first screenshot: Pi Chrome explains that Chrome grants all-sites access while Pi Chrome captures only the visible HTTP(S) viewport. Cancel once and verify no permission prompt or image result appears. Ask again, confirm, decline Chrome's native prompt, and verify the confirmation stays open with an access error. Ask a third time and grant access; verify a PNG result appears.
+   - Switch to another HTTP(S) tab without clicking the extension action and capture again. Expected: the Side Panel follows it and capture succeeds from the persisted optional grant. Switch to an internal Chrome page and confirm no page remains targeted.
+   - Revoke all-sites access in Chrome's extension settings and request another screenshot. Expected: Pi Chrome returns to the explicit confirmation flow and never requests access in the background.
    - Expected: the read output is marked untrusted and each operation affects only the currently visible HTTP(S) tab.
    - Ask it to submit a form or call a WebMCP tool.
    - Expected: the operation waits for explicit confirmation.
@@ -73,6 +77,6 @@ Use a production build from `npm run build`. Do not test login with development 
    - Delete one session and use **Clear all session data**; verify associated image content is no longer listed.
 13. **Artifact inspection**
    - Run `npm run audit:artifact` and inspect `chrome://extensions` permissions.
-   - Expected: the audit passes; `bookmarks` is optional rather than required, and there is no bookmark mutation call, loopback URL, remote code, source map, native host, or unexpected host permission.
+   - Expected: the audit passes; `bookmarks` and screenshot `<all_urls>` access are optional rather than required, `host_permissions` is empty, and there is no bookmark mutation call, loopback URL, remote code, source map, native host, or unexpected host permission.
 
 Record date, stable Chrome version, account tier, each pass/fail result, and any network-header difference in the pull request before release review. This repository does not publish or release from this procedure.

@@ -1,7 +1,13 @@
 import { getRecentBookmarks, searchBookmarks } from "./bookmarks.js"
 import { executePageOperation, type PageOperation } from "./content/page-operations.js"
 import { assertTabContext } from "./content/tab-context.js"
-import { BOOKMARKS_PERMISSION, hasBookmarkPermission, hasHostPermission } from "./permissions.js"
+import {
+  BOOKMARKS_PERMISSION,
+  hasBookmarkPermission,
+  hasHostPermission,
+  hasScreenshotPermission,
+  SCREENSHOT_HOST_PERMISSION,
+} from "./permissions.js"
 import { parseRuntimeRequest, type RuntimeEvent, type RuntimeRequest } from "./runtime/messages.js"
 import { type JsonValue, RuntimeError, type TabContext, truncateUtf8 } from "./runtime/types.js"
 import {
@@ -230,6 +236,12 @@ async function runPageOperation(
 ): Promise<JsonValue> {
   const context = await refreshBoundContext()
   assertTabContext(request.tabContext, context)
+  if (!(await hasHostPermission(context.url))) {
+    throw new RuntimeError(
+      "PERMISSION_DENIED",
+      "Grant access to the current site before using page tools",
+    )
+  }
   let results: chrome.scripting.InjectionResult<Awaited<ReturnType<typeof executePageOperation>>>[]
   try {
     results = await chrome.scripting.executeScript({
@@ -309,6 +321,12 @@ function truncateStructuredResult(value: JsonValue): JsonValue {
 async function runWebMcp(operation: WebMcpOperation, request: RuntimeRequest): Promise<JsonValue> {
   const context = await refreshBoundContext()
   assertTabContext(request.tabContext, context)
+  if (!(await hasHostPermission(context.url))) {
+    throw new RuntimeError(
+      "PERMISSION_DENIED",
+      "Grant access to the current site before using WebMCP",
+    )
+  }
   let results: chrome.scripting.InjectionResult<
     Awaited<ReturnType<typeof executeWebMcpOperation>>
   >[]
@@ -347,11 +365,30 @@ async function getActiveTab(request: RuntimeRequest): Promise<JsonValue> {
 async function captureVisible(request: RuntimeRequest): Promise<JsonValue> {
   const context = await refreshBoundContext()
   assertTabContext(request.tabContext, context)
+  const permissionGranted = await hasScreenshotPermission().catch(() => false)
+  if (!permissionGranted && !request.confirmed) {
+    throw new RuntimeError(
+      "CONFIRMATION_REQUIRED",
+      "Allow screenshots of visible HTTP(S) tabs? Chrome grants access to all sites, but Pi Chrome captures only the current visible viewport and separately limits ordinary access to exact origins approved through explicit actions. Screenshots are sent to the selected model provider and saved in this session.",
+      { requiredPermission: SCREENSHOT_HOST_PERMISSION },
+    )
+  }
+  if (!permissionGranted) {
+    throw new RuntimeError("PERMISSION_DENIED", "Chrome screenshot access is not granted")
+  }
   const tab = await chrome.tabs.get(context.tabId)
   if (!tab.active) {
     throw new RuntimeError("INVALID_REQUEST", "The current tab must remain active for a screenshot")
   }
-  const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" })
+  let dataUrl: string
+  try {
+    dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" })
+  } catch (error) {
+    throw new RuntimeError(
+      "INTERNAL_ERROR",
+      error instanceof Error ? error.message : "Chrome could not capture the visible tab",
+    )
+  }
   await revalidateRequestContext(request, context)
   if (dataUrl.length > 3_000_000) {
     throw new RuntimeError("INVALID_REQUEST", "Screenshot exceeds the 3 MB extension limit")
@@ -408,7 +445,7 @@ async function navigate(request: RuntimeRequest): Promise<JsonValue> {
       { targetUrl: targetUrl.href },
     )
   }
-  if (crossOrigin && !(await hasHostPermission(targetUrl))) {
+  if (!(await hasHostPermission(targetUrl))) {
     throw new RuntimeError(
       "PERMISSION_DENIED",
       "Grant access to the destination before navigating",

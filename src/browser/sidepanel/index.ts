@@ -11,6 +11,8 @@ import {
   requestBookmarkPermission,
   requestHostPermission,
   requestHostPermissions,
+  requestScreenshotPermission,
+  SCREENSHOT_HOST_PERMISSION,
 } from "../permissions.js"
 import { type RuntimeEvent, sendRuntimeRequest } from "../runtime/messages.js"
 import type { JsonObject } from "../runtime/types.js"
@@ -276,6 +278,9 @@ function confirmation(
       } else if (requiredPermission === BOOKMARKS_PERMISSION) {
         requestAccess = requestBookmarkPermission
         denialMessage = "Bookmark access is required for this read"
+      } else if (requiredPermission === SCREENSHOT_HOST_PERMISSION) {
+        requestAccess = requestScreenshotPermission
+        denialMessage = "All-sites access is required to capture screenshots after tab changes"
       }
       if (!requestAccess) return
       event.preventDefault()
@@ -667,7 +672,7 @@ function configureProvider(providerId: string, button: HTMLButtonElement): void 
       throw new Error(`${provider.name} has no browser-compatible authentication method`)
     }
     if (provider.oauth) {
-      const granted = await chrome.permissions.request({ origins: [...AUTH_ORIGINS] })
+      const granted = await requestHostPermissions(AUTH_ORIGINS)
       if (!granted) throw new Error("OpenAI host access is required for login")
     } else if (providerId === "radius") {
       const granted = await requestHostPermissions(["https://radius.pi.dev"])

@@ -4,9 +4,12 @@ import {
   hasBookmarkPermission,
   hasHostPermission,
   hasHostPermissions,
+  hasScreenshotPermission,
   requestBookmarkPermission,
   requestHostPermission,
   requestHostPermissions,
+  requestScreenshotPermission,
+  SCREENSHOT_HOST_PERMISSION,
   toHostPermissionPattern,
 } from "../../src/browser/permissions.js"
 
@@ -24,6 +27,17 @@ describe("browser permissions", () => {
     await expect(requestBookmarkPermission()).resolves.toBe(true)
     expect(contains).toHaveBeenCalledWith({ permissions: [BOOKMARKS_PERMISSION] })
     expect(request).toHaveBeenCalledWith({ permissions: [BOOKMARKS_PERMISSION] })
+  })
+
+  test("checks and requests optional all-sites screenshot access", async () => {
+    const contains = vi.fn().mockResolvedValue(false)
+    const request = vi.fn().mockResolvedValue(true)
+    vi.stubGlobal("chrome", { permissions: { contains, request } })
+
+    await expect(hasScreenshotPermission()).resolves.toBe(false)
+    await expect(requestScreenshotPermission()).resolves.toBe(true)
+    expect(contains).toHaveBeenCalledWith({ origins: [SCREENSHOT_HOST_PERMISSION] })
+    expect(request).toHaveBeenCalledWith({ origins: [SCREENSHOT_HOST_PERMISSION] })
   })
 
   test("normalizes HTTP and HTTPS URLs to origin patterns without ports", () => {
@@ -55,9 +69,63 @@ describe("browser permissions", () => {
     })
   })
 
-  test("requests only normalized, deduplicated destination permissions", async () => {
+  test("does not treat broad screenshot access as approval for an exact origin", async () => {
+    const contains = vi.fn().mockResolvedValue(true)
+    const getAll = vi.fn().mockResolvedValue({ origins: [SCREENSHOT_HOST_PERMISSION] })
+    const get = vi.fn().mockResolvedValue({ piChromeApprovedHostPermissions: [] })
+    const set = vi.fn()
+    vi.stubGlobal("chrome", {
+      permissions: { contains, getAll },
+      storage: { local: { get, set } },
+    })
+
+    await expect(hasHostPermission("https://example.test/path")).resolves.toBe(false)
+    expect(getAll).toHaveBeenCalledOnce()
+    expect(set).not.toHaveBeenCalled()
+  })
+
+  test("uses stored app approval without consulting broad Chrome grants", async () => {
+    const contains = vi.fn().mockResolvedValue(true)
+    const getAll = vi.fn()
+    const get = vi.fn().mockResolvedValue({
+      piChromeApprovedHostPermissions: ["https://example.test/*"],
+    })
+    vi.stubGlobal("chrome", {
+      permissions: { contains, getAll },
+      storage: { local: { get } },
+    })
+
+    await expect(hasHostPermission("https://example.test/path")).resolves.toBe(true)
+    expect(getAll).not.toHaveBeenCalled()
+  })
+
+  test("migrates an independently granted exact origin to app approval", async () => {
+    const contains = vi.fn().mockResolvedValue(true)
+    const getAll = vi.fn().mockResolvedValue({ origins: ["https://example.test/*"] })
+    const get = vi.fn().mockResolvedValue({ piChromeApprovedHostPermissions: [] })
+    const set = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal("chrome", {
+      permissions: { contains, getAll },
+      storage: { local: { get, set } },
+    })
+
+    await expect(hasHostPermission("https://example.test/path")).resolves.toBe(true)
+    expect(set).toHaveBeenCalledWith({
+      piChromeApprovedHostPermissions: ["https://example.test/*"],
+    })
+  })
+
+  test("requests only normalized, deduplicated destination permissions and records approval", async () => {
     const request = vi.fn().mockResolvedValue(true)
-    vi.stubGlobal("chrome", { permissions: { request } })
+    let approved: string[] = []
+    const get = vi.fn(async () => ({ piChromeApprovedHostPermissions: approved }))
+    const set = vi.fn(async (value: { piChromeApprovedHostPermissions: string[] }) => {
+      approved = value.piChromeApprovedHostPermissions
+    })
+    vi.stubGlobal("chrome", {
+      permissions: { request },
+      storage: { local: { get, set } },
+    })
 
     await expect(requestHostPermission("https://example.test:8443/path")).resolves.toBe(true)
     expect(request).toHaveBeenNthCalledWith(1, { origins: ["https://example.test/*"] })
@@ -72,5 +140,38 @@ describe("browser permissions", () => {
     expect(request).toHaveBeenNthCalledWith(2, {
       origins: ["https://example.test/*", "https://api.example.test/*"],
     })
+    expect(set).toHaveBeenLastCalledWith({
+      piChromeApprovedHostPermissions: ["https://api.example.test/*", "https://example.test/*"],
+    })
+  })
+
+  test("serializes concurrent host approval updates", async () => {
+    const request = vi.fn().mockResolvedValue(true)
+    const lockRequest = vi.fn(
+      async (_name: string, _options: LockOptions, operation: () => Promise<void>) => operation(),
+    )
+    let approved: string[] = []
+    const get = vi.fn(async () => ({ piChromeApprovedHostPermissions: approved }))
+    const set = vi.fn(async (value: { piChromeApprovedHostPermissions: string[] }) => {
+      approved = value.piChromeApprovedHostPermissions
+    })
+    vi.stubGlobal("chrome", {
+      permissions: { request },
+      storage: { local: { get, set } },
+    })
+    vi.stubGlobal("navigator", { locks: { request: lockRequest } })
+
+    await Promise.all([
+      requestHostPermission("https://one.example.test/path"),
+      requestHostPermission("https://two.example.test/path"),
+    ])
+
+    expect(approved).toEqual(["https://one.example.test/*", "https://two.example.test/*"])
+    expect(lockRequest).toHaveBeenCalledTimes(2)
+    expect(lockRequest).toHaveBeenCalledWith(
+      "pi-chrome-approved-host-permissions-write",
+      { mode: "exclusive" },
+      expect.any(Function),
+    )
   })
 })

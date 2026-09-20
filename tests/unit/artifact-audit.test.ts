@@ -9,6 +9,7 @@ const temporaryDirectories: string[] = []
 async function artifactFixture(options: {
   bookmarkCode?: string
   bookmarksRequired?: boolean
+  screenshotPermissionOmitted?: boolean
 }): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "pi-chrome-artifact-audit-"))
   temporaryDirectories.push(root)
@@ -40,6 +41,7 @@ async function artifactFixture(options: {
         "https://chatgpt.com/*",
         "http://*/*",
         "https://*/*",
+        ...(options.screenshotPermissionOmitted ? [] : ["<all_urls>"]),
       ],
     }),
   )
@@ -60,11 +62,17 @@ afterEach(async () => {
   )
 })
 
-describe("production artifact bookmark policy", () => {
+describe("production artifact permission policy", () => {
   test("accepts optional read-only bookmark access", async () => {
     const result = audit(await artifactFixture({}))
     expect(result.status).toBe(0)
     expect(result.stdout).toContain("Artifact audit passed")
+  })
+
+  test("requires screenshot access to remain an optional host permission", async () => {
+    const result = audit(await artifactFixture({ screenshotPermissionOmitted: true }))
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain("missing optional host <all_urls>")
   })
 
   test("rejects bookmarks as a required permission", async () => {

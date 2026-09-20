@@ -65,7 +65,9 @@ const expectedOrigins = [
   "https://chatgpt.com/*",
   "http://*/*",
   "https://*/*",
+  "<all_urls>",
 ]
+const requiredOptionalOrigins = ["<all_urls>"]
 for (const permission of manifest.permissions ?? []) {
   if (!expectedPermissions.includes(permission))
     failures.push(`manifest.json: unexpected permission ${permission}`)
@@ -83,6 +85,11 @@ for (const permission of expectedOptionalPermissions) {
 for (const origin of manifest.optional_host_permissions ?? []) {
   if (!expectedOrigins.includes(origin))
     failures.push(`manifest.json: unexpected optional host ${origin}`)
+}
+for (const origin of requiredOptionalOrigins) {
+  if (!(manifest.optional_host_permissions ?? []).includes(origin)) {
+    failures.push(`manifest.json: missing optional host ${origin}`)
+  }
 }
 if (manifest.host_permissions?.length)
   failures.push("manifest.json: production host_permissions must be empty")
