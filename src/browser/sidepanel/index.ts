@@ -31,7 +31,12 @@ import {
   readPastedImage,
 } from "./images.js"
 import { SearchableSelect } from "./searchable-select.js"
-import { createVoiceInput, type VoiceInputController } from "./voice-input.js"
+import {
+  createVoiceInput,
+  getMicrophonePermissionState,
+  requestMicrophoneAccess,
+  type VoiceInputController,
+} from "./voice-input.js"
 
 function element<T extends HTMLElement>(id: string): T {
   const value = document.getElementById(id)
@@ -41,6 +46,7 @@ function element<T extends HTMLElement>(id: string): T {
 
 const locationParams = new URLSearchParams(window.location.search)
 const isSettingsTab = locationParams.get("view") === "settings"
+const isMicrophoneAccessTab = locationParams.get("view") === "microphone"
 const settingsContextId = locationParams.get("source") ?? crypto.randomUUID()
 const initialModelProvider = locationParams.get("modelProvider")
 const initialModelId = locationParams.get("modelId")
@@ -53,6 +59,10 @@ const transcript = element<HTMLElement>("transcript")
 const promptInput = element<HTMLTextAreaElement>("prompt")
 const errorOutput = element<HTMLElement>("error")
 const settingsErrorOutput = element<HTMLElement>("settings-error")
+const microphoneAccessPage = element<HTMLElement>("microphone-access-page")
+const microphoneAccessStatus = element<HTMLElement>("microphone-access-status")
+const allowMicrophoneButton = element<HTMLButtonElement>("allow-microphone")
+const openMicrophoneSettingsButton = element<HTMLButtonElement>("open-microphone-settings")
 const runStatus = element<HTMLElement>("run-status")
 const authStatus = element<HTMLElement>("auth-status")
 const loginButton = element<HTMLButtonElement>("login")
@@ -133,6 +143,7 @@ let pendingPasteOperations = 0
 let pasteQueue = Promise.resolve()
 let composerImages: Array<PastedImage & { id: string }> = []
 let voiceInput: VoiceInputController | undefined
+let voiceInputStarting = false
 let settingsModelChanged = false
 let authStatusRequest = 0
 let providerConfigurationRequest = 0
@@ -203,8 +214,12 @@ function resizePromptInput(): void {
 
 function updateSendButton(): void {
   sendButton.disabled =
-    activeSubmissionGuard !== undefined || pendingPasteOperations > 0 || voiceInput?.active === true
-  voiceButton.disabled = voiceInput === undefined || activeSubmissionGuard !== undefined
+    activeSubmissionGuard !== undefined ||
+    pendingPasteOperations > 0 ||
+    voiceInputStarting ||
+    voiceInput?.active === true
+  voiceButton.disabled =
+    voiceInput === undefined || activeSubmissionGuard !== undefined || voiceInputStarting
 }
 
 function releaseSubmissionGuard(guard: object): void {
@@ -747,6 +762,104 @@ async function run(
   }
 }
 
+function microphoneAccessUrl(): string {
+  const url = new URL(window.location.origin + window.location.pathname)
+  url.searchParams.set("view", "microphone")
+  return url.href
+}
+
+async function openMicrophoneAccessTab(): Promise<void> {
+  await chrome.tabs.create({ url: microphoneAccessUrl() })
+}
+
+function microphoneAccessErrorMessage(error: unknown): string {
+  if (error instanceof DOMException && error.name === "NotAllowedError") {
+    return "Chrome blocked microphone access. Open Chrome microphone settings, remove Pi Chrome from Not allowed, then return here and try again."
+  }
+  if (error instanceof DOMException && error.name === "NotFoundError") {
+    return "Chrome could not find a microphone. Connect or enable one, then try again."
+  }
+  return `Microphone access failed: ${safeErrorMessage(error)}`
+}
+
+async function refreshMicrophoneAccessPage(): Promise<void> {
+  const state = await getMicrophonePermissionState().catch(() => "prompt" as const)
+  allowMicrophoneButton.hidden = state !== "prompt"
+  openMicrophoneSettingsButton.hidden = state !== "denied"
+  microphoneAccessStatus.textContent =
+    state === "granted"
+      ? "Microphone access is allowed. Close this tab and select the microphone in Pi Chrome."
+      : state === "denied"
+        ? "Microphone access is blocked. Open Chrome microphone settings to allow it."
+        : "Select Allow microphone access, then approve Chrome's prompt."
+}
+
+async function initializeMicrophoneAccessPage(): Promise<void> {
+  document.title = "Microphone access · Pi Chrome"
+  document.body.dataset.view = "microphone"
+  microphoneAccessPage.hidden = false
+  await refreshMicrophoneAccessPage()
+}
+
+async function startVoiceInput(): Promise<void> {
+  if (!voiceInput || voiceInput.active) {
+    voiceInput?.toggle(promptInput.value)
+    return
+  }
+  voiceInputStarting = true
+  updateSendButton()
+  try {
+    const permission = await getMicrophonePermissionState().catch(() => "prompt" as const)
+    if (permission !== "granted") {
+      await openMicrophoneAccessTab()
+      throw new Error(
+        "Allow microphone access in the opened tab, then select the microphone again.",
+      )
+    }
+    voiceInput.start(promptInput.value)
+  } finally {
+    voiceInputStarting = false
+    updateSendButton()
+  }
+}
+
+allowMicrophoneButton.addEventListener("click", () => {
+  allowMicrophoneButton.disabled = true
+  openMicrophoneSettingsButton.hidden = true
+  microphoneAccessStatus.textContent = "Waiting for Chrome's microphone prompt…"
+  void requestMicrophoneAccess()
+    .then(() => {
+      allowMicrophoneButton.disabled = false
+      allowMicrophoneButton.hidden = true
+      microphoneAccessStatus.textContent =
+        "Microphone access is allowed. Close this tab and select the microphone in Pi Chrome."
+    })
+    .catch(async (error: unknown) => {
+      const state = await getMicrophonePermissionState().catch(() => undefined)
+      allowMicrophoneButton.disabled = false
+      allowMicrophoneButton.hidden = state === "denied"
+      openMicrophoneSettingsButton.hidden = false
+      microphoneAccessStatus.textContent = microphoneAccessErrorMessage(error)
+    })
+})
+
+openMicrophoneSettingsButton.addEventListener("click", () => {
+  void chrome.tabs.create({ url: "chrome://settings/content/microphone" })
+})
+
+element<HTMLButtonElement>("close-microphone-access").addEventListener("click", () => {
+  window.close()
+})
+
+window.addEventListener("focus", () => {
+  if (isMicrophoneAccessTab) void refreshMicrophoneAccessPage()
+})
+document.addEventListener("visibilitychange", () => {
+  if (isMicrophoneAccessTab && document.visibilityState === "visible") {
+    void refreshMicrophoneAccessPage()
+  }
+})
+
 async function requestProviderSetupPermission(
   providerId: string,
   authType: AuthType,
@@ -875,6 +988,10 @@ element<HTMLButtonElement>("grant-site").addEventListener("click", () => {
 
 function submitPrompt(queueAfterCurrentTask = false): void {
   if (activeSubmissionGuard) return
+  if (voiceInputStarting) {
+    setError("Wait for the microphone access check to finish")
+    return
+  }
   if (voiceInput?.active) {
     setError("Stop voice input before sending")
     return
@@ -932,8 +1049,12 @@ function submitPrompt(queueAfterCurrentTask = false): void {
 
 sendButton.addEventListener("click", () => submitPrompt())
 voiceButton.addEventListener("click", () => {
-  setError()
-  voiceInput?.toggle(promptInput.value)
+  if (voiceInput?.active) {
+    setError()
+    voiceInput.stop()
+    return
+  }
+  void run(startVoiceInput)
 })
 
 promptInput.addEventListener("paste", (event) => {
@@ -1213,7 +1334,7 @@ async function pullPendingSelection(expectedWindowId?: number): Promise<void> {
 
 chrome.runtime.onMessage.addListener((message: unknown) => {
   const event = message as Partial<RuntimeEvent>
-  if (event.kind !== "event") return false
+  if (event.kind !== "event" || isMicrophoneAccessTab) return false
   if (
     event.name === "settings.saved" &&
     !isSettingsTab &&
@@ -1250,6 +1371,7 @@ chrome.runtime.onMessage.addListener((message: unknown) => {
 
 chrome.permissions.onRemoved.addListener((permissions) => {
   if (
+    !isMicrophoneAccessTab &&
     permissions.origins?.some((origin) =>
       AUTH_ORIGINS.includes(origin as (typeof AUTH_ORIGINS)[number]),
     )
@@ -1266,11 +1388,11 @@ chrome.permissions.onRemoved.addListener((permissions) => {
 window.addEventListener("pagehide", () => {
   voiceInput?.abort()
   loginController?.abort()
-  if (!isSettingsTab) void runtime.shutdown()
+  if (!isSettingsTab && !isMicrophoneAccessTab) void runtime.shutdown()
 })
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName !== "local") return
+  if (areaName !== "local" || isMicrophoneAccessTab) return
   if (CREDENTIALS_KEY in changes) {
     void run(
       async () => {
@@ -1291,6 +1413,10 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 })
 
 void run(async () => {
+  if (isMicrophoneAccessTab) {
+    await initializeMicrophoneAccessPage()
+    return
+  }
   if (isSettingsTab) {
     document.title = "Settings · Pi Chrome"
     await runtime.initializeSettings(initialSettingsModel)

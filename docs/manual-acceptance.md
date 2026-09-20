@@ -48,9 +48,10 @@ Use a production build from `npm run build`. Do not test login with development 
    - Expected: a removable preview appears; sending with optional text shows the image in the transcript and lets the model inspect it.
    - Reopen the session and confirm the image still renders. Try an image larger than 3 MB and confirm it is rejected without being attached.
 6. **Voice input**
-   - Select the microphone in the composer, allow microphone access if Chrome asks, and dictate a short phrase.
+   - In a clean profile, select the microphone in the composer. Expected: Pi Chrome opens a full access tab because Chrome suppresses microphone prompts in the Side Panel.
+   - Select **Allow microphone access**, approve Chrome's prompt, close the access tab, select the composer microphone again, and dictate a short phrase.
    - Expected: the button shows a listening state, interim text appears in the composer, and selecting the microphone again leaves an editable transcript without sending it.
-   - Deny microphone access in a clean profile. Expected: the panel reports a clear permission error and text entry remains usable.
+   - Deny microphone access in a clean profile. Expected: the access tab reports that Chrome blocked access, offers to open Chrome microphone settings, and text entry remains usable. Remove Pi Chrome from **Not allowed**, retry the grant, and verify dictation works.
 7. **Browser tool and optional screenshot round trip**
    - In a clean profile, ask the agent to read a unique heading, capture the visible page, type into a non-sensitive test field, and click an ordinary button.
    - Expected on the first screenshot: Pi Chrome explains that Chrome grants all-sites access while Pi Chrome captures only the visible HTTP(S) viewport. Cancel once and verify no permission prompt or image result appears. Ask again, confirm, decline Chrome's native prompt, and verify the confirmation stays open with an access error. Ask a third time and grant access; verify a PNG result appears.

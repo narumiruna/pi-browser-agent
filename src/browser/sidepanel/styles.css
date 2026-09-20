@@ -410,11 +410,13 @@ select {
   background: var(--background);
 }
 
-.settings-page[hidden] {
+.settings-page[hidden],
+.microphone-access-page[hidden] {
   display: none;
 }
 
-body[data-view="settings"] {
+body[data-view="settings"],
+body[data-view="microphone"] {
   grid-template-rows: minmax(0, 1fr);
   overflow: hidden;
 }
@@ -422,9 +424,63 @@ body[data-view="settings"] {
 :where(
   body[data-view="settings"] > .app-header,
   body[data-view="settings"] > #transcript,
-  body[data-view="settings"] > .composer
+  body[data-view="settings"] > .composer,
+  body[data-view="microphone"] > .app-header,
+  body[data-view="microphone"] > #transcript,
+  body[data-view="microphone"] > .composer
 ) {
   display: none;
+}
+
+.microphone-access-page {
+  display: grid;
+  min-height: 100%;
+  padding: 24px;
+  place-items: center;
+}
+
+.microphone-access-card {
+  width: min(100%, 480px);
+  padding: 28px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  text-align: center;
+}
+
+.microphone-access-icon {
+  width: 48px;
+  height: 48px;
+  padding: 10px;
+  border-radius: 50%;
+  color: var(--accent);
+  background: var(--accent-soft);
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.25;
+}
+
+.microphone-access-card h1 {
+  margin: 16px 0 8px;
+  font-size: 1.35rem;
+}
+
+:where(.microphone-access-card) p {
+  margin: 0 0 18px;
+  color: var(--text-muted);
+}
+
+#microphone-access-status {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.microphone-access-actions {
+  display: grid;
+  gap: 8px;
 }
 
 .settings-page-header {

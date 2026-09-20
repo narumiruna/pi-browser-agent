@@ -315,6 +315,121 @@ test("loads the Side Panel without uncaught errors", async () => {
   await controller.evaluate(() => window.scrollTo(0, 0))
 })
 
+test("grants microphone access from a full extension page", async () => {
+  const microphonePage = await context.newPage()
+  const pageErrors: string[] = []
+  microphonePage.on("pageerror", (error) => pageErrors.push(error.message))
+  await microphonePage.addInitScript(() => {
+    const state = window as typeof window & { testMicrophonePermission: PermissionState }
+    state.testMicrophonePermission = "prompt"
+    Object.defineProperty(navigator, "permissions", {
+      configurable: true,
+      value: { query: async () => ({ state: state.testMicrophonePermission }) },
+    })
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        getUserMedia: async () => {
+          state.testMicrophonePermission = "granted"
+          return { getTracks: () => [{ stop: () => undefined }] }
+        },
+      },
+    })
+  })
+  await microphonePage.goto(`chrome-extension://${extensionId}/${panelPath}?view=microphone`)
+
+  await expect(microphonePage).toHaveTitle("Microphone access · Pi Chrome")
+  await expect(microphonePage.locator("#microphone-access-page")).toBeVisible()
+  await expect(microphonePage.locator("#microphone-access-status")).toContainText(
+    "Select Allow microphone access",
+  )
+  await microphonePage.locator("#allow-microphone").click()
+  await expect(microphonePage.locator("#microphone-access-status")).toContainText(
+    "Microphone access is allowed",
+  )
+
+  await microphonePage.evaluate(() => {
+    ;(
+      window as typeof window & { testMicrophonePermission: PermissionState }
+    ).testMicrophonePermission = "prompt"
+    window.dispatchEvent(new Event("focus"))
+  })
+  await expect(microphonePage.locator("#allow-microphone")).toBeVisible()
+  await expect(microphonePage.locator("#allow-microphone")).toBeEnabled()
+
+  const pendingSelectionKey = await controller.evaluate(async () => {
+    const windowId = (await chrome.windows.getCurrent()).id
+    if (windowId === undefined) throw new Error("Current window has no ID")
+    const key = `piChromePendingSelection:${windowId}`
+    await chrome.storage.session.set({
+      [key]: {
+        windowId,
+        payload: { text: "Pending selection", source: "context-menu", untrusted: true },
+        tabContext: { tabId: 1, url: "https://example.com/", epoch: 1 },
+      },
+    })
+    await chrome.runtime.sendMessage({
+      kind: "event",
+      name: "selection.queued",
+      payload: { available: true, windowId },
+    })
+    return key
+  })
+  await controller.waitForTimeout(100)
+  expect(
+    await controller.evaluate(
+      async (key) => (await chrome.storage.session.get(key))[key] !== undefined,
+      pendingSelectionKey,
+    ),
+  ).toBe(true)
+  await controller.evaluate(async (key) => chrome.storage.session.remove(key), pendingSelectionKey)
+
+  expect(pageErrors).toEqual([])
+  await microphonePage.close()
+})
+
+test("shows only microphone settings after access is denied", async () => {
+  const microphonePage = await context.newPage()
+  await microphonePage.addInitScript(() => {
+    const state = window as typeof window & { testMicrophonePermission: PermissionState }
+    state.testMicrophonePermission = "prompt"
+    Object.defineProperty(navigator, "permissions", {
+      configurable: true,
+      value: { query: async () => ({ state: state.testMicrophonePermission }) },
+    })
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        getUserMedia: async () => {
+          state.testMicrophonePermission = "denied"
+          throw new DOMException("Permission denied", "NotAllowedError")
+        },
+      },
+    })
+  })
+  await microphonePage.goto(`chrome-extension://${extensionId}/${panelPath}?view=microphone`)
+
+  await microphonePage.locator("#allow-microphone").click()
+  await expect(microphonePage.locator("#allow-microphone")).toBeHidden()
+  await expect(microphonePage.locator("#open-microphone-settings")).toBeVisible()
+  await expect(microphonePage.locator("#microphone-access-status")).toContainText(
+    "Chrome blocked microphone access",
+  )
+
+  await microphonePage.evaluate(() => {
+    ;(
+      window as typeof window & { testMicrophonePermission: PermissionState }
+    ).testMicrophonePermission = "prompt"
+    window.dispatchEvent(new Event("focus"))
+  })
+  await expect(microphonePage.locator("#allow-microphone")).toBeVisible()
+  await expect(microphonePage.locator("#open-microphone-settings")).toBeHidden()
+  await expect(microphonePage.locator("#microphone-access-status")).toContainText(
+    "Select Allow microphone access",
+  )
+  await microphonePage.close()
+})
+
 test("opens Settings in a full browser tab and persists the selected interface font and size", async () => {
   await controller.addInitScript(() => {
     const state = globalThis as typeof globalThis & {
@@ -342,6 +457,10 @@ test("opens Settings in a full browser tab and persists the selected interface f
       }
     }
     state.settingsVoiceAbortCount = 0
+    Object.defineProperty(navigator, "permissions", {
+      configurable: true,
+      value: { query: async () => ({ state: "granted" }) },
+    })
     for (const property of ["SpeechRecognition", "webkitSpeechRecognition"] as const) {
       Object.defineProperty(state, property, {
         configurable: true,
@@ -350,12 +469,42 @@ test("opens Settings in a full browser tab and persists the selected interface f
     }
   })
   await controller.reload()
+  await controller.evaluate(() => {
+    let release: (state: PermissionState) => void = () => undefined
+    const permission = new Promise<{ state: PermissionState }>((resolve) => {
+      release = (state) => resolve({ state })
+    })
+    ;(
+      window as typeof window & { microphonePermissionGate?: (state: PermissionState) => void }
+    ).microphonePermissionGate = release
+    Object.defineProperty(navigator, "permissions", {
+      configurable: true,
+      value: { query: async () => permission },
+    })
+  })
 
   const accountDisclosure = controller.locator(".account-disclosure")
   const voiceButton = controller.locator("#voice-input")
-  const sessionCount = await controller.locator("#sessions option").count()
+  const sessionOptions = controller.locator("#sessions option")
+  await expect(sessionOptions).toHaveCount(1)
+  const sessionCount = await sessionOptions.count()
   await expect(voiceButton).toBeEnabled()
+  const prompt = controller.locator("#prompt")
+  await prompt.fill("Voice draft")
   await voiceButton.click()
+  await expect(voiceButton).toBeDisabled()
+  await prompt.press("Enter")
+  await expect(prompt).toHaveValue("Voice draft")
+  await expect(controller.locator("#error")).toHaveText(
+    "Wait for the microphone access check to finish",
+  )
+  await controller.evaluate(() => {
+    const state = window as typeof window & {
+      microphonePermissionGate?: (state: PermissionState) => void
+    }
+    state.microphonePermissionGate?.("granted")
+    delete state.microphonePermissionGate
+  })
   await expect(voiceButton).toHaveAttribute("aria-pressed", "true")
   await controller.locator("#account-menu-trigger").click()
   await expect(controller.locator("#open-settings")).toBeVisible()

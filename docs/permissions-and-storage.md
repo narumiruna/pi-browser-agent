@@ -33,6 +33,10 @@ OpenAI authentication origins are requested together only after the user chooses
 
 The extension CSP permits HTTP(S) connections so a user-selected built-in provider can operate after Chrome grants its optional host permission. It still permits scripts only from the packaged extension and does not permit remote scripts. Screenshot and bookmark access can be revoked separately from Chrome's extension settings. A later protected operation fails or returns to its explicit confirmation flow without an automatic background permission request.
 
+## Microphone access
+
+Microphone access is a Chrome content permission for the extension origin, not a manifest permission. Chrome suppresses microphone prompts in Side Panels, so selecting the microphone without an existing grant opens a full packaged Pi Chrome access tab. Only its explicit **Allow microphone access** button calls `getUserMedia({ audio: true })`; the temporary stream is stopped immediately after Chrome records the grant. The Side Panel then uses Chrome's Web Speech API for dictation. Spoken audio may be processed by Chrome's speech service, while only the editable transcript is sent to the selected model provider after the user selects **Send**. Users can revoke the grant from Chrome microphone settings; Pi Chrome stores no separate microphone approval.
+
 ## Storage
 
 | Store | Data | Lifetime |

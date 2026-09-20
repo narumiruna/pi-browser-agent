@@ -43,6 +43,29 @@ interface VoiceInputCallbacks {
   onError: (error: Error) => void
 }
 
+type MicrophonePermissionQuery = (descriptor: {
+  name: "microphone"
+}) => Promise<{ state: PermissionState }>
+
+type MicrophoneStreamRequest = (constraints: MediaStreamConstraints) => Promise<{
+  getTracks(): Array<{ stop(): void }>
+}>
+
+export async function getMicrophonePermissionState(
+  query: MicrophonePermissionQuery = (descriptor) =>
+    navigator.permissions.query(descriptor as PermissionDescriptor),
+): Promise<PermissionState> {
+  return (await query({ name: "microphone" })).state
+}
+
+export async function requestMicrophoneAccess(
+  getUserMedia: MicrophoneStreamRequest = (constraints) =>
+    navigator.mediaDevices.getUserMedia(constraints),
+): Promise<void> {
+  const stream = await getUserMedia({ audio: true })
+  for (const track of stream.getTracks()) track.stop()
+}
+
 function recognitionErrorMessage(code: string): string {
   switch (code) {
     case "not-allowed":
