@@ -7,27 +7,35 @@ function required<T extends Element>(element: T | null): T {
   return element
 }
 
-function setup() {
+function setup(useInteractionBoundary = false) {
   const dom = new JSDOM(`
-    <div id="picker">
-      <input id="search" data-placeholder="Search items" />
-      <select id="value"></select>
-      <div id="options" hidden></div>
+    <div id="boundary">
+      <div id="picker">
+        <input id="search" data-placeholder="Search items" />
+        <select id="value"></select>
+        <div id="options" hidden></div>
+      </div>
+      <button id="action">Continue</button>
     </div>
+    <button id="outside">Outside</button>
   `)
   const document = dom.window.document
+  const interactionBoundary = required(document.querySelector<HTMLElement>("#boundary"))
   const container = required(document.querySelector<HTMLElement>("#picker"))
   const input = required(document.querySelector<HTMLInputElement>("#search"))
   const select = required(document.querySelector<HTMLSelectElement>("#value"))
   const listbox = required(document.querySelector<HTMLElement>("#options"))
+  const action = required(document.querySelector<HTMLButtonElement>("#action"))
+  const outside = required(document.querySelector<HTMLButtonElement>("#outside"))
   const picker = new SearchableSelect({
     container,
     input,
     select,
     listbox,
     emptyText: "No items available",
+    interactionBoundary: useInteractionBoundary ? interactionBoundary : undefined,
   })
-  return { dom, input, select, listbox, picker }
+  return { dom, input, select, listbox, action, outside, picker }
 }
 
 describe("SearchableSelect", () => {
@@ -100,6 +108,21 @@ describe("SearchableSelect", () => {
 
     expect(listbox.hidden).toBe(false)
     expect(listbox.querySelectorAll("[role='option']")).toHaveLength(2)
+  })
+
+  test("keeps options open while focus moves within an interaction boundary", () => {
+    const { dom, input, listbox, action, outside, picker } = setup(true)
+    picker.setOptions([{ value: "first", label: "First item" }], "first")
+
+    input.focus()
+    action.dispatchEvent(new dom.window.MouseEvent("mousedown", { bubbles: true }))
+    action.focus()
+
+    expect(listbox.hidden).toBe(false)
+
+    outside.dispatchEvent(new dom.window.MouseEvent("mousedown", { bubbles: true }))
+
+    expect(listbox.hidden).toBe(true)
   })
 
   test("restores the selected label and consumes Escape when a search is cancelled", () => {

@@ -973,11 +973,6 @@ dialog p {
   margin-top: 4px;
 }
 
-#auth-provider-dialog .searchable-select-options[hidden] {
-  display: block;
-  visibility: hidden;
-}
-
 #auth-provider-dialog input,
 #auth-prompt-dialog input,
 #auth-prompt-dialog select {

@@ -10,6 +10,7 @@ interface SearchableSelectElements {
   select: HTMLSelectElement
   listbox: HTMLElement
   emptyText: string
+  interactionBoundary?: HTMLElement
 }
 
 export class SearchableSelect {
@@ -19,6 +20,7 @@ export class SearchableSelect {
 
   constructor(private readonly elements: SearchableSelectElements) {
     const { container, input, select } = elements
+    const interactionBoundary = elements.interactionBoundary ?? container
 
     input.addEventListener("focus", () => {
       input.select()
@@ -32,15 +34,15 @@ export class SearchableSelect {
       }
     })
     input.addEventListener("keydown", (event) => this.onKeyDown(event))
-    input.addEventListener("blur", () => {
-      if (!container.contains(input.ownerDocument.activeElement)) this.close(true)
+    input.addEventListener("blur", (event) => {
+      if (!interactionBoundary.contains(event.relatedTarget as Node | null)) this.close(true)
     })
     select.addEventListener("change", () => {
       this.syncInputToSelection()
       this.close()
     })
     input.ownerDocument.addEventListener("mousedown", (event) => {
-      if (!container.contains(event.target as Node)) this.close(true)
+      if (!interactionBoundary.contains(event.target as Node)) this.close(true)
     })
   }
 

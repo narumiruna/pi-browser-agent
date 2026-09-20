@@ -109,6 +109,7 @@ const authProviderPicker = new SearchableSelect({
   select: authProviderSelect,
   listbox: element<HTMLElement>("auth-provider-options"),
   emptyText: "No providers support this authentication method",
+  interactionBoundary: authProviderDialog,
 })
 for (const [buttonId, returnValue] of [
   ["auth-provider-back", "back"],
@@ -478,6 +479,11 @@ const AUTH_METHOD_LABELS: Record<AuthType, string> = {
   api_key: "Sign in with an API key",
 }
 
+const AUTH_METHOD_NAMES: Record<AuthType, string> = {
+  oauth: "account login",
+  api_key: "API key authentication",
+}
+
 function waitForDialog(dialog: HTMLDialogElement): Promise<string> {
   return new Promise((resolve) => {
     dialog.addEventListener("close", () => resolve(dialog.returnValue), { once: true })
@@ -504,7 +510,7 @@ async function selectAuthProvider(
 ): Promise<AuthProviderSelection> {
   const providers = runtime.getProviders(authType)
   if (providers.length === 0)
-    throw new Error(`No providers support ${AUTH_METHOD_LABELS[authType]}`)
+    throw new Error(`No providers support ${AUTH_METHOD_NAMES[authType]} in Chrome`)
   authProviderDescription.textContent = `Providers available for ${AUTH_METHOD_LABELS[authType].toLowerCase()}.`
   authProviderPicker.setOptions(
     providers.map((provider) => {
