@@ -600,21 +600,23 @@ test("synchronizes provider controls when a new session restores the latest mode
   await restoreSettingsTabClosed
 })
 
-test("keeps page context and controls usable at normal and narrow widths", async () => {
+test("keeps header and composer controls usable at normal and narrow widths", async () => {
+  const testInfo = test.info()
   const originalViewport = controller.viewportSize() ?? { width: 1280, height: 720 }
-  const tabStatus = controller.locator("#tab-status")
-  const originalText = await tabStatus.textContent()
-  const originalTitle = await tabStatus.getAttribute("title")
+  const originalUi = await controller.evaluate(() => ({
+    fontSize: document.documentElement.style.getPropertyValue("--app-font-size"),
+    status: document.querySelector("#run-status")?.textContent ?? "Ready",
+    state: document.body.dataset.state ?? "idle",
+  }))
 
   try {
     await controller.setViewportSize({ width: 480, height: 720 })
     await expect(controller.locator(".brand, .brand-mark")).toHaveCount(0)
     await expect(controller.locator(".app-header")).not.toContainText("Pi Chrome")
-    await expect(tabStatus).toBeVisible()
-    await expect(tabStatus).toContainText(`http://127.0.0.1:${fixture.port}/`)
+    await expect(controller.locator(".page-context, #tab-status")).toHaveCount(0)
 
     const sharesRow = await controller.locator(".header-row").evaluate((header) => {
-      const selectors = [".page-context", ".status-pill", ".account-disclosure"]
+      const selectors = ["#sessions", "#new-session", ".session-disclosure", ".account-disclosure"]
       const rectangles = selectors.map((selector) => {
         const element = header.querySelector(selector)
         if (!(element instanceof HTMLElement)) throw new Error(`Missing ${selector}`)
@@ -626,24 +628,13 @@ test("keeps page context and controls usable at normal and narrow widths", async
       )
     })
     expect(sharesRow).toBe(true)
-
-    const longUrl = `https://example.com/${"long-path-segment/".repeat(20)}?query=current-page`
-    await tabStatus.evaluate((element, url) => {
-      element.textContent = url
-      element.setAttribute("title", url)
-    }, longUrl)
-    const truncation = await tabStatus.evaluate((element) => {
-      const style = getComputedStyle(element)
-      return {
-        clientWidth: element.clientWidth,
-        scrollWidth: element.scrollWidth,
-        textOverflow: style.textOverflow,
-        whiteSpace: style.whiteSpace,
-      }
-    })
-    expect(truncation.scrollWidth).toBeGreaterThan(truncation.clientWidth)
-    expect(truncation.textOverflow).toBe("ellipsis")
-    expect(truncation.whiteSpace).toBe("nowrap")
+    await expect(controller.locator(".app-header #run-status")).toHaveCount(0)
+    await expect(controller.locator(".composer-toolbar #run-status")).toBeVisible()
+    await expect(controller.locator("#composer-hint")).toBeVisible()
+    const transcriptTop = await controller
+      .locator("#transcript")
+      .evaluate((element) => element.getBoundingClientRect().top)
+    expect(transcriptTop).toBeLessThan(70)
 
     const headerColors = []
     for (const colorScheme of ["light", "dark"] as const) {
@@ -653,27 +644,78 @@ test("keeps page context and controls usable at normal and narrow widths", async
           .locator(".app-header")
           .evaluate((element) => getComputedStyle(element).backgroundColor),
       )
-      for (const width of [320, 360]) {
-        await controller.setViewportSize({ width, height: 720 })
-        const narrowLayout = await controller.evaluate(() => {
-          const selectors = ["#tab-status", "#run-status", "#account-menu-trigger"]
-          const controls = selectors.map((selector) => {
-            const element = document.querySelector(selector)
-            if (!(element instanceof HTMLElement)) throw new Error(`Missing ${selector}`)
-            const rectangle = element.getBoundingClientRect()
-            return { left: rectangle.left, right: rectangle.right, width: rectangle.width }
-          })
-          return {
-            controls,
-            viewportWidth: document.documentElement.clientWidth,
-            pageWidth: document.documentElement.scrollWidth,
+      for (const fontSize of [16, 24]) {
+        for (const width of [320, 360, 480, 654]) {
+          await controller.setViewportSize({ width, height: 720 })
+          for (const running of [false, true]) {
+            await controller.evaluate(
+              ({ fontSize, running }) => {
+                document.documentElement.style.setProperty("--app-font-size", `${fontSize}px`)
+                document.body.dataset.state = running ? "running" : "idle"
+                const status = document.querySelector("#run-status")
+                if (status)
+                  status.textContent = running ? "Using browser_read_visible_page_text" : "Ready"
+                const abort = document.querySelector<HTMLButtonElement>("#abort")
+                if (abort) abort.hidden = !running
+              },
+              { fontSize, running },
+            )
+            const layout = await controller.evaluate(() => {
+              const selectors = [
+                "#sessions",
+                "#new-session",
+                ".session-disclosure > summary",
+                "#account-menu-trigger",
+                "#prompt",
+                "#run-status",
+                "#voice-input",
+                "#send",
+                ...(document.body.dataset.state === "running" ? ["#abort"] : []),
+              ]
+              const controls = selectors.map((selector) => {
+                const element = document.querySelector(selector)
+                if (!(element instanceof HTMLElement)) throw new Error(`Missing ${selector}`)
+                const rectangle = element.getBoundingClientRect()
+                return {
+                  left: rectangle.left,
+                  right: rectangle.right,
+                  bottom: rectangle.bottom,
+                  width: rectangle.width,
+                }
+              })
+              const status = document.querySelector(".status-pill")?.getBoundingClientRect()
+              const actions = document.querySelector(".composer-actions")?.getBoundingClientRect()
+              if (!status || !actions) throw new Error("Missing composer controls")
+              return {
+                controls,
+                statusRight: status.right,
+                actionsLeft: actions.left,
+                viewportWidth: document.documentElement.clientWidth,
+                viewportHeight: document.documentElement.clientHeight,
+                pageWidth: document.documentElement.scrollWidth,
+              }
+            })
+            expect(layout.pageWidth).toBeLessThanOrEqual(layout.viewportWidth)
+            expect(layout.statusRight).toBeLessThanOrEqual(layout.actionsLeft)
+            for (const control of layout.controls) {
+              expect(control.width).toBeGreaterThan(0)
+              expect(control.left).toBeGreaterThanOrEqual(0)
+              expect(control.right).toBeLessThanOrEqual(layout.viewportWidth)
+              expect(control.bottom).toBeLessThanOrEqual(layout.viewportHeight)
+            }
+            if (
+              (!running && fontSize === 16 && (width === 320 || width === 654)) ||
+              (running && fontSize === 24 && width === 320)
+            ) {
+              const name = `sidepanel-${colorScheme}-${width}${running ? "-working-large-text" : ""}`
+              const path = testInfo.outputPath(`${name}.png`)
+              await controller.screenshot({ path })
+              await testInfo.attach(name, {
+                path,
+                contentType: "image/png",
+              })
+            }
           }
-        })
-        expect(narrowLayout.pageWidth).toBeLessThanOrEqual(narrowLayout.viewportWidth)
-        for (const control of narrowLayout.controls) {
-          expect(control.width).toBeGreaterThan(0)
-          expect(control.left).toBeGreaterThanOrEqual(0)
-          expect(control.right).toBeLessThanOrEqual(narrowLayout.viewportWidth)
         }
       }
     }
@@ -681,7 +723,7 @@ test("keeps page context and controls usable at normal and narrow widths", async
 
     await controller.setViewportSize({ width: 320, height: 720 })
     const accountTrigger = controller.locator("#account-menu-trigger")
-    await controller.locator(".page-context").click()
+    await controller.locator(".session-disclosure > summary").focus()
     await controller.keyboard.press("Tab")
     await expect(accountTrigger).toBeFocused()
     const focusOutline = await accountTrigger.evaluate((element) => {
@@ -701,14 +743,23 @@ test("keeps page context and controls usable at normal and narrow widths", async
     expect(menuBounds.left).toBeGreaterThanOrEqual(0)
     expect(menuBounds.right).toBeLessThanOrEqual(320)
     await accountTrigger.click()
+    await controller.locator(".session-disclosure > summary").click()
+    const sessionMenu = controller.locator(".session-menu")
+    await expect(sessionMenu).toBeVisible()
+    const sessionBounds = await sessionMenu.boundingBox()
+    if (!sessionBounds) throw new Error("Missing session menu bounds")
+    expect(sessionBounds.x).toBeGreaterThanOrEqual(0)
+    expect(sessionBounds.x + sessionBounds.width).toBeLessThanOrEqual(320)
+    await controller.locator(".session-disclosure > summary").click()
   } finally {
-    await tabStatus.evaluate(
-      (element, value) => {
-        element.textContent = value.text
-        element.setAttribute("title", value.title)
-      },
-      { text: originalText ?? "", title: originalTitle ?? "" },
-    )
+    await controller.evaluate((original) => {
+      document.documentElement.style.setProperty("--app-font-size", original.fontSize)
+      document.body.dataset.state = original.state
+      const status = document.querySelector("#run-status")
+      if (status) status.textContent = original.status
+      const abort = document.querySelector<HTMLButtonElement>("#abort")
+      if (abort) abort.hidden = original.state !== "running"
+    }, originalUi)
     await controller.emulateMedia({ colorScheme: null })
     await controller.setViewportSize(originalViewport)
   }

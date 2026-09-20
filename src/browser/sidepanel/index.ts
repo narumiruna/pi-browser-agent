@@ -53,7 +53,6 @@ const errorOutput = element<HTMLElement>("error")
 const settingsErrorOutput = element<HTMLElement>("settings-error")
 const runStatus = element<HTMLElement>("run-status")
 const authStatus = element<HTMLElement>("auth-status")
-const tabStatus = element<HTMLElement>("tab-status")
 const loginButton = element<HTMLButtonElement>("login")
 const logoutButton = element<HTMLButtonElement>("logout")
 const refreshTokenButton = element<HTMLButtonElement>("refresh-token")
@@ -159,6 +158,7 @@ function applyAppearance(fontFamily: FontFamily, fontSize: number): void {
 
 function setRunStatus(text: string, running = runtime.agent.state.isStreaming): void {
   runStatus.textContent = text
+  runStatus.title = text
   document.body.dataset.state = running ? "running" : "idle"
   transcript.setAttribute("aria-busy", String(running))
   abortButton.hidden = !running
@@ -406,11 +406,16 @@ function renderMessages(streaming?: AgentMessage): void {
   if (messages.length === 0) {
     const emptyState = document.createElement("div")
     emptyState.className = "empty-state"
+    const icon = document.createElement("span")
+    icon.className = "empty-state-icon"
+    icon.textContent = "✦"
+    icon.setAttribute("aria-hidden", "true")
     const title = document.createElement("strong")
     title.textContent = "How can I help?"
     const description = document.createElement("span")
-    description.textContent = "Ask Pi about the page open in your browser."
-    emptyState.append(title, description)
+    description.className = "empty-state-description"
+    description.textContent = "Ask a question, find a detail, or explore the page you're on."
+    emptyState.append(icon, title, description)
     transcript.append(emptyState)
     return
   }
@@ -579,7 +584,6 @@ async function refreshAuth(providerId = providerSelect.value): Promise<void> {
     ? `${provider.name} configured`
     : `${provider.name} not configured`
   authStatus.dataset.loggedIn = String(status.loggedIn)
-  accountMenuTrigger.dataset.loggedIn = String(status.loggedIn)
 }
 
 async function refreshTab(): Promise<string | undefined> {
@@ -593,8 +597,6 @@ async function refreshTab(): Promise<string | undefined> {
     typeof context.url === "string"
       ? context.url
       : undefined
-  tabStatus.textContent = activeTabUrl ?? "No supported page visible. Open an HTTP or HTTPS page."
-  tabStatus.title = activeTabUrl ?? ""
   return activeTabUrl
 }
 
