@@ -15,8 +15,10 @@ async function artifactFixture(options: {
   temporaryDirectories.push(root)
   await mkdir(join(root, "icons"))
   await mkdir(join(root, "background"))
+  await mkdir(join(root, "nested", "deep"), { recursive: true })
   await writeFile(join(root, "icons", "icon.png"), "icon")
-  await writeFile(join(root, "background", "service_worker.js"), options.bookmarkCode ?? "")
+  await writeFile(join(root, "background", "service_worker.js"), "")
+  await writeFile(join(root, "nested", "deep", "chunk.js"), options.bookmarkCode ?? "")
   const requiredPermissions = [
     "activeTab",
     "contextMenus",
@@ -82,7 +84,7 @@ describe("production artifact permission policy", () => {
     expect(result.stderr).toContain("missing optional permission bookmarks")
   })
 
-  test("rejects bookmark mutation calls", async () => {
+  test("rejects bookmark mutation calls in nested artifact files", async () => {
     const result = audit(
       await artifactFixture({ bookmarkCode: "chrome.bookmarks.create({ title: 'nope' })" }),
     )

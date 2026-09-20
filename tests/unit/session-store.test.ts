@@ -56,6 +56,24 @@ describe("session storage", () => {
     await expect(store.get(session.id)).resolves.toBeUndefined()
   })
 
+  test("does not create an index that session queries do not use", async () => {
+    const indexedDb = new IDBFactory()
+    const store = new SessionStore(indexedDb)
+    await store.put(createSession("gpt-5.4"))
+    const request = indexedDb.open("pi-chrome-sessions")
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+
+    const indexes = [
+      ...database.transaction("sessions", "readonly").objectStore("sessions").indexNames,
+    ]
+
+    expect(indexes).toEqual([])
+    database.close()
+  })
+
   test("marks sessions interrupted instead of treating partial work as complete", async () => {
     const store = new SessionStore(new IDBFactory())
     const session = { ...createSession("gpt-5.4"), status: "running" as const }

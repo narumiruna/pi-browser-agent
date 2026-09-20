@@ -20,16 +20,14 @@ try {
     logLevel: "warning",
   })
 
-  const inventory = []
-  async function walk(directory) {
-    for (const name of await readdir(directory)) {
-      const path = join(directory, name)
-      const details = await stat(path)
-      if (details.isDirectory()) await walk(path)
-      else inventory.push({ file: relative(output, path), bytes: details.size })
-    }
-  }
-  await walk(output)
+  const inventory = await Promise.all(
+    (await readdir(output, { recursive: true, withFileTypes: true }))
+      .filter((entry) => entry.isFile())
+      .map(async (entry) => {
+        const path = join(entry.parentPath, entry.name)
+        return { file: relative(output, path), bytes: (await stat(path)).size }
+      }),
+  )
   inventory.sort((left, right) => left.file.localeCompare(right.file))
   for (const item of inventory) {
     const contents = await readFile(join(output, item.file), "utf8")

@@ -1,18 +1,12 @@
-import { readdir, readFile, stat } from "node:fs/promises"
+import { readdir, readFile } from "node:fs/promises"
 import { join, relative, resolve } from "node:path"
 import { containsNodeBuiltinImport } from "../tooling/node-builtins.mjs"
 
 const root = resolve(process.env.PI_CHROME_ARTIFACT_ROOT ?? "dist/chrome")
-const files = []
-async function walk(directory) {
-  for (const name of await readdir(directory)) {
-    const path = join(directory, name)
-    const details = await stat(path)
-    if (details.isDirectory()) await walk(path)
-    else files.push(path)
-  }
-}
-await walk(root)
+const files = (await readdir(root, { recursive: true, withFileTypes: true }))
+  .filter((entry) => entry.isFile())
+  .map((entry) => join(entry.parentPath, entry.name))
+  .sort()
 const artifactFiles = new Set(files.map((path) => relative(root, path).replaceAll("\\", "/")))
 
 const failures = []
