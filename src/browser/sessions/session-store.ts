@@ -123,8 +123,7 @@ export class SessionStore {
       const request = this.indexedDb.open(DATABASE_NAME, DATABASE_VERSION)
       request.onupgradeneeded = () => {
         if (!request.result.objectStoreNames.contains(STORE_NAME)) {
-          const store = request.result.createObjectStore(STORE_NAME, { keyPath: "id" })
-          store.createIndex("updatedAt", "updatedAt")
+          request.result.createObjectStore(STORE_NAME, { keyPath: "id" })
         }
       }
       request.onsuccess = () => resolve(request.result)

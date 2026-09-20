@@ -4,7 +4,7 @@ import { AUTH_ORIGINS, OPENAI_PROVIDER_ID } from "../auth/codex-oauth.js"
 import { CREDENTIALS_KEY } from "../auth/credential-store.js"
 import { hasHostPermissions, requestHostPermissions } from "../permissions.js"
 import { SearchableSelect } from "./searchable-select.js"
-import { element } from "./ui.js"
+import { element, run } from "./ui.js"
 
 const AUTH_METHOD_LABELS: Record<AuthType, string> = {
   oauth: "Sign in with an account",
@@ -98,20 +98,20 @@ export class AuthenticationController {
     this.refreshButton?.addEventListener("click", () => {
       if (!this.refreshButton) return
       this.refreshButton.disabled = true
-      void this.perform(async () => {
+      void run(async () => {
         await options.runtime.refreshCredential(options.currentProviderId())
         await this.refresh()
-      }).finally(() => {
+      }, options.updateError).finally(() => {
         if (this.refreshButton) this.refreshButton.disabled = false
       })
     })
     this.logoutButton?.addEventListener("click", () => {
       if (!this.logoutButton) return
       this.logoutButton.disabled = true
-      void this.perform(async () => {
+      void run(async () => {
         await options.runtime.logout(options.currentProviderId())
         await this.refresh()
-      }).finally(() => {
+      }, options.updateError).finally(() => {
         if (this.logoutButton) this.logoutButton.disabled = false
       })
     })
@@ -124,11 +124,11 @@ export class AuthenticationController {
       )
         return
       this.controller?.abort()
-      void this.perform(async () => {
+      void run(async () => {
         await options.runtime.invalidateCredential(OPENAI_PROVIDER_ID)
         await this.refresh()
         throw new Error("OpenAI host access was revoked. Log in again to continue.")
-      })
+      }, options.updateError)
     })
 
     chrome.storage.onChanged.addListener((changes, areaName) => {
@@ -211,7 +211,7 @@ export class AuthenticationController {
     if (this.loginButton) this.loginButton.disabled = true
     if (this.configureButton) this.configureButton.disabled = true
 
-    void this.perform(async () => {
+    void run(async () => {
       const preferredProviderId = this.options.currentProviderId()
       let selected: { authType: AuthType; providerId: string } | undefined
       while (!selected) {
@@ -244,7 +244,7 @@ export class AuthenticationController {
       } finally {
         this.controller = undefined
       }
-    }).finally(() => {
+    }, this.options.updateError).finally(() => {
       this.configuring = false
       if (this.loginButton) this.loginButton.disabled = false
       if (this.configureButton) {
@@ -253,15 +253,6 @@ export class AuthenticationController {
           .some((provider) => provider.authMethods.length > 0)
       }
     })
-  }
-
-  private async perform(action: () => Promise<void>): Promise<void> {
-    this.options.updateError()
-    try {
-      await action()
-    } catch (error) {
-      this.options.updateError(error)
-    }
   }
 
   private async selectAuthMethod(): Promise<AuthType | undefined> {

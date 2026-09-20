@@ -28,6 +28,84 @@ import {
   type VoiceInputController,
 } from "./voice-input.js"
 
+function appendTextContent(container: HTMLElement, text: string): void {
+  const block = document.createElement("span")
+  block.className = "content-text"
+  block.textContent = text
+  container.append(block)
+}
+
+export function renderMessageContent(
+  container: HTMLElement,
+  message: AgentMessage,
+  renderedImages: WeakMap<ImageContent, HTMLImageElement> = new WeakMap(),
+): { hasImage: boolean; roleLabel: string; text: string; toolCall: boolean } {
+  let hasImage = false
+  let toolCall = false
+  let text: string
+
+  if (!("content" in message)) {
+    text = JSON.stringify(message)
+    appendTextContent(container, text)
+  } else if (typeof message.content === "string") {
+    text = message.content
+    appendTextContent(container, text)
+  } else if (!Array.isArray(message.content)) {
+    text = JSON.stringify(message.content)
+    appendTextContent(container, text)
+  } else {
+    const textParts: string[] = []
+    for (const item of message.content) {
+      if (item.type === "image") {
+        hasImage = true
+        textParts.push(`[image: ${item.mimeType}]`)
+        let image = renderedImages.get(item)
+        if (!image) {
+          const source = imageContentSource(item)
+          if (!source) {
+            appendTextContent(container, `[image unavailable: ${item.mimeType}]`)
+            continue
+          }
+          image = document.createElement("img")
+          image.className = "message-image"
+          image.src = source
+          image.alt = message.role === "user" ? "Pasted image" : "Image result"
+          image.loading = "lazy"
+          image.decoding = "async"
+          renderedImages.set(item, image)
+        }
+        container.append(image)
+      } else if (item.type === "text") {
+        textParts.push(item.text)
+        if (item.text) appendTextContent(container, item.text)
+      } else if (item.type === "toolCall") {
+        toolCall = message.role === "assistant"
+        const value = `[tool call: ${item.name}]\n${JSON.stringify(item.arguments, null, 2)}`
+        textParts.push(value)
+        appendTextContent(container, value)
+      } else if (item.type === "thinking") {
+        textParts.push(item.thinking)
+        appendTextContent(container, item.thinking)
+      } else {
+        textParts.push("[content]")
+        appendTextContent(container, "[content]")
+      }
+    }
+    text = textParts.join("\n")
+  }
+
+  const roleLabel = toolCall
+    ? "Tool call"
+    : message.role === "user"
+      ? "You"
+      : message.role === "assistant"
+        ? "Pi"
+        : message.role === "toolResult"
+          ? "Tool result"
+          : message.role
+  return { hasImage, roleLabel, text, toolCall }
+}
+
 export async function initializeConversationPage(params: URLSearchParams): Promise<void> {
   const settingsContextId = params.get("source") ?? crypto.randomUUID()
   const transcript = element<HTMLElement>("transcript")
@@ -154,98 +232,6 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     updateSendButton()
   }
 
-  function messageText(message: AgentMessage): string {
-    if (!("content" in message)) return JSON.stringify(message)
-    if (typeof message.content === "string") return message.content
-    if (!Array.isArray(message.content)) return JSON.stringify(message.content)
-    return message.content
-      .map((item) => {
-        if (item.type === "text") return item.text
-        if (item.type === "image") return `[image: ${item.mimeType}]`
-        if (item.type === "toolCall") {
-          return `[tool call: ${item.name}]\n${JSON.stringify(item.arguments, null, 2)}`
-        }
-        if (item.type === "thinking") return item.thinking
-        return "[content]"
-      })
-      .join("\n")
-  }
-
-  function isToolCall(message: AgentMessage): boolean {
-    return (
-      message.role === "assistant" &&
-      "content" in message &&
-      Array.isArray(message.content) &&
-      message.content.some((item) => item.type === "toolCall")
-    )
-  }
-
-  function roleLabel(message: AgentMessage): string {
-    if (isToolCall(message)) return "Tool call"
-    if (message.role === "user") return "You"
-    if (message.role === "assistant") return "Pi"
-    if (message.role === "toolResult") return "Tool result"
-    return message.role
-  }
-
-  function messageHasImage(message: AgentMessage): boolean {
-    return (
-      "content" in message &&
-      Array.isArray(message.content) &&
-      message.content.some((item) => item.type === "image")
-    )
-  }
-
-  function appendTextContent(container: HTMLElement, text: string): void {
-    const block = document.createElement("span")
-    block.className = "content-text"
-    block.textContent = text
-    container.append(block)
-  }
-
-  function renderMessageContent(container: HTMLElement, message: AgentMessage): void {
-    if (!("content" in message)) {
-      appendTextContent(container, JSON.stringify(message))
-      return
-    }
-    if (typeof message.content === "string") {
-      appendTextContent(container, message.content)
-      return
-    }
-    if (!Array.isArray(message.content)) {
-      appendTextContent(container, JSON.stringify(message.content))
-      return
-    }
-    for (const item of message.content) {
-      if (item.type === "image") {
-        let image = renderedImages.get(item)
-        if (!image) {
-          const source = imageContentSource(item)
-          if (!source) {
-            appendTextContent(container, `[image unavailable: ${item.mimeType}]`)
-            continue
-          }
-          image = document.createElement("img")
-          image.className = "message-image"
-          image.src = source
-          image.alt = message.role === "user" ? "Pasted image" : "Image result"
-          image.loading = "lazy"
-          image.decoding = "async"
-          renderedImages.set(item, image)
-        }
-        container.append(image)
-      } else if (item.type === "text") {
-        if (item.text) appendTextContent(container, item.text)
-      } else if (item.type === "toolCall") {
-        appendTextContent(
-          container,
-          `[tool call: ${item.name}]\n${JSON.stringify(item.arguments, null, 2)}`,
-        )
-      } else if (item.type === "thinking") appendTextContent(container, item.thinking)
-      else appendTextContent(container, "[content]")
-    }
-  }
-
   function renderMessages(streaming?: AgentMessage): void {
     transcript.replaceChildren()
     const messages = [...runtime.agent.state.messages, ...(streaming ? [streaming] : [])]
@@ -266,23 +252,22 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       return
     }
     for (const message of messages) {
-      const toolMessage = isToolCall(message) || message.role === "toolResult"
-      const article = document.createElement(toolMessage ? "details" : "article")
-      article.className = `message ${message.role}${isToolCall(message) ? " toolCall" : ""}`
-      const role = document.createElement("span")
-      role.className = "role"
-      role.textContent = roleLabel(message)
       const content = document.createElement("span")
       content.className = "content"
-      const text = messageText(message)
-      renderMessageContent(content, message)
+      const rendered = renderMessageContent(content, message, renderedImages)
+      const toolMessage = rendered.toolCall || message.role === "toolResult"
+      const article = document.createElement(toolMessage ? "details" : "article")
+      article.className = `message ${message.role}${rendered.toolCall ? " toolCall" : ""}`
+      const role = document.createElement("span")
+      role.className = "role"
+      role.textContent = rendered.roleLabel
       if (article instanceof HTMLDetailsElement) {
         const summary = document.createElement("summary")
         const preview = document.createElement("span")
         preview.className = "tool-preview"
-        preview.textContent = text.split("\n", 1)[0]?.replace(/^\[|\]$/g, "") ?? "Details"
+        preview.textContent = rendered.text.split("\n", 1)[0]?.replace(/^\[|\]$/g, "") ?? "Details"
         summary.append(role, preview)
-        article.open = /^error\b/i.test(text) || messageHasImage(message)
+        article.open = /^error\b/i.test(rendered.text) || rendered.hasImage
         article.append(summary, content)
       } else {
         article.append(role, content)
