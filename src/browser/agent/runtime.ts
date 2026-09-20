@@ -1,16 +1,7 @@
 import { Agent, type AgentEvent, type AgentMessage } from "@earendil-works/pi-agent-core"
-import type {
-  Api,
-  AuthEvent,
-  AuthPrompt,
-  AuthType,
-  ImageContent,
-  Model,
-} from "@earendil-works/pi-ai"
-import { OPENAI_PROVIDER_ID } from "../auth/codex-oauth.js"
-import { ChromeCredentialStore } from "../auth/credential-store.js"
-import { createBrowserModels, modelEndpointUrls } from "../auth/provider.js"
+import type { Api, AuthEvent, ImageContent, Model } from "@earendil-works/pi-ai"
 import { safeErrorMessage } from "../auth/redaction.js"
+import { BrowserConfiguration } from "../configuration.js"
 import { SessionLease } from "../sessions/session-lease.js"
 import {
   compactSession,
@@ -20,40 +11,8 @@ import {
   SessionStore,
   type SessionSummary,
 } from "../sessions/session-store.js"
-import {
-  type AppSettings,
-  getActiveSessionId,
-  getSettings,
-  restrictLocalStorageToTrustedContexts,
-  saveActiveSessionId,
-  saveSettings,
-} from "../storage.js"
+import { type AppSettings, getActiveSessionId, saveActiveSessionId } from "../storage.js"
 import { type ConfirmationHandler, createBrowserTools } from "./browser-tools.js"
-
-export interface AuthStatus {
-  loggedIn: boolean
-  type?: AuthType
-}
-
-export interface AuthMethodSummary {
-  type: AuthType
-  label: string
-}
-
-export interface ProviderSummary {
-  id: string
-  name: string
-  modelCount: number
-  authMethods: AuthMethodSummary[]
-}
-
-export interface ModelSummary {
-  provider: string
-  id: string
-  name: string
-  reasoning: boolean
-  imageInput: boolean
-}
 
 export type StreamingBehavior = "steer" | "followUp"
 export type SubmissionMode = "prompt" | StreamingBehavior
@@ -105,14 +64,11 @@ function messageTitle(messages: AgentMessage[]): string | undefined {
 }
 
 export class BrowserAgentRuntime {
-  readonly credentials = new ChromeCredentialStore()
+  readonly configuration: BrowserConfiguration
   readonly sessions = new SessionStore()
-  readonly models
   readonly agent: Agent
   private currentModel: Model<Api>
   private session!: SessionRecord
-  private settings!: AppSettings
-  private authChanging = false
   private pendingSettingsModel = false
   private closing = false
   private persistChain: Promise<void> = Promise.resolve()
@@ -121,9 +77,8 @@ export class BrowserAgentRuntime {
     private readonly callbacks: RuntimeCallbacks,
     private readonly sessionLease = new SessionLease(),
   ) {
-    const modelRuntime = createBrowserModels(this.credentials)
-    this.models = modelRuntime.models
-    this.currentModel = modelRuntime.defaultModel
+    this.configuration = new BrowserConfiguration(callbacks.onAuthEvent, () => this.stopAgent())
+    this.currentModel = this.configuration.defaultModel
     this.agent = new Agent({
       initialState: {
         model: this.currentModel,
@@ -131,7 +86,7 @@ export class BrowserAgentRuntime {
         thinkingLevel: "medium",
         tools: createBrowserTools(callbacks.confirm),
       },
-      streamFn: this.models.streamSimple.bind(this.models),
+      streamFn: this.configuration.models.streamSimple.bind(this.configuration.models),
       transport: "sse",
       steeringMode: "one-at-a-time",
       followUpMode: "one-at-a-time",
@@ -149,26 +104,9 @@ export class BrowserAgentRuntime {
     })
   }
 
-  private async initializeConfiguration(): Promise<void> {
-    await restrictLocalStorageToTrustedContexts()
-    this.settings = await getSettings()
-    await this.models.refresh({ providers: ["radius"] })
-    this.currentModel =
-      this.models.getModel(this.settings.modelProvider, this.settings.modelId) ?? this.currentModel
-    this.agent.state.model = this.currentModel
-  }
-
-  async initializeSettings(modelSelection?: { provider: string; id: string }): Promise<void> {
-    await this.initializeConfiguration()
-    if (!modelSelection) return
-    const model = this.models.getModel(modelSelection.provider, modelSelection.id)
-    if (!model) return
-    this.currentModel = model
-    this.agent.state.model = model
-  }
-
   async initialize(sessionId?: string): Promise<void> {
-    await this.initializeConfiguration()
+    this.currentModel = await this.configuration.initialize()
+    this.agent.state.model = this.currentModel
     const preferredId = sessionId ?? (await getActiveSessionId())
     let restored = preferredId ? await this.sessions.get(preferredId) : undefined
     if (restored) this.requireModel(restored.model.provider, restored.model.id)
@@ -204,27 +142,16 @@ export class BrowserAgentRuntime {
     return this.currentModel
   }
 
-  get appSettings(): AppSettings {
-    return { ...this.settings }
-  }
-
-  async updateSettings(settings: AppSettings): Promise<void> {
-    this.settings = { ...settings }
-    await saveSettings(this.settings)
-  }
-
   async syncSettings(options: { applyModelToActiveSession?: boolean } = {}): Promise<void> {
-    this.settings = await getSettings()
-    if (this.settings.modelProvider === "radius") {
-      await this.models.refresh({ providers: ["radius"] })
-    }
+    await this.configuration.syncSettings()
     if (!options.applyModelToActiveSession) return
     if (this.agent.state.isStreaming) {
       this.pendingSettingsModel = true
       return
     }
     this.pendingSettingsModel = false
-    const model = this.models.getModel(this.settings.modelProvider, this.settings.modelId)
+    const settings = this.configuration.appSettings
+    const model = this.configuration.models.getModel(settings.modelProvider, settings.modelId)
     if (
       !model ||
       (model.provider === this.currentModel.provider && model.id === this.currentModel.id)
@@ -241,111 +168,16 @@ export class BrowserAgentRuntime {
     this.callbacks.onSettingsModelChanged?.()
   }
 
-  getProviders(authType?: AuthType): ProviderSummary[] {
-    const providers = this.models.getProviders().map((provider) => ({
-      id: provider.id,
-      name: provider.name,
-      modelCount: provider.getModels().length,
-      authMethods: [
-        ...(provider.auth.oauth
-          ? [
-              {
-                type: "oauth" as const,
-                label: provider.auth.oauth.loginLabel ?? provider.auth.oauth.name,
-              },
-            ]
-          : []),
-        ...(provider.auth.apiKey?.login
-          ? [{ type: "api_key" as const, label: provider.auth.apiKey.name }]
-          : []),
-      ],
-    }))
-    return authType
-      ? providers.filter((provider) =>
-          provider.authMethods.some((method) => method.type === authType),
-        )
-      : providers
-  }
-
-  getModels(providerId: string): ModelSummary[] {
-    return this.models.getModels(providerId).map((model) => ({
-      provider: model.provider,
-      id: model.id,
-      name: model.name,
-      reasoning: model.reasoning,
-      imageInput: model.input.includes("image"),
-    }))
-  }
-
-  async authStatus(providerId = this.currentModel.provider): Promise<AuthStatus> {
-    const credential = await this.credentials.read(providerId)
-    if (!credential) return { loggedIn: false }
-    const configured = await this.models.checkAuth(providerId)
-    if (!configured) return { loggedIn: false }
-    return { loggedIn: true, type: credential.type }
-  }
-
-  async login(
-    providerId: string,
-    type: AuthType,
-    signal: AbortSignal,
-    prompt: (prompt: AuthPrompt) => Promise<string>,
-  ): Promise<void> {
-    return this.runAuthChange(async () => {
-      await this.models.login(providerId, type, {
-        signal,
-        notify: this.callbacks.onAuthEvent,
-        prompt,
-      })
-      if (providerId === "radius") {
-        const result = await this.models.refresh({ providers: [providerId], force: true, signal })
-        const error = result.errors.get(providerId)
-        if (error) throw error
-      }
-    })
-  }
-
-  async refreshCredential(providerId = this.currentModel.provider): Promise<void> {
-    return this.runAuthChange(async () => {
-      const auth = await this.models.getAuth(providerId, {
-        minOAuthValidityMs: Number.MAX_SAFE_INTEGER,
-      })
-      if (!auth) throw new Error("Configure this provider before refreshing its credential")
-    })
-  }
-
-  async logout(providerId = this.currentModel.provider): Promise<void> {
-    return this.runAuthChange(async () => {
-      await this.stopAgent()
-      await this.models.logout(providerId)
-    })
-  }
-
-  async invalidateCredential(providerId = OPENAI_PROVIDER_ID): Promise<void> {
-    await this.stopAgent()
-    await this.credentials.delete(providerId)
-  }
-
-  async requiredModelEndpointUrls(): Promise<string[]> {
-    const provider = this.models.getProvider(this.currentModel.provider)
-    if (!provider) throw new Error(`Provider is unavailable: ${this.currentModel.provider}`)
-    const credential = await this.credentials.read(provider.id)
-    const urls = modelEndpointUrls(provider, this.currentModel, credential)
-    if (urls.length === 0) {
-      throw new Error(`No browser endpoint is configured for ${provider.name}`)
-    }
-    return urls
-  }
-
   async submit(
     text: string,
     streamingBehavior: StreamingBehavior = "steer",
     images: ImageContent[] = [],
   ): Promise<SubmissionMode> {
-    if (this.authChanging) throw new Error("Wait for the authentication change to finish")
+    if (this.configuration.isChangingAuth)
+      throw new Error("Wait for the authentication change to finish")
     this.assertImageInput(images)
     if (!this.agent.state.isStreaming) {
-      this.agent.state.systemPrompt = composeSystemPrompt(this.settings)
+      this.agent.state.systemPrompt = composeSystemPrompt(this.configuration.appSettings)
       if (images.length > 0) await this.agent.prompt(multimodalUserMessage(text, images))
       else await this.agent.prompt(text)
       return "prompt"
@@ -446,16 +278,6 @@ export class BrowserAgentRuntime {
     await saveActiveSessionId(record.id)
   }
 
-  private async runAuthChange(operation: () => Promise<void>): Promise<void> {
-    if (this.authChanging) throw new Error("Another authentication change is already running")
-    this.authChanging = true
-    try {
-      await operation()
-    } finally {
-      this.authChanging = false
-    }
-  }
-
   private async stopAgent(): Promise<void> {
     this.agent.abort()
     await this.agent.waitForIdle()
@@ -463,13 +285,14 @@ export class BrowserAgentRuntime {
   }
 
   private requireModel(providerId: string, modelId: string): Model<Api> {
-    const model = this.models.getModel(providerId, modelId)
+    const model = this.configuration.models.getModel(providerId, modelId)
     if (!model) throw new Error(`Saved model is unavailable: ${providerId}/${modelId}`)
     return model
   }
 
   private configuredModel(): Model<Api> {
-    return this.requireModel(this.settings.modelProvider, this.settings.modelId)
+    const settings = this.configuration.appSettings
+    return this.requireModel(settings.modelProvider, settings.modelId)
   }
 
   private assertImageInput(images: readonly ImageContent[]): void {
@@ -497,7 +320,7 @@ export class BrowserAgentRuntime {
     this.agent.state.tools = createBrowserTools(this.callbacks.confirm)
     this.agent.state.messages = structuredClone(record.messages)
     this.agent.state.thinkingLevel = record.model.thinkingLevel
-    this.agent.state.systemPrompt = composeSystemPrompt(this.settings)
+    this.agent.state.systemPrompt = composeSystemPrompt(this.configuration.appSettings)
   }
 
   private persist(status: SessionRecord["status"]): Promise<void> {

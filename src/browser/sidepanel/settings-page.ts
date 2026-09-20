@@ -1,4 +1,4 @@
-import { BrowserAgentRuntime } from "../agent/runtime.js"
+import { BrowserConfiguration } from "../configuration.js"
 import type { RuntimeEvent } from "../runtime/messages.js"
 import {
   DEFAULT_SETTINGS,
@@ -48,16 +48,12 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
   const setError = (error?: unknown): void => setErrorOutput(errorOutput, error)
   let settingsModelChanged = false
   let authentication: AuthenticationController | undefined
-  const runtime = new BrowserAgentRuntime({
-    confirm: async () => false,
-    onAuthEvent: (event) => authentication?.onAuthEvent(event),
-    onAgentEvent: () => undefined,
-    onPersistenceError: setError,
-  })
+  const configuration = new BrowserConfiguration((event) => authentication?.onAuthEvent(event))
+  let initialSelection = configuration.defaultModel
 
   function renderProviderOptions(preferredId?: string): void {
     providerPicker.setOptions(
-      runtime.getProviders().map((provider) => ({
+      configuration.getProviders().map((provider) => ({
         value: provider.id,
         label: `${provider.name} (${provider.modelCount})`,
         keywords: [provider.id],
@@ -67,7 +63,7 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
   }
 
   function updateModelCapabilities(): void {
-    const model = runtime
+    const model = configuration
       .getModels(providerSelect.value)
       .find((candidate) => candidate.id === modelSelect.value)
     modelCapabilities.textContent = model
@@ -80,7 +76,7 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
 
   function renderModelOptions(providerId: string, preferredId?: string): void {
     modelPicker.setOptions(
-      runtime.getModels(providerId).map((model) => ({
+      configuration.getModels(providerId).map((model) => ({
         value: model.id,
         label: model.name === model.id ? model.id : `${model.name} — ${model.id}`,
       })),
@@ -111,12 +107,12 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
   }
 
   function populateSettings(): void {
-    renderModelControls(runtime.model.provider, runtime.model.id)
-    fontFamilySelect.value = runtime.appSettings.fontFamily
-    fontSizeInput.value = String(runtime.appSettings.fontSize)
-    fontSizeOutput.value = `${runtime.appSettings.fontSize} px`
-    systemPrompt.value = runtime.appSettings.systemPrompt
-    agentInstructions.value = runtime.appSettings.agentInstructions
+    renderModelControls(initialSelection.provider, initialSelection.id)
+    fontFamilySelect.value = configuration.appSettings.fontFamily
+    fontSizeInput.value = String(configuration.appSettings.fontSize)
+    fontSizeOutput.value = `${configuration.appSettings.fontSize} px`
+    systemPrompt.value = configuration.appSettings.systemPrompt
+    agentInstructions.value = configuration.appSettings.agentInstructions
     settingsModelChanged = false
   }
 
@@ -133,12 +129,12 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
 
   function discardSettingsChanges(): void {
     populateSettings()
-    applyAppearance(runtime.appSettings.fontFamily, runtime.appSettings.fontSize)
+    applyAppearance(configuration.appSettings.fontFamily, configuration.appSettings.fontSize)
     closeSettingsPage()
   }
 
   authentication = new AuthenticationController({
-    runtime,
+    configuration,
     currentProviderId: () => providerSelect.value,
     updateError: setError,
     mode: "settings",
@@ -168,14 +164,14 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
       let providerId = providerSelect.value
       let modelId = modelSelect.value
       if (!applyModelToActiveSession) {
-        await runtime.syncSettings()
-        providerId = runtime.appSettings.modelProvider
-        modelId = runtime.appSettings.modelId
+        await configuration.syncSettings()
+        providerId = configuration.appSettings.modelProvider
+        modelId = configuration.appSettings.modelId
       }
       if (!modelId) throw new Error("Configure the selected provider and choose a model")
       const fontFamily = selectedFontFamily()
       const fontSize = selectedFontSize()
-      await runtime.updateSettings({
+      await configuration.updateSettings({
         systemPrompt: systemPrompt.value,
         agentInstructions: agentInstructions.value,
         fontFamily,
@@ -204,9 +200,9 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
 
   document.title = "Settings · Pi Chrome"
   document.body.dataset.view = "settings"
-  await runtime.initializeSettings(initialModel)
+  initialSelection = await configuration.initialize(initialModel)
   populateSettings()
-  applyAppearance(runtime.appSettings.fontFamily, runtime.appSettings.fontSize)
+  applyAppearance(configuration.appSettings.fontFamily, configuration.appSettings.fontSize)
   page.hidden = false
   await authentication.refresh()
   closeButton.focus()
