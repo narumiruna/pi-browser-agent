@@ -286,7 +286,19 @@ test("loads the Side Panel without uncaught errors", async () => {
   await controller.locator(".session-disclosure > summary").click()
   await controller.locator("#account-menu-trigger").click()
   await expect(controller.locator("#grant-site")).toBeVisible()
-  await controller.locator("#account-menu-trigger").click()
+  const addCredential = controller.locator("#login")
+  await expect(addCredential).toHaveText("Add credential")
+  await addCredential.click()
+  const authMethodDialog = controller.locator("#auth-method-dialog")
+  await expect(authMethodDialog).toBeVisible()
+  await expect(
+    authMethodDialog.getByRole("button", { name: "Sign in with an account" }),
+  ).toBeVisible()
+  await expect(
+    authMethodDialog.getByRole("button", { name: "Sign in with an API key" }),
+  ).toBeVisible()
+  await authMethodDialog.getByRole("button", { name: "Cancel" }).click()
+  await expect(authMethodDialog).toBeHidden()
   const transcriptTop = await controller
     .locator("#transcript")
     .evaluate((node) => Math.round(node.getBoundingClientRect().top))
@@ -361,7 +373,7 @@ test("opens Settings in a full browser tab and persists the selected interface f
   await expect(settingsPage.getByRole("heading", { name: "Instructions" })).toBeVisible()
   const configureProvider = settingsTab.locator("#configure-provider")
   const initialModelId = await settingsTab.locator("#model").inputValue()
-  await expect(configureProvider).toHaveText("Log in to OpenAI Codex")
+  await expect(configureProvider).toHaveText("Configure authentication")
   await settingsTab.evaluate(() => {
     const originalGet = chrome.storage.local.get
     chrome.storage.local.get = (async () => {
@@ -372,11 +384,51 @@ test("opens Settings in a full browser tab and persists the selected interface f
   await settingsTab.locator("#provider").dispatchEvent("change")
   await expect(settingsError).toHaveText("Test auth status failed")
   await expect(configureProvider).toBeEnabled()
-  await expect(configureProvider).toHaveText("Configure OpenAI Codex")
+  await expect(configureProvider).toHaveText("Configure authentication")
   await settingsTab.locator("#provider").dispatchEvent("change")
-  await expect(configureProvider).toHaveText("Log in to OpenAI Codex")
   await expect(settingsError).toBeEmpty()
 
+  await configureProvider.click()
+  const authMethodDialog = settingsTab.locator("#auth-method-dialog")
+  const authProviderDialog = settingsTab.locator("#auth-provider-dialog")
+  await authMethodDialog.getByRole("button", { name: "Sign in with an API key" }).click()
+  await expect(authProviderDialog).toBeVisible()
+  await expect(authProviderDialog.locator("option[value='openai']")).toHaveCount(1)
+  await expect(authProviderDialog.locator("option[value='openai-codex']")).toHaveCount(0)
+  await authProviderDialog.getByRole("button", { name: "Back" }).click()
+  await expect(authMethodDialog).toBeVisible()
+  await authMethodDialog.getByRole("button", { name: "Sign in with an API key" }).click()
+  await authProviderDialog.getByRole("button", { name: "Cancel" }).click()
+  await expect(configureProvider).toBeEnabled()
+
+  const existingCodexCredential = {
+    type: "oauth",
+    access: "existing-test-access-token",
+    refresh: "existing-test-refresh-token",
+    expires: Date.now() + 3_600_000,
+    accountId: "existing-test-account",
+  }
+  const previousHostApprovals = await settingsTab.evaluate(async () => {
+    const stored = await chrome.storage.local.get("piChromeApprovedHostPermissions")
+    const approvals = stored.piChromeApprovedHostPermissions
+    return Array.isArray(approvals)
+      ? approvals.filter((approval): approval is string => typeof approval === "string")
+      : []
+  })
+  await settingsTab.evaluate(async (credential) => {
+    const stored = await chrome.storage.local.get("piChromeApprovedHostPermissions")
+    const approvals = Array.isArray(stored.piChromeApprovedHostPermissions)
+      ? stored.piChromeApprovedHostPermissions.filter(
+          (approval): approval is string => typeof approval === "string",
+        )
+      : []
+    await chrome.storage.local.set({
+      piChromeApprovedHostPermissions: [
+        ...new Set([...approvals, "https://auth.openai.com/*", "https://chatgpt.com/*"]),
+      ],
+      piChromeCredentialsV1: { "openai-codex": credential },
+    })
+  }, existingCodexCredential)
   await settingsTab.evaluate(() => {
     const originalRequest = chrome.permissions.request
     let markEntered: () => void = () => undefined
@@ -387,19 +439,39 @@ test("opens Settings in a full browser tab and persists the selected interface f
     const gate = new Promise<boolean>((resolve) => {
       release = resolve
     })
+    const state = window as typeof window & {
+      providerLoginGate?: {
+        entered: Promise<void>
+        release: (granted: boolean) => void
+        requestCount: number
+      }
+    }
+    state.providerLoginGate = { entered, release, requestCount: 0 }
     chrome.permissions.request = (async () => {
+      if (!state.providerLoginGate) return false
+      state.providerLoginGate.requestCount += 1
       markEntered()
       const granted = await gate
       chrome.permissions.request = originalRequest
       return granted
     }) as typeof chrome.permissions.request
-    ;(
-      window as typeof window & {
-        providerLoginGate?: { entered: Promise<void>; release: (granted: boolean) => void }
-      }
-    ).providerLoginGate = { entered, release }
   })
   await configureProvider.click()
+  await authMethodDialog.getByRole("button", { name: "Sign in with an account" }).click()
+  await expect(authProviderDialog).toBeVisible()
+  await expect(authProviderDialog.locator("#auth-provider option")).toHaveCount(1)
+  await expect(authProviderDialog.locator("#auth-provider")).toHaveValue("openai-codex")
+  expect(
+    await settingsTab.evaluate(
+      () =>
+        (
+          window as typeof window & {
+            providerLoginGate?: { requestCount: number }
+          }
+        ).providerLoginGate?.requestCount,
+    ),
+  ).toBe(0)
+  await authProviderDialog.getByRole("button", { name: "Continue" }).click()
   await settingsTab.evaluate(async () => {
     const gate = (
       window as typeof window & {
@@ -409,9 +481,6 @@ test("opens Settings in a full browser tab and persists the selected interface f
     if (!gate) throw new Error("Provider login gate is not installed")
     await gate.entered
   })
-  await controller.evaluate(async () => {
-    await chrome.storage.local.set({ piChromeCredentialsV1: {} })
-  })
   await expect(configureProvider).toBeDisabled()
   await settingsTab.evaluate(() => {
     const state = window as typeof window & {
@@ -420,8 +489,20 @@ test("opens Settings in a full browser tab and persists the selected interface f
     state.providerLoginGate?.release(false)
     delete state.providerLoginGate
   })
+  await expect(settingsError).toHaveText("OpenAI host access is required for login")
   await expect(configureProvider).toBeEnabled()
-  await controller.evaluate(async () => chrome.storage.local.remove("piChromeCredentialsV1"))
+  await expect
+    .poll(() =>
+      settingsTab.evaluate(async () => {
+        const stored = await chrome.storage.local.get("piChromeCredentialsV1")
+        return (stored.piChromeCredentialsV1 as Record<string, unknown>)["openai-codex"]
+      }),
+    )
+    .toEqual(existingCodexCredential)
+  await controller.evaluate(async (hostApprovals) => {
+    await chrome.storage.local.set({ piChromeApprovedHostPermissions: hostApprovals })
+    await chrome.storage.local.remove("piChromeCredentialsV1")
+  }, previousHostApprovals)
 
   const modelSearch = settingsTab.locator("#model-search")
   await modelSearch.fill(initialModelId)
@@ -535,6 +616,114 @@ test("opens Settings in a full browser tab and persists the selected interface f
   await expect
     .poll(() => controller.evaluate(() => document.documentElement.dataset.fontSize))
     .toBe("16")
+})
+
+test("stores API keys through the method-first account flow without changing models", async () => {
+  const initialProvider = await controller.locator("#provider").inputValue()
+  const initialModel = await controller.locator("#model").inputValue()
+  await controller.evaluate(async () => chrome.storage.local.remove("piChromeCredentialsV1"))
+  await controller.evaluate(() => {
+    const state = window as typeof window & {
+      authSetupPermissionRequests?: number
+      restoreAuthSetupPermissions?: () => void
+    }
+    const originalRequest = chrome.permissions.request
+    const callOriginalRequest = originalRequest.bind(chrome.permissions)
+    state.authSetupPermissionRequests = 0
+    state.restoreAuthSetupPermissions = () => {
+      chrome.permissions.request = originalRequest
+    }
+    chrome.permissions.request = (async (permissions) => {
+      state.authSetupPermissionRequests = (state.authSetupPermissionRequests ?? 0) + 1
+      return callOriginalRequest(permissions)
+    }) as typeof chrome.permissions.request
+  })
+
+  const openAnthropicPrompt = async (): Promise<void> => {
+    await controller.locator("#account-menu-trigger").click()
+    await controller.locator("#login").click()
+    await controller.locator("#api-key-auth-method").click()
+    const providerSearch = controller.locator("#auth-provider-search")
+    const providerDialog = controller.locator("#auth-provider-dialog")
+    const continueButton = providerDialog.getByRole("button", { name: "Continue" })
+    await providerSearch.fill("missing-provider")
+    await continueButton.click()
+    await expect(providerDialog).toBeVisible()
+    await expect(controller.locator("#auth-prompt-dialog")).toBeHidden()
+    await providerSearch.fill("Anthropic —")
+    await expect(providerDialog.locator(".searchable-select-option")).toHaveCount(1)
+    await expect(providerDialog.locator(".searchable-select-option")).toContainText("Anthropic")
+    await continueButton.click()
+    await expect(controller.locator("#auth-provider")).toHaveValue("anthropic")
+    await expect(controller.locator("#auth-prompt-dialog")).toBeVisible()
+    await expect(controller.locator("#auth-prompt-input")).toHaveAttribute("type", "password")
+  }
+  const storedAnthropicCredential = () =>
+    controller.evaluate(async () => {
+      const stored = await chrome.storage.local.get("piChromeCredentialsV1")
+      return (
+        stored.piChromeCredentialsV1 as Record<string, { type: string; key?: string }> | undefined
+      )?.anthropic
+    })
+
+  try {
+    await openAnthropicPrompt()
+    await controller.locator("#auth-prompt-dialog").getByRole("button", { name: "Cancel" }).click()
+    await expect.poll(storedAnthropicCredential).toBeUndefined()
+
+    await openAnthropicPrompt()
+    await controller.locator("#auth-prompt-input").fill("first-anthropic-test-key")
+    await controller
+      .locator("#auth-prompt-dialog")
+      .getByRole("button", { name: "Continue" })
+      .click()
+    await expect.poll(storedAnthropicCredential).toEqual({
+      type: "api_key",
+      key: "first-anthropic-test-key",
+    })
+    await expect(controller.locator("#run-status")).toHaveText(
+      "Anthropic configured with an API key",
+    )
+
+    await openAnthropicPrompt()
+    await controller.locator("#auth-prompt-dialog").getByRole("button", { name: "Cancel" }).click()
+    await expect.poll(storedAnthropicCredential).toEqual({
+      type: "api_key",
+      key: "first-anthropic-test-key",
+    })
+
+    await openAnthropicPrompt()
+    await controller.locator("#auth-prompt-input").fill("replacement-anthropic-test-key")
+    await controller
+      .locator("#auth-prompt-dialog")
+      .getByRole("button", { name: "Continue" })
+      .click()
+    await expect.poll(storedAnthropicCredential).toEqual({
+      type: "api_key",
+      key: "replacement-anthropic-test-key",
+    })
+
+    expect(
+      await controller.evaluate(
+        () =>
+          (window as typeof window & { authSetupPermissionRequests?: number })
+            .authSetupPermissionRequests,
+      ),
+    ).toBe(0)
+    await expect(controller.locator("#provider")).toHaveValue(initialProvider)
+    await expect(controller.locator("#model")).toHaveValue(initialModel)
+    await expect(controller.locator("#auth-status")).toHaveText("OpenAI Codex not configured")
+    await expect(controller.locator("body")).not.toContainText("replacement-anthropic-test-key")
+  } finally {
+    await controller.evaluate(() => {
+      const state = window as typeof window & { restoreAuthSetupPermissions?: () => void }
+      state.restoreAuthSetupPermissions?.()
+      delete state.restoreAuthSetupPermissions
+      delete (state as typeof state & { authSetupPermissionRequests?: number })
+        .authSetupPermissionRequests
+    })
+    await controller.evaluate(async () => chrome.storage.local.remove("piChromeCredentialsV1"))
+  }
 })
 
 test("synchronizes provider controls when a new session restores the latest model", async () => {
@@ -837,14 +1026,16 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
     })
   }, credential)
   await controller.reload()
-  await expect(controller.locator("#auth-status")).toContainText("OpenAI Codex configured")
+  await expect(controller.locator("#auth-status")).toHaveText(
+    "OpenAI Codex configured with an account",
+  )
 
   await controller.locator("#account-menu-trigger").click()
   const settingsTabPromise = context.waitForEvent("page")
   await controller.locator("#open-settings").click()
   const settingsTab = await settingsTabPromise
   const configureProvider = settingsTab.locator("#configure-provider")
-  await expect(configureProvider).toHaveText("Reconnect OpenAI Codex")
+  await expect(configureProvider).toHaveText("Configure authentication")
 
   await controller.evaluate(() => {
     const originalGet = chrome.storage.local.get
@@ -891,7 +1082,7 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
   })
 
   await settingsTab.evaluate(async () => chrome.storage.local.remove("piChromeCredentialsV1"))
-  await expect(configureProvider).toHaveText("Log in to OpenAI Codex")
+  await expect(configureProvider).toHaveText("Configure authentication")
   await expect(controller.locator("#auth-status")).toHaveText("OpenAI Codex not configured")
   await controller.evaluate(() => {
     const state = window as typeof window & {
@@ -908,8 +1099,10 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
       piChromeCredentialsV1: { "openai-codex": credential },
     })
   }, credential)
-  await expect(configureProvider).toHaveText("Reconnect OpenAI Codex")
-  await expect(controller.locator("#auth-status")).toHaveText("OpenAI Codex configured")
+  await expect(configureProvider).toHaveText("Configure authentication")
+  await expect(controller.locator("#auth-status")).toHaveText(
+    "OpenAI Codex configured with an account",
+  )
 
   const settingsTabClosed = settingsTab.waitForEvent("close")
   await settingsTab.locator("#cancel-settings").click()

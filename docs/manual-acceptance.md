@@ -26,16 +26,20 @@ Use a production build from `npm run build`. Do not test login with development 
    - Check the idle and working states. Expected: run status sits at the bottom-left of the input card; microphone, Stop (only while working), and Send sit at the bottom-right without overlapping. Keyboard hints appear below the card, and long status text truncates with its full value available on hover.
    - Open the top-right gear menu, choose **Settings**, select a different font, drag the font-size slider, and save. Expected: Settings opens in a new full browser tab while the Side Panel conversation remains intact; saving closes the Settings tab, returns to the previous tab, updates the full interface, and both choices remain after closing and reopening the Side Panel.
    - Inspect the provider and model selectors. Expected: Amazon Bedrock is absent, Radius explains that configuration is needed before models load, and model capabilities identify reasoning and image input.
-2. **API-key provider and model**
-   - Select a non-Codex provider and model, choose **Configure selected provider**, and enter a dedicated test API key.
-   - Expected: secret prompts mask input, no key appears in status text or logs, and Chrome does not request provider host access during static credential entry.
-   - Save the settings and send a harmless prompt. Expected: Chrome requests only the current page and selected provider endpoint origins; the response streams over SSE and the session records the selected provider/model.
+2. **Authentication method and API-key provider**
+   - Select **Configure authentication** in Settings. Expected: **Sign in with an account** and **Sign in with an API key** appear before any provider choice.
+   - Choose **Sign in with an API key**. Expected: the searchable provider list includes **OpenAI** and excludes **OpenAI Codex**. Choose **Back**, then cancel; no credential or model changes.
+   - Repeat from **Add credential** in the Side Panel menu, choose the API-key method and a non-Codex provider, and enter a dedicated test API key.
+   - Expected: secret prompts mask and clear input, status names the provider and API-key method without showing the key, and Chrome does not request provider endpoint access during static credential entry. The active and pending model selections remain unchanged.
+   - Repeat setup, cancel at the secret prompt, and verify the existing key remains usable. Complete setup with a replacement test key and verify only that provider's credential changes.
+   - Select the configured provider and model in Settings, save, and send a harmless prompt. Expected: Chrome requests only the current page and selected provider endpoint origins; the response streams over SSE and the session records the selected provider/model.
    - Close and reopen the Side Panel, switch sessions, and create a new session. Expected: each existing session restores its own model and a new session uses the latest selection.
    - Remove the credential and retry. Expected: the request is blocked until that provider is configured again.
 3. **Device login**
-   - Select **Log in to OpenAI Codex** and verify Chrome asks only for `auth.openai.com` and `chatgpt.com`.
-   - Open the displayed verification URL, enter the code, and finish login.
-   - Expected: the panel reports **OpenAI Codex configured** without showing an access or refresh token.
+   - Select **Add credential** → **Sign in with an account**. Expected: only browser-safe account providers appear; the current build lists **OpenAI Codex**, not **OpenAI** or Node-only OAuth methods.
+   - Select **OpenAI Codex** and verify Chrome asks only for `auth.openai.com` and `chatgpt.com`. Deny once; expected: setup fails closed, any prior Codex credential remains unchanged, and no device request starts.
+   - Retry, approve access, open the displayed verification URL, enter the code, and finish login.
+   - Expected: the panel reports **OpenAI Codex configured with an account** without showing an access or refresh token.
 4. **Text SSE response**
    - Make a harmless HTTP(S) page visible and ask for a one-sentence summary without using a bind command.
    - Expected: the Side Panel shows the page automatically, text appears incrementally, and DevTools shows an HTTPS request to `chatgpt.com/backend-api`, with no browser WebSocket or loopback request.

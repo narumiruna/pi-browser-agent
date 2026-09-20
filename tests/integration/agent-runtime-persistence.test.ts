@@ -324,6 +324,23 @@ describe("browser agent session persistence", () => {
     await runtime.shutdown()
   })
 
+  test("filters providers by browser-supported authentication method", async () => {
+    const runtime = createRuntime(new FakeLockManager() as unknown as LockManager)
+    await runtime.initialize()
+
+    const accountProviders = runtime.getProviders("oauth")
+    const apiKeyProviders = runtime.getProviders("api_key")
+    const codex = accountProviders.find((provider) => provider.id === "openai-codex")
+    const openai = apiKeyProviders.find((provider) => provider.id === "openai")
+
+    expect(accountProviders.map((provider) => provider.id)).toEqual(["openai-codex"])
+    expect(codex?.authMethods).toEqual([{ type: "oauth", label: "OpenAI (ChatGPT Plus/Pro)" }])
+    expect(apiKeyProviders.map((provider) => provider.id)).toContain("anthropic")
+    expect(apiKeyProviders.map((provider) => provider.id)).not.toContain("openai-codex")
+    expect(openai?.authMethods).toEqual([{ type: "api_key", label: "OpenAI API key" }])
+    await runtime.shutdown()
+  })
+
   test("rejects images before submitting them to a text-only model", async () => {
     const runtime = createRuntime(new FakeLockManager() as unknown as LockManager)
     await runtime.initialize()

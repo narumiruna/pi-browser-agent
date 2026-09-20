@@ -53,7 +53,7 @@
           </summary>
           <div class="disclosure-menu account-menu">
             <span id="auth-status" class="auth-status">Provider not configured</span>
-            <button type="button" id="login" class="menu-item">Configure provider</button>
+            <button type="button" id="login" class="menu-item">Add credential</button>
             <button type="button" id="refresh-token" class="menu-item" hidden>Refresh credential</button>
             <button type="button" id="logout" class="menu-item" hidden>Remove credential</button>
             <button type="button" id="grant-site" class="menu-item">Allow current site</button>
@@ -174,7 +174,7 @@
           </div>
           <p id="model-capabilities" class="field-hint"></p>
           <button type="button" id="configure-provider" class="subtle">
-            Configure selected provider
+            Configure authentication
           </button>
         </section>
         <section class="settings-section" aria-labelledby="appearance-title">
@@ -223,6 +223,56 @@
           <button type="submit" value="confirm" id="confirm-action" class="primary">
             Confirm
           </button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="auth-method-dialog">
+      <form method="dialog">
+        <h2>Select authentication method</h2>
+        <div class="auth-method-options">
+          <button type="submit" value="oauth" id="account-auth-method">
+            Sign in with an account
+          </button>
+          <button type="submit" value="api_key" id="api-key-auth-method">
+            Sign in with an API key
+          </button>
+        </div>
+        <div class="dialog-actions">
+          <button type="submit" value="cancel" class="subtle">Cancel</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="auth-provider-dialog">
+      <form method="dialog">
+        <h2>Select provider</h2>
+        <p id="auth-provider-description"></p>
+        <label for="auth-provider-search" class="visually-hidden">Provider</label>
+        <div id="auth-provider-picker" class="searchable-select">
+          <input
+            id="auth-provider-search"
+            type="search"
+            role="combobox"
+            aria-autocomplete="list"
+            aria-controls="auth-provider-options"
+            aria-expanded="false"
+            autocomplete="off"
+            data-placeholder="Search providers"
+            placeholder="Search providers"
+          />
+          <select id="auth-provider" tabindex="-1" aria-hidden="true"></select>
+          <div
+            id="auth-provider-options"
+            class="searchable-select-options"
+            role="listbox"
+            hidden
+          ></div>
+        </div>
+        <div class="dialog-actions">
+          <button type="button" id="auth-provider-back" class="subtle">Back</button>
+          <button type="button" id="auth-provider-cancel" class="subtle">Cancel</button>
+          <button type="button" id="auth-provider-confirm" class="primary">Continue</button>
         </div>
       </form>
     </dialog>

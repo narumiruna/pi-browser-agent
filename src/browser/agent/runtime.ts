@@ -32,16 +32,21 @@ import { type ConfirmationHandler, createBrowserTools } from "./browser-tools.js
 
 export interface AuthStatus {
   loggedIn: boolean
+  type?: AuthType
   expires?: number
   accountId?: string
+}
+
+export interface AuthMethodSummary {
+  type: AuthType
+  label: string
 }
 
 export interface ProviderSummary {
   id: string
   name: string
   modelCount: number
-  apiKey: boolean
-  oauth: boolean
+  authMethods: AuthMethodSummary[]
 }
 
 export interface ModelSummary {
@@ -238,14 +243,30 @@ export class BrowserAgentRuntime {
     this.callbacks.onSettingsModelChanged?.()
   }
 
-  getProviders(): ProviderSummary[] {
-    return this.models.getProviders().map((provider) => ({
+  getProviders(authType?: AuthType): ProviderSummary[] {
+    const providers = this.models.getProviders().map((provider) => ({
       id: provider.id,
       name: provider.name,
       modelCount: provider.getModels().length,
-      apiKey: provider.auth.apiKey?.login !== undefined,
-      oauth: provider.auth.oauth?.login !== undefined,
+      authMethods: [
+        ...(provider.auth.oauth
+          ? [
+              {
+                type: "oauth" as const,
+                label: provider.auth.oauth.loginLabel ?? provider.auth.oauth.name,
+              },
+            ]
+          : []),
+        ...(provider.auth.apiKey?.login
+          ? [{ type: "api_key" as const, label: provider.auth.apiKey.name }]
+          : []),
+      ],
     }))
+    return authType
+      ? providers.filter((provider) =>
+          provider.authMethods.some((method) => method.type === authType),
+        )
+      : providers
   }
 
   getModels(providerId: string): ModelSummary[] {
@@ -281,6 +302,7 @@ export class BrowserAgentRuntime {
     if (!configured) return { loggedIn: false }
     return {
       loggedIn: true,
+      type: credential.type,
       expires: credential.type === "oauth" ? credential.expires : undefined,
       accountId:
         credential.type === "oauth" && typeof credential.accountId === "string"

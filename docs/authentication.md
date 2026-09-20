@@ -4,19 +4,26 @@ Pi Chrome supports API-key authentication for browser-compatible built-in `pi-ai
 
 ## Provider setup
 
-Choose a provider and model in **Settings**, then use **Account and site access**:
+Select **Add credential** from the top-right menu or **Configure authentication** in Settings. Both entry points use the same method-first flow:
 
-- For an API-key provider, **Configure provider** runs the provider-owned `pi-ai` prompts and writes one provider-scoped `api_key` credential to trusted `chrome.storage.local`.
+1. Choose **Sign in with an account** or **Sign in with an API key**.
+2. Choose a provider from the searchable list filtered to that browser-supported method.
+3. Complete the provider-owned prompts or account flow.
+
+Adding a credential does not change the active or pending model selection. Credentials are keyed by provider, so a successful setup replaces that provider's prior API-key or OAuth credential. Cancelling setup, denying an authentication permission, or failing a provider prompt preserves the prior credential.
+
+- For an API-key provider, the provider-owned `pi-ai` prompts write one provider-scoped `api_key` credential to trusted `chrome.storage.local`.
+- OpenAI API keys use the **OpenAI** provider. **OpenAI Codex** is a separate provider for ChatGPT Plus/Pro account login and does not accept an API key.
 - Cloudflare prompts also collect the account and gateway identifiers required by its endpoint.
 - Azure OpenAI prompts for its base URL, optional API version, and optional model-to-deployment map.
 - Radius requests access to `radius.pi.dev`, stores its key, and refreshes its dynamic model catalog.
 - Google Vertex AI exposes its API-key path. Filesystem-based ADC and service-account-file flows are unavailable in a browser.
 
-Pi Chrome does not expose non-Codex provider OAuth. Those `pi-ai` flows intentionally load Node-only callback-server or PKCE modules. Amazon Bedrock is also unavailable because its adapter intentionally loads a Node-only AWS SDK module.
+OpenAI Codex is currently the only provider under **Sign in with an account**. Pi Chrome does not expose other provider OAuth implementations because those `pi-ai` flows intentionally load Node-only callback-server or PKCE modules. Amazon Bedrock is also unavailable because its adapter intentionally loads a Node-only AWS SDK module.
 
 ## OpenAI Codex device flow
 
-1. A **Log in to OpenAI Codex** click requests optional access to `https://auth.openai.com/*` and `https://chatgpt.com/*`.
+1. After **Sign in with an account** and **OpenAI Codex** are selected, Pi Chrome requests optional access to `https://auth.openai.com/*` and `https://chatgpt.com/*`.
 2. The Side Panel requests a device authorization from OpenAI.
 3. It displays the verification URI and user code.
 4. Polling follows the server interval, adds five seconds after `slow_down`, and stops on completion, denial, expiry, cancellation, or an unexpected response.
@@ -28,7 +35,7 @@ The browser module also contains a Web Crypto PKCE implementation for browser-sa
 
 ## Request authorization and refresh
 
-`pi-ai` resolves the selected provider's credential through `ChromeCredentialStore`. Browser environment and filesystem lookups always return unavailable, so requests cannot silently pick up machine credentials. Before sending, Pi Chrome requests optional access to the exact selected model endpoint. It never inserts API keys into host-permission patterns, UI status, runtime messages, model messages, or diagnostics.
+`pi-ai` resolves the selected provider's credential through `ChromeCredentialStore`. Browser environment and filesystem lookups always return unavailable, so requests cannot silently pick up machine credentials. Static API-key entry requests no model endpoint access; before sending, Pi Chrome requests optional access to the exact selected model endpoint. Authentication status names the provider and method without exposing credential values. Pi Chrome never inserts API keys into host-permission patterns, UI status, runtime messages, model messages, or diagnostics.
 
 If an OAuth access token is near expiry, refresh occurs inside `CredentialStore.modify()`. Credential-map mutations serialize across providers and Side Panel contexts through a Web Lock; later callers reuse a newly refreshed credential, and rotated refresh and access tokens are committed together. A refresh error preserves the previous credential for an explicit retry or new login; it does not trigger another provider or destination.
 

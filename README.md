@@ -27,8 +27,8 @@ Load the production artifact:
 
 ## First use
 
-1. Open **Settings**, choose a provider and model, then open **Account and site access**.
-2. Select **Configure provider** to enter its API key. For OpenAI Codex, select **Log in to OpenAI Codex**, approve access to `auth.openai.com` and `chatgpt.com`, and finish the device flow.
+1. Open **Settings** and choose the provider and model you want to use.
+2. Select **Add credential** from the top-right menu, or **Configure authentication** in Settings. Choose **Sign in with an account** or **Sign in with an API key**, then choose a provider from the filtered list. OpenAI Codex account login asks for access to `auth.openai.com` and `chatgpt.com` before starting its device flow; OpenAI API keys use the separate OpenAI provider.
 3. Open the HTTP or HTTPS page you want to use. Pi Chrome follows the visible tab automatically.
 4. Enter a prompt. Pi Chrome approves only the current page and selected provider endpoint for ordinary access when needed.
 5. To include an image, paste it into the composer, review the preview, and send it with optional text. Choose a model marked **Image input**.
@@ -38,7 +38,7 @@ Load the production artifact:
 
 Voice input uses Chrome's Web Speech service in the browser language. Spoken audio may be processed by the browser's speech provider; only the resulting editable transcript is submitted to Pi when you select **Send**. The model transport is always SSE. Closing the Side Panel aborts the active run and marks the session interrupted; reopening never automatically repeats a browser mutation.
 
-Pi Chrome registers 39 built-in `pi-ai` chat providers and their tool-capable model catalogs. API-key authentication is available for browser-compatible providers; OpenAI Codex uses the browser device flow. Radius models load after configuration. Amazon Bedrock is excluded because its `pi-ai` adapter intentionally loads a Node-only AWS SDK module. Other provider OAuth implementations are Node-only, so Pi Chrome uses their API-key path. Image-generation providers are separate from chat agents and are not exposed.
+Pi Chrome registers 39 built-in `pi-ai` chat providers and their tool-capable model catalogs. Credential setup first selects an authentication method and then shows only providers that support that method in Chrome. API-key authentication is available for browser-compatible providers; OpenAI Codex is currently the only account-login choice and uses the browser device flow. Adding a credential does not change the selected model. Radius models load after configuration. Amazon Bedrock is excluded because its `pi-ai` adapter intentionally loads a Node-only AWS SDK module. Other provider OAuth implementations are Node-only, so Pi Chrome exposes only their API-key path. Image-generation providers are separate from chat agents and are not exposed.
 
 ## Browser safety
 
@@ -77,7 +77,7 @@ npm audit --omit=dev
 ## Troubleshooting
 
 - **Provider host access was declined or revoked:** send again and approve the selected endpoint, or reconfigure the provider if its endpoint changed.
-- **OpenAI Codex host access was revoked:** select **Log in to OpenAI Codex** again and approve both requested OpenAI origins.
+- **OpenAI Codex host access was revoked:** select **Add credential** → **Sign in with an account** → **OpenAI Codex**, then approve both requested OpenAI origins.
 - **A page tool is denied:** make the intended HTTP(S) page visible and send the prompt again. If access was previously declined, use **Account and site access → Allow current site**. Chrome internal pages cannot be controlled.
 - **A screenshot is denied:** request it again, confirm Pi Chrome's explanation, and approve Chrome's optional all-sites prompt. If the grant was revoked, Chrome asks again; ordinary per-site access is not enough for `captureVisibleTab()`.
 - **A bookmark read is denied:** request it again and approve both Pi Chrome's operation confirmation and Chrome's optional permission prompt. Revoke bookmark access from Chrome's extension settings when it is no longer wanted.
