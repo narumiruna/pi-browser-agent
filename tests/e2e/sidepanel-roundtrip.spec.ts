@@ -768,8 +768,6 @@ test("opens Settings in a full browser tab and persists the selected interface f
 })
 
 test("stores API keys through the method-first account flow without changing models", async () => {
-  const initialProvider = await controller.locator("#provider").inputValue()
-  const initialModel = await controller.locator("#model").inputValue()
   await controller.evaluate(async () => chrome.storage.local.remove("piChromeCredentialsV1"))
   await controller.evaluate(() => {
     const state = window as typeof window & {
@@ -859,8 +857,6 @@ test("stores API keys through the method-first account flow without changing mod
             .authSetupPermissionRequests,
       ),
     ).toBe(0)
-    await expect(controller.locator("#provider")).toHaveValue(initialProvider)
-    await expect(controller.locator("#model")).toHaveValue(initialModel)
     await expect(controller.locator("#auth-status")).toHaveText("OpenAI Codex not configured")
     await expect(controller.locator("body")).not.toContainText("replacement-anthropic-test-key")
   } finally {
@@ -904,25 +900,27 @@ test("synchronizes provider controls when a new session restores the latest mode
   const settingsTabClosed = settingsTab.waitForEvent("close")
   await settingsTab.locator("#save-settings").click()
   await settingsTabClosed
-  await expect(controller.locator("#provider")).toHaveValue("anthropic")
-  await expect(controller.locator("#model")).toHaveValue(anthropicModelId)
+  const configuredSettingsTab = await openSettingsTab()
+  await expect(configuredSettingsTab.locator("#provider")).toHaveValue("anthropic")
+  await expect(configuredSettingsTab.locator("#model")).toHaveValue(anthropicModelId)
+  const configuredSettingsTabClosed = configuredSettingsTab.waitForEvent("close")
+  await configuredSettingsTab.locator("#cancel-settings").click()
+  await configuredSettingsTabClosed
 
   await sessionSelect.selectOption(initialSessionId)
-  await expect(controller.locator("#provider")).toHaveValue("openai-codex")
+  await expect(controller.locator("#auth-status")).toHaveText("OpenAI Codex not configured")
   const restoredSessionSettingsTab = await openSettingsTab()
   await expect(restoredSessionSettingsTab.locator("#provider")).toHaveValue("openai-codex")
   await expect(restoredSessionSettingsTab.locator("#model")).toHaveValue("gpt-5.6-terra")
+  const restoredSessionId = await sessionSelect.inputValue()
   await controller.locator("#new-session").click()
-  await expect(controller.locator("#provider")).toHaveValue("anthropic")
-  await expect(controller.locator("#model")).toHaveValue(anthropicModelId)
+  await expect.poll(() => sessionSelect.inputValue()).not.toBe(restoredSessionId)
 
   await restoredSessionSettingsTab.locator("#font-family").selectOption("serif")
   const restoredSessionSettingsTabClosed = restoredSessionSettingsTab.waitForEvent("close")
   await restoredSessionSettingsTab.locator("#save-settings").click()
   await restoredSessionSettingsTabClosed
 
-  await expect(controller.locator("#provider")).toHaveValue("anthropic")
-  await expect(controller.locator("#model")).toHaveValue(anthropicModelId)
   await expect(controller.locator("#auth-status")).toHaveText("Anthropic not configured")
   await expect
     .poll(() => controller.evaluate(() => document.documentElement.dataset.fontFamily))
@@ -1197,11 +1195,12 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
     const gate = new Promise<void>((resolve) => {
       release = resolve
     })
-    let getCount = 0
+    let credentialGetCount = 0
     chrome.storage.local.get = (async (key: string) => {
-      getCount += 1
       const result = await callOriginalGet(key)
-      if (getCount !== 3) return result
+      if (key !== "piChromeCredentialsV1") return result
+      credentialGetCount += 1
+      if (credentialGetCount !== 1) return result
       markEntered()
       await gate
       chrome.storage.local.get = originalGet
@@ -1209,9 +1208,9 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
     }) as typeof chrome.storage.local.get
     ;(
       window as typeof window & {
-        authStatusGate?: { entered: Promise<void>; release: () => void }
+        authStatusGate?: { entered: Promise<void>; release: () => void; getCount: () => number }
       }
-    ).authStatusGate = { entered, release }
+    ).authStatusGate = { entered, release, getCount: () => credentialGetCount }
   })
   await settingsTab.evaluate(async (credential) => {
     await chrome.storage.local.set({
@@ -1238,10 +1237,21 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
       authStatusGate?: { release: () => void }
     }
     state.authStatusGate?.release()
-    delete state.authStatusGate
   })
   await controller.waitForTimeout(50)
   await expect(controller.locator("#auth-status")).toHaveText("OpenAI Codex not configured")
+  expect(
+    await controller.evaluate(() =>
+      (
+        window as typeof window & {
+          authStatusGate?: { getCount: () => number }
+        }
+      ).authStatusGate?.getCount(),
+    ),
+  ).toBe(2)
+  await controller.evaluate(() => {
+    delete (window as typeof window & { authStatusGate?: unknown }).authStatusGate
+  })
 
   await controller.evaluate(async (credential) => {
     await chrome.storage.local.set({

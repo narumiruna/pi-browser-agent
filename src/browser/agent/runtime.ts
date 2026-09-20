@@ -33,8 +33,6 @@ import { type ConfirmationHandler, createBrowserTools } from "./browser-tools.js
 export interface AuthStatus {
   loggedIn: boolean
   type?: AuthType
-  expires?: number
-  accountId?: string
 }
 
 export interface AuthMethodSummary {
@@ -279,36 +277,12 @@ export class BrowserAgentRuntime {
     }))
   }
 
-  async selectModel(providerId: string, modelId: string): Promise<void> {
-    if (this.agent.state.isStreaming) throw new Error("Stop the current task before changing model")
-    const model = this.models.getModel(providerId, modelId)
-    if (!model) throw new Error(`Model is unavailable: ${providerId}/${modelId}`)
-    this.currentModel = model
-    this.agent.state.model = model
-    this.settings = { ...this.settings, modelProvider: providerId, modelId }
-    this.session.model = {
-      provider: providerId,
-      id: modelId,
-      thinkingLevel: this.agent.state.thinkingLevel,
-    }
-    await saveSettings(this.settings)
-    await this.persist("idle")
-  }
-
   async authStatus(providerId = this.currentModel.provider): Promise<AuthStatus> {
     const credential = await this.credentials.read(providerId)
     if (!credential) return { loggedIn: false }
     const configured = await this.models.checkAuth(providerId)
     if (!configured) return { loggedIn: false }
-    return {
-      loggedIn: true,
-      type: credential.type,
-      expires: credential.type === "oauth" ? credential.expires : undefined,
-      accountId:
-        credential.type === "oauth" && typeof credential.accountId === "string"
-          ? credential.accountId
-          : undefined,
-    }
+    return { loggedIn: true, type: credential.type }
   }
 
   async login(
@@ -363,15 +337,6 @@ export class BrowserAgentRuntime {
     return urls
   }
 
-  async prompt(text: string, images: ImageContent[] = []): Promise<void> {
-    if (this.authChanging) throw new Error("Wait for the authentication change to finish")
-    if (this.agent.state.isStreaming) throw new Error("The agent is already running")
-    this.assertImageInput(images)
-    this.agent.state.systemPrompt = composeSystemPrompt(this.settings)
-    if (images.length > 0) await this.agent.prompt(multimodalUserMessage(text, images))
-    else await this.agent.prompt(text)
-  }
-
   async submit(
     text: string,
     streamingBehavior: StreamingBehavior = "steer",
@@ -380,34 +345,18 @@ export class BrowserAgentRuntime {
     if (this.authChanging) throw new Error("Wait for the authentication change to finish")
     this.assertImageInput(images)
     if (!this.agent.state.isStreaming) {
-      if (images.length > 0) await this.prompt(text, images)
-      else await this.prompt(text)
+      this.agent.state.systemPrompt = composeSystemPrompt(this.settings)
+      if (images.length > 0) await this.agent.prompt(multimodalUserMessage(text, images))
+      else await this.agent.prompt(text)
       return "prompt"
     }
-    if (streamingBehavior === "followUp") {
-      if (images.length > 0) this.followUp(text, images)
-      else this.followUp(text)
-    } else if (images.length > 0) this.steer(text, images)
-    else this.steer(text)
+    this.queueStreamingMessage(streamingBehavior, text, images)
     return streamingBehavior
   }
 
-  steer(text: string, images: ImageContent[] = []): void {
+  queueFollowUp(text: string, images: ImageContent[] = []): void {
     this.assertImageInput(images)
-    this.agent.steer(
-      images.length > 0
-        ? multimodalUserMessage(text, images)
-        : { role: "user", content: text, timestamp: Date.now() },
-    )
-  }
-
-  followUp(text: string, images: ImageContent[] = []): void {
-    this.assertImageInput(images)
-    this.agent.followUp(
-      images.length > 0
-        ? multimodalUserMessage(text, images)
-        : { role: "user", content: text, timestamp: Date.now() },
-    )
+    this.queueStreamingMessage("followUp", text, images)
   }
 
   abort(): void {
@@ -421,13 +370,7 @@ export class BrowserAgentRuntime {
   async newSession(): Promise<void> {
     const model = this.configuredModel()
     await this.stopAgent()
-    const record = createSession(model.id, model.provider)
-    if (!(await this.sessionLease.claim(record.id)))
-      throw new Error("Unable to claim a new session")
-    this.session = record
-    this.applySession(record)
-    await this.saveSession(record)
-    await saveActiveSessionId(record.id)
+    await this.activateNewSession(model, "Unable to claim a new session")
   }
 
   async resumeSession(id: string): Promise<void> {
@@ -462,28 +405,14 @@ export class BrowserAgentRuntime {
     const model = this.configuredModel()
     await this.stopAgent()
     await this.sessions.delete(id)
-    const replacement = createSession(model.id, model.provider)
-    if (!(await this.sessionLease.claim(replacement.id))) {
-      throw new Error("Unable to claim a replacement session")
-    }
-    this.session = replacement
-    this.applySession(replacement)
-    await this.saveSession(replacement)
-    await saveActiveSessionId(replacement.id)
+    await this.activateNewSession(model, "Unable to claim a replacement session")
   }
 
   async clearSessions(): Promise<void> {
     const model = this.configuredModel()
     await this.stopAgent()
     await this.sessions.clear()
-    const replacement = createSession(model.id, model.provider)
-    if (!(await this.sessionLease.claim(replacement.id))) {
-      throw new Error("Unable to claim a replacement session")
-    }
-    this.session = replacement
-    this.applySession(replacement)
-    await this.saveSession(replacement)
-    await saveActiveSessionId(replacement.id)
+    await this.activateNewSession(model, "Unable to claim a replacement session")
   }
 
   async shutdown(): Promise<void> {
@@ -493,6 +422,28 @@ export class BrowserAgentRuntime {
     await this.agent.waitForIdle()
     await this.persist(wasStreaming ? "interrupted" : "idle")
     await this.sessionLease.release()
+  }
+
+  private queueStreamingMessage(
+    behavior: StreamingBehavior,
+    text: string,
+    images: ImageContent[],
+  ): void {
+    const message =
+      images.length > 0
+        ? multimodalUserMessage(text, images)
+        : { role: "user" as const, content: text, timestamp: Date.now() }
+    if (behavior === "followUp") this.agent.followUp(message)
+    else this.agent.steer(message)
+  }
+
+  private async activateNewSession(model: Model<Api>, claimError: string): Promise<void> {
+    const record = createSession(model.id, model.provider)
+    if (!(await this.sessionLease.claim(record.id))) throw new Error(claimError)
+    this.session = record
+    this.applySession(record)
+    await this.saveSession(record)
+    await saveActiveSessionId(record.id)
   }
 
   private async runAuthChange(operation: () => Promise<void>): Promise<void> {

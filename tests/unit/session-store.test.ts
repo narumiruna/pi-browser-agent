@@ -2,11 +2,15 @@ import { IDBFactory } from "fake-indexeddb"
 import { describe, expect, test } from "vitest"
 import {
   compactSession,
-  createSession,
+  createSession as createSessionRecord,
   MAX_SESSION_BYTES,
   SessionStore,
   sessionByteLength,
 } from "../../src/browser/sessions/session-store.js"
+
+function createSession(modelId: string) {
+  return createSessionRecord(modelId, "openai-codex")
+}
 
 describe("session storage", () => {
   test("round-trips complete text, reasoning, tool, and image messages", async () => {

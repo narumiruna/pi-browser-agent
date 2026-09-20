@@ -31,8 +31,6 @@ OpenAI Codex is currently the only provider under **Sign in with an account**. P
 6. The access-token JWT must contain a non-empty `chatgpt_account_id` claim.
 7. The full credential is stored in trusted `chrome.storage.local`.
 
-The browser module also contains a Web Crypto PKCE implementation for browser-safe authorization primitives. The device endpoint currently supplies the verifier used by the exchange.
-
 ## Request authorization and refresh
 
 `pi-ai` resolves the selected provider's credential through `ChromeCredentialStore`. Browser environment and filesystem lookups always return unavailable, so requests cannot silently pick up machine credentials. Static API-key entry requests no model endpoint access; before sending, Pi Chrome requests optional access to the exact selected model endpoint. Authentication status names the provider and method without exposing credential values. Pi Chrome never inserts API keys into host-permission patterns, UI status, runtime messages, model messages, or diagnostics.

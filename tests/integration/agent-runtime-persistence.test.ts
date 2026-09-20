@@ -75,6 +75,19 @@ function persist(runtime: BrowserAgentRuntime, status: SessionRecord["status"]):
   )
 }
 
+async function applyModel(
+  runtime: BrowserAgentRuntime,
+  provider: string,
+  modelId: string,
+): Promise<void> {
+  await runtime.updateSettings({
+    ...runtime.appSettings,
+    modelProvider: provider,
+    modelId,
+  })
+  await runtime.syncSettings({ applyModelToActiveSession: true })
+}
+
 beforeEach(() => {
   vi.stubGlobal("indexedDB", new IDBFactory())
   installChromeStorage()
@@ -89,8 +102,8 @@ describe("browser agent session persistence", () => {
   test("automatically routes submissions based on the current run state", async () => {
     const runtime = createRuntime(new FakeLockManager() as unknown as LockManager)
     await runtime.initialize()
-    const steer = vi.spyOn(runtime, "steer")
-    const followUp = vi.spyOn(runtime, "followUp")
+    const steer = vi.spyOn(runtime.agent, "steer")
+    const followUp = vi.spyOn(runtime.agent, "followUp")
     const state = runtime.agent.state as unknown as { isStreaming: boolean }
     state.isStreaming = true
 
@@ -101,17 +114,41 @@ describe("browser agent session persistence", () => {
     await expect(runtime.submit("Inspect this later", "followUp", [image])).resolves.toBe(
       "followUp",
     )
-    expect(steer).toHaveBeenNthCalledWith(1, "Change direction")
-    expect(steer).toHaveBeenNthCalledWith(2, "Inspect this", [image])
-    expect(followUp).toHaveBeenNthCalledWith(1, "Do this later")
-    expect(followUp).toHaveBeenNthCalledWith(2, "Inspect this later", [image])
+    expect(steer).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ role: "user", content: "Change direction" }),
+    )
+    expect(steer).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        role: "user",
+        content: [{ type: "text", text: "Inspect this" }, image],
+      }),
+    )
+    expect(followUp).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ role: "user", content: "Do this later" }),
+    )
+    expect(followUp).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        role: "user",
+        content: [{ type: "text", text: "Inspect this later" }, image],
+      }),
+    )
 
     state.isStreaming = false
-    const prompt = vi.spyOn(runtime, "prompt").mockResolvedValue()
+    const prompt = vi.spyOn(runtime.agent, "prompt").mockResolvedValue()
     await expect(runtime.submit("Start a task")).resolves.toBe("prompt")
     await expect(runtime.submit("Inspect now", "steer", [image])).resolves.toBe("prompt")
     expect(prompt).toHaveBeenNthCalledWith(1, "Start a task")
-    expect(prompt).toHaveBeenNthCalledWith(2, "Inspect now", [image])
+    expect(prompt).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        role: "user",
+        content: [{ type: "text", text: "Inspect now" }, image],
+      }),
+    )
     await runtime.shutdown()
   })
 
@@ -154,11 +191,11 @@ describe("browser agent session persistence", () => {
     const locks = new FakeLockManager() as unknown as LockManager
     const runtime = createRuntime(locks)
     await runtime.initialize()
-    const older = createSession("gpt-5.6-terra")
+    const older = createSession("gpt-5.6-terra", "openai-codex")
     await runtime.sessions.put(older)
     const anthropic = runtime.getModels("anthropic")[0]
     if (!anthropic) throw new Error("Anthropic test model unavailable")
-    await runtime.selectModel(anthropic.provider, anthropic.id)
+    await applyModel(runtime, anthropic.provider, anthropic.id)
     await runtime.resumeSession(older.id)
     const settingsRuntime = createRuntime(locks)
 
@@ -272,7 +309,7 @@ describe("browser agent session persistence", () => {
     const anthropic = runtime.getModels("anthropic")[0]
     if (!anthropic) throw new Error("Anthropic test model unavailable")
 
-    await runtime.selectModel(anthropic.provider, anthropic.id)
+    await applyModel(runtime, anthropic.provider, anthropic.id)
 
     expect(runtime.model).toMatchObject({ provider: "anthropic", id: anthropic.id })
     expect(runtime.activeSession.model).toMatchObject({ provider: "anthropic", id: anthropic.id })
@@ -287,9 +324,9 @@ describe("browser agent session persistence", () => {
     await runtime.initialize()
     const anthropic = runtime.getModels("anthropic")[0]
     if (!anthropic) throw new Error("Anthropic test model unavailable")
-    await runtime.selectModel(anthropic.provider, anthropic.id)
+    await applyModel(runtime, anthropic.provider, anthropic.id)
 
-    const older = createSession("gpt-5.6-terra")
+    const older = createSession("gpt-5.6-terra", "openai-codex")
     await runtime.sessions.put(older)
     await runtime.resumeSession(older.id)
     expect(runtime.model.provider).toBe("openai-codex")
@@ -349,7 +386,7 @@ describe("browser agent session persistence", () => {
       .flatMap((provider) => runtime.getModels(provider.id))
       .find((model) => !model.imageInput)
     if (!textOnly) throw new Error("Text-only test model unavailable")
-    await runtime.selectModel(textOnly.provider, textOnly.id)
+    await applyModel(runtime, textOnly.provider, textOnly.id)
     const image = { type: "image" as const, data: "cG5n", mimeType: "image/png" }
 
     await expect(runtime.submit("Inspect this", "steer", [image])).rejects.toThrow(
@@ -383,7 +420,7 @@ describe("browser agent session persistence", () => {
     const firstRecord = { ...first.activeSession, createdAt: 0, updatedAt: 0 }
     await first.sessions.put(firstRecord)
     for (let index = 1; index < MAX_SESSIONS; index += 1) {
-      const session = createSession("gpt-5.6-terra")
+      const session = createSession("gpt-5.6-terra", "openai-codex")
       session.createdAt = index
       session.updatedAt = index
       await first.sessions.put(session)
@@ -401,7 +438,10 @@ describe("browser agent session persistence", () => {
   test("marks a stale running session interrupted when resuming it", async () => {
     const runtime = createRuntime(new FakeLockManager() as unknown as LockManager)
     await runtime.initialize()
-    const stale = { ...createSession("gpt-5.6-terra"), status: "running" as const }
+    const stale = {
+      ...createSession("gpt-5.6-terra", "openai-codex"),
+      status: "running" as const,
+    }
     await runtime.sessions.put(stale)
 
     await runtime.resumeSession(stale.id)
@@ -447,7 +487,7 @@ describe("browser agent session persistence", () => {
     const activeId = runtime.activeSession.id
     const retainedIds: string[] = []
     for (let index = 0; index < MAX_SESSIONS - 1; index += 1) {
-      const session = createSession("gpt-5.6-terra")
+      const session = createSession("gpt-5.6-terra", "openai-codex")
       session.createdAt = index
       session.updatedAt = index
       retainedIds.push(session.id)
