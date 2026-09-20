@@ -469,6 +469,19 @@ test("opens Settings in a full browser tab and persists the selected interface f
     }
   })
   await controller.reload()
+  await controller.evaluate(() => {
+    let release: (state: PermissionState) => void = () => undefined
+    const permission = new Promise<{ state: PermissionState }>((resolve) => {
+      release = (state) => resolve({ state })
+    })
+    ;(
+      window as typeof window & { microphonePermissionGate?: (state: PermissionState) => void }
+    ).microphonePermissionGate = release
+    Object.defineProperty(navigator, "permissions", {
+      configurable: true,
+      value: { query: async () => permission },
+    })
+  })
 
   const accountDisclosure = controller.locator(".account-disclosure")
   const voiceButton = controller.locator("#voice-input")
@@ -476,7 +489,22 @@ test("opens Settings in a full browser tab and persists the selected interface f
   await expect(sessionOptions).toHaveCount(1)
   const sessionCount = await sessionOptions.count()
   await expect(voiceButton).toBeEnabled()
+  const prompt = controller.locator("#prompt")
+  await prompt.fill("Voice draft")
   await voiceButton.click()
+  await expect(voiceButton).toBeDisabled()
+  await prompt.press("Enter")
+  await expect(prompt).toHaveValue("Voice draft")
+  await expect(controller.locator("#error")).toHaveText(
+    "Wait for the microphone access check to finish",
+  )
+  await controller.evaluate(() => {
+    const state = window as typeof window & {
+      microphonePermissionGate?: (state: PermissionState) => void
+    }
+    state.microphonePermissionGate?.("granted")
+    delete state.microphonePermissionGate
+  })
   await expect(voiceButton).toHaveAttribute("aria-pressed", "true")
   await controller.locator("#account-menu-trigger").click()
   await expect(controller.locator("#open-settings")).toBeVisible()

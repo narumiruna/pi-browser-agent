@@ -988,6 +988,10 @@ element<HTMLButtonElement>("grant-site").addEventListener("click", () => {
 
 function submitPrompt(queueAfterCurrentTask = false): void {
   if (activeSubmissionGuard) return
+  if (voiceInputStarting) {
+    setError("Wait for the microphone access check to finish")
+    return
+  }
   if (voiceInput?.active) {
     setError("Stop voice input before sending")
     return
