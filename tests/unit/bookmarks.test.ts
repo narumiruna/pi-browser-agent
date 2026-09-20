@@ -59,6 +59,31 @@ describe("read-only bookmark adapter", () => {
     expect(search).toHaveBeenCalledWith("example")
   })
 
+  test("validates direct calls after trimming queries, independently of the runtime parser", async () => {
+    const search = vi.fn().mockResolvedValue([])
+    vi.stubGlobal("chrome", {
+      permissions: { contains: vi.fn().mockResolvedValue(true) },
+      bookmarks: { search },
+    })
+    await expect(searchBookmarks(` ${"x".repeat(500)} `, 1)).resolves.toMatchObject({
+      items: [],
+      limit: 1,
+    })
+    expect(search).toHaveBeenCalledExactlyOnceWith("x".repeat(500))
+    for (const query of ["   ", "x".repeat(501)]) {
+      await expect(searchBookmarks(query, 1)).rejects.toMatchObject({
+        code: "INVALID_REQUEST",
+        message: "Bookmark search query must be 1 to 500 characters",
+      })
+    }
+    for (const limit of [0, 51, 1.5, NaN, Infinity]) {
+      await expect(searchBookmarks("query", limit)).rejects.toMatchObject({
+        code: "INVALID_REQUEST",
+      })
+    }
+    expect(search).toHaveBeenCalledOnce()
+  })
+
   test("reads one extra recent bookmark to report truncation", async () => {
     const getRecent = vi.fn().mockResolvedValue([bookmark(1), bookmark(2), bookmark(3)])
     vi.stubGlobal("chrome", {

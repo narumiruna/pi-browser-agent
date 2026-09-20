@@ -6,6 +6,8 @@ Pi Chrome has two trusted extension runtimes and no local companion process.
 flowchart TB
   subgraph Chrome Extension
     Panel[Side Panel\nAgent and UI]
+    Settings[Settings tab]
+    Configuration[BrowserConfiguration\nProviders and saved settings]
     Store[IndexedDB sessions]
     Credentials[Trusted chrome.storage.local]
     Worker[MV3 service worker]
@@ -16,10 +18,12 @@ flowchart TB
   Page[Active HTTP/S tab in the focused window]
   Bookmarks[Chrome bookmarks]
 
-  Panel -->|method-first provider setup| Auth
+  Panel --> Configuration
+  Settings --> Configuration
+  Configuration -->|method-first provider setup| Auth
+  Configuration <--> Credentials
   Panel -->|SSE| Models
   Panel <--> Store
-  Panel <--> Credentials
   Panel -->|validated runtime request| Worker
   Worker -->|chrome.scripting| Injection
   Injection <--> Page
@@ -32,11 +36,17 @@ flowchart TB
 
 The Side Panel entry routes conversation, full-tab Settings, and microphone-access views to separate initializers. The conversation view owns the live `Agent`, model stream, confirmation UI, queue controls, and active session; Settings owns provider/model selectors and editable instructions; both use the same credential UI controller. Credential setup selects an authentication method first, then filters the sanitized browser provider catalog to matching methods before passing the explicit provider and auth type to `pi-ai`; adding a credential does not change model selection. The Side Panel registers browser-compatible `pi-ai` providers, strips their Node-only OAuth paths, and replaces OpenAI Codex OAuth with the browser device flow. It requests optional screenshot or bookmark access only from the corresponding Confirm-button gesture. Explicit Send, login, site-access, catalog-load, and cross-origin confirmation actions record app approval for their normalized exact origins. A profile-wide Web Lock serializes approval updates across the Side Panel and Settings tabs. `pi-agent-core` receives `transport: "sse"`; browser WebSocket transport is not used.
 
-Closing the panel aborts the active agent. Complete messages and tool results are persisted at event barriers. A record left in `running` state is changed to `interrupted` on the next startup and is never continued automatically.
+`BrowserConfiguration` (`src/browser/configuration.ts`) owns the credential store, browser model catalog, provider summaries, saved settings, authentication changes, and endpoint resolution. Settings uses it directly and creates no Agent, session store, or session lease. Each conversation runtime composes its own configuration instance and supplies a credential-removal hook that aborts the Agent and waits for persistence. Authentication changes remain serialized per instance; the credential store separately serializes writes across contexts.
+
+The configured model, active conversation model, and Settings draft selection are distinct. Configuration initialization returns a model selection without applying it to a conversation. Settings can seed its selection from the opener's active model without changing saved configuration. Only the opener applies an explicitly changed model to its active session; other conversations load the settings but retain their current models. New sessions use the latest loaded configured model.
+
+Closing the panel aborts the active agent. Complete messages and tool results are persisted at event barriers. Shutdown retains its final save after the end listener: it can recover a failed listener save and mark a run interrupted if closing raced with an idle save. The session lease is released only after that final save attempt. A record left in `running` state is changed to `interrupted` on the next startup and is never continued automatically.
 
 ### Service worker
 
 The worker owns current-tab tracking, the selection context menu, injected DOM operations, screenshots, navigation, the read-only bookmark adapter, and the WebMCP adapter. It follows tab activation and focused-window changes, clears the target for unsupported pages, and revalidates the visible tab before every page operation. The Side Panel requests optional host, screenshot, or bookmark permissions directly from the corresponding user gesture; the worker verifies those grants before protected operations. Ordinary host checks require both Chrome permission and the app-approved exact-origin list, so screenshot `<all_urls>` access cannot independently authorize a new destination. Screenshot capture requires the optional `<all_urls>` grant because Chrome's temporary `activeTab` access does not follow tab switches, but the worker still accepts only the active visible HTTP(S) context. It accepts only the methods and JSON shapes listed in `src/browser/runtime/messages.ts`. Page operations compare their captured tab ID, URL, and context epoch with the current context; profile-scoped bookmark reads reject a tab context and are independently confirmation- and permission-gated.
+
+`parseRuntimeRequest()` returns a method-discriminated `RuntimeRequest` union, so dispatch and method-specific handlers use validated parameter types. `REQUEST_LIMITS` in the same module supplies shared tool-schema, parser, and bookmark-adapter bounds. Outgoing messages still cross the worker's parser; types are not a substitute for runtime validation. The bookmark adapter retains its direct-call validation (including trimming before its query-length check), and worker permission and freshness checks remain independent.
 
 ### Injected operations
 
@@ -55,6 +65,8 @@ The worker owns current-tab tracking, the selection context menu, injected DOM o
 For screenshots, the worker first checks the optional `<all_urls>` grant. If it is absent, an operation-specific confirmation explains Chrome's broad capability and Pi Chrome's current-viewport limit; its Confirm gesture requests access, and the worker rechecks the grant before calling `chrome.tabs.captureVisibleTab()`. The PNG is capped at 3 MB, labeled untrusted, sent to the selected model provider, and persisted in the transcript.
 
 For bookmarks, the model can request only a bounded text search or recent-item read. The worker first requires an operation-specific confirmation, the confirmation gesture requests missing optional access, and the worker rechecks that access before calling `chrome.bookmarks.search()` or `chrome.bookmarks.getRecent()`. Normalized results are capped at 50 items and 50 KB, labeled untrusted, sent to the selected model provider as tool results, and persisted in the transcript.
+
+For WebMCP, the panel captures tab context and confirms before sending one confirmed operation to the worker. The worker then checks host access, and the injected adapter independently checks confirmation. This differs intentionally from tools that discover a confirmation requirement through an initial worker request; changing that sequence would change dialog and progress-event ordering.
 
 The context-menu selection path starts from an explicit user click. It truncates the selection, labels it untrusted, and either places it in the composer or queues it as a follow-up to a running agent.
 

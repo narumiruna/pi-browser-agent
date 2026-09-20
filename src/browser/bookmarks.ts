@@ -1,7 +1,8 @@
 import { hasBookmarkPermission } from "./permissions.js"
+import { REQUEST_LIMITS } from "./runtime/messages.js"
 import { type JsonObject, RuntimeError } from "./runtime/types.js"
 
-export const MAX_BOOKMARK_RESULTS = 50
+export const MAX_BOOKMARK_RESULTS = REQUEST_LIMITS.bookmarkResults
 
 function validateLimit(limit: number): void {
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_BOOKMARK_RESULTS) {
@@ -56,8 +57,11 @@ function boundedResult(nodes: chrome.bookmarks.BookmarkTreeNode[], limit: number
 export async function searchBookmarks(query: string, limit: number): Promise<JsonObject> {
   validateLimit(limit)
   const normalizedQuery = query.trim()
-  if (!normalizedQuery || normalizedQuery.length > 500) {
-    throw new RuntimeError("INVALID_REQUEST", "Bookmark search query must be 1 to 500 characters")
+  if (!normalizedQuery || normalizedQuery.length > REQUEST_LIMITS.bookmarkQuery) {
+    throw new RuntimeError(
+      "INVALID_REQUEST",
+      `Bookmark search query must be 1 to ${REQUEST_LIMITS.bookmarkQuery} characters`,
+    )
   }
   const nodes = await readBookmarks(() => chrome.bookmarks.search(normalizedQuery))
   return boundedResult(nodes, limit)
