@@ -342,7 +342,64 @@ test("grants microphone access from a full extension page", async () => {
   await expect(microphonePage.locator("#microphone-access-status")).toContainText(
     "Microphone access is allowed",
   )
+
+  const pendingSelectionKey = await controller.evaluate(async () => {
+    const windowId = (await chrome.windows.getCurrent()).id
+    if (windowId === undefined) throw new Error("Current window has no ID")
+    const key = `piChromePendingSelection:${windowId}`
+    await chrome.storage.session.set({
+      [key]: {
+        windowId,
+        payload: { text: "Pending selection", source: "context-menu", untrusted: true },
+        tabContext: { tabId: 1, url: "https://example.com/", epoch: 1 },
+      },
+    })
+    await chrome.runtime.sendMessage({
+      kind: "event",
+      name: "selection.queued",
+      payload: { available: true, windowId },
+    })
+    return key
+  })
+  await controller.waitForTimeout(100)
+  expect(
+    await controller.evaluate(
+      async (key) => (await chrome.storage.session.get(key))[key] !== undefined,
+      pendingSelectionKey,
+    ),
+  ).toBe(true)
+  await controller.evaluate(async (key) => chrome.storage.session.remove(key), pendingSelectionKey)
+
   expect(pageErrors).toEqual([])
+  await microphonePage.close()
+})
+
+test("shows only microphone settings after access is denied", async () => {
+  const microphonePage = await context.newPage()
+  await microphonePage.addInitScript(() => {
+    let permissionState: PermissionState = "prompt"
+    Object.defineProperty(navigator, "permissions", {
+      configurable: true,
+      value: { query: async () => ({ state: permissionState }) },
+    })
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        getUserMedia: async () => {
+          permissionState = "denied"
+          throw new DOMException("Permission denied", "NotAllowedError")
+        },
+      },
+    })
+  })
+  await microphonePage.goto(`chrome-extension://${extensionId}/${panelPath}?view=microphone`)
+
+  await microphonePage.locator("#allow-microphone").click()
+  await expect(microphonePage.locator("#allow-microphone")).toBeHidden()
+  await expect(microphonePage.locator("#open-microphone-settings")).toBeVisible()
+  await expect(microphonePage.locator("#microphone-access-status")).toContainText(
+    "Chrome blocked microphone access",
+  )
   await microphonePage.close()
 })
 

@@ -794,6 +794,7 @@ async function initializeMicrophoneAccessPage(): Promise<void> {
     return
   }
   if (state === "denied") {
+    allowMicrophoneButton.hidden = true
     openMicrophoneSettingsButton.hidden = false
     microphoneAccessStatus.textContent =
       "Microphone access is blocked. Open Chrome microphone settings to allow it."
@@ -835,8 +836,10 @@ allowMicrophoneButton.addEventListener("click", () => {
       microphoneAccessStatus.textContent =
         "Microphone access is allowed. Close this tab and select the microphone in Pi Chrome."
     })
-    .catch((error: unknown) => {
+    .catch(async (error: unknown) => {
+      const state = await getMicrophonePermissionState().catch(() => undefined)
       allowMicrophoneButton.disabled = false
+      allowMicrophoneButton.hidden = state === "denied"
       openMicrophoneSettingsButton.hidden = false
       microphoneAccessStatus.textContent = microphoneAccessErrorMessage(error)
     })
@@ -1320,7 +1323,7 @@ async function pullPendingSelection(expectedWindowId?: number): Promise<void> {
 
 chrome.runtime.onMessage.addListener((message: unknown) => {
   const event = message as Partial<RuntimeEvent>
-  if (event.kind !== "event") return false
+  if (event.kind !== "event" || isMicrophoneAccessTab) return false
   if (
     event.name === "settings.saved" &&
     !isSettingsTab &&
