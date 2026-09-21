@@ -440,6 +440,78 @@ test("omits ancestor-clipped label text while retaining visible control-name fal
   }
 })
 
+test("collects only exposed text ranges from visible label containers", async () => {
+  await page.evaluate(() => {
+    const fixture = document.createElement("div")
+    fixture.id = "text-range-fixture"
+    fixture.style.cssText =
+      "position:fixed;left:50px;top:250px;width:600px;height:350px;z-index:1000;background:white"
+    fixture.innerHTML = `<style>
+      #text-range-fixture .clipped-text { display:block; width:10px; height:10px; overflow:hidden; text-indent:100px; white-space:nowrap; }
+      #text-range-fixture .partial-text { display:block; font:16px/20px monospace; width:7ch; height:20px; overflow:hidden; white-space:nowrap; }
+    </style>
+    <span id="range-aria" class="clipped-text">Unseen aria name</span>
+    <button id="range-button" type="button" aria-labelledby="range-aria" aria-label="Visible range fallback">Answer</button>
+    <label for="range-input" class="clipped-text">Unseen associated name</label>
+    <input id="range-input" placeholder="Visible range placeholder">
+    <button type="button">Visible nested name<span class="clipped-text">Unseen nested name</span></button>
+    <span id="range-partial" class="partial-text">VisibleHIDDEN-SUFFIX</span>
+    <button type="button" aria-labelledby="range-partial">Partial text</button>
+    <span id="range-wrapped" style="display:block;font:16px/20px monospace;width:7ch">Wrapped label</span>
+    <button type="button" aria-labelledby="range-wrapped">Wrapped text</button>`
+    fixture.dataset.clicks = "0"
+    fixture.querySelector("#range-button")?.addEventListener("click", () => {
+      fixture.dataset.clicks = String(Number(fixture.dataset.clicks) + 1)
+    })
+    document.body.append(fixture)
+  })
+  const discover = async () =>
+    (await request("page.listElements", {}, { tabContext })) as unknown as {
+      snapshotId: string
+      elements: Array<{ ref: string; name: string }>
+    }
+  try {
+    expect(
+      await page.locator("#range-aria").evaluate((label) => {
+        const box = label.getBoundingClientRect()
+        const range = document.createRange()
+        range.selectNodeContents(label)
+        return (
+          document.elementFromPoint(box.left + 5, box.top + 5) === label &&
+          range.getBoundingClientRect().left > box.right
+        )
+      }),
+    ).toBe(true)
+    let snapshot = await discover()
+    const names = snapshot.elements.map((element) => element.name)
+    expect(names).toEqual(
+      expect.arrayContaining([
+        "Visible range fallback",
+        "Visible range placeholder",
+        "Visible nested name",
+        "Visible",
+        "Wrapped label",
+      ]),
+    )
+    expect(names.join("\n")).not.toMatch(/Unseen|HIDDEN/)
+    await page.locator("#range-aria").evaluate((label) => {
+      label.style.cssText = "width:250px;height:25px;text-indent:0"
+    })
+    snapshot = await discover()
+    const button = snapshot.elements.find((element) => element.name === "Unseen aria name")
+    if (!button) throw new Error("Missing newly exposed label")
+    await page.locator("#range-aria").evaluate((label) => {
+      label.removeAttribute("style")
+    })
+    await expect(
+      request("page.click", { snapshotId: snapshot.snapshotId, ref: button.ref }, { tabContext }),
+    ).rejects.toMatchObject({ code: "STALE_CONTEXT" })
+    await expect(page.locator("#text-range-fixture")).toHaveAttribute("data-clicks", "0")
+  } finally {
+    await page.locator("#text-range-fixture").evaluate((fixture) => fixture.remove())
+  }
+})
+
 test("reports successful reference mutations that navigate without replaying them", async () => {
   const originalUrl = page.url()
   await page.evaluate(() => {

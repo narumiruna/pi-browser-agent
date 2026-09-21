@@ -106,6 +106,27 @@ export async function executePageOperation(
   }
   const isFailure = (value: Element | PageOperationFailure): value is PageOperationFailure =>
     "ok" in value
+  const hasVisiblePoint = (rect: DOMRect, acceptsHit: (hit: Element) => boolean): boolean => {
+    const left = Math.max(0, rect.left)
+    const right = Math.min(window.innerWidth, rect.right)
+    const top = Math.max(0, rect.top)
+    const bottom = Math.min(window.innerHeight, rect.bottom)
+    if (left >= right || top >= bottom) return false
+    if (typeof document.elementFromPoint !== "function") return true
+    const insetX = Math.min(1, (right - left) / 2)
+    const insetY = Math.min(1, (bottom - top) / 2)
+    const points: [number, number][] = [
+      [(left + right) / 2, (top + bottom) / 2],
+      [left + insetX, top + insetY],
+      [right - insetX, top + insetY],
+      [left + insetX, bottom - insetY],
+      [right - insetX, bottom - insetY],
+    ]
+    return points.some(([x, y]) => {
+      const hit = document.elementFromPoint(x, y)
+      return hit !== null && acceptsHit(hit)
+    })
+  }
   const isVisible = (element: Element, requireTargetHit = false): boolean => {
     if (!(element instanceof HTMLElement)) return false
     const selectedStyle = getComputedStyle(element)
@@ -121,36 +142,13 @@ export async function executePageOperation(
 
     const clientRects = Array.from(element.getClientRects())
     const rects = clientRects.length > 0 ? clientRects : [element.getBoundingClientRect()]
-    const visibleRects = rects
-      .map((rect) => ({
-        bottom: Math.min(window.innerHeight, rect.bottom),
-        left: Math.max(0, rect.left),
-        right: Math.min(window.innerWidth, rect.right),
-        top: Math.max(0, rect.top),
-      }))
-      .filter((rect) => rect.left < rect.right && rect.top < rect.bottom)
-    if (visibleRects.length === 0) return false
-
-    if (typeof document.elementFromPoint !== "function") return true
-    return visibleRects.some((rect) => {
-      const insetX = Math.min(1, (rect.right - rect.left) / 2)
-      const insetY = Math.min(1, (rect.bottom - rect.top) / 2)
-      const points: [number, number][] = [
-        [(rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2],
-        [rect.left + insetX, rect.top + insetY],
-        [rect.right - insetX, rect.top + insetY],
-        [rect.left + insetX, rect.bottom - insetY],
-        [rect.right - insetX, rect.bottom - insetY],
-      ]
-      return points.some(([x, y]) => {
-        const hit = document.elementFromPoint(x, y)
-        // Ancestor hits support legacy nested selectors, but do not prove a discovered control
-        // is reachable: overflow clipping can leave only its ancestor (or body) under the point.
-        return Boolean(
-          hit && (element.contains(hit) || (!requireTargetHit && hit.contains(element))),
-        )
-      })
-    })
+    return rects.some((rect) =>
+      hasVisiblePoint(
+        rect,
+        // Ancestor hits support legacy nested selectors, not discovery/reference visibility.
+        (hit) => element.contains(hit) || (!requireTargetHit && hit.contains(element)),
+      ),
+    )
   }
   const labelControlFor = (element: Element): HTMLElement | null =>
     element.closest("label")?.control ?? null
@@ -205,8 +203,10 @@ export async function executePageOperation(
   }
   const visibleText = (element: Element): string => {
     const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT)
+    const range = document.createRange()
     let text = ""
-    for (let count = 0; count < 100 && text.length < 256; count++) {
+    let inspected = 0
+    for (let count = 0; count < 100 && text.length < 256 && inspected < 256; count++) {
       const node = walker.nextNode()
       if (!node) break
       const parent = node.parentElement
@@ -218,7 +218,24 @@ export async function executePageOperation(
         !isVisible(parent, true)
       )
         continue
-      text += ` ${node.textContent?.slice(0, 256) ?? ""}`
+      text += " "
+      let offset = 0
+      // Bound layout work even for long, fully clipped text. Inspect code points, not half-surrogates.
+      for (const character of node.textContent ?? "") {
+        if (inspected + character.length > 256) break
+        inspected += character.length
+        range.setStart(node, offset)
+        offset += character.length
+        range.setEnd(node, offset)
+        // Whitespace may have no box at a line wrap, but must still separate visible words.
+        if (
+          /\s/.test(character) ||
+          Array.from(range.getClientRects()).some((rect) =>
+            hasVisiblePoint(rect, (hit) => hit === parent),
+          )
+        )
+          text += character
+      }
     }
     return text.replace(/\s+/g, " ").trim().slice(0, 256)
   }

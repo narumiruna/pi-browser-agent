@@ -74,6 +74,15 @@ beforeEach(async () => {
     width: 20,
     height: 20,
   } as DOMRect)
+  // jsdom has no text layout; mirror the fixture's element geometry for text ranges.
+  vi.spyOn(document, "createRange").mockImplementation(() => {
+    const range = new Range()
+    range.getClientRects = () =>
+      [range.startContainer.parentElement?.getBoundingClientRect()].filter(
+        (rect): rect is DOMRect => rect !== undefined,
+      ) as unknown as DOMRectList
+    return range
+  })
   const noopEvent = { addListener: vi.fn() }
   vi.stubGlobal("chrome", {
     storage: {

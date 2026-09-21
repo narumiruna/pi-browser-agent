@@ -52,6 +52,15 @@ beforeEach(() => {
     height: 10,
     toJSON: () => ({}),
   })
+  // jsdom has no text layout; native range geometry is covered by the extension E2E tests.
+  vi.spyOn(document, "createRange").mockImplementation(() => {
+    const range = new Range()
+    range.getClientRects = () =>
+      [range.startContainer.parentElement?.getBoundingClientRect()].filter(
+        (rect): rect is DOMRect => rect !== undefined,
+      ) as unknown as DOMRectList
+    return range
+  })
   vi.stubGlobal("chrome", { runtime: { sendMessage: vi.fn(async () => ({ ok: true })) } })
 })
 afterEach(() => {
@@ -172,6 +181,90 @@ describe("element snapshots", () => {
     expect((await discover()).elements.map((element) => element.name)).toEqual(["Visible fallback"])
     labelVisible = true
     expect((await discover()).elements[0]?.name).toContain("Hidden label")
+  })
+
+  test.each([
+    '<span id="label">Hidden range</span><button id="control" type="button" aria-labelledby="label" aria-label="Visible fallback">Answer</button>',
+    '<label id="label" for="control">Hidden range</label><input id="control" placeholder="Visible fallback">',
+    '<button id="control" type="button">Visible fallback<span id="label">Hidden range</span></button>',
+  ])("checks text ranges even when their parent is hit: %s", async (markup) => {
+    document.body.innerHTML = markup
+    const label = document.querySelector("#label") as HTMLElement
+    const control = document.querySelector("#control") as HTMLElement
+    Object.defineProperty(control, "getBoundingClientRect", {
+      value: () => new DOMRect(20, 0, 10, 10),
+    })
+    let exposed = false
+    vi.mocked(document.createRange).mockImplementation(() => {
+      const range = new Range()
+      range.getClientRects = () =>
+        [
+          range.startContainer.parentElement === label && !exposed
+            ? new DOMRect(40, 0, 10, 10)
+            : range.startContainer.parentElement?.getBoundingClientRect(),
+        ] as unknown as DOMRectList
+      return range
+    })
+    Object.defineProperty(document, "elementFromPoint", {
+      configurable: true,
+      value: (x: number) => (x < 10 ? label : x < 30 ? control : document.body),
+    })
+    expect((await discover()).elements[0]?.name).toBe("Visible fallback")
+    exposed = true
+    expect((await discover()).elements[0]?.name).toContain("Hidden range")
+    exposed = false
+    const clicked = vi.spyOn(control, "click")
+    expect(await click()).toMatchObject({ ok: false, error: { code: "STALE_CONTEXT" } })
+    expect(clicked).not.toHaveBeenCalled()
+  })
+
+  test("excludes clipped suffixes, empty ranges, and text covered by a descendant", async () => {
+    document.body.innerHTML =
+      '<span id="label">VisibleHIDDEN</span><button type="button" aria-labelledby="label" aria-label="Fallback">Go</button>'
+    const label = document.querySelector("#label") as HTMLElement
+    const button = document.querySelector("button") as HTMLElement
+    Object.defineProperty(button, "getBoundingClientRect", {
+      value: () => new DOMRect(200, 0, 10, 10),
+    })
+    const overlay = document.createElement("span")
+    label.append(overlay)
+    const rects = vi.fn((offset: number) => [new DOMRect(offset * 10, 0, 10, 10)])
+    vi.mocked(document.createRange).mockImplementation(() => {
+      const range = new Range()
+      range.getClientRects = () => rects(range.startOffset) as unknown as DOMRectList
+      return range
+    })
+    Object.defineProperty(document, "elementFromPoint", {
+      configurable: true,
+      value: (x: number) => (x >= 200 ? button : x < 70 ? label : overlay),
+    })
+    expect((await discover()).elements[0]?.name).toBe("Visible")
+    rects.mockReturnValue([])
+    expect((await discover()).elements[0]?.name).toBe("Fallback")
+  })
+
+  test("keeps Unicode code points and bounds fully clipped text inspection", async () => {
+    document.body.innerHTML =
+      '<span id="label">漢😀 text</span><button type="button" aria-labelledby="label" aria-label="Fallback">Go</button>'
+    const label = document.querySelector("#label") as HTMLElement
+    const offsets: number[] = []
+    let clipped = false
+    vi.mocked(document.createRange).mockImplementation(() => {
+      const range = new Range()
+      range.getClientRects = () => {
+        offsets.push(range.startOffset, range.endOffset)
+        return (clipped ? [] : [new DOMRect(0, 0, 10, 10)]) as unknown as DOMRectList
+      }
+      return range
+    })
+    expect((await discover()).elements[0]?.name).toBe("漢😀 text")
+    expect(offsets).not.toContain(2)
+    label.textContent = "x".repeat(10_000)
+    offsets.length = 0
+    clipped = true
+    expect((await discover()).elements[0]?.name).toBe("Fallback")
+    // Discovery name plus fingerprint; each is limited to 256 inspected UTF-16 units.
+    expect(offsets).toHaveLength(2 * 256 * 2)
   })
 
   test("caps names, candidate scanning, result count, and encoded output", async () => {

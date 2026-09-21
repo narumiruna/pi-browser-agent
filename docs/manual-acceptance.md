@@ -16,7 +16,7 @@ Use a production build from `npm run build`. Do not test login with development 
 - Optional screenshot native decline, revocation, and explicit cross-tab capture: pending for this change
 - Non-Codex provider/model selection and authenticated request: pending for this change
 - Element discovery and Markdown/disclosure automated acceptance: passed on Chrome for Testing 153.0.8010.12, including a real MV3 worker restart, mocked model discovery/type/click/submit confirmations, incremental SSE, copy denial, focus/scroll, hostile content, and restored transcripts.
-- Element discovery and Markdown/disclosure stable Chrome Side Panel manual acceptance: pending. The implementation environment has no stable Chrome executable; the headless extension-page harness is not a substitute for browser-owned Side Panel checks.
+- Element discovery and Markdown/disclosure manual report: on 2026-09-21 the user reported “實測看起來都正常” (actual testing looks normal), following the icon-only/right-aligned copy update. Chrome version, account tier, and individual case results were not supplied; the acceptance record remains incomplete. Do not infer those details or substitute the headless extension-page harness for browser-owned Side Panel checks.
 
 ## Procedure
 
