@@ -336,6 +336,58 @@ describe("element snapshots", () => {
     expect(clicked).not.toHaveBeenCalled()
   })
 
+  test.each(["inspectClick", "click", "type"] as const)(
+    "rejects %s references when an ancestor fieldset enables a previously disabled control",
+    async (operation) => {
+      document.body.innerHTML = '<fieldset disabled><input aria-label="Target"></fieldset>'
+      const fieldset = document.querySelector("fieldset") as HTMLFieldSetElement
+      const input = document.querySelector("input") as HTMLInputElement
+      expect(input.disabled).toBe(false)
+      expect(input.matches(":disabled")).toBe(true)
+      expect((await discover()).elements[0]).toMatchObject({ disabled: true, actions: [] })
+      const clicked = vi.spyOn(input, "click")
+      if (operation === "inspectClick") fieldset.disabled = false
+      else
+        vi.mocked(chrome.runtime.sendMessage).mockImplementation(async () => {
+          fieldset.disabled = false
+          return { ok: true }
+        })
+      const perform = () =>
+        executePageOperation(
+          operation,
+          { snapshotId: snapshot.id, ref: "e1", text: "New text" },
+          false,
+          null,
+          context,
+          snapshot,
+        )
+      expect(await perform()).toMatchObject({ ok: false, error: { code: "STALE_CONTEXT" } })
+      expect(input.getAttribute("disabled")).toBeNull()
+      expect(clicked).not.toHaveBeenCalled()
+      expect(input.value).toBe("")
+      expect((await discover()).elements[0]).toMatchObject({
+        disabled: false,
+        actions: ["click", "type"],
+      })
+      expect(await perform()).toMatchObject({ ok: true })
+    },
+  )
+
+  test("preserves first-legend references when fieldset toggles leave their disabled state unchanged", async () => {
+    document.body.innerHTML =
+      '<fieldset disabled><legend><button type="button">Legend</button></legend><button type="button">Other</button></fieldset>'
+    expect((await discover()).elements).toMatchObject([
+      { name: "Legend", disabled: false, actions: ["click"] },
+      { name: "Other", disabled: true, actions: [] },
+    ])
+    const fieldset = document.querySelector("fieldset") as HTMLFieldSetElement
+    fieldset.disabled = false
+    expect(await click("e1")).toMatchObject({ ok: true })
+    expect(await click("e2")).toMatchObject({ ok: false, error: { code: "STALE_CONTEXT" } })
+    fieldset.disabled = true
+    expect(await click("e1")).toMatchObject({ ok: true })
+  })
+
   test("revalidates target changes while awaiting the worker assertion", async () => {
     document.body.innerHTML = '<button type="button">Go</button>'
     await discover()

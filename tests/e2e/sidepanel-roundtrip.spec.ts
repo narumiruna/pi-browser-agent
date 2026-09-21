@@ -674,6 +674,81 @@ test("rejects submit payload changes during confirmation without exposing submit
   }
 })
 
+test("invalidates references when native fieldset disabled state changes", async () => {
+  await page.evaluate(() => {
+    const fixture = document.createElement("div")
+    fixture.id = "disabled-state-fixture"
+    fixture.style.cssText = "position:fixed;left:50px;top:250px;z-index:1000;background:white"
+    fixture.innerHTML = `<fieldset disabled>
+      <legend><button type="button" aria-label="Legend exception">Legend</button></legend>
+      <button id="fieldset-button" type="button" aria-label="Fieldset button">Button</button>
+      <input id="fieldset-input" aria-label="Fieldset input">
+    </fieldset>`
+    fixture.dataset.clicks = "0"
+    fixture.querySelector("#fieldset-button")?.addEventListener("click", () => {
+      fixture.dataset.clicks = String(Number(fixture.dataset.clicks) + 1)
+    })
+    document.body.append(fixture)
+  })
+  const discover = async () =>
+    (await request("page.listElements", {}, { tabContext })) as unknown as {
+      snapshotId: string
+      elements: Array<{ ref: string; name: string; disabled: boolean; actions: string[] }>
+    }
+  try {
+    let snapshot = await discover()
+    const target = (name: string) => {
+      const element = snapshot.elements.find((element) => element.name === name)
+      if (!element) throw new Error(`Missing ${name}`)
+      return { snapshotId: snapshot.snapshotId, ref: element.ref }
+    }
+    for (const name of ["Fieldset button", "Fieldset input"])
+      expect(snapshot.elements.find((element) => element.name === name)).toMatchObject({
+        disabled: true,
+        actions: [],
+      })
+    expect(snapshot.elements.find((element) => element.name === "Legend exception")).toMatchObject({
+      disabled: false,
+      actions: ["click"],
+    })
+    await page
+      .locator("#disabled-state-fixture fieldset")
+      .evaluate((fieldset: HTMLFieldSetElement) => {
+        fieldset.disabled = false
+      })
+    await expect(page.locator("#fieldset-button")).not.toHaveAttribute("disabled")
+    await expect(
+      request("page.click", target("Fieldset button"), { tabContext }),
+    ).rejects.toMatchObject({ code: "STALE_CONTEXT" })
+    await expect(
+      request("page.type", { ...target("Fieldset input"), text: "Never write" }, { tabContext }),
+    ).rejects.toMatchObject({ code: "STALE_CONTEXT" })
+    await expect(page.locator("#disabled-state-fixture")).toHaveAttribute("data-clicks", "0")
+    await expect(page.locator("#fieldset-input")).toHaveValue("")
+    await request("page.click", target("Legend exception"), { tabContext })
+    snapshot = await discover()
+    await request("page.click", target("Fieldset button"), { tabContext })
+    await request(
+      "page.type",
+      { ...target("Fieldset input"), text: "After rediscovery" },
+      { tabContext },
+    )
+    await expect(page.locator("#disabled-state-fixture")).toHaveAttribute("data-clicks", "1")
+    await expect(page.locator("#fieldset-input")).toHaveValue("After rediscovery")
+    await page
+      .locator("#disabled-state-fixture fieldset")
+      .evaluate((fieldset: HTMLFieldSetElement) => {
+        fieldset.disabled = true
+      })
+    await expect(
+      request("page.click", target("Fieldset button"), { tabContext }),
+    ).rejects.toMatchObject({ code: "STALE_CONTEXT" })
+    await expect(page.locator("#disabled-state-fixture")).toHaveAttribute("data-clicks", "1")
+  } finally {
+    await page.locator("#disabled-state-fixture").evaluate((fixture) => fixture.remove())
+  }
+})
+
 test("invalidates references on a real MV3 worker restart", async () => {
   const snapshot = (await request("page.listElements", {}, { tabContext })) as {
     snapshotId: string

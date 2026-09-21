@@ -282,6 +282,7 @@ export async function executePageOperation(
       element.getAttribute("role"),
       element.getAttribute("type"),
       element.getAttribute("disabled"),
+      element.matches(":disabled"),
       element.getAttribute("readonly"),
       element.getAttribute("aria-disabled"),
       element.isContentEditable,
