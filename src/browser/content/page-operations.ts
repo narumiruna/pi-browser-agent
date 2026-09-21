@@ -127,17 +127,45 @@ export async function executePageOperation(
       return hit !== null && acceptsHit(hit)
     })
   }
+  // Share filter parsing within a synchronous validation phase only.
+  let blockedFilters = new WeakMap<Element, boolean>()
+  const filterBlocksVisibility = (element: Element, style: CSSStyleDeclaration): boolean => {
+    const cached = blockedFilters.get(element)
+    if (cached !== undefined) return cached
+    const filter = style.filter
+    // Bound parsing even for distinct controls sharing a large declaration. Fail closed, not partial.
+    let blocked = filter.length > 4096
+    if (!blocked) {
+      // Computed styles resolve CSS math/variables; URL contents are not opacity functions.
+      for (const [, amount] of filter.matchAll(/url\("(?:[^"\\]|\\.)*"\)|opacity\(([^)]+)\)/g)) {
+        if (Number.parseFloat(amount ?? "") === 0) {
+          blocked = true
+          break
+        }
+      }
+    }
+    blockedFilters.set(element, blocked)
+    return blocked
+  }
   const isVisible = (element: Element, requireTargetHit = false): boolean => {
     if (!(element instanceof HTMLElement)) return false
     const selectedStyle = getComputedStyle(element)
     if (selectedStyle.visibility === "hidden" || selectedStyle.visibility === "collapse") {
       return false
     }
+    let checkFilters = requireTargetHit
     for (let current: HTMLElement | null = element; current; current = current.parentElement) {
       const style = getComputedStyle(current)
-      if (style.display === "none" || Number.parseFloat(style.opacity || "1") <= 0) {
+      if (
+        style.display === "none" ||
+        Number.parseFloat(style.opacity || "1") <= 0 ||
+        (checkFilters && filterBlocksVisibility(current, style))
+      ) {
         return false
       }
+      // The active top-layer root is filtered, but its outside DOM ancestors do not filter it.
+      if (checkFilters && current.matches(":modal, :popover-open, :fullscreen"))
+        checkFilters = false
     }
 
     const clientRects = Array.from(element.getClientRects())
@@ -518,6 +546,8 @@ export async function executePageOperation(
           return failure("INVALID_REQUEST", "Selector must target an editable text element")
         }
         found.focus()
+        // Page focus handlers can change styles; post-focus validation needs a fresh cache.
+        blockedFilters = new WeakMap()
         if (
           !canType(found) ||
           !isVisible(found, snapshot !== null) ||
