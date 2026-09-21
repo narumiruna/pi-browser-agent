@@ -152,6 +152,28 @@ describe("element snapshots", () => {
     expect(clicked).toHaveBeenCalledOnce()
   })
 
+  test.each([
+    '<div><span id="label">Hidden label</span></div><button id="control" type="button" aria-labelledby="label" aria-label="Visible fallback">Answer</button>',
+    '<div><label id="label" for="control">Hidden label</label></div><input id="control" placeholder="Visible fallback">',
+    '<button id="control" type="button">Visible fallback<span id="label">Hidden label</span></button>',
+  ])("excludes ancestor-only hits from discovered names: %s", async (markup) => {
+    document.body.innerHTML = markup
+    const control = document.querySelector("#control") as HTMLElement
+    const label = document.querySelector("#label") as HTMLElement
+    Object.defineProperty(control, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ left: 20, right: 30, top: 0, bottom: 10 }),
+    })
+    let labelVisible = false
+    Object.defineProperty(document, "elementFromPoint", {
+      configurable: true,
+      value: (x: number) => (x >= 20 ? control : labelVisible ? label : document.body),
+    })
+    expect((await discover()).elements.map((element) => element.name)).toEqual(["Visible fallback"])
+    labelVisible = true
+    expect((await discover()).elements[0]?.name).toContain("Hidden label")
+  })
+
   test("caps names, candidate scanning, result count, and encoded output", async () => {
     document.body.innerHTML = Array.from(
       { length: 60 },

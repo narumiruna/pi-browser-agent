@@ -215,7 +215,7 @@ export async function executePageOperation(
         parent.closest(
           "input, textarea, select, [contenteditable], [hidden], [aria-hidden='true']",
         ) ||
-        !isVisible(parent)
+        !isVisible(parent, true)
       )
         continue
       text += ` ${node.textContent?.slice(0, 256) ?? ""}`

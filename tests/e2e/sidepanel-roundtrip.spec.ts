@@ -403,6 +403,43 @@ test("excludes ancestor-clipped controls and rejects references clipped after di
   }
 })
 
+test("omits ancestor-clipped label text while retaining visible control-name fallbacks", async () => {
+  await page.evaluate(() => {
+    const fixture = document.createElement("div")
+    fixture.id = "clipped-label-fixture"
+    fixture.style.cssText =
+      "position:fixed;left:50px;top:250px;width:600px;height:180px;z-index:1000"
+    fixture.innerHTML = `<div style="position:relative;overflow:hidden;width:120px;height:30px">
+      <span id="clipped-name" style="position:absolute;left:180px;top:0;white-space:nowrap">Hidden aria name</span>
+      <label for="named-input" style="position:absolute;left:180px;top:25px;white-space:nowrap">Hidden associated name</label>
+    </div>
+    <button type="button" aria-labelledby="clipped-name" aria-label="Visible aria fallback" style="display:block">Answer</button>
+    <input id="named-input" placeholder="Visible placeholder" style="display:block">`
+    document.body.append(fixture)
+  })
+  try {
+    expect(
+      await page.locator("#clipped-name").evaluate((label) => {
+        const rect = label.getBoundingClientRect()
+        const hit = document.elementFromPoint(
+          rect.left + rect.width / 2,
+          rect.top + rect.height / 2,
+        )
+        return hit !== label && hit?.contains(label)
+      }),
+    ).toBe(true)
+    const snapshot = (await request("page.listElements", {}, { tabContext })) as unknown as {
+      elements: Array<{ name: string }>
+    }
+    const names = snapshot.elements.map((element) => element.name)
+    expect(names).toContain("Visible aria fallback")
+    expect(names).toContain("Visible placeholder")
+    expect(names.join("\n")).not.toContain("Hidden")
+  } finally {
+    await page.locator("#clipped-label-fixture").evaluate((fixture) => fixture.remove())
+  }
+})
+
 test("reports successful reference mutations that navigate without replaying them", async () => {
   const originalUrl = page.url()
   await page.evaluate(() => {
