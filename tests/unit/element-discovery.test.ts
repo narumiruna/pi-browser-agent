@@ -37,6 +37,43 @@ function sizedFilter(length: number, opacity = "1"): string {
   return `${prefix}${"x".repeat(length - prefix.length - suffix.length)}${suffix}`
 }
 
+function mockShadowFilterStyles() {
+  const computedStyle = getComputedStyle
+  // jsdom caches shadow-tree computed styles after inline changes; Chrome E2E tests use real styles.
+  vi.stubGlobal("getComputedStyle", (element: Element) => {
+    const style = computedStyle(element)
+    return element instanceof HTMLElement && element.getRootNode() instanceof ShadowRoot
+      ? new Proxy(style, {
+          get(target, key) {
+            if (key === "filter") return element.style.filter || "none"
+            if (key === "display" && element.style.display) return element.style.display
+            return Reflect.get(target, key)
+          },
+        })
+      : style
+  })
+}
+
+function slottedControl() {
+  document.body.innerHTML = '<div id="host"><input aria-label="Target"></div>'
+  const host = document.querySelector("#host") as HTMLElement
+  const input = document.querySelector("input") as HTMLInputElement
+  const root = host.attachShadow({ mode: "open" })
+  root.innerHTML = '<div id="outer"><div id="inner-host"><slot></slot></div></div>'
+  const innerHost = root.querySelector("#inner-host") as HTMLElement
+  const innerRoot = innerHost.attachShadow({ mode: "open" })
+  innerRoot.innerHTML =
+    '<div id="inner"><slot style="display:block"></slot></div><button>Shadow-owned</button>'
+  mockShadowFilterStyles()
+  return {
+    host,
+    input,
+    outer: root.querySelector("#outer") as HTMLElement,
+    inner: innerRoot.querySelector("#inner") as HTMLElement,
+    slot: innerRoot.querySelector("slot") as HTMLSlotElement,
+  }
+}
+
 beforeEach(() => {
   snapshot = {
     id: crypto.randomUUID(),
@@ -244,6 +281,128 @@ describe("element snapshots", () => {
       }
     },
   )
+
+  test.each(["transparent", "oversized"])(
+    "checks composed filter ancestors of nested slotted controls: %s",
+    async (kind) => {
+      const filter = kind === "transparent" ? "opacity(0)" : sizedFilter(4097)
+      const { input, outer, inner, slot } = slottedControl()
+      Object.defineProperty(document, "elementFromPoint", {
+        configurable: true,
+        value: () => input,
+      })
+      expect(input.assignedSlot?.assignedSlot).toBe(slot)
+      for (const ancestor of [slot, inner, outer]) {
+        ancestor.style.filter = filter
+        expect((await discover()).elements).toEqual([])
+        ancestor.style.filter = "opacity(0.5)"
+        // Shadow-owned controls are not added to discovery.
+        expect((await discover()).elements).toMatchObject([{ name: "Target" }])
+        expect((await discover()).elements).toHaveLength(1)
+        expect(await click()).toMatchObject({ ok: true })
+        ancestor.style.filter = "none"
+      }
+    },
+  )
+
+  test.each(["transparent", "oversized"])(
+    "ignores filters on boxless composed ancestors: %s",
+    async (kind) => {
+      const { slot, inner, host } = slottedControl()
+      for (const ancestor of [slot, inner, host]) {
+        ancestor.style.display = "contents"
+        ancestor.style.filter = kind === "transparent" ? "opacity(0)" : sizedFilter(4097)
+        expect((await discover()).elements).toMatchObject([{ name: "Target" }])
+        expect(await click()).toMatchObject({ ok: true })
+        ancestor.style.display = "block"
+        expect((await discover()).elements).toEqual([])
+        ancestor.style.filter = "none"
+      }
+    },
+  )
+
+  test.each(["transparent", "oversized"])(
+    "excludes slotted label text hidden by a shadow wrapper: %s",
+    async (kind) => {
+      const filter = kind === "transparent" ? "opacity(0)" : sizedFilter(4097)
+      document.body.innerHTML =
+        '<div id="host"><span id="name">Hidden label</span></div><input aria-labelledby="name" placeholder="Fallback">'
+      const root = document.querySelector("#host")?.attachShadow({ mode: "open" }) as ShadowRoot
+      root.innerHTML = "<div><slot></slot></div>"
+      mockShadowFilterStyles()
+      const wrapper = root.querySelector("div") as HTMLElement
+      wrapper.style.filter = filter
+      expect((await discover()).elements).toMatchObject([{ name: "Fallback" }])
+      wrapper.style.filter = "none"
+      expect((await discover()).elements).toMatchObject([{ name: "Hidden label" }])
+    },
+  )
+
+  test.each([
+    ["click", "transparent"],
+    ["type", "transparent"],
+    ["click", "oversized"],
+    ["type", "oversized"],
+  ] as const)("rechecks slotted ancestors before %s with a %s filter", async (operation, kind) => {
+    const { input, inner } = slottedControl()
+    await discover()
+    const clicked = vi.spyOn(input, "click")
+    vi.mocked(chrome.runtime.sendMessage).mockImplementation(async () => {
+      inner.style.filter = kind === "transparent" ? "opacity(0)" : sizedFilter(4097)
+      return { ok: true }
+    })
+    expect(
+      await executePageOperation(
+        operation,
+        { snapshotId: snapshot.id, ref: "e1", text: "Never write" },
+        false,
+        null,
+        context,
+        snapshot,
+      ),
+    ).toMatchObject({ ok: false, error: { code: "INVALID_REQUEST" } })
+    expect(clicked).not.toHaveBeenCalled()
+    expect(input.value).toBe("")
+  })
+
+  test.each(["transparent", "oversized"])(
+    "refreshes slotted filter checks after focus: %s",
+    async (kind) => {
+      const filter = kind === "transparent" ? "opacity(0)" : sizedFilter(4097)
+      const { input, inner } = slottedControl()
+      await discover()
+      input.addEventListener("focus", () => {
+        inner.style.filter = filter
+      })
+      expect(
+        await executePageOperation(
+          "type",
+          { snapshotId: snapshot.id, ref: "e1", text: "Never write" },
+          false,
+          null,
+          context,
+          snapshot,
+        ),
+      ).toMatchObject({ ok: false, error: { code: "STALE_CONTEXT" } })
+      expect(input.value).toBe("")
+    },
+  )
+
+  test("stops composed filter checks at an active top-layer root inside a shadow tree", async () => {
+    const { host, input, inner, slot } = slottedControl()
+    host.style.filter = "opacity(0)"
+    const matches = inner.matches.bind(inner)
+    vi.spyOn(inner, "matches").mockImplementation(
+      (selector) => selector.includes(":modal") || matches(selector),
+    )
+    expect((await discover()).elements).toMatchObject([{ name: "Target" }])
+    expect(await click()).toMatchObject({ ok: true })
+    for (const ancestor of [inner, slot, input]) {
+      ancestor.style.filter = "opacity(0)"
+      expect((await discover()).elements).toEqual([])
+      ancestor.style.filter = "none"
+    }
+  })
 
   test.each([4096, 4097, 64 * 1024])(
     "bounds parsing of a shared %i-unit filter applied to distinct controls",
