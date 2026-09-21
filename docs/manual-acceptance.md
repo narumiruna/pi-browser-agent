@@ -15,6 +15,8 @@ Use a production build from `npm run build`. Do not test login with development 
 - Optional screenshot `<all_urls>` grant and PNG/model round trip: passed on 2026-09-20; browser version was not recorded. The first capture detected a visible-tab change as stale, and the model retried successfully against the current tab.
 - Optional screenshot native decline, revocation, and explicit cross-tab capture: pending for this change
 - Non-Codex provider/model selection and authenticated request: pending for this change
+- Element discovery and Markdown/disclosure automated acceptance: passed on Chrome for Testing 153.0.8010.12, including a real MV3 worker restart, mocked model discovery/type/click/submit confirmations, incremental SSE, copy denial, focus/scroll, hostile content, and restored transcripts.
+- Element discovery and Markdown/disclosure manual report: on 2026-09-21 the user reported “實測看起來都正常” (actual testing looks normal), following the icon-only/right-aligned copy update. Chrome version, account tier, and individual case results were not supplied; the acceptance record remains incomplete. Do not infer those details or substitute the headless extension-page harness for browser-owned Side Panel checks.
 
 ## Procedure
 
@@ -83,5 +85,16 @@ Use a production build from `npm run build`. Do not test login with development 
 13. **Artifact inspection**
    - Run `npm run audit:artifact` and inspect `chrome://extensions` permissions.
    - Expected: the audit passes; `bookmarks` and screenshot `<all_urls>` access are optional rather than required, `host_permissions` is empty, and there is no bookmark mutation call, loopback URL, remote code, source map, native host, or unexpected host permission.
+
+14. **Discovered element targets**
+   - On a harmless test form in the actual Side Panel, ask Pi to list controls, fill an ordinary field, and click a button using the returned snapshot ID and short reference. Expected: no guessed selector is needed, only the named control changes, password/file targets and field values are absent from discovery, and no new permission type is requested.
+   - Ask for a submit, cancel the confirmation, and verify no submit occurs. Ask again and approve; verify one submit. Replace the target DOM node or change its form/link destination while confirmation is open, then approve; expected: stale-target failure with no mutation or alternate target.
+   - Retain a reference, navigate/reload, switch away and back, or wait more than five minutes, then request that exact old reference. Expected: failure requiring rediscovery, not automatic retry. Reopening a saved transcript does not reactivate historical references.
+15. **Markdown and streamed disclosures**
+   - Request an answer containing headings, a table, fenced code, thinking when supported, and a tool call. Expected: assistant prose renders as Markdown; thinking and tools have separate disclosures, and the answer stays visible. Errors/image results open by default.
+   - While text streams, toggle a disclosure using Enter/Space, leave focus on its summary, and scroll upward. Expected: expansion/focus survive subsequent chunks and completion, and the transcript does not jump to the bottom. Reopen the session; Markdown/images remain readable and disclosure defaults return.
+   - Locate the right-aligned copy icons below the answer and above each code block. Expected: icon-only buttons with **Copy answer** / **Copy code** tooltips and accessible names; both work with Enter/Space. Select each, then paste into a scratch field. Expected: original Markdown and code text respectively, with no thinking/tool payload added. Pending/success states show a clock/check icon, corresponding tooltip, and screen-reader status. Deny Clipboard API access in a controlled test context; expected: a failure icon, **Copy failed** in the tooltip and screen-reader status, no permission expansion, and no uncaught error.
+   - Inspect at 320 and 360 px widths, 12 and 24 px text, and light/dark themes. Expected: tables/code scroll locally, no page-level horizontal overflow, and keyboard controls remain usable.
+   - Render a controlled answer containing literal HTML, an unsafe link, and a remote Markdown image. Expected: no executable/embedded content, no unsafe link, and no request to the remote image destination. Only a user click opens an allowed HTTP(S) link.
 
 Record date, stable Chrome version, account tier, each pass/fail result, and any network-header difference in the pull request before release review. This repository does not publish or release from this procedure.

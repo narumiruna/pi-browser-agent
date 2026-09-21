@@ -9,7 +9,14 @@ import {
   SCREENSHOT_HOST_PERMISSION,
 } from "./permissions.js"
 import { parseRuntimeRequest, type RuntimeEvent, type RuntimeRequest } from "./runtime/messages.js"
-import { type JsonValue, RuntimeError, type TabContext, truncateUtf8 } from "./runtime/types.js"
+import {
+  ELEMENT_LIMITS,
+  type ElementSnapshot,
+  type JsonValue,
+  RuntimeError,
+  type TabContext,
+  truncateUtf8,
+} from "./runtime/types.js"
 import {
   restrictLocalStorageToTrustedContexts,
   savePendingSelection,
@@ -20,6 +27,7 @@ import { executeWebMcpOperation, type WebMcpOperation } from "./webmcp/adapter.j
 const SELECTION_CONTEXT_MENU_ID = "pi-chrome-send-selection"
 const activeRequests = new Map<string, AbortController>()
 let boundContext: TabContext | undefined
+let elementSnapshot: ElementSnapshot | undefined
 let contextEpoch = 0
 let visibleTabSyncVersion = 0
 let latestVisibleTabSync: { version: number; promise: Promise<TabContext | undefined> } | undefined
@@ -46,6 +54,7 @@ function clearBoundTab(): void {
   if (!boundContext) return
   contextEpoch = Math.max(contextEpoch, boundContext.epoch) + 1
   boundContext = undefined
+  elementSnapshot = undefined
   emitTabChanged()
 }
 
@@ -58,6 +67,7 @@ function setBoundTab(tab: chrome.tabs.Tab | undefined): TabContext | undefined {
     return { ...boundContext }
   }
   if (boundContext) contextEpoch = Math.max(contextEpoch, boundContext.epoch) + 1
+  elementSnapshot = undefined
   boundContext = { tabId: tab.id, url: tab.url, epoch: contextEpoch }
   emitTabChanged()
   return { ...boundContext }
@@ -111,6 +121,7 @@ async function finishVisibleTabSync(
     previous.epoch === context.epoch
   ) {
     contextEpoch = Math.max(contextEpoch, context.epoch) + 1
+    elementSnapshot = undefined
     boundContext = { ...context, epoch: contextEpoch }
     emitTabChanged()
     return { ...boundContext }
@@ -208,6 +219,8 @@ function mutationTargetContext(message: unknown): TabContext | undefined {
 async function assertCurrentMutationTarget(
   expected: TabContext,
   sender: chrome.runtime.MessageSender,
+  requestId?: unknown,
+  snapshotId?: unknown,
 ): Promise<void> {
   if (sender.id !== chrome.runtime.id || sender.tab?.id !== expected.tabId) {
     throw new RuntimeError("PERMISSION_DENIED", "Invalid browser mutation target assertion")
@@ -217,9 +230,25 @@ async function assertCurrentMutationTarget(
   assertTabContext(expected, current)
   const tab = await chrome.tabs.get(current.tabId)
   const window = await chrome.windows.get(tab.windowId)
+  if (!(await hasHostPermission(expected.url)))
+    throw new RuntimeError("PERMISSION_DENIED", "Current site access was revoked")
   const latest = await syncVisibleTab()
   if (!latest) throwStaleContext(expected)
   assertTabContext(expected, latest)
+  if (
+    typeof requestId === "string" &&
+    (!activeRequests.has(requestId) || activeRequests.get(requestId)?.signal.aborted)
+  ) {
+    throw new RuntimeError("REQUEST_CANCELLED", "Browser request was cancelled")
+  }
+  if (
+    snapshotId !== undefined &&
+    (!elementSnapshot ||
+      snapshotId !== elementSnapshot.id ||
+      Date.now() >= elementSnapshot.expiresAt)
+  ) {
+    throw new RuntimeError("STALE_CONTEXT", "Element snapshot expired; discover again")
+  }
   if (!tab.active || !window.focused || sender.tab.windowId !== tab.windowId) {
     throw new RuntimeError(
       "STALE_CONTEXT",
@@ -231,7 +260,9 @@ async function assertCurrentMutationTarget(
 
 async function runPageOperation(
   operation: PageOperation,
-  request: RuntimeRequest<"page.getVisibleText" | "page.getSelection" | "page.click" | "page.type">,
+  request: RuntimeRequest<
+    "page.getVisibleText" | "page.getSelection" | "page.listElements" | "page.click" | "page.type"
+  >,
   trustedLinkTargetUrl: string | null = null,
 ): Promise<JsonValue> {
   const context = await refreshBoundContext()
@@ -242,12 +273,46 @@ async function runPageOperation(
       "Grant access to the current site before using page tools",
     )
   }
+  if (activeRequests.get(request.requestId)?.signal.aborted)
+    throw new RuntimeError("REQUEST_CANCELLED", "Browser request was cancelled")
+  let snapshot: ElementSnapshot | null = null
+  if (operation === "listElements") {
+    snapshot = {
+      id: crypto.randomUUID(),
+      expiresAt: Date.now() + ELEMENT_LIMITS.lifetimeMs,
+      context,
+      limits: ELEMENT_LIMITS,
+    }
+    elementSnapshot = snapshot
+  } else if ("snapshotId" in request.params) {
+    snapshot = elementSnapshot ?? null
+    if (
+      !snapshot ||
+      snapshot.id !== request.params.snapshotId ||
+      Date.now() >= snapshot.expiresAt
+    ) {
+      throw new RuntimeError(
+        "STALE_CONTEXT",
+        "Element reference expired; call browser_list_elements again",
+      )
+    }
+    assertTabContext(snapshot.context, context)
+  }
   let results: chrome.scripting.InjectionResult<Awaited<ReturnType<typeof executePageOperation>>>[]
   try {
     results = await chrome.scripting.executeScript({
       target: { tabId: context.tabId },
       func: executePageOperation,
-      args: [operation, request.params, request.confirmed ?? false, trustedLinkTargetUrl, context],
+      world: "ISOLATED",
+      args: [
+        operation,
+        request.params,
+        request.confirmed ?? false,
+        trustedLinkTargetUrl,
+        context,
+        snapshot,
+        request.requestId,
+      ],
     })
   } catch (error) {
     throw new RuntimeError(
@@ -261,8 +326,17 @@ async function runPageOperation(
     await revalidateRequestContext(request, context)
     throw new RuntimeError(outcome.error.code, outcome.error.message, outcome.error.details)
   }
-  if (operation !== "click" && operation !== "type") {
+  const navigationPending =
+    operation === "click" &&
+    typeof outcome.result === "object" &&
+    outcome.result !== null &&
+    !Array.isArray(outcome.result) &&
+    outcome.result.navigationAllowed === true
+  // A successful injected mutation may itself invalidate its snapshot by navigating. Preserve
+  // that outcome; reads and navigation not yet performed still require a current snapshot.
+  if ((operation !== "click" && operation !== "type") || navigationPending) {
     await revalidateRequestContext(request, context)
+    if (snapshot && snapshot !== elementSnapshot) throwStaleContext(context)
   }
   return outcome.result
 }
@@ -506,6 +580,9 @@ async function dispatch(request: RuntimeRequest, signal: AbortSignal): Promise<J
       } else result = value
       break
     }
+    case "page.listElements":
+      result = await runPageOperation("listElements", request)
+      break
     case "page.captureVisible":
       result = await captureVisible(request)
       break
@@ -543,10 +620,12 @@ chrome.runtime.onInstalled.addListener(() => {
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   if (!changeInfo.url && changeInfo.status !== "loading") return
+  if (boundContext?.tabId === tabId) elementSnapshot = undefined
   void initialization.then(() => syncUpdatedVisibleTab(tabId)).catch(() => undefined)
 })
 
 chrome.tabs.onActivated.addListener(() => {
+  elementSnapshot = undefined
   void initialization.then(() => syncVisibleTab()).catch(() => undefined)
 })
 
@@ -558,6 +637,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 })
 
 chrome.windows.onFocusChanged.addListener((windowId) => {
+  elementSnapshot = undefined
   if (windowId === chrome.windows.WINDOW_ID_NONE) {
     visibleTabSyncVersion += 1
     clearBoundTab()
@@ -599,7 +679,12 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
   const mutationContext = mutationTargetContext(message)
   if (mutationContext) {
-    void assertCurrentMutationTarget(mutationContext, sender)
+    void assertCurrentMutationTarget(
+      mutationContext,
+      sender,
+      (message as { requestId?: unknown }).requestId,
+      (message as { snapshotId?: unknown }).snapshotId,
+    )
       .then(() => sendResponse({ ok: true, result: { current: true } }))
       .catch((error) => {
         const runtimeError =

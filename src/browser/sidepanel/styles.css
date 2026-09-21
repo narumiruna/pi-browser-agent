@@ -717,6 +717,8 @@ textarea {
 }
 
 .message .content {
+  min-width: 0;
+  max-width: 100%;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -741,8 +743,7 @@ textarea {
   color: var(--accent);
 }
 
-.message.toolResult,
-.message.toolCall {
+.message:is(.toolResult, .toolCall, .thinking) {
   width: 100%;
   max-width: 100%;
   padding: 0;
@@ -758,8 +759,7 @@ textarea {
   border-inline-start-color: var(--accent);
 }
 
-.message.toolResult > summary,
-.message.toolCall > summary {
+.message:is(.toolResult, .toolCall, .thinking) > summary {
   display: flex;
   align-items: center;
   gap: 7px;
@@ -769,13 +769,11 @@ textarea {
   list-style: none;
 }
 
-.message.toolResult > summary::-webkit-details-marker,
-.message.toolCall > summary::-webkit-details-marker {
+.message:is(.toolResult, .toolCall, .thinking) > summary::-webkit-details-marker {
   display: none;
 }
 
-.message.toolResult > summary::before,
-.message.toolCall > summary::before {
+.message:is(.toolResult, .toolCall, .thinking) > summary::before {
   flex: 0 0 auto;
   color: var(--text-muted);
   content: "›";
@@ -783,28 +781,11 @@ textarea {
   transition: transform 120ms ease;
 }
 
-.message.toolResult[open] > summary::before,
-.message.toolCall[open] > summary::before {
+.message:is(.toolResult, .toolCall, .thinking)[open] > summary::before {
   transform: rotate(90deg);
 }
 
-.message.toolResult > summary .role,
-.message.toolCall > summary .role {
-  flex: 0 0 auto;
-  margin: 0;
-}
-
-.tool-preview {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--text-muted);
-  font-size: 0.875rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.message.toolResult > .content,
-.message.toolCall > .content {
+.message:is(.toolResult, .toolCall, .thinking) > .content {
   max-height: 260px;
   padding: 9px 12px 11px;
   overflow: auto;
@@ -814,6 +795,78 @@ textarea {
 
 .message.assistant:not(.toolCall) .role {
   color: var(--success);
+}
+
+.markdown,
+.code-block,
+.table-scroll {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.markdown {
+  white-space: normal;
+}
+
+.markdown > :first-child {
+  margin-top: 0;
+}
+.markdown > :last-child {
+  margin-bottom: 0;
+}
+.markdown h1 {
+  font-size: 1.45em;
+}
+:where(.markdown) h2 {
+  font-size: 1.25em;
+}
+.markdown h3 {
+  font-size: 1.1em;
+}
+.markdown a {
+  color: var(--accent);
+}
+.markdown ul,
+.markdown ol {
+  padding-inline-start: 1.5em;
+}
+.markdown blockquote {
+  margin-inline: 0;
+  padding-inline-start: 12px;
+  border-inline-start: 3px solid var(--border);
+}
+.markdown pre,
+.table-scroll {
+  overflow-x: auto;
+}
+.markdown pre {
+  margin: 0;
+  padding: 8px;
+  white-space: pre;
+  background: var(--surface-subtle);
+  border-radius: 6px;
+}
+.markdown code {
+  font-family: monospace;
+}
+.markdown table {
+  border-collapse: collapse;
+}
+.markdown th,
+.markdown td {
+  border: 1px solid var(--border);
+  padding: 5px 8px;
+}
+.copy-button {
+  position: relative;
+  align-self: flex-end;
+  margin-inline-start: auto;
+}
+.code-block .copy-button {
+  margin-bottom: 4px;
+}
+.message details.message {
+  margin-bottom: 0;
 }
 
 .composer {

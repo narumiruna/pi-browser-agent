@@ -1,4 +1,10 @@
-import { type JsonObject, type JsonValue, RuntimeError, type TabContext } from "./types.js"
+import {
+  type ElementTarget,
+  type JsonObject,
+  type JsonValue,
+  RuntimeError,
+  type TabContext,
+} from "./types.js"
 
 export const RUNTIME_METHODS = [
   "app.getState",
@@ -9,6 +15,7 @@ export const RUNTIME_METHODS = [
   "selection.takePending",
   "requests.cancel",
   "page.getVisibleText",
+  "page.listElements",
   "page.getSelection",
   "page.captureVisible",
   "page.click",
@@ -21,6 +28,8 @@ export type RuntimeMethod = (typeof RUNTIME_METHODS)[number]
 
 export const REQUEST_LIMITS = {
   selector: 2048,
+  snapshotId: 36,
+  elementRef: 8,
   typedText: 50_000,
   url: 16_384,
   bookmarkQuery: 500,
@@ -38,10 +47,11 @@ type RuntimeParams = {
   "selection.takePending": { windowId: number }
   "requests.cancel": { requestId: string }
   "page.getVisibleText": Record<string, never>
+  "page.listElements": Record<string, never>
   "page.getSelection": Record<string, never>
   "page.captureVisible": Record<string, never>
-  "page.click": { selector: string }
-  "page.type": { selector: string; text: string }
+  "page.click": ElementTarget
+  "page.type": ElementTarget & { text: string }
   "webmcp.listTools": Record<string, never>
   "webmcp.callTool": { name: string; arguments: JsonObject }
 }
@@ -102,11 +112,31 @@ function hasOnlyKeys(value: Record<string, unknown>, keys: string[]): boolean {
   return Object.keys(value).every((key) => keys.includes(key))
 }
 
+function hasValidTarget(params: Record<string, unknown>, extra: string[] = []): boolean {
+  if ("selector" in params) {
+    return (
+      hasOnlyKeys(params, ["selector", ...extra]) &&
+      typeof params.selector === "string" &&
+      params.selector.length > 0 &&
+      params.selector.length <= REQUEST_LIMITS.selector
+    )
+  }
+  return (
+    hasOnlyKeys(params, ["snapshotId", "ref", ...extra]) &&
+    typeof params.snapshotId === "string" &&
+    /^[a-f0-9-]{36}$/.test(params.snapshotId) &&
+    typeof params.ref === "string" &&
+    /^e[1-9][0-9]*$/.test(params.ref) &&
+    params.ref.length <= REQUEST_LIMITS.elementRef
+  )
+}
+
 function hasValidParams(method: RuntimeMethod, params: Record<string, unknown>): boolean {
   switch (method) {
     case "app.getState":
     case "tabs.getActive":
     case "page.getVisibleText":
+    case "page.listElements":
     case "page.getSelection":
     case "page.captureVisible":
     case "webmcp.listTools":
@@ -149,18 +179,10 @@ function hasValidParams(method: RuntimeMethod, params: Record<string, unknown>):
         params.requestId.length <= REQUEST_LIMITS.requestId
       )
     case "page.click":
-      return (
-        hasOnlyKeys(params, ["selector"]) &&
-        typeof params.selector === "string" &&
-        params.selector.length > 0 &&
-        params.selector.length <= REQUEST_LIMITS.selector
-      )
+      return hasValidTarget(params)
     case "page.type":
       return (
-        hasOnlyKeys(params, ["selector", "text"]) &&
-        typeof params.selector === "string" &&
-        params.selector.length > 0 &&
-        params.selector.length <= REQUEST_LIMITS.selector &&
+        hasValidTarget(params, ["text"]) &&
         typeof params.text === "string" &&
         params.text.length <= REQUEST_LIMITS.typedText
       )

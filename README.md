@@ -42,7 +42,9 @@ Pi Chrome registers 39 built-in `pi-ai` chat providers and their tool-capable mo
 
 ## Browser safety
 
-The agent can read visible text and selection, capture the visible viewport, click one visible CSS-selected element, type into ordinary editable controls, navigate, and use page WebMCP tools when available.
+The agent can read visible text and selection, discover visible interactive elements, capture the visible viewport, click or type using discovered element references or CSS selectors, navigate, and use page WebMCP tools when available.
+
+`browser_list_elements` returns up to 50 controls from the current top-frame viewport, with bounded names, types, supported actions, and a snapshot ID. The agent passes that snapshot ID and a short reference such as `e1` to click/type tools instead of guessing a selector. References expire after five minutes, another discovery, navigation, tab/focus changes, or worker restart. Removed/replaced controls or changed action metadata require fresh discovery; failed mutations are never automatically replayed. Discovery inspects at most 2,000 DOM elements, reports truncation, excludes password/file targets and field values, and does not traverse iframes or Shadow DOM.
 
 - Password and file inputs are denied.
 - Form submissions, downloads, cross-origin links, cross-origin navigation, and all WebMCP calls require confirmation.
@@ -57,6 +59,10 @@ The agent can read visible text and selection, capture the visible viewport, cli
 - Credentials stay in trusted extension storage and are never sent to the service worker, content injection, page context, transcript, or diagnostic export.
 
 ## Sessions and settings
+
+Assistant answers support Markdown headings, lists, tables, links, and fenced code. Raw HTML and Markdown images are not rendered; only explicit HTTP(S) links are clickable. Right-aligned copy icons provide **Copy answer** for the original Markdown and **Copy code** for code text, with tooltips and accessible names. Pending, successful, and failed copies use distinct icons, tooltips, and screen-reader status updates without requesting new permissions. User messages, tool data, and thinking remain plain text.
+
+Thinking and tool calls/results have separate disclosures so answers remain visible. Errors and image results open by default; manual expansion/collapse and keyboard focus survive streaming updates. The transcript follows new output only while you are near the bottom. Reopening a session restores default disclosure states; it does not change saved messages.
 
 The Side Panel supports creating, resuming, renaming, and deleting sessions. Complete transcript boundaries, including confirmed bookmark tool results, are stored in versioned IndexedDB records. Storage keeps at most 50 sessions and limits each record to 5 MB. **Clear all session data** removes transcripts and embedded images.
 
@@ -81,6 +87,7 @@ npm audit --omit=dev
 - **A page tool is denied:** make the intended HTTP(S) page visible and send the prompt again. If access was previously declined, use **Account and site access → Allow current site**. Chrome internal pages cannot be controlled.
 - **A screenshot is denied:** request it again, confirm Pi Chrome's explanation, and approve Chrome's optional all-sites prompt. If the grant was revoked, Chrome asks again; ordinary per-site access is not enough for `captureVisibleTab()`.
 - **A bookmark read is denied:** request it again and approve both Pi Chrome's operation confirmation and Chrome's optional permission prompt. Revoke bookmark access from Chrome's extension settings when it is no longer wanted.
+- **Expired element reference:** ask for a new element list and review the intended action before trying again. A saved reference is not a current target, and the extension never falls back to another element.
 - **Stale context:** the visible tab changed or navigated after the tool request began. Return to the intended page and retry; Pi Chrome automatically tracks the visible supported tab.
 - **Login pending:** finish the device flow before its 15-minute expiry. Cancel and restart if the code expires or is denied.
 - **Refresh failed:** remove the affected credential, then configure that provider again. The extension does not silently fall back to another provider.
