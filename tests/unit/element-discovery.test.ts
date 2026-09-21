@@ -74,6 +74,16 @@ function slottedControl() {
   }
 }
 
+function slottedTextLabel() {
+  const fixture = slottedControl()
+  fixture.host.replaceChildren(document.createTextNode("Projected name"))
+  fixture.input.removeAttribute("aria-label")
+  fixture.input.setAttribute("aria-labelledby", fixture.host.id)
+  fixture.input.placeholder = "Fallback"
+  document.body.append(fixture.input)
+  return fixture
+}
+
 beforeEach(() => {
   snapshot = {
     id: crypto.randomUUID(),
@@ -403,6 +413,93 @@ describe("element snapshots", () => {
       ancestor.style.filter = "none"
     }
   })
+
+  test.each(["transparent", "oversized"])(
+    "filters directly slotted text names through nested shadow ancestors: %s",
+    async (kind) => {
+      const { host, slot, inner, outer } = slottedTextLabel()
+      const text = host.firstChild as Text
+      expect(text.assignedSlot?.assignedSlot).toBe(slot)
+      for (const ancestor of [slot, inner, outer]) {
+        ancestor.style.filter = kind === "transparent" ? "opacity(0)" : sizedFilter(4097)
+        expect((await discover()).elements).toMatchObject([{ name: "Fallback" }])
+        ancestor.style.filter = "opacity(0.5)"
+        expect((await discover()).elements).toMatchObject([{ name: "Projected name" }])
+        ancestor.style.filter = "none"
+      }
+      slot.style.display = "contents"
+      slot.style.filter = kind === "transparent" ? "opacity(0)" : sizedFilter(4097)
+      expect((await discover()).elements).toMatchObject([{ name: "Projected name" }])
+      host.style.filter = "opacity(0)"
+      const matches = inner.matches.bind(inner)
+      vi.spyOn(inner, "matches").mockImplementation(
+        (selector) => selector.includes(":modal") || matches(selector),
+      )
+      expect((await discover()).elements).toMatchObject([{ name: "Projected name" }])
+      inner.style.filter = "opacity(0)"
+      expect((await discover()).elements).toMatchObject([{ name: "Fallback" }])
+    },
+  )
+
+  test("keeps visible sibling text when a direct text assignment is filtered", async () => {
+    const { host, inner, outer } = slottedTextLabel()
+    const sibling = document.createElement("span")
+    sibling.slot = "visible"
+    sibling.textContent = "Visible sibling"
+    host.append(sibling)
+    const slot = document.createElement("slot")
+    slot.name = "visible"
+    outer.append(slot)
+    inner.style.filter = "opacity(0)"
+    expect((await discover()).elements).toMatchObject([{ name: "Visible sibling" }])
+  })
+
+  test.each(["inspectClick", "click", "type"] as const)(
+    "invalidates %s when a directly slotted name becomes filtered",
+    async (operation) => {
+      const { input, inner } = slottedTextLabel()
+      const clicked = vi.spyOn(input, "click")
+      for (const filter of ["opacity(0)", sizedFilter(4097)]) {
+        inner.style.filter = "none"
+        await discover()
+        inner.style.filter = filter
+        expect(
+          await executePageOperation(
+            operation,
+            { snapshotId: snapshot.id, ref: "e1", text: "Never write" },
+            false,
+            null,
+            context,
+            snapshot,
+          ),
+        ).toMatchObject({ ok: false, error: { code: "STALE_CONTEXT" } })
+        expect(clicked).not.toHaveBeenCalled()
+        expect(input.value).toBe("")
+      }
+    },
+  )
+
+  test.each(["transparent", "oversized"])(
+    "rechecks directly slotted name filters after focus: %s",
+    async (kind) => {
+      const { input, inner } = slottedTextLabel()
+      await discover()
+      input.addEventListener("focus", () => {
+        inner.style.filter = kind === "transparent" ? "opacity(0)" : sizedFilter(4097)
+      })
+      expect(
+        await executePageOperation(
+          "type",
+          { snapshotId: snapshot.id, ref: "e1", text: "Never write" },
+          false,
+          null,
+          context,
+          snapshot,
+        ),
+      ).toMatchObject({ ok: false, error: { code: "STALE_CONTEXT" } })
+      expect(input.value).toBe("")
+    },
+  )
 
   test.each([4096, 4097, 64 * 1024])(
     "bounds parsing of a shared %i-unit filter applied to distinct controls",
