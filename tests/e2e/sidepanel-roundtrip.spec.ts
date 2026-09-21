@@ -320,6 +320,89 @@ test("discovers isolated node references and fails closed across replacement and
   ).rejects.toMatchObject({ code: "STALE_CONTEXT" })
 })
 
+test("excludes ancestor-clipped controls and rejects references clipped after discovery", async () => {
+  await page.evaluate(() => {
+    const fixture = document.createElement("div")
+    fixture.id = "clipping-fixture"
+    fixture.style.cssText =
+      "position:fixed;left:50px;top:250px;width:500px;height:150px;z-index:1000"
+    fixture.innerHTML = `<div id="clip" style="position:relative;overflow:hidden;width:140px;height:110px">
+      <button id="clipped-button" type="button" aria-label="Clipped button" style="position:absolute;left:180px;top:5px;width:100px;height:30px">Clipped</button>
+      <input id="clipped-input" aria-label="Clipped input" style="position:absolute;left:180px;top:45px;width:100px;height:25px">
+      <button id="partial-button" type="button" aria-label="Partial button" style="position:absolute;left:110px;top:80px;width:90px;height:25px"><span>Partial</span></button>
+    </div>`
+    fixture.addEventListener("click", (event) => {
+      if (event.target instanceof Element)
+        fixture.dataset.clicked = event.target.closest("button")?.id ?? ""
+    })
+    document.body.append(fixture)
+  })
+  const discover = async () =>
+    (await request("page.listElements", {}, { tabContext })) as unknown as {
+      snapshotId: string
+      elements: Array<{ ref: string; name: string }>
+    }
+  try {
+    // Native layout/hit testing, not mocked geometry: the clipped control is still in the viewport.
+    expect(
+      await page.locator("#clipped-button").evaluate((button) => {
+        const rect = button.getBoundingClientRect()
+        const hit = document.elementFromPoint(
+          rect.left + rect.width / 2,
+          rect.top + rect.height / 2,
+        )
+        return (
+          rect.right < innerWidth &&
+          rect.bottom < innerHeight &&
+          hit !== button &&
+          hit?.contains(button)
+        )
+      }),
+    ).toBe(true)
+    let snapshot = await discover()
+    expect(snapshot.elements.map((element) => element.name)).not.toContain("Clipped button")
+    expect(snapshot.elements.map((element) => element.name)).not.toContain("Clipped input")
+    const partial = snapshot.elements.find((element) => element.name === "Partial button")
+    if (!partial) throw new Error("Missing partially visible control")
+    await request(
+      "page.click",
+      { snapshotId: snapshot.snapshotId, ref: partial.ref },
+      { tabContext },
+    )
+    await expect(page.locator("#clipping-fixture")).toHaveAttribute(
+      "data-clicked",
+      "partial-button",
+    )
+    await page.locator("#clip").evaluate((clip) => {
+      clip.style.overflow = "visible"
+    })
+    snapshot = await discover()
+    const button = snapshot.elements.find((element) => element.name === "Clipped button")
+    const input = snapshot.elements.find((element) => element.name === "Clipped input")
+    if (!button || !input) throw new Error("Missing exposed controls")
+    await page.locator("#clip").evaluate((clip) => {
+      clip.style.overflow = "hidden"
+    })
+    await expect(
+      request("page.click", { snapshotId: snapshot.snapshotId, ref: button.ref }, { tabContext }),
+    ).rejects.toMatchObject({ code: "INVALID_REQUEST" })
+    await expect(
+      request(
+        "page.type",
+        { snapshotId: snapshot.snapshotId, ref: input.ref, text: "Never write" },
+        { tabContext },
+      ),
+    ).rejects.toMatchObject({ code: "INVALID_REQUEST" })
+    await expect(page.locator("#clipping-fixture")).toHaveAttribute(
+      "data-clicked",
+      "partial-button",
+    )
+    await expect(page.locator("#clipped-input")).toHaveValue("")
+  } finally {
+    await page.locator("#clipping-fixture").evaluate((fixture) => fixture.remove())
+  }
+})
+
 test("invalidates references on a real MV3 worker restart", async () => {
   const snapshot = (await request("page.listElements", {}, { tabContext })) as {
     snapshotId: string

@@ -92,6 +92,66 @@ describe("element snapshots", () => {
     expect(result.elements.map((e) => e.name)).toEqual(["Fallback"])
   })
 
+  test.each(["#clip", "body"])(
+    "does not discover controls when only ancestor %s is hit",
+    async (selector) => {
+      document.body.innerHTML =
+        '<div id="clip" style="overflow:hidden"><button type="button" aria-label="Clipped button">Go</button><input aria-label="Clipped input"></div>'
+      Object.defineProperty(document, "elementFromPoint", {
+        configurable: true,
+        value: () => document.querySelector(selector),
+      })
+      expect(await discover()).toMatchObject({ elements: [] })
+    },
+  )
+
+  test.each(["click", "type"] as const)(
+    "rejects reference %s if hit testing changes to an ancestor during the worker assertion",
+    async (operation) => {
+      document.body.innerHTML = '<div id="clip"><input aria-label="Target"></div>'
+      const input = document.querySelector("input") as HTMLInputElement
+      Object.defineProperty(document, "elementFromPoint", {
+        configurable: true,
+        value: () => input,
+      })
+      await discover()
+      const clicked = vi.spyOn(input, "click")
+      vi.mocked(chrome.runtime.sendMessage).mockImplementation(async () => {
+        Object.defineProperty(document, "elementFromPoint", {
+          configurable: true,
+          value: () => document.querySelector("#clip"),
+        })
+        return { ok: true }
+      })
+      expect(
+        await executePageOperation(
+          operation,
+          { snapshotId: snapshot.id, ref: "e1", text: "Never write" },
+          true,
+          null,
+          context,
+          snapshot,
+        ),
+      ).toMatchObject({ ok: false, error: { code: "INVALID_REQUEST" } })
+      expect(clicked).not.toHaveBeenCalled()
+      expect(input.value).toBe("")
+    },
+  )
+
+  test("accepts discovered controls hit through a descendant and partially visible controls", async () => {
+    document.body.innerHTML = '<button type="button" aria-label="Partial"><span>Go</span></button>'
+    const button = document.querySelector("button") as HTMLButtonElement
+    Object.defineProperty(document, "elementFromPoint", {
+      configurable: true,
+      value: (x: number, y: number) =>
+        x === 1 && y === 1 ? button.firstElementChild : document.body,
+    })
+    expect(await discover()).toMatchObject({ elements: [{ name: "Partial", ref: "e1" }] })
+    const clicked = vi.spyOn(button, "click")
+    expect(await click()).toMatchObject({ ok: true })
+    expect(clicked).toHaveBeenCalledOnce()
+  })
+
   test("caps names, candidate scanning, result count, and encoded output", async () => {
     document.body.innerHTML = Array.from(
       { length: 60 },
@@ -172,6 +232,30 @@ describe("element snapshots", () => {
     })
     expect(await click()).toMatchObject({ ok: false, error: { code: "STALE_CONTEXT" } })
     expect(clicked).not.toHaveBeenCalled()
+  })
+
+  test("rejects reference typing when a focus handler makes only an ancestor hittable", async () => {
+    document.body.innerHTML = '<input aria-label="Title">'
+    const input = document.querySelector("input") as HTMLInputElement
+    Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => input })
+    await discover()
+    input.addEventListener("focus", () => {
+      Object.defineProperty(document, "elementFromPoint", {
+        configurable: true,
+        value: () => document.body,
+      })
+    })
+    expect(
+      await executePageOperation(
+        "type",
+        { snapshotId: snapshot.id, ref: "e1", text: "Never write" },
+        false,
+        null,
+        context,
+        snapshot,
+      ),
+    ).toMatchObject({ ok: false, error: { code: "STALE_CONTEXT" } })
+    expect(input.value).toBe("")
   })
 
   test("rechecks type and editability after page focus handlers", async () => {

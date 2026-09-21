@@ -106,7 +106,7 @@ export async function executePageOperation(
   }
   const isFailure = (value: Element | PageOperationFailure): value is PageOperationFailure =>
     "ok" in value
-  const isVisible = (element: Element): boolean => {
+  const isVisible = (element: Element, requireTargetHit = false): boolean => {
     if (!(element instanceof HTMLElement)) return false
     const selectedStyle = getComputedStyle(element)
     if (selectedStyle.visibility === "hidden" || selectedStyle.visibility === "collapse") {
@@ -144,7 +144,11 @@ export async function executePageOperation(
       ]
       return points.some(([x, y]) => {
         const hit = document.elementFromPoint(x, y)
-        return Boolean(hit && (element.contains(hit) || hit.contains(element)))
+        // Ancestor hits support legacy nested selectors, but do not prove a discovered control
+        // is reachable: overflow clipping can leave only its ancestor (or body) under the point.
+        return Boolean(
+          hit && (element.contains(hit) || (!requireTargetHit && hit.contains(element))),
+        )
       })
     })
   }
@@ -323,7 +327,7 @@ export async function executePageOperation(
             !(node instanceof HTMLElement) ||
             !node.matches(candidates) ||
             sensitiveControl(node) ||
-            !isVisible(node)
+            !isVisible(node, true)
           )
             continue
           const disabled =
@@ -385,7 +389,7 @@ export async function executePageOperation(
       case "click": {
         const found = findElement()
         if (isFailure(found)) return found
-        if (!(found instanceof HTMLElement) || !isVisible(found)) {
+        if (!(found instanceof HTMLElement) || !isVisible(found, snapshot !== null)) {
           return failure("INVALID_REQUEST", "The selected element is not visible or clickable")
         }
         if (
@@ -467,7 +471,7 @@ export async function executePageOperation(
         ) {
           return failure("PERMISSION_DENIED", `Typing into ${found.type} inputs is disabled`)
         }
-        if (!(found instanceof HTMLElement) || !isVisible(found)) {
+        if (!(found instanceof HTMLElement) || !isVisible(found, snapshot !== null)) {
           return failure("INVALID_REQUEST", "The selected element is not visible or editable")
         }
         if (found instanceof HTMLInputElement) {
@@ -483,7 +487,11 @@ export async function executePageOperation(
           return failure("INVALID_REQUEST", "Selector must target an editable text element")
         }
         found.focus()
-        if (!canType(found) || !isVisible(found) || (snapshot && findElement() !== found))
+        if (
+          !canType(found) ||
+          !isVisible(found, snapshot !== null) ||
+          (snapshot && findElement() !== found)
+        )
           return staleReference()
         if (found instanceof HTMLInputElement || found instanceof HTMLTextAreaElement)
           setNativeValue(found, text)
