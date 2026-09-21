@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, expectTypeOf, test, vi } from "vitest"
 import { parseRuntimeRequest, sendRuntimeRequest } from "../../src/browser/runtime/messages.js"
+import type { ElementTarget } from "../../src/browser/runtime/types.js"
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -14,7 +15,7 @@ describe("internal runtime messages", () => {
       params: { selector: "#x", text: "" },
     })
     if (request.method === "page.type") {
-      expectTypeOf(request.params).toEqualTypeOf<{ selector: string; text: string }>()
+      expectTypeOf(request.params).toEqualTypeOf<ElementTarget & { text: string }>()
     } else if (request.method === "bookmarks.search") {
       expectTypeOf(request.params).toEqualTypeOf<{ query: string; limit: number }>()
     } else if (request.method === "requests.cancel") {
@@ -250,6 +251,47 @@ describe("internal runtime messages", () => {
     complete?.({ ok: true, result: { tabContext: null } })
 
     await expect(pending).rejects.toMatchObject({ code: "REQUEST_CANCELLED" })
+  })
+
+  test("validates exclusive reference targets without changing selectors", () => {
+    const target = { snapshotId: "11111111-1111-1111-1111-111111111111", ref: "e1" }
+    for (const method of ["page.click", "page.type"]) {
+      const request = (params: Record<string, unknown>) => ({
+        kind: "request",
+        requestId: "1",
+        method,
+        params: { ...params, ...(method === "page.type" ? { text: "value" } : {}) },
+      })
+      expect(() => parseRuntimeRequest(request(target))).not.toThrow()
+      for (const invalid of [
+        {},
+        { ref: "e1" },
+        { snapshotId: target.snapshotId },
+        { ...target, selector: "#x" },
+        { ...target, extra: 1 },
+        { ...target, ref: "e0" },
+        { ...target, ref: "e12345678" },
+        { ...target, snapshotId: "x".repeat(37) },
+      ]) {
+        expect(() => parseRuntimeRequest(request(invalid))).toThrow("Malformed")
+      }
+    }
+    expect(() =>
+      parseRuntimeRequest({
+        kind: "request",
+        requestId: "1",
+        method: "page.listElements",
+        params: {},
+      }),
+    ).not.toThrow()
+    expect(() =>
+      parseRuntimeRequest({
+        kind: "request",
+        requestId: "1",
+        method: "page.listElements",
+        params: { limit: 100 },
+      }),
+    ).toThrow("Malformed")
   })
 
   test("rejects prototype-polluting keys", () => {

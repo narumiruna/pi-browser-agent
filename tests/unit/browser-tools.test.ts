@@ -44,6 +44,67 @@ describe("browser agent tools", () => {
     expect(Value.Check(tool.parameters, { ...rest, [key]: "x".repeat(limit + 1) })).toBe(false)
   })
 
+  test("accepts exactly one bounded element target in tool schemas", () => {
+    const tools = createBrowserTools(vi.fn())
+    const reference = { snapshotId: "11111111-1111-1111-1111-111111111111", ref: "e1" }
+    for (const name of ["browser_click", "browser_type"]) {
+      const tool = tools.find((item) => item.name === name)
+      if (!tool) throw new Error(name)
+      const args = (target: object) => ({
+        ...target,
+        ...(name === "browser_type" ? { text: "value" } : {}),
+      })
+      for (const target of [reference, { selector: "#x" }])
+        expect(Value.Check(tool.parameters, args(target))).toBe(true)
+      for (const target of [
+        {},
+        { ref: "e1" },
+        { snapshotId: reference.snapshotId },
+        { ...reference, selector: "#x" },
+        { ...reference, extra: true },
+        { ...reference, ref: "e0" },
+      ])
+        expect(Value.Check(tool.parameters, args(target))).toBe(false)
+    }
+    expect(tools.find((item) => item.name === "browser_list_elements")).toMatchObject({
+      executionMode: "sequential",
+      replay: "safe",
+    })
+  })
+
+  test.each(["decline", "abort", "confirm"])(
+    "preserves reference and context across confirmation %s",
+    async (outcome) => {
+      const tabContext = { tabId: 1, url: "https://example.test/", epoch: 1 }
+      const target = { snapshotId: "11111111-1111-1111-1111-111111111111", ref: "e1" }
+      const signal = new AbortController()
+      const sendMessage = vi.fn(async (message: { method: string; confirmed?: boolean }) => {
+        if (message.method === "app.getState") return { ok: true, result: { tabContext } }
+        if (!message.confirmed)
+          return {
+            ok: false,
+            error: { code: "CONFIRMATION_REQUIRED", message: "Submit?", details: target },
+          }
+        return { ok: false, error: { code: "STALE_CONTEXT", message: "Target changed" } }
+      })
+      vi.stubGlobal("chrome", { runtime: { sendMessage } })
+      const confirm = vi.fn(async () => {
+        if (outcome === "abort") signal.abort()
+        return outcome !== "decline"
+      })
+      const tool = createBrowserTools(confirm).find((item) => item.name === "browser_click")
+      if (!tool) throw new Error("click")
+      await expect(tool.execute("call", target, signal.signal)).rejects.toThrow(
+        outcome === "confirm" ? "Target changed" : outcome === "abort" ? "cancelled" : "declined",
+      )
+      expect(sendMessage).toHaveBeenCalledTimes(outcome === "confirm" ? 3 : 2)
+      if (outcome === "confirm")
+        expect(sendMessage).toHaveBeenLastCalledWith(
+          expect.objectContaining({ params: target, confirmed: true, tabContext }),
+        )
+    },
+  )
+
   test("marks mutating and confirmation-gated tools as never replayable and sequential", () => {
     const tools = createBrowserTools(vi.fn().mockResolvedValue(false))
     for (const name of [

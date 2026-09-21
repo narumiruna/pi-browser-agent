@@ -1,6 +1,12 @@
-import type { JsonObject, JsonValue, TabContext } from "../runtime/types.js"
+import type { ElementSnapshot, JsonObject, JsonValue, TabContext } from "../runtime/types.js"
 
-export type PageOperation = "click" | "getSelection" | "getVisibleText" | "inspectClick" | "type"
+export type PageOperation =
+  | "click"
+  | "getSelection"
+  | "getVisibleText"
+  | "listElements"
+  | "inspectClick"
+  | "type"
 
 export interface PageOperationSuccess {
   ok: true
@@ -16,6 +22,7 @@ export interface PageOperationFailure {
       | "INVALID_REQUEST"
       | "NOT_SUPPORTED"
       | "PERMISSION_DENIED"
+      | "REQUEST_CANCELLED"
       | "STALE_CONTEXT"
     message: string
     details?: JsonObject
@@ -34,7 +41,22 @@ export async function executePageOperation(
   confirmed: boolean,
   trustedLinkTargetUrl: string | null = null,
   expectedContext: TabContext | null = null,
+  snapshot: ElementSnapshot | null = null,
+  requestId: string | null = null,
 ): Promise<PageOperationResult> {
+  type Entry = {
+    element: HTMLElement
+    fingerprint: string
+    form: HTMLFormElement | null
+    labelControl: HTMLElement | null
+  }
+  type Registry = { snapshot: ElementSnapshot; nodes: Map<string, Entry> }
+  const isolated = globalThis as typeof globalThis & { __piChromeElements?: Registry }
+  const staleReference = (): PageOperationFailure =>
+    failure(
+      "STALE_CONTEXT",
+      "Element reference expired or changed; call browser_list_elements again",
+    )
   const success = (result: JsonValue): PageOperationSuccess => ({ ok: true, result })
   const failure = (
     code: PageOperationFailure["error"]["code"],
@@ -49,6 +71,30 @@ export async function executePageOperation(
     return typeof value === "string" && value.length > 0 && value.length <= 2048 ? value : undefined
   }
   const findElement = (): Element | PageOperationFailure => {
+    if ("snapshotId" in params || "ref" in params) {
+      const registry = isolated.__piChromeElements
+      if (
+        "selector" in params ||
+        !snapshot ||
+        !registry ||
+        params.snapshotId !== snapshot.id ||
+        registry.snapshot.id !== snapshot.id ||
+        Date.now() >= snapshot.expiresAt ||
+        JSON.stringify(expectedContext) !== JSON.stringify(snapshot.context) ||
+        JSON.stringify(registry.snapshot.context) !== JSON.stringify(snapshot.context)
+      )
+        return staleReference()
+      const entry = typeof params.ref === "string" ? registry.nodes.get(params.ref) : undefined
+      if (
+        !entry?.element.isConnected ||
+        entry.element.ownerDocument !== document ||
+        entry.form !== formFor(entry.element) ||
+        entry.labelControl !== labelControlFor(entry.element) ||
+        entry.fingerprint !== fingerprint(entry.element)
+      )
+        return staleReference()
+      return entry.element
+    }
     const selector = getSelector()
     if (!selector) return failure("INVALID_REQUEST", "A non-empty CSS selector is required")
     try {
@@ -102,6 +148,114 @@ export async function executePageOperation(
       })
     })
   }
+  const labelControlFor = (element: Element): HTMLElement | null =>
+    element.closest("label")?.control ?? null
+  const sensitiveControl = (element: Element): boolean => {
+    const control = labelControlFor(element)
+    return [element, control].some(
+      (node) => node instanceof HTMLInputElement && ["password", "file"].includes(node.type),
+    )
+  }
+  const formFor = (element: HTMLElement): HTMLFormElement | null => {
+    if (
+      element instanceof HTMLInputElement ||
+      element instanceof HTMLButtonElement ||
+      element instanceof HTMLTextAreaElement ||
+      element instanceof HTMLSelectElement
+    )
+      return element.form
+    return element.closest("form")
+  }
+  const canType = (element: HTMLElement): boolean => {
+    if (element.matches(":disabled") || element.getAttribute("aria-disabled") === "true")
+      return false
+    if (element instanceof HTMLInputElement)
+      return (
+        ["email", "number", "search", "tel", "text", "url"].includes(element.type) &&
+        !element.disabled &&
+        !element.readOnly
+      )
+    if (element instanceof HTMLTextAreaElement) return !element.disabled && !element.readOnly
+    return element.isContentEditable
+  }
+  const visibleText = (element: Element): string => {
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT)
+    let text = ""
+    for (let count = 0; count < 100 && text.length < 256; count++) {
+      const node = walker.nextNode()
+      if (!node) break
+      const parent = node.parentElement
+      if (
+        !parent ||
+        parent.closest(
+          "input, textarea, select, [contenteditable], [hidden], [aria-hidden='true']",
+        ) ||
+        !isVisible(parent)
+      )
+        continue
+      text += ` ${node.textContent?.slice(0, 256) ?? ""}`
+    }
+    return text.replace(/\s+/g, " ").trim().slice(0, 256)
+  }
+  const elementName = (element: HTMLElement): string => {
+    const labelled = (element.getAttribute("aria-labelledby") ?? "")
+      .slice(0, 2048)
+      .split(/\s+/)
+      .slice(0, 8)
+      .map((id) => document.getElementById(id))
+      .filter((node): node is HTMLElement => node !== null)
+      .map(visibleText)
+      .join(" ")
+      .trim()
+    const labels =
+      element instanceof HTMLInputElement ||
+      element instanceof HTMLTextAreaElement ||
+      element instanceof HTMLSelectElement
+        ? Array.from(element.labels ?? [])
+            .slice(0, 8)
+            .map(visibleText)
+            .join(" ")
+            .trim()
+        : ""
+    return (
+      labelled ||
+      element.getAttribute("aria-label") ||
+      labels ||
+      visibleText(element) ||
+      element.getAttribute("placeholder") ||
+      ""
+    )
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, snapshot?.limits.name ?? 256)
+  }
+  const fingerprint = (element: HTMLElement): string => {
+    const anchor = element.closest("a")
+    const form = formFor(element)
+    return JSON.stringify([
+      element.tagName,
+      elementName(element),
+      element.getAttribute("role"),
+      element.getAttribute("type"),
+      element.getAttribute("disabled"),
+      element.getAttribute("readonly"),
+      element.getAttribute("aria-disabled"),
+      element.isContentEditable,
+      anchor?.href,
+      anchor?.getAttribute("download"),
+      anchor?.getAttribute("target"),
+      form?.action,
+      form?.method,
+      form?.target,
+      element.getAttribute("formaction"),
+      element.getAttribute("formmethod"),
+      element.getAttribute("formtarget"),
+    ])
+  }
+  const targetResult = (): JsonObject =>
+    typeof params.ref === "string"
+      ? { snapshotId: String(params.snapshotId), ref: params.ref }
+      : { selector: getSelector() ?? "" }
   const setNativeValue = (element: HTMLInputElement | HTMLTextAreaElement, value: string): void => {
     const prototype =
       element instanceof HTMLInputElement
@@ -125,15 +279,90 @@ export async function executePageOperation(
       const assertion = (await chrome.runtime.sendMessage({
         kind: "assert-current-mutation-target",
         tabContext: expectedContext,
-      })) as { ok?: boolean; error?: { message?: string } } | undefined
+        requestId,
+        snapshotId: snapshot?.id,
+      })) as { ok?: boolean; error?: { code?: string; message?: string } } | undefined
       if (!assertion?.ok) {
         return failure(
-          "STALE_CONTEXT",
+          assertion?.error?.code === "REQUEST_CANCELLED"
+            ? "REQUEST_CANCELLED"
+            : assertion?.error?.code === "PERMISSION_DENIED"
+              ? "PERMISSION_DENIED"
+              : "STALE_CONTEXT",
           assertion?.error?.message ?? "The page is no longer in the focused browser window",
         )
       }
     }
     switch (operation) {
+      case "listElements": {
+        if (!snapshot || !expectedContext)
+          return failure("INVALID_REQUEST", "A snapshot context is required")
+        const registry: Registry = { snapshot, nodes: new Map() }
+        isolated.__piChromeElements = registry
+        const result: { snapshotId: string; elements: JsonObject[]; truncated: boolean } = {
+          snapshotId: snapshot.id,
+          elements: [],
+          truncated: false,
+        }
+        const walker = document.createTreeWalker(
+          document.body ?? document.documentElement,
+          NodeFilter.SHOW_ELEMENT,
+        )
+        const candidates =
+          "a[href], button, input, textarea, select, [contenteditable], [role='button'], [role='link'], [role='textbox']"
+        let count = 0
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+          if (
+            ++count > snapshot.limits.candidates ||
+            result.elements.length >= snapshot.limits.results
+          ) {
+            result.truncated = true
+            break
+          }
+          if (
+            !(node instanceof HTMLElement) ||
+            !node.matches(candidates) ||
+            sensitiveControl(node) ||
+            !isVisible(node)
+          )
+            continue
+          const disabled =
+            node.matches(":disabled") || node.getAttribute("aria-disabled") === "true"
+          const ref = `e${result.elements.length + 1}`
+          const entry: JsonObject = {
+            ref,
+            name: elementName(node),
+            tag: node.tagName.toLowerCase(),
+            role: (node.getAttribute("role") ?? "").slice(0, snapshot.limits.role),
+            type:
+              node instanceof HTMLInputElement || node instanceof HTMLButtonElement
+                ? node.type
+                : "",
+            disabled,
+            readOnly:
+              node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement
+                ? node.readOnly
+                : false,
+            actions: disabled ? [] : canType(node) ? ["click", "type"] : ["click"],
+          }
+          result.elements.push(entry)
+          if (
+            new TextEncoder().encode(JSON.stringify(result, null, 2)).byteLength >
+            snapshot.limits.bytes
+          ) {
+            result.elements.pop()
+            result.truncated = true
+            break
+          }
+          registry.nodes.set(ref, {
+            element: node,
+            fingerprint: fingerprint(node),
+            form: formFor(node),
+            labelControl: labelControlFor(node),
+          })
+        }
+        return success(result)
+      }
       case "getVisibleText": {
         const text = document.body?.innerText ?? ""
         return success({
@@ -159,6 +388,12 @@ export async function executePageOperation(
         if (!(found instanceof HTMLElement) || !isVisible(found)) {
           return failure("INVALID_REQUEST", "The selected element is not visible or clickable")
         }
+        if (
+          sensitiveControl(found) ||
+          found.matches(":disabled") ||
+          found.getAttribute("aria-disabled") === "true"
+        )
+          return failure("PERMISSION_DENIED", "The selected control is sensitive or disabled")
 
         const anchor = found.closest("a")
         const label = found.closest("label")
@@ -196,7 +431,7 @@ export async function executePageOperation(
             "This click may submit a form, download a file, or navigate across origins",
             {
               action: "click",
-              selector: getSelector() ?? "",
+              ...targetResult(),
               ...(anchor instanceof HTMLAnchorElement ? { targetUrl: anchor.href } : {}),
             },
           )
@@ -214,10 +449,10 @@ export async function executePageOperation(
           return failure("PERMISSION_DENIED", "The cross-origin link target was not authorized")
         }
         if (crossOrigin && !nativeDownload) {
-          return success({ clicked: true, navigationAllowed: true, selector: getSelector() ?? "" })
+          return success({ clicked: true, navigationAllowed: true, ...targetResult() })
         }
         found.click()
-        return success({ clicked: true, selector: getSelector() ?? "" })
+        return success({ clicked: true, ...targetResult() })
       }
       case "type": {
         const found = findElement()
@@ -240,23 +475,22 @@ export async function executePageOperation(
           if (!editableTypes.has(found.type) || found.disabled || found.readOnly) {
             return failure("PERMISSION_DENIED", `Input type ${found.type} is not editable`)
           }
-          found.focus()
-          setNativeValue(found, text)
         } else if (found instanceof HTMLTextAreaElement) {
           if (found.disabled || found.readOnly) {
             return failure("PERMISSION_DENIED", "The text area is disabled or read-only")
           }
-          found.focus()
-          setNativeValue(found, text)
-        } else if (found instanceof HTMLElement && found.isContentEditable) {
-          found.focus()
-          found.textContent = text
-        } else {
+        } else if (!found.isContentEditable) {
           return failure("INVALID_REQUEST", "Selector must target an editable text element")
         }
+        found.focus()
+        if (!canType(found) || !isVisible(found) || (snapshot && findElement() !== found))
+          return staleReference()
+        if (found instanceof HTMLInputElement || found instanceof HTMLTextAreaElement)
+          setNativeValue(found, text)
+        else found.textContent = text
         found.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }))
         found.dispatchEvent(new Event("change", { bubbles: true }))
-        return success({ selector: getSelector() ?? "", typed: true })
+        return success({ ...targetResult(), typed: true })
       }
     }
   } catch (error) {

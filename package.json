@@ -33,6 +33,8 @@
   "dependencies": {
     "@earendil-works/pi-agent-core": "^0.85.1",
     "@earendil-works/pi-ai": "^0.85.1",
+    "dompurify": "3.4.15",
+    "marked": "18.0.13",
     "typebox": "^1.3.31"
   },
   "devDependencies": {

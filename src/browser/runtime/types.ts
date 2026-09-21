@@ -9,6 +9,25 @@ export interface TabContext {
   epoch: number
 }
 
+export type ElementTarget = { selector: string } | { snapshotId: string; ref: string }
+
+export const ELEMENT_LIMITS = {
+  results: 50,
+  candidates: 2000,
+  name: 256,
+  role: 64,
+  // Reserve space for the untrusted wrapper and pretty-printed JSON.
+  bytes: 48 * 1024,
+  lifetimeMs: 5 * 60 * 1000,
+} as const
+
+export interface ElementSnapshot {
+  id: string
+  expiresAt: number
+  context: TabContext
+  limits: typeof ELEMENT_LIMITS
+}
+
 export type RuntimeErrorCode =
   | "CONFIRMATION_REQUIRED"
   | "INTERNAL_ERROR"

@@ -42,6 +42,12 @@ The configured model, active conversation model, and Settings draft selection ar
 
 Closing the panel aborts the active agent. Complete messages and tool results are persisted at event barriers. Shutdown retains its final save after the end listener: it can recover a failed listener save and mark a run interrupted if closing raced with an idle save. The session lease is released only after that final save attempt. A record left in `running` state is changed to `interrupted` on the next startup and is never continued automatically.
 
+### Message presentation
+
+`src/browser/sidepanel/message-rendering.ts` owns transcript presentation and volatile, active-session-scoped view state. Message identity uses role, timestamp, tool-result call ID, and a collision index; content-block positions identify disclosures across partial and completed responses. Unchanged message nodes remain attached, while updated disclosures retain their existing nodes and open state. Image blocks reuse validated image nodes across streaming updates. The renderer restores focused controls and preserves reader scroll position unless already near the bottom. Switching sessions discards view state.
+
+`src/browser/sidepanel/markdown.ts` is the single untrusted-HTML boundary: bundled Marked parses assistant prose with raw HTML escaped and image syntax reduced to text; DOMPurify allows only required presentation tags/attributes. A final URL check permits only absolute HTTP(S) links without embedded credentials. No remote image or script is loaded. Code and answer copy controls run only on user gesture and report clipboard failure. User/tool/thinking content uses `textContent`; raw messages, session storage, and model transport never contain rendered HTML or disclosure state.
+
 ### Service worker
 
 The worker owns current-tab tracking, the selection context menu, injected DOM operations, screenshots, navigation, the read-only bookmark adapter, and the WebMCP adapter. It follows tab activation and focused-window changes, clears the target for unsupported pages, and revalidates the visible tab before every page operation. The Side Panel requests optional host, screenshot, or bookmark permissions directly from the corresponding user gesture; the worker verifies those grants before protected operations. Ordinary host checks require both Chrome permission and the app-approved exact-origin list, so screenshot `<all_urls>` access cannot independently authorize a new destination. Screenshot capture requires the optional `<all_urls>` grant because Chrome's temporary `activeTab` access does not follow tab switches, but the worker still accepts only the active visible HTTP(S) context. It accepts only the methods and JSON shapes listed in `src/browser/runtime/messages.ts`. Page operations compare their captured tab ID, URL, and context epoch with the current context; profile-scoped bookmark reads reject a tab context and are independently confirmation- and permission-gated.
@@ -51,6 +57,12 @@ The worker owns current-tab tracking, the selection context menu, injected DOM o
 ### Injected operations
 
 `chrome.scripting.executeScript` executes fixed functions from the extension bundle. No arbitrary JavaScript is accepted. Injected functions receive operation names and JSON arguments, never provider credentials or session transcripts.
+
+`page.listElements` scans at most 2,000 top-frame DOM elements and returns at most 50 viewport-visible controls. Names use visible `aria-labelledby` text, `aria-label`, associated labels, visible non-editable text, then placeholder, capped at 256 characters; role text is capped at 64 characters. Password/file controls and associated labels are excluded; values, editable text, and full HTML are not collected. Traversal and name lookup are bounded. Structured discovery JSON is capped at 48 KB, reserving space within the 50 KB final untrusted tool-text budget.
+
+Each discovery creates one random-ID snapshot. The isolated world stores actual DOM nodes, action metadata fingerprints, and form identity; page scripts cannot access this registry. The worker retains only volatile snapshot metadata tied to the exact tab context. Snapshot expiry is five minutes. A new discovery replaces the old snapshot; navigation, activation, and focus events invalidate worker metadata synchronously so competing asynchronous tab refreshes cannot keep an old reference alive. Worker restart also discards metadata.
+
+Click/type accept either the legacy selector or both `snapshotId` and `ref`, never a mixture. The worker checks snapshot freshness before injection and again in the final mutation-target assertion, together with permissions and cancellation. The injected operation rejects detached/replaced nodes and changed action metadata, and rechecks visibility/editability. Focus-triggered control changes are revalidated before typing. Link inspection and the confirmed action resolve the same reference and retain destination-permission checks. References in persisted transcripts are historical only; there is no fallback selector or mutation replay.
 
 ## Data flow
 

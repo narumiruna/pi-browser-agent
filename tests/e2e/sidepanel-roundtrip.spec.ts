@@ -22,7 +22,7 @@ function startFixture(): Promise<{ port: number; server: Server }> {
       <title>Pi Chrome fixture</title>
       <main>
         <h1>Visible browser text</h1>
-        <input id="title" type="text">
+        <input id="title" type="text" aria-label="Title">
         <input id="password" type="password">
         <button id="ordinary" type="button">Click</button>
         <a id="download" href="data:text/plain,hello" download="hello.txt">Download</a>
@@ -272,6 +272,83 @@ test.afterAll(async () => {
   await new Promise<void>((resolvePromise, reject) =>
     fixture?.server.close((error) => (error ? reject(error) : resolvePromise())),
   )
+})
+
+test("discovers isolated node references and fails closed across replacement and tab lifecycle", async () => {
+  const discover = async () =>
+    (await request("page.listElements", {}, { tabContext })) as unknown as {
+      snapshotId: string
+      elements: Array<{ ref: string; name: string; type: string }>
+    }
+  let snapshot = await discover()
+  expect(snapshot.elements.some((element) => element.type === "password")).toBe(false)
+  expect(await page.evaluate(() => "__piChromeElements" in globalThis)).toBe(false)
+  const title = snapshot.elements.find((element) => element.name === "Title")
+  const click = snapshot.elements.find((element) => element.name === "Click")
+  if (!title || !click) throw new Error("Missing discovered fixture controls")
+  await request(
+    "page.type",
+    { snapshotId: snapshot.snapshotId, ref: title.ref, text: "By reference" },
+    { tabContext },
+  )
+  await request("page.click", { snapshotId: snapshot.snapshotId, ref: click.ref }, { tabContext })
+  await expect(page.locator("#title")).toHaveValue("By reference")
+  await expect(page.locator("#result")).toHaveText("clicked")
+  await page.evaluate(() => {
+    const button = document.querySelector("#ordinary")
+    if (button) button.replaceWith(button.cloneNode(true))
+  })
+  await expect(
+    request("page.click", { snapshotId: snapshot.snapshotId, ref: click.ref }, { tabContext }),
+  ).rejects.toMatchObject({ code: "STALE_CONTEXT" })
+  snapshot = await discover()
+  await page.reload()
+  tabContext = await waitForCurrentTab(page.url())
+  await expect(
+    request("page.click", { snapshotId: snapshot.snapshotId, ref: "e1" }, { tabContext }),
+  ).rejects.toMatchObject({ code: "STALE_CONTEXT" })
+  snapshot = await discover()
+  const second = await context.newPage()
+  await second.goto(`http://127.0.0.1:${fixture.port}/second`)
+  await second.bringToFront()
+  await waitForCurrentTab(second.url())
+  await second.close()
+  await page.bringToFront()
+  tabContext = await waitForCurrentTab(page.url())
+  await expect(
+    request("page.click", { snapshotId: snapshot.snapshotId, ref: "e1" }, { tabContext }),
+  ).rejects.toMatchObject({ code: "STALE_CONTEXT" })
+})
+
+test("invalidates references on a real MV3 worker restart", async () => {
+  const snapshot = (await request("page.listElements", {}, { tabContext })) as {
+    snapshotId: string
+  }
+  const cdp = await context.browser()?.newBrowserCDPSession()
+  if (!cdp) throw new Error("No browser CDP session")
+  try {
+    const targets = await cdp.send("Target.getTargets")
+    const target = targets.targetInfos.find(
+      (target) => target.type === "service_worker" && target.url === worker.url(),
+    )
+    if (!target) throw new Error("No service worker target")
+    await worker.evaluate(() => {
+      ;(globalThis as typeof globalThis & { restartProbe?: boolean }).restartProbe = true
+    })
+    await cdp.send("Target.closeTarget", { targetId: target.targetId })
+    await request("app.getState")
+    expect(
+      await worker.evaluate(
+        () => (globalThis as typeof globalThis & { restartProbe?: boolean }).restartProbe,
+      ),
+    ).toBeUndefined()
+    tabContext = await waitForCurrentTab(page.url())
+    await expect(
+      request("page.click", { snapshotId: snapshot.snapshotId, ref: "e1" }, { tabContext }),
+    ).rejects.toMatchObject({ code: "STALE_CONTEXT" })
+  } finally {
+    await cdp.detach().catch(() => undefined)
+  }
 })
 
 test("loads the Side Panel without uncaught errors", async () => {
@@ -1383,6 +1460,325 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
   await page.goto(`http://127.0.0.1:${fixture.port}/`)
   await page.bringToFront()
   tabContext = await waitForCurrentTab(`http://127.0.0.1:${fixture.port}/`)
+})
+
+async function prepareFeatureSession(): Promise<void> {
+  await controller.evaluate(async () => {
+    const access = `e30.${btoa(JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "test-account" } }))}.signature`
+    const stored = await chrome.storage.local.get("piChromeSettings")
+    await chrome.storage.local.set({
+      piChromeCredentialsV1: {
+        "openai-codex": {
+          type: "oauth",
+          access,
+          refresh: "test-refresh",
+          expires: Date.now() + 3_600_000,
+          accountId: "test-account",
+        },
+      },
+      piChromeSettings: {
+        ...(stored.piChromeSettings as Record<string, unknown> | undefined),
+        modelProvider: "openai-codex",
+        modelId: "gpt-5.6-terra",
+      },
+      piChromeApprovedHostPermissions: [
+        "http://127.0.0.1/*",
+        "https://auth.openai.com/*",
+        "https://chatgpt.com/*",
+      ],
+    })
+  })
+  await controller.reload()
+  await expect(controller.locator("#auth-status")).toHaveText(
+    "OpenAI Codex configured with an account",
+  )
+  await controller.locator("#new-session").click()
+  await page.bringToFront()
+  tabContext = await waitForCurrentTab(page.url())
+}
+
+test("feeds actual discovered references back through mocked model tools and confirmations", async () => {
+  await prepareFeatureSession()
+  const url = "https://chatgpt.com/backend-api/codex/responses"
+  let turn = 0
+  let snapshot: { snapshotId: string; elements: Array<{ name: string; ref: string }> } | undefined
+  function findSnapshot(value: unknown): typeof snapshot {
+    if (typeof value === "string" && value.startsWith("[Untrusted browser element descriptions"))
+      return JSON.parse(value.slice(value.indexOf("\n") + 1))
+    if (value && typeof value === "object")
+      for (const item of Object.values(value)) {
+        const found = findSnapshot(item)
+        if (found) return found
+      }
+    return undefined
+  }
+  const target = (name: string) => {
+    const element = snapshot?.elements.find((element) => element.name === name)
+    if (!snapshot || !element) throw new Error(`Missing discovered ${name}`)
+    return { snapshotId: snapshot.snapshotId, ref: element.ref }
+  }
+  await context.route(url, async (route) => {
+    const input = route.request().postDataJSON()
+    snapshot ??= findSnapshot(input)
+    const index = turn++
+    const body =
+      index === 0
+        ? toolCall(100, "browser_list_elements", {})
+        : index === 1
+          ? toolCall(101, "browser_type", { ...target("Title"), text: "Model reference" })
+          : index === 2
+            ? toolCall(102, "browser_click", target("Click"))
+            : index === 3 || index === 4
+              ? toolCall(100 + index, "browser_click", target("Submit"))
+              : finalText(105, "# Reference round trip\n\nDone.")
+    await route.fulfill({ status: 200, contentType: "text/event-stream", body })
+  })
+  try {
+    await controller
+      .locator("#prompt")
+      .fill("Discover, fill and click. Test cancelling then approving submit.")
+    await controller.locator("#send").click()
+    await expect(controller.locator("#confirm-dialog")).toBeVisible()
+    await expect(page.locator("#title")).toHaveValue("Model reference")
+    await expect(page.locator("#result")).toHaveText("clicked")
+    await controller.locator('#confirm-dialog button[value="cancel"]').click()
+    await expect(controller.locator("#confirm-dialog")).toBeVisible()
+    await expect(page.locator("#result")).toHaveText("clicked")
+    await controller.locator('#confirm-dialog button[value="confirm"]').click()
+    await expect(controller.locator("#transcript h1")).toHaveText("Reference round trip")
+    await expect(page.locator("#result")).toHaveText("submitted")
+    expect(turn).toBe(6)
+  } finally {
+    await context.unroute(url)
+  }
+})
+
+test("preserves streamed Markdown disclosures, focus, scroll, copying and safe restored content", async () => {
+  await prepareFeatureSession()
+  const external: string[] = []
+  const trackRequest = (request: import("@playwright/test").Request) => {
+    if (request.url().includes("render-probe.invalid")) external.push(request.url())
+  }
+  context.on("request", trackRequest)
+  const wideTable = `|${" Header |".repeat(20)}\n|${" --- |".repeat(20)}\n|${" cell |".repeat(20)}`
+  const initial = `# Streamed answer\n\n${"Paragraph of safe text.\n\n".repeat(25)}| A | B |\n| - | - |\n| one | two |\n\n${wideTable}\n\n[safe](http://127.0.0.1:${fixture.port}/second)\n\n<script>globalThis.renderPwned = true</script>\n\n![pixel](https://render-probe.invalid/pixel)\n\n[bad](javascript:alert(1))\n\n\`\`\`ts\nconst text = "<tag>"`
+  const tail = `\n${"long_identifier_".repeat(100)}\n\`\`\`\n\nFinished.`
+  await controller.evaluate(() => {
+    type StreamState = {
+      send: (event: unknown) => void
+      close: () => void
+      restore: () => void
+      copied: string[]
+    }
+    const original = window.fetch
+    const copied: string[] = []
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => {
+          copied.push(text)
+        },
+      },
+    })
+    window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (!String(input).includes("chatgpt.com/backend-api/codex/responses"))
+        return original(input, init)
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(stream) {
+            const state: StreamState = {
+              send: (event) =>
+                stream.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`)),
+              close: () => stream.close(),
+              restore: () => {
+                window.fetch = original
+              },
+              copied,
+            }
+            ;(window as typeof window & { featureStream?: StreamState }).featureStream = state
+          },
+        }),
+        { headers: { "content-type": "text/event-stream" } },
+      )
+    }) as typeof fetch
+  })
+  const sendEvents = async (events: unknown[], close = false) =>
+    controller.evaluate(
+      ({ events, close }) => {
+        const stream = (
+          window as typeof window & {
+            featureStream?: { send: (event: unknown) => void; close: () => void }
+          }
+        ).featureStream
+        if (!stream) throw new Error("No mock stream")
+        for (const event of events) stream.send(event)
+        if (close) stream.close()
+      },
+      { events, close },
+    )
+  try {
+    await controller.locator("#prompt").fill("Render the stream safely")
+    await controller.locator("#send").click()
+    await expect.poll(() => controller.evaluate(() => "featureStream" in window)).toBe(true)
+    await sendEvents([
+      {
+        type: "response.output_item.added",
+        output_index: 0,
+        item: { id: "thinking", type: "reasoning", summary: [] },
+      },
+      { type: "response.reasoning_summary_text.delta", output_index: 0, delta: "Thinking safely" },
+      {
+        type: "response.output_item.added",
+        output_index: 1,
+        item: { id: "answer", type: "message", role: "assistant", content: [] },
+      },
+      { type: "response.output_text.delta", output_index: 1, delta: initial },
+    ])
+    await expect(controller.locator("#transcript h1")).toHaveText("Streamed answer")
+    const thinking = controller.locator("#transcript details.thinking")
+    await expect(thinking).toHaveJSProperty("open", false)
+    const summary = thinking.locator("summary")
+    await summary.focus()
+    await summary.press("Enter")
+    await expect(thinking).toHaveJSProperty("open", true)
+    await controller.locator("#transcript").evaluate((element) => {
+      element.scrollTop = 10
+    })
+    const scrollTop = await controller
+      .locator("#transcript")
+      .evaluate((element) => element.scrollTop)
+    await sendEvents([{ type: "response.output_text.delta", output_index: 1, delta: tail }])
+    await expect(controller.locator("#transcript")).toContainText("Finished.")
+    await expect(thinking).toHaveJSProperty("open", true)
+    await expect(summary).toBeFocused()
+    expect(
+      await controller.locator("#transcript").evaluate((element) => element.scrollTop),
+    ).toBeCloseTo(scrollTop, 0)
+    const output = [
+      {
+        id: "thinking",
+        type: "reasoning",
+        summary: [{ type: "summary_text", text: "Thinking safely" }],
+      },
+      {
+        id: "answer",
+        type: "message",
+        role: "assistant",
+        content: [{ type: "output_text", text: initial + tail, annotations: [] }],
+      },
+    ]
+    await sendEvents(
+      [
+        ...output.map((item, output_index) => ({
+          type: "response.output_item.done",
+          output_index,
+          item,
+        })),
+        {
+          type: "response.completed",
+          response: {
+            id: "streamed",
+            status: "completed",
+            output,
+            usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+          },
+        },
+      ],
+      true,
+    )
+    await expect(controller.locator("#run-status")).toHaveText("Ready")
+    await expect(summary).toBeFocused()
+    await expect(thinking).toHaveJSProperty("open", true)
+    await controller.getByRole("button", { name: "Copy answer", exact: true }).click()
+    expect(
+      await controller.evaluate(
+        () =>
+          (window as typeof window & { featureStream?: { copied: string[] } }).featureStream
+            ?.copied,
+      ),
+    ).toEqual([initial + tail])
+    await controller.getByRole("button", { name: "Copy code", exact: true }).click()
+    expect(
+      await controller.evaluate(() =>
+        (
+          window as typeof window & { featureStream?: { copied: string[] } }
+        ).featureStream?.copied.at(-1),
+      ),
+    ).toBe(`const text = "<tag>"\n${"long_identifier_".repeat(100)}`)
+    await controller.evaluate(() =>
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: {
+          writeText: async () => {
+            throw new Error("Denied")
+          },
+        },
+      }),
+    )
+    await controller.getByRole("button", { name: "Copy answer", exact: true }).click()
+    await expect(controller.getByRole("button", { name: "Copy answer", exact: true })).toHaveText(
+      "Copy failed",
+    )
+    for (const width of [320, 360])
+      for (const size of [12, 24])
+        for (const colorScheme of ["light", "dark"] as const) {
+          await controller.setViewportSize({ width, height: 720 })
+          await controller.emulateMedia({ colorScheme })
+          await controller.evaluate((size) => {
+            document.documentElement.style.setProperty("--app-font-size", `${size}px`)
+          }, size)
+          expect(
+            await controller.evaluate(
+              () => document.documentElement.scrollWidth <= window.innerWidth,
+            ),
+          ).toBe(true)
+          expect(
+            await controller
+              .locator("#transcript pre")
+              .evaluate((element) => element.scrollWidth > element.clientWidth),
+          ).toBe(true)
+          expect(
+            await controller
+              .locator("#transcript .table-scroll")
+              .last()
+              .evaluate((element) => element.scrollWidth > element.clientWidth),
+          ).toBe(true)
+        }
+    expect(external).toEqual([])
+    expect(await controller.evaluate(() => "renderPwned" in globalThis)).toBe(false)
+    await expect(
+      controller.locator(
+        "#transcript script, #transcript iframe, #transcript img, #transcript a[href^='javascript:']",
+      ),
+    ).toHaveCount(0)
+    await controller.reload()
+    await expect(controller.locator("#transcript h1")).toHaveText("Streamed answer")
+    await expect(controller.locator("#transcript details.thinking")).toHaveJSProperty("open", false)
+    await expect(
+      controller.locator("#transcript script, #transcript img, #transcript a[href^='javascript:']"),
+    ).toHaveCount(0)
+    expect(external).toEqual([])
+    const popupPromise = context.waitForEvent("page")
+    await controller.getByRole("link", { name: "safe", exact: true }).click()
+    const popup = await popupPromise
+    await popup.waitForLoadState()
+    expect(await popup.evaluate(() => window.opener)).toBeNull()
+    expect(await popup.evaluate(() => document.referrer)).toBe("")
+    await popup.close()
+    await page.bringToFront()
+    tabContext = await waitForCurrentTab(page.url())
+  } finally {
+    context.off("request", trackRequest)
+    await controller
+      .evaluate(() =>
+        (
+          window as typeof window & { featureStream?: { restore: () => void } }
+        ).featureStream?.restore(),
+      )
+      .catch(() => undefined)
+    await controller.setViewportSize({ width: 654, height: 720 })
+    await controller.emulateMedia({ colorScheme: "light" })
+  }
 })
 
 test("confirms and returns bounded bookmark data through a mocked model call", async () => {

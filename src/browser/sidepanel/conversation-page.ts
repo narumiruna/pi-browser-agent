@@ -1,5 +1,4 @@
 import type { AgentEvent, AgentMessage } from "@earendil-works/pi-agent-core"
-import type { ImageContent } from "@earendil-works/pi-ai"
 import { BrowserAgentRuntime } from "../agent/runtime.js"
 import { safeErrorMessage } from "../auth/redaction.js"
 import {
@@ -21,90 +20,13 @@ import {
   type PastedImage,
   readPastedImage,
 } from "./images.js"
+import { TranscriptRenderer } from "./message-rendering.js"
 import { applyAppearance, element, run, setErrorOutput } from "./ui.js"
 import {
   createVoiceInput,
   getMicrophonePermissionState,
   type VoiceInputController,
 } from "./voice-input.js"
-
-function appendTextContent(container: HTMLElement, text: string): void {
-  const block = document.createElement("span")
-  block.className = "content-text"
-  block.textContent = text
-  container.append(block)
-}
-
-export function renderMessageContent(
-  container: HTMLElement,
-  message: AgentMessage,
-  renderedImages: WeakMap<ImageContent, HTMLImageElement> = new WeakMap(),
-): { hasImage: boolean; roleLabel: string; text: string; toolCall: boolean } {
-  let hasImage = false
-  let toolCall = false
-  let text: string
-
-  if (!("content" in message)) {
-    text = JSON.stringify(message)
-    appendTextContent(container, text)
-  } else if (typeof message.content === "string") {
-    text = message.content
-    appendTextContent(container, text)
-  } else if (!Array.isArray(message.content)) {
-    text = JSON.stringify(message.content)
-    appendTextContent(container, text)
-  } else {
-    const textParts: string[] = []
-    for (const item of message.content) {
-      if (item.type === "image") {
-        hasImage = true
-        textParts.push(`[image: ${item.mimeType}]`)
-        let image = renderedImages.get(item)
-        if (!image) {
-          const source = imageContentSource(item)
-          if (!source) {
-            appendTextContent(container, `[image unavailable: ${item.mimeType}]`)
-            continue
-          }
-          image = document.createElement("img")
-          image.className = "message-image"
-          image.src = source
-          image.alt = message.role === "user" ? "Pasted image" : "Image result"
-          image.loading = "lazy"
-          image.decoding = "async"
-          renderedImages.set(item, image)
-        }
-        container.append(image)
-      } else if (item.type === "text") {
-        textParts.push(item.text)
-        if (item.text) appendTextContent(container, item.text)
-      } else if (item.type === "toolCall") {
-        toolCall = message.role === "assistant"
-        const value = `[tool call: ${item.name}]\n${JSON.stringify(item.arguments, null, 2)}`
-        textParts.push(value)
-        appendTextContent(container, value)
-      } else if (item.type === "thinking") {
-        textParts.push(item.thinking)
-        appendTextContent(container, item.thinking)
-      } else {
-        textParts.push("[content]")
-        appendTextContent(container, "[content]")
-      }
-    }
-    text = textParts.join("\n")
-  }
-
-  const roleLabel = toolCall
-    ? "Tool call"
-    : message.role === "user"
-      ? "You"
-      : message.role === "assistant"
-        ? "Pi"
-        : message.role === "toolResult"
-          ? "Tool result"
-          : message.role
-  return { hasImage, roleLabel, text, toolCall }
-}
 
 export async function initializeConversationPage(params: URLSearchParams): Promise<void> {
   const settingsContextId = params.get("source") ?? crypto.randomUUID()
@@ -123,7 +45,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   const pastedImages = element<HTMLElement>("pasted-images")
   const voiceButton = element<HTMLButtonElement>("voice-input")
   const voiceStatus = element<HTMLElement>("voice-status")
-  const renderedImages = new WeakMap<ImageContent, HTMLImageElement>()
+  const transcriptRenderer = new TranscriptRenderer(transcript)
   const setError = (error?: unknown): void => setErrorOutput(errorOutput, error)
   let activeSubmissionGuard: object | undefined
   let pendingPasteOperations = 0
@@ -233,8 +155,8 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   }
 
   function renderMessages(streaming?: AgentMessage): void {
-    transcript.replaceChildren()
     const messages = [...runtime.agent.state.messages, ...(streaming ? [streaming] : [])]
+    transcriptRenderer.render(messages, runtime.activeSession.id)
     if (messages.length === 0) {
       const emptyState = document.createElement("div")
       emptyState.className = "empty-state"
@@ -251,30 +173,6 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       transcript.append(emptyState)
       return
     }
-    for (const message of messages) {
-      const content = document.createElement("span")
-      content.className = "content"
-      const rendered = renderMessageContent(content, message, renderedImages)
-      const toolMessage = rendered.toolCall || message.role === "toolResult"
-      const article = document.createElement(toolMessage ? "details" : "article")
-      article.className = `message ${message.role}${rendered.toolCall ? " toolCall" : ""}`
-      const role = document.createElement("span")
-      role.className = "role"
-      role.textContent = rendered.roleLabel
-      if (article instanceof HTMLDetailsElement) {
-        const summary = document.createElement("summary")
-        const preview = document.createElement("span")
-        preview.className = "tool-preview"
-        preview.textContent = rendered.text.split("\n", 1)[0]?.replace(/^\[|\]$/g, "") ?? "Details"
-        summary.append(role, preview)
-        article.open = /^error\b/i.test(rendered.text) || rendered.hasImage
-        article.append(summary, content)
-      } else {
-        article.append(role, content)
-      }
-      transcript.append(article)
-    }
-    transcript.scrollTop = transcript.scrollHeight
   }
 
   async function refreshSessions(): Promise<void> {
