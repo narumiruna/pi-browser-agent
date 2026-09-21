@@ -403,6 +403,300 @@ test("excludes ancestor-clipped controls and rejects references clipped after di
   }
 })
 
+test("excludes filter-transparent references and rechecks visibility before click and typing", async () => {
+  await page.evaluate(() => {
+    const fixture = document.createElement("div")
+    fixture.id = "filter-fixture"
+    fixture.style.cssText =
+      "position:fixed;left:50px;top:250px;width:600px;height:180px;z-index:1000;background:white"
+    fixture.innerHTML = `<div id="filter-controls">
+      <button id="filter-button" type="button" aria-label="Filtered button">Button</button>
+      <input id="filter-input" aria-label="Filtered input">
+    </div>
+    <div style="filter:opacity(0)"><span id="filter-label">Invisible label</span></div>
+    <button type="button" aria-labelledby="filter-label" aria-label="Visible filter fallback">Answer</button>`
+    fixture.dataset.clicks = "0"
+    fixture.dataset.inputs = "0"
+    fixture.querySelector("#filter-button")?.addEventListener("click", () => {
+      fixture.dataset.clicks = String(Number(fixture.dataset.clicks) + 1)
+    })
+    fixture.querySelector("#filter-input")?.addEventListener("input", () => {
+      fixture.dataset.inputs = String(Number(fixture.dataset.inputs) + 1)
+    })
+    document.body.append(fixture)
+  })
+  const discover = async () =>
+    (await request("page.listElements", {}, { tabContext })) as unknown as {
+      snapshotId: string
+      elements: Array<{ ref: string; name: string }>
+    }
+  try {
+    for (const filter of [
+      "opacity(0)",
+      "opacity(0%)",
+      "blur(1px) opacity(0) contrast(2)",
+      "opacity(calc(1 - 1))",
+    ]) {
+      for (const selector of ["#filter-controls", "#filter-button, #filter-input"]) {
+        await page.evaluate(
+          ({ filter, selector }) => {
+            for (const element of document.querySelectorAll<HTMLElement>(
+              "#filter-controls, #filter-button, #filter-input",
+            ))
+              element.style.filter = element.matches(selector) ? filter : "none"
+          },
+          { filter, selector },
+        )
+        expect(
+          await page.locator("#filter-input").evaluate((input, selector) => {
+            const rect = input.getBoundingClientRect()
+            const filtered = document.querySelector(selector) as HTMLElement
+            return {
+              opacity: getComputedStyle(filtered).opacity,
+              filter: getComputedStyle(filtered).filter,
+              hit:
+                document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2) ===
+                input,
+            }
+          }, selector),
+        ).toMatchObject({ opacity: "1", filter: expect.stringContaining("opacity(0)"), hit: true })
+        const names = (await discover()).elements.map((element) => element.name)
+        expect(names).not.toContain("Filtered button")
+        expect(names).not.toContain("Filtered input")
+        expect(names).not.toContain("Invisible label")
+        expect(names).toContain("Visible filter fallback")
+      }
+    }
+    await page.evaluate(() => {
+      for (const element of document.querySelectorAll<HTMLElement>(
+        "#filter-controls, #filter-button, #filter-input",
+      ))
+        element.style.filter = "opacity(0.5)"
+    })
+    const snapshot = await discover()
+    const target = (name: string) => {
+      const element = snapshot.elements.find((element) => element.name === name)
+      if (!element) throw new Error(`Missing ${name}`)
+      return { snapshotId: snapshot.snapshotId, ref: element.ref }
+    }
+    await request("page.click", target("Filtered button"), { tabContext })
+    await request(
+      "page.type",
+      { ...target("Filtered input"), text: "Visible write" },
+      { tabContext },
+    )
+    await page.locator("#filter-controls").evaluate((element) => {
+      element.style.filter = "opacity(0)"
+    })
+    await expect(
+      request("page.click", target("Filtered button"), { tabContext }),
+    ).rejects.toMatchObject({ code: "INVALID_REQUEST" })
+    await expect(
+      request("page.type", { ...target("Filtered input"), text: "Never write" }, { tabContext }),
+    ).rejects.toMatchObject({ code: "INVALID_REQUEST" })
+    await page.locator("#filter-input").evaluate((input: HTMLInputElement) => {
+      input.blur()
+      const parent = input.parentElement as HTMLElement
+      parent.style.filter = "none"
+      input.addEventListener("focus", () => {
+        parent.style.filter = "opacity(0)"
+      })
+    })
+    await expect(
+      request("page.type", { ...target("Filtered input"), text: "Never write" }, { tabContext }),
+    ).rejects.toMatchObject({ code: "STALE_CONTEXT" })
+    await expect(page.locator("#filter-fixture")).toHaveAttribute("data-clicks", "1")
+    await expect(page.locator("#filter-fixture")).toHaveAttribute("data-inputs", "1")
+    await expect(page.locator("#filter-input")).toHaveValue("Visible write")
+  } finally {
+    await page.locator("#filter-fixture").evaluate((fixture) => fixture.remove())
+  }
+})
+
+for (const mode of ["modal", "popover", "fullscreen"] as const) {
+  test(`keeps ${mode} references visible across outside filter boundaries`, async () => {
+    await page.evaluate((mode) => {
+      const fixture = document.createElement("div")
+      fixture.id = "top-layer-fixture"
+      fixture.dataset.clicks = "0"
+      const tag = mode === "modal" ? "dialog" : "div"
+      fixture.innerHTML = `<button id="top-layer-activate" type="button">Open fullscreen</button>
+        <div id="top-layer-outside"><${tag} id="top-layer-surface" ${mode === "popover" ? 'popover="manual"' : ""}
+          style="background:white;color:black;padding:20px">
+          <button id="top-layer-button" type="button" aria-label="Top-layer button">Go</button>
+          <span id="top-layer-label">Top-layer input</span><input id="top-layer-input" aria-labelledby="top-layer-label">
+        </${tag}></div>`
+      fixture.querySelector("#top-layer-button")?.addEventListener("click", () => {
+        fixture.dataset.clicks = String(Number(fixture.dataset.clicks) + 1)
+      })
+      document.body.append(fixture)
+      const surface = document.querySelector("#top-layer-surface") as HTMLElement
+      if (mode === "modal") (surface as HTMLDialogElement).showModal()
+      else if (mode === "popover") surface.showPopover()
+      else
+        fixture.querySelector("#top-layer-activate")?.addEventListener("click", () => {
+          void surface.requestFullscreen()
+        })
+    }, mode)
+    const discover = async () =>
+      (await request("page.listElements", {}, { tabContext })) as unknown as {
+        snapshotId: string
+        elements: Array<{ ref: string; name: string }>
+      }
+    try {
+      if (mode === "fullscreen") {
+        await page.locator("#top-layer-activate").click()
+        await expect
+          .poll(() => page.evaluate(() => document.fullscreenElement?.id))
+          .toBe("top-layer-surface")
+        tabContext = await waitForCurrentTab(page.url())
+      }
+      for (const filter of ["opacity(0)", `url("data:image/svg+xml,${"x".repeat(4096)}")`]) {
+        await page.locator("#top-layer-outside").evaluate((outside, filter) => {
+          outside.style.filter = filter
+        }, filter)
+        expect(
+          await page.locator("#top-layer-input").evaluate((input) => {
+            const rect = input.getBoundingClientRect()
+            return (
+              input.parentElement?.matches(":modal, :popover-open, :fullscreen") &&
+              document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2) === input
+            )
+          }),
+        ).toBe(true)
+        const snapshot = await discover()
+        const target = (name: string) => {
+          const element = snapshot.elements.find((element) => element.name === name)
+          if (!element) throw new Error(`Missing ${name}`)
+          return { snapshotId: snapshot.snapshotId, ref: element.ref }
+        }
+        await request("page.click", target("Top-layer button"), { tabContext })
+        await request(
+          "page.type",
+          { ...target("Top-layer input"), text: "Allowed" },
+          { tabContext },
+        )
+        await page.locator("#top-layer-surface").evaluate((surface, filter) => {
+          surface.style.filter = filter
+        }, filter)
+        await expect(
+          request("page.click", target("Top-layer button"), { tabContext }),
+        ).rejects.toMatchObject({ code: "INVALID_REQUEST" })
+        await expect(
+          request(
+            "page.type",
+            { ...target("Top-layer input"), text: "Never write" },
+            { tabContext },
+          ),
+        ).rejects.toMatchObject({ code: "STALE_CONTEXT" })
+        await page.locator("#top-layer-surface").evaluate((surface) => {
+          surface.style.filter = "none"
+        })
+      }
+      const snapshot = await discover()
+      const input = snapshot.elements.find((element) => element.name === "Top-layer input")
+      if (!input) throw new Error("Missing top-layer input")
+      await page.locator("#top-layer-input").evaluate((input: HTMLInputElement) => {
+        input.blur()
+        input.addEventListener("focus", () => {
+          ;(input.parentElement as HTMLElement).style.filter = "opacity(0)"
+        })
+      })
+      await expect(
+        request(
+          "page.type",
+          { snapshotId: snapshot.snapshotId, ref: input.ref, text: "Never write" },
+          { tabContext },
+        ),
+      ).rejects.toMatchObject({ code: "STALE_CONTEXT" })
+      await expect(page.locator("#top-layer-input")).toHaveValue("Allowed")
+      await expect(page.locator("#top-layer-fixture")).toHaveAttribute("data-clicks", "2")
+    } finally {
+      await page.evaluate(async () => {
+        if (document.fullscreenElement) await document.exitFullscreen()
+        document.querySelector("#top-layer-fixture")?.remove()
+      })
+      tabContext = await waitForCurrentTab(page.url())
+    }
+  })
+}
+
+test("rejects oversized shared filter declarations on distinct controls", async () => {
+  await page.evaluate(() => {
+    const fixture = document.createElement("div")
+    fixture.id = "oversized-filter-fixture"
+    fixture.dataset.filtered = ""
+    fixture.dataset.clicks = "0"
+    fixture.style.cssText = "position:fixed;left:50px;top:250px;z-index:1000;background:white"
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg"><filter id="identity"><feColorMatrix type="saturate" values="1"/></filter><!--${"x".repeat(8192)}--></svg>`
+    fixture.innerHTML = `<style>
+      #oversized-filter-fixture[data-filtered] .target { filter: url("data:image/svg+xml,${encodeURIComponent(svg)}#identity") opacity(1); }
+    </style>
+    <button class="target" type="button" aria-label="Oversized button">Button</button>
+    <input class="target" aria-label="Oversized input">
+    <button type="button" aria-label="Unfiltered control">Continue</button>`
+    fixture.querySelector("button.target")?.addEventListener("click", () => {
+      fixture.dataset.clicks = String(Number(fixture.dataset.clicks) + 1)
+    })
+    document.body.append(fixture)
+  })
+  const discover = async () =>
+    (await request("page.listElements", {}, { tabContext })) as unknown as {
+      snapshotId: string
+      elements: Array<{ ref: string; name: string }>
+    }
+  try {
+    expect(
+      await page.locator("#oversized-filter-fixture input").evaluate((input) => {
+        const rect = input.getBoundingClientRect()
+        return (
+          getComputedStyle(input).filter.length > 4096 &&
+          document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2) === input
+        )
+      }),
+    ).toBe(true)
+    const names = (await discover()).elements.map((element) => element.name)
+    expect(names).not.toContain("Oversized button")
+    expect(names).not.toContain("Oversized input")
+    expect(names).toContain("Unfiltered control")
+    await page.locator("#oversized-filter-fixture").evaluate((fixture) => {
+      fixture.removeAttribute("data-filtered")
+    })
+    const snapshot = await discover()
+    const target = (name: string) => {
+      const element = snapshot.elements.find((element) => element.name === name)
+      if (!element) throw new Error(`Missing ${name}`)
+      return { snapshotId: snapshot.snapshotId, ref: element.ref }
+    }
+    await request("page.click", target("Oversized button"), { tabContext })
+    await request("page.type", { ...target("Oversized input"), text: "Allowed" }, { tabContext })
+    await page.locator("#oversized-filter-fixture").evaluate((fixture) => {
+      fixture.dataset.filtered = ""
+    })
+    await expect(
+      request("page.click", target("Oversized button"), { tabContext }),
+    ).rejects.toMatchObject({ code: "INVALID_REQUEST" })
+    await expect(
+      request("page.type", { ...target("Oversized input"), text: "Never write" }, { tabContext }),
+    ).rejects.toMatchObject({ code: "INVALID_REQUEST" })
+    await page.locator("#oversized-filter-fixture input").evaluate((input: HTMLInputElement) => {
+      input.blur()
+      const fixture = input.parentElement as HTMLElement
+      fixture.removeAttribute("data-filtered")
+      input.addEventListener("focus", () => {
+        fixture.dataset.filtered = ""
+      })
+    })
+    await expect(
+      request("page.type", { ...target("Oversized input"), text: "Never write" }, { tabContext }),
+    ).rejects.toMatchObject({ code: "STALE_CONTEXT" })
+    await expect(page.locator("#oversized-filter-fixture")).toHaveAttribute("data-clicks", "1")
+    await expect(page.locator("#oversized-filter-fixture input")).toHaveValue("Allowed")
+  } finally {
+    await page.locator("#oversized-filter-fixture").evaluate((fixture) => fixture.remove())
+  }
+})
+
 test("omits ancestor-clipped label text while retaining visible control-name fallbacks", async () => {
   await page.evaluate(() => {
     const fixture = document.createElement("div")

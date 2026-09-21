@@ -31,6 +31,12 @@ function click(ref = "e1", confirmed = false) {
   )
 }
 
+function sizedFilter(length: number, opacity = "1"): string {
+  const prefix = 'url("data:image/svg+xml,'
+  const suffix = `") opacity(${opacity})`
+  return `${prefix}${"x".repeat(length - prefix.length - suffix.length)}${suffix}`
+}
+
 beforeEach(() => {
   snapshot = {
     id: crypto.randomUUID(),
@@ -99,6 +105,251 @@ describe("element snapshots", () => {
     })
     const result = await discover()
     expect(result.elements.map((e) => e.name)).toEqual(["Fallback"])
+  })
+
+  test.each([
+    "opacity(0)",
+    "opacity(0%)",
+    "blur(1px) opacity(0.0) contrast(2)",
+    "opacity(1) opacity(0e0)",
+  ])("excludes filter-transparent controls on the target or an ancestor: %s", async (filter) => {
+    for (const selector of ["input", "#ancestor"]) {
+      document.body.innerHTML = '<div id="ancestor"><input aria-label="Target"></div>'
+      const input = document.querySelector("input") as HTMLInputElement
+      const filtered = document.querySelector(selector) as HTMLElement
+      filtered.style.filter = filter
+      Object.defineProperty(document, "elementFromPoint", {
+        configurable: true,
+        value: () => input,
+      })
+      expect(getComputedStyle(filtered).opacity || "1").toBe("1")
+      expect(await discover()).toMatchObject({ elements: [] })
+    }
+  })
+
+  test.each([
+    "none",
+    "blur(1px)",
+    "opacity(0.5)",
+    "opacity(50%) contrast(2)",
+    "opacity(1e-8)",
+    'url("https://example.test/opacity(0)") opacity(1)',
+  ])("retains controls without a zero-opacity filter: %s", async (filter) => {
+    document.body.innerHTML = '<div><input aria-label="Target"></div>'
+    const input = document.querySelector("input") as HTMLInputElement
+    input.style.filter = filter
+    ;(input.parentElement as HTMLElement).style.filter = filter
+    Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => input })
+    expect(await discover()).toMatchObject({ elements: [{ name: "Target", ref: "e1" }] })
+    expect(await click()).toMatchObject({ ok: true })
+  })
+
+  test.each(["0", "1"])(
+    "reads a shared large filter once per discovery without caching across operations: opacity(%s)",
+    async (opacity) => {
+      document.body.innerHTML = `<div id="ancestor">${'<button type="button" aria-label="Target">Go</button>'.repeat(32)}</div>`
+      const ancestor = document.querySelector("#ancestor") as HTMLElement
+      ancestor.style.filter = sizedFilter(4096, opacity)
+      const computedStyle = getComputedStyle
+      let filterReads = 0
+      vi.stubGlobal("getComputedStyle", (element: Element) => {
+        const style = computedStyle(element)
+        return element === ancestor
+          ? new Proxy(style, {
+              get(target, key) {
+                if (key === "filter") filterReads++
+                return Reflect.get(target, key)
+              },
+            })
+          : style
+      })
+      expect((await discover()).elements).toHaveLength(opacity === "0" ? 0 : 32)
+      expect(filterReads).toBe(1)
+      ancestor.style.filter = opacity === "0" ? "opacity(1)" : "opacity(0)"
+      expect((await discover()).elements).toHaveLength(opacity === "0" ? 32 : 0)
+      expect(filterReads).toBe(2)
+    },
+  )
+
+  test.each(["inspectClick", "click", "type"] as const)(
+    "caches name-ancestor filters within each %s validation phase",
+    async (operation) => {
+      const depth = 8
+      document.body.innerHTML = `${'<div class="layer">'.repeat(depth)}
+        <span id="label">${"<span>x</span>".repeat(32)}</span><input aria-labelledby="label">
+        ${"</div>".repeat(depth)}`
+      for (const layer of document.querySelectorAll<HTMLElement>(".layer"))
+        layer.style.filter = sizedFilter(4096)
+      await discover()
+      const computedStyle = getComputedStyle
+      let reads = 0
+      vi.stubGlobal("getComputedStyle", (element: Element) => {
+        const style = computedStyle(element)
+        return element.classList.contains("layer")
+          ? new Proxy(style, {
+              get(target, key) {
+                if (key === "filter") reads++
+                return Reflect.get(target, key)
+              },
+            })
+          : style
+      })
+      expect(
+        await executePageOperation(
+          operation,
+          { snapshotId: snapshot.id, ref: "e1", text: "Allowed" },
+          false,
+          null,
+          context,
+          snapshot,
+        ),
+      ).toMatchObject({ ok: true })
+      expect(reads).toBe(depth * (operation === "type" ? 2 : 1))
+      if (operation === "type")
+        expect((document.querySelector("input") as HTMLInputElement).value).toBe("Allowed")
+    },
+  )
+
+  test.each([":modal", ":popover-open", ":fullscreen"])(
+    "stops filter inheritance at active %s roots but still checks the root and descendants",
+    async (pseudo) => {
+      document.body.innerHTML = `<div id="outside"><div id="surface"><div id="inside">
+        <button type="button" aria-label="Target">Go</button>
+        <span id="label">Named input</span><input aria-labelledby="label">
+      </div></div></div>`
+      const outside = document.querySelector("#outside") as HTMLElement
+      const surface = document.querySelector("#surface") as HTMLElement
+      const inside = document.querySelector("#inside") as HTMLElement
+      const matches = surface.matches.bind(surface)
+      let active = false
+      // jsdom has no top-layer APIs; native activation/painting is covered in Chrome.
+      vi.spyOn(surface, "matches").mockImplementation((selector) =>
+        selector.includes(pseudo) ? active : matches(selector),
+      )
+      for (const filter of ["opacity(0)", sizedFilter(4097)]) {
+        outside.style.filter = filter
+        active = false
+        expect((await discover()).elements).toEqual([])
+        active = true
+        expect((await discover()).elements.map((element) => element.name)).toEqual([
+          "Target",
+          "Named input",
+        ])
+        surface.style.filter = filter
+        expect((await discover()).elements).toEqual([])
+        surface.style.filter = "none"
+        inside.style.filter = filter
+        expect((await discover()).elements).toEqual([])
+        inside.style.filter = "none"
+      }
+    },
+  )
+
+  test.each([4096, 4097, 64 * 1024])(
+    "bounds parsing of a shared %i-unit filter applied to distinct controls",
+    async (length) => {
+      document.body.innerHTML = `<style>.target { filter: ${sizedFilter(length)} }</style>
+        ${'<input class="target" aria-label="Target">'.repeat(32)}
+        <button type="button" aria-label="Unfiltered">Continue</button>`
+      const input = document.querySelector("input") as HTMLInputElement
+      expect(getComputedStyle(input).filter).toHaveLength(length)
+      const matchAll = String.prototype.matchAll
+      const parsedLengths: number[] = []
+      vi.spyOn(String.prototype, "matchAll").mockImplementation(function (
+        this: string,
+        expression: RegExp,
+      ) {
+        if (expression.source.includes("opacity")) parsedLengths.push(this.length)
+        return matchAll.call(this, expression)
+      })
+      const result = await discover()
+      expect(Math.max(0, ...parsedLengths)).toBeLessThanOrEqual(4096)
+      expect(result.elements).toHaveLength(length <= 4096 ? 33 : 1)
+      expect(result.elements.at(-1)?.name).toBe("Unfiltered")
+      expect(result.truncated).toBe(false)
+    },
+  )
+
+  test("omits names from labels with oversized filters while retaining visible fallbacks", async () => {
+    document.body.innerHTML = `<span id="label" style='filter:${sizedFilter(4097)}'>Unsupported name</span>
+      <button type="button" aria-labelledby="label" aria-label="Fallback">Go</button>`
+    expect((await discover()).elements.map((element) => element.name)).toEqual(["Fallback"])
+  })
+
+  test.each([
+    ["click", "transparent"],
+    ["type", "transparent"],
+    ["click", "oversized"],
+    ["type", "oversized"],
+  ] as const)(
+    "rejects reference %s when a filter becomes %s before mutation",
+    async (operation, filter) => {
+      document.body.innerHTML = '<div><input aria-label="Target"></div>'
+      const input = document.querySelector("input") as HTMLInputElement
+      const ancestor = input.parentElement as HTMLElement
+      Object.defineProperty(document, "elementFromPoint", {
+        configurable: true,
+        value: () => input,
+      })
+      await discover()
+      const clicked = vi.spyOn(input, "click")
+      vi.mocked(chrome.runtime.sendMessage).mockImplementation(async () => {
+        ancestor.style.filter = filter === "transparent" ? "opacity(0)" : sizedFilter(4097)
+        return { ok: true }
+      })
+      expect(
+        await executePageOperation(
+          operation,
+          { snapshotId: snapshot.id, ref: "e1", text: "Never write" },
+          true,
+          null,
+          context,
+          snapshot,
+        ),
+      ).toMatchObject({ ok: false, error: { code: "INVALID_REQUEST" } })
+      expect(clicked).not.toHaveBeenCalled()
+      expect(input.value).toBe("")
+    },
+  )
+
+  test.each(["transparent", "oversized"])(
+    "rejects reference typing when focus makes an ancestor filter %s",
+    async (filter) => {
+      document.body.innerHTML = '<div><input aria-label="Target"></div>'
+      const input = document.querySelector("input") as HTMLInputElement
+      await discover()
+      input.addEventListener("focus", () => {
+        ;(input.parentElement as HTMLElement).style.filter =
+          filter === "transparent" ? "opacity(0)" : sizedFilter(4097)
+      })
+      expect(
+        await executePageOperation(
+          "type",
+          { snapshotId: snapshot.id, ref: "e1", text: "Never write" },
+          false,
+          null,
+          context,
+          snapshot,
+        ),
+      ).toMatchObject({ ok: false, error: { code: "STALE_CONTEXT" } })
+      expect(input.value).toBe("")
+    },
+  )
+
+  test.each([
+    '<div style="filter:opacity(0)"><span id="label">Invisible</span></div><button type="button" aria-labelledby="label" aria-label="Fallback">Answer</button>',
+    '<label for="control" style="filter:opacity(0%)">Invisible</label><input id="control" placeholder="Fallback">',
+    '<button type="button">Fallback<span style="filter:opacity(0)">Invisible</span></button>',
+  ])("excludes filter-transparent label text while retaining fallbacks: %s", async (markup) => {
+    document.body.innerHTML = markup
+    expect((await discover()).elements.map((element) => element.name)).toEqual(["Fallback"])
+  })
+
+  test("preserves legacy selector visibility behavior for filters", async () => {
+    document.body.innerHTML = '<button type="button" style="filter:opacity(0)">Go</button>'
+    expect(await executePageOperation("click", { selector: "button" }, false)).toMatchObject({
+      ok: true,
+    })
   })
 
   test.each(["#clip", "body"])(
