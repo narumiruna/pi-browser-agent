@@ -1,15 +1,32 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core"
 import type { ImageContent } from "@earendil-works/pi-ai"
-import { createCopyButton } from "./copy-button.js"
+import { CopyButton } from "./copy-button.js"
 import { imageContentSource } from "./images.js"
 import { renderMarkdown } from "./markdown.js"
 
 interface ContentState {
   disclosures: Map<string, HTMLDetailsElement>
   images: Map<number, HTMLImageElement>
+  copyButtons: Map<string, CopyButton>
 }
 function newContentState(): ContentState {
-  return { disclosures: new Map(), images: new Map() }
+  return { disclosures: new Map(), images: new Map(), copyButtons: new Map() }
+}
+
+function copyButton(
+  state: ContentState,
+  key: string,
+  label: string,
+  text: string,
+): HTMLButtonElement {
+  let control = state.copyButtons.get(key)
+  if (!control) {
+    control = new CopyButton(label, text)
+    control.element.dataset.focusKey = key
+    state.copyButtons.set(key, control)
+  }
+  control.updateText(text)
+  return control.element
 }
 
 function appendTextContent(container: HTMLElement, text: string): void {
@@ -19,7 +36,13 @@ function appendTextContent(container: HTMLElement, text: string): void {
   container.append(block)
 }
 
-function appendProse(container: HTMLElement, text: string, markdown: boolean, blockKey = 0): void {
+function appendProse(
+  container: HTMLElement,
+  text: string,
+  markdown: boolean,
+  state: ContentState,
+  blockKey = 0,
+): void {
   if (!markdown) {
     appendTextContent(container, text)
     return
@@ -30,8 +53,12 @@ function appendProse(container: HTMLElement, text: string, markdown: boolean, bl
   for (const [index, pre] of block.querySelectorAll("pre").entries()) {
     const wrapper = document.createElement("div")
     wrapper.className = "code-block"
-    const copy = createCopyButton("Copy code", pre.querySelector("code")?.textContent ?? "")
-    copy.dataset.focusKey = `code-${blockKey}-${index}`
+    const copy = copyButton(
+      state,
+      `code-${blockKey}-${index}`,
+      "Copy code",
+      pre.querySelector("code")?.textContent ?? "",
+    )
     pre.replaceWith(wrapper)
     wrapper.append(copy, pre)
   }
@@ -88,7 +115,7 @@ export function renderMessageContent(
     appendTextContent(container, text)
   } else if (typeof message.content === "string") {
     text = message.content
-    appendProse(container, text, message.role === "assistant")
+    appendProse(container, text, message.role === "assistant", state)
     if (message.role === "assistant") answers.push(text)
   } else {
     const textParts: string[] = []
@@ -115,7 +142,7 @@ export function renderMessageContent(
         container.append(image)
       } else if (item.type === "text") {
         textParts.push(item.text)
-        if (item.text) appendProse(container, item.text, message.role === "assistant", index)
+        if (item.text) appendProse(container, item.text, message.role === "assistant", state, index)
         if (message.role === "assistant") answers.push(item.text)
       } else if (item.type === "toolCall") {
         toolCall = message.role === "assistant"
@@ -148,9 +175,7 @@ export function renderMessageContent(
     text = textParts.join("\n")
   }
   if (answers.some(Boolean)) {
-    const copy = createCopyButton("Copy answer", answers.join("\n"))
-    copy.dataset.focusKey = "copy-answer"
-    container.append(copy)
+    container.append(copyButton(state, "copy-answer", "Copy answer", answers.join("\n")))
   }
   const roleLabel = toolCall
     ? "Tool call"

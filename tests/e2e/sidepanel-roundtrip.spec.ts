@@ -1569,14 +1569,21 @@ test("preserves streamed Markdown disclosures, focus, scroll, copying and safe r
       close: () => void
       restore: () => void
       copied: string[]
+      settleCopies: () => void
+      copyImmediately: () => void
     }
     const original = window.fetch
     const copied: string[] = []
+    const pendingCopies: { resolve: () => void; reject: (error: Error) => void }[] = []
+    let copyImmediately = false
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: {
-        writeText: async (text: string) => {
+        writeText: (text: string) => {
           copied.push(text)
+          return copyImmediately
+            ? Promise.resolve()
+            : new Promise<void>((resolve, reject) => pendingCopies.push({ resolve, reject }))
         },
       },
     })
@@ -1594,6 +1601,16 @@ test("preserves streamed Markdown disclosures, focus, scroll, copying and safe r
                 window.fetch = original
               },
               copied,
+              settleCopies: () => {
+                const [answer, code] = pendingCopies
+                if (!answer || !code) throw new Error("Missing pending copy attempts")
+                answer.resolve()
+                code.reject(new Error("Denied"))
+              },
+              copyImmediately: () => {
+                copyImmediately = true
+                copied.length = 0
+              },
             }
             ;(window as typeof window & { featureStream?: StreamState }).featureStream = state
           },
@@ -1635,6 +1652,12 @@ test("preserves streamed Markdown disclosures, focus, scroll, copying and safe r
       { type: "response.output_text.delta", output_index: 1, delta: initial },
     ])
     await expect(controller.locator("#transcript h1")).toHaveText("Streamed answer")
+    const copyAnswer = controller.getByRole("button", { name: "Copy answer", exact: true })
+    const copyCode = controller.getByRole("button", { name: "Copy code", exact: true })
+    await copyAnswer.click()
+    await copyCode.click()
+    await expect(copyAnswer).toHaveText("Copying…")
+    await expect(copyCode).toHaveText("Copying…")
     const thinking = controller.locator("#transcript details.thinking")
     await expect(thinking).toHaveJSProperty("open", false)
     const summary = thinking.locator("summary")
@@ -1654,6 +1677,21 @@ test("preserves streamed Markdown disclosures, focus, scroll, copying and safe r
     expect(
       await controller.locator("#transcript").evaluate((element) => element.scrollTop),
     ).toBeCloseTo(scrollTop, 0)
+    await expect(copyAnswer).toHaveText("Copying…")
+    await expect(copyCode).toHaveText("Copying…")
+    const copiedDuringStream = await controller.evaluate(() => {
+      const stream = (
+        window as typeof window & {
+          featureStream?: { settleCopies: () => void; copied: string[] }
+        }
+      ).featureStream
+      if (!stream) throw new Error("No mock stream")
+      stream.settleCopies()
+      return stream.copied
+    })
+    expect(copiedDuringStream).toEqual([initial, 'const text = "<tag>"'])
+    await expect(copyAnswer).toHaveText("Copied")
+    await expect(copyCode).toHaveText("Copy failed")
     const output = [
       {
         id: "thinking",
@@ -1689,6 +1727,17 @@ test("preserves streamed Markdown disclosures, focus, scroll, copying and safe r
     await expect(controller.locator("#run-status")).toHaveText("Ready")
     await expect(summary).toBeFocused()
     await expect(thinking).toHaveJSProperty("open", true)
+    await expect(copyAnswer).toHaveText("Copied")
+    await expect(copyCode).toHaveText("Copy failed")
+    await controller.evaluate(() => {
+      const stream = (
+        window as typeof window & {
+          featureStream?: { copyImmediately: () => void }
+        }
+      ).featureStream
+      if (!stream) throw new Error("No mock stream")
+      stream.copyImmediately()
+    })
     await controller.getByRole("button", { name: "Copy answer", exact: true }).click()
     expect(
       await controller.evaluate(

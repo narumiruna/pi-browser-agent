@@ -129,6 +129,113 @@ describe("conversation message rendering", () => {
     expect(document.activeElement?.getAttribute("aria-label")).toBe("Copy answer")
   })
 
+  test.each([
+    ["Copy answer", "Copied"],
+    ["Copy answer", "Copy failed"],
+    ["Copy code", "Copied"],
+    ["Copy code", "Copy failed"],
+  ])("keeps pending %s feedback visible after streaming updates: %s", async (label, feedback) => {
+    const document = installDocument()
+    const transcript = document.createElement("div")
+    document.body.append(transcript)
+    const renderer = new TranscriptRenderer(transcript)
+    let settle = () => {}
+    const pending = new Promise<void>((resolve, reject) => {
+      settle = feedback === "Copied" ? resolve : () => reject(new Error("Denied"))
+    })
+    const writeText = vi.fn().mockReturnValueOnce(pending).mockResolvedValue(undefined)
+    vi.stubGlobal("navigator", { clipboard: { writeText } })
+    const first = "# First\n\n```ts\nconst first = 1"
+    const latest = `${first}\nconst second = 2\n\`\`\``
+    const button = () =>
+      transcript.querySelector<HTMLButtonElement>(
+        `button[aria-label="${label}"]`,
+      ) as HTMLButtonElement
+    renderer.render([assistantContent([{ type: "text", text: first }])], "one")
+    const clicked = button()
+    clicked.click()
+    expect(writeText).toHaveBeenCalledExactlyOnceWith(
+      label === "Copy answer" ? first : "const first = 1",
+    )
+    renderer.render([assistantContent([{ type: "text", text: latest }])], "one")
+    expect(writeText).toHaveBeenCalledTimes(1)
+    expect(button().textContent).toBe("Copying…")
+    settle()
+    await Promise.resolve()
+    expect(button().textContent).toBe(feedback)
+    expect(button()).toBe(clicked)
+    renderer.render([assistantContent([{ type: "text", text: `${latest}\n\nDone.` }])], "one")
+    expect(button().textContent).toBe(feedback)
+    button().click()
+    expect(writeText).toHaveBeenLastCalledWith(
+      label === "Copy answer" ? `${latest}\n\nDone.` : "const first = 1\nconst second = 2",
+    )
+    await Promise.resolve()
+    expect(button().textContent).toBe("Copied")
+  })
+
+  test("ignores older clipboard completions and isolates pending feedback across sessions", async () => {
+    const document = installDocument()
+    const transcript = document.createElement("div")
+    document.body.append(transcript)
+    const renderer = new TranscriptRenderer(transcript)
+    let finishFirst = () => {}
+    let failSecond = () => {}
+    const first = new Promise<void>((resolve) => {
+      finishFirst = resolve
+    })
+    const second = new Promise<void>((_resolve, reject) => {
+      failSecond = () => reject(new Error("Denied"))
+    })
+    vi.stubGlobal("navigator", {
+      clipboard: {
+        writeText: vi
+          .fn()
+          .mockReturnValueOnce(first)
+          .mockReturnValueOnce(second)
+          .mockReturnValueOnce(first),
+      },
+    })
+    const message = assistantContent([{ type: "text", text: "Answer" }])
+    renderer.render([message], "one")
+    const button = transcript.querySelector("button") as HTMLButtonElement
+    button.click()
+    button.click()
+    failSecond()
+    await Promise.resolve()
+    expect(button.textContent).toBe("Copy failed")
+    finishFirst()
+    await Promise.resolve()
+    expect(button.textContent).toBe("Copy failed")
+
+    button.click()
+    renderer.render([message], "two")
+    const newButton = transcript.querySelector("button") as HTMLButtonElement
+    expect(newButton).not.toBe(button)
+    await Promise.resolve()
+    expect(button.textContent).toBe("Copied")
+    expect(newButton.textContent).toBe("Copy answer")
+  })
+
+  test.each([
+    undefined,
+    {
+      writeText: () => {
+        throw new Error("Denied")
+      },
+    },
+  ])("keeps synchronous clipboard failures visible after streaming updates", (clipboard) => {
+    const document = installDocument()
+    const transcript = document.createElement("div")
+    const renderer = new TranscriptRenderer(transcript)
+    vi.stubGlobal("navigator", { clipboard })
+    renderer.render([assistantContent([{ type: "text", text: "Start" }])], "one")
+    const button = transcript.querySelector("button") as HTMLButtonElement
+    button.click()
+    renderer.render([assistantContent([{ type: "text", text: "Start and finish" }])], "one")
+    expect(transcript.querySelector("button")?.textContent).toBe("Copy failed")
+  })
+
   test("does not force readers back to the bottom on updates", () => {
     const document = installDocument()
     const transcript = document.createElement("div")
