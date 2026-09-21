@@ -60,7 +60,7 @@ The agent can read visible text and selection, discover visible interactive elem
 
 ## Sessions and settings
 
-Assistant answers support Markdown headings, lists, tables, links, and fenced code. Raw HTML and Markdown images are not rendered; only explicit HTTP(S) links are clickable. **Copy answer** copies the original Markdown, and **Copy code** copies the code text. Clipboard failure is reported without requesting new permissions. User messages, tool data, and thinking remain plain text.
+Assistant answers support Markdown headings, lists, tables, links, and fenced code. Raw HTML and Markdown images are not rendered; only explicit HTTP(S) links are clickable. Right-aligned copy icons provide **Copy answer** for the original Markdown and **Copy code** for code text, with tooltips and accessible names. Pending, successful, and failed copies use distinct icons, tooltips, and screen-reader status updates without requesting new permissions. User messages, tool data, and thinking remain plain text.
 
 Thinking and tool calls/results have separate disclosures so answers remain visible. Errors and image results open by default; manual expansion/collapse and keyboard focus survive streaming updates. The transcript follows new output only while you are near the bottom. Reopening a session restores default disclosure states; it does not change saved messages.
 

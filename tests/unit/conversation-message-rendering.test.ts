@@ -115,6 +115,29 @@ describe("conversation message rendering", () => {
     expect(imageDetails.open).toBe(false)
   })
 
+  test("renders icon-only copy controls with action names, tooltips, and a live status", () => {
+    const document = installDocument()
+    const transcript = document.createElement("div")
+    const renderer = new TranscriptRenderer(transcript)
+    renderer.render(
+      [assistantContent([{ type: "text", text: "Answer\n\n```ts\nconst x = 1\n```" }])],
+      "one",
+    )
+    const buttons = transcript.querySelectorAll<HTMLButtonElement>("button.copy-button")
+    expect(buttons).toHaveLength(2)
+    for (const [index, label] of ["Copy code", "Copy answer"].entries()) {
+      const button = buttons[index] as HTMLButtonElement
+      expect(button.classList.contains("icon-button")).toBe(true)
+      expect(button.getAttribute("aria-label")).toBe(label)
+      expect(button.title).toBe(label)
+      expect(button.textContent).toBe("")
+      expect(button.querySelectorAll("svg[aria-hidden='true'] path")).toHaveLength(1)
+      const status = button.querySelector("[role='status']")
+      expect(status?.className).toBe("visually-hidden")
+      expect(status?.getAttribute("aria-atomic")).toBe("true")
+    }
+  })
+
   test("keeps Copy answer focused when new code controls arrive during streaming", () => {
     const document = installDocument()
     const transcript = document.createElement("div")
@@ -134,7 +157,7 @@ describe("conversation message rendering", () => {
     ["Copy answer", "Copy failed"],
     ["Copy code", "Copied"],
     ["Copy code", "Copy failed"],
-  ])("keeps pending %s feedback visible after streaming updates: %s", async (label, feedback) => {
+  ])("preserves %s icons and feedback through streaming: %s", async (label, feedback) => {
     const document = installDocument()
     const transcript = document.createElement("div")
     document.body.append(transcript)
@@ -153,20 +176,33 @@ describe("conversation message rendering", () => {
       ) as HTMLButtonElement
     renderer.render([assistantContent([{ type: "text", text: first }])], "one")
     const clicked = button()
+    const path = clicked.querySelector("path") as SVGPathElement
+    const initialIcon = path.getAttribute("d")
     clicked.click()
+    const pendingIcon = path.getAttribute("d")
+    expect(pendingIcon).not.toBe(initialIcon)
     expect(writeText).toHaveBeenCalledExactlyOnceWith(
       label === "Copy answer" ? first : "const first = 1",
     )
     renderer.render([assistantContent([{ type: "text", text: latest }])], "one")
     expect(writeText).toHaveBeenCalledTimes(1)
-    expect(button().textContent).toBe("Copying…")
+    expect(button().querySelector("[role='status']")?.textContent).toBe("Copying…")
+    expect(button().title).toBe(`${label}: Copying…`)
+    expect(button().querySelector("path")).toBe(path)
     settle()
     await Promise.resolve()
-    expect(button().textContent).toBe(feedback)
+    expect(button().querySelector("[role='status']")?.textContent).toBe(feedback)
+    expect(button().title).toBe(`${label}: ${feedback}`)
+    const resultIcon = path.getAttribute("d")
+    expect(resultIcon).not.toBe(initialIcon)
+    expect(resultIcon).not.toBe(pendingIcon)
     expect(button()).toBe(clicked)
     renderer.render([assistantContent([{ type: "text", text: `${latest}\n\nDone.` }])], "one")
     expect(button().textContent).toBe(feedback)
+    expect(path.getAttribute("d")).toBe(resultIcon)
+    expect(button().getAttribute("aria-label")).toBe(label)
     button().click()
+    expect(path.getAttribute("d")).toBe(pendingIcon)
     expect(writeText).toHaveBeenLastCalledWith(
       label === "Copy answer" ? `${latest}\n\nDone.` : "const first = 1\nconst second = 2",
     )
@@ -214,7 +250,8 @@ describe("conversation message rendering", () => {
     expect(newButton).not.toBe(button)
     await Promise.resolve()
     expect(button.textContent).toBe("Copied")
-    expect(newButton.textContent).toBe("Copy answer")
+    expect(newButton.textContent).toBe("")
+    expect(newButton.title).toBe("Copy answer")
   })
 
   test.each([
@@ -224,7 +261,7 @@ describe("conversation message rendering", () => {
         throw new Error("Denied")
       },
     },
-  ])("keeps synchronous clipboard failures visible after streaming updates", (clipboard) => {
+  ])("keeps synchronous clipboard failure feedback after streaming updates", (clipboard) => {
     const document = installDocument()
     const transcript = document.createElement("div")
     const renderer = new TranscriptRenderer(transcript)

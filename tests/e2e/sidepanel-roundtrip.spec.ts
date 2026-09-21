@@ -1943,10 +1943,22 @@ test("preserves streamed Markdown disclosures, focus, scroll, copying and safe r
     await expect(controller.locator("#transcript h1")).toHaveText("Streamed answer")
     const copyAnswer = controller.getByRole("button", { name: "Copy answer", exact: true })
     const copyCode = controller.getByRole("button", { name: "Copy code", exact: true })
-    await copyAnswer.click()
-    await copyCode.click()
+    for (const [button, label] of [
+      [copyAnswer, "Copy answer"],
+      [copyCode, "Copy code"],
+    ] as const) {
+      await expect(button).toHaveText("")
+      await expect(button).toHaveAttribute("title", label)
+      await expect(button.locator("svg[aria-hidden='true']")).toBeVisible()
+    }
+    await copyAnswer.focus()
+    await copyAnswer.press("Enter")
+    await copyCode.focus()
+    await copyCode.press("Space")
     await expect(copyAnswer).toHaveText("Copying…")
     await expect(copyCode).toHaveText("Copying…")
+    await expect(copyAnswer).toHaveAttribute("title", "Copy answer: Copying…")
+    await expect(copyCode).toHaveAttribute("title", "Copy code: Copying…")
     const thinking = controller.locator("#transcript details.thinking")
     await expect(thinking).toHaveJSProperty("open", false)
     const summary = thinking.locator("summary")
@@ -1983,6 +1995,8 @@ test("preserves streamed Markdown disclosures, focus, scroll, copying and safe r
     expect(copiedDuringStream).toEqual([initial, 'const text = "<tag>"'])
     await expect(copyAnswer).toHaveText("Copied")
     await expect(copyCode).toHaveText("Copy failed")
+    await expect(copyAnswer).toHaveAttribute("title", "Copy answer: Copied")
+    await expect(copyCode).toHaveAttribute("title", "Copy code: Copy failed")
     const output = [
       {
         id: "thinking",
@@ -2072,6 +2086,26 @@ test("preserves streamed Markdown disclosures, focus, scroll, copying and safe r
               () => document.documentElement.scrollWidth <= window.innerWidth,
             ),
           ).toBe(true)
+          for (const button of [copyAnswer, copyCode]) {
+            const layout = await button.evaluate((element) => {
+              const bounds = element.getBoundingClientRect()
+              const parent = element.parentElement as HTMLElement
+              const icon = element.querySelector("svg") as SVGSVGElement
+              const status = element.querySelector("[role='status']") as HTMLElement
+              return {
+                rightGap: parent.getBoundingClientRect().right - bounds.right,
+                width: bounds.width,
+                height: bounds.height,
+                iconWidth: icon.getBoundingClientRect().width,
+                statusClip: getComputedStyle(status).clip,
+              }
+            })
+            expect(layout.rightGap).toBeCloseTo(0, 0)
+            expect(layout.width).toBe(34)
+            expect(layout.height).toBe(34)
+            expect(layout.iconWidth).toBe(16)
+            expect(layout.statusClip).toBe("rect(0px, 0px, 0px, 0px)")
+          }
           expect(
             await controller
               .locator("#transcript pre")

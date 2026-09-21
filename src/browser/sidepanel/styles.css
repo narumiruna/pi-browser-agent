@@ -858,10 +858,9 @@ textarea {
   padding: 5px 8px;
 }
 .copy-button {
-  align-self: flex-start;
-  min-height: 28px;
-  padding: 3px 8px;
-  font-size: 0.75rem;
+  position: relative;
+  align-self: flex-end;
+  margin-inline-start: auto;
 }
 .code-block .copy-button {
   margin-bottom: 4px;
