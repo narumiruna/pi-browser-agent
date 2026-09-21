@@ -403,6 +403,119 @@ test("excludes ancestor-clipped controls and rejects references clipped after di
   }
 })
 
+test("reports successful reference mutations that navigate without replaying them", async () => {
+  const originalUrl = page.url()
+  await page.evaluate(() => {
+    const fixture = document.createElement("div")
+    fixture.id = "navigation-fixture"
+    fixture.innerHTML =
+      '<a href="#clicked" aria-label="Navigate by reference">Go</a><input aria-label="Type then navigate">'
+    fixture.dataset.mutations = "0"
+    const changed = () => {
+      fixture.dataset.mutations = String(Number(fixture.dataset.mutations) + 1)
+    }
+    fixture.querySelector("a")?.addEventListener("click", changed)
+    fixture.querySelector("input")?.addEventListener("input", () => {
+      changed()
+      location.hash = "typed"
+    })
+    document.body.prepend(fixture)
+  })
+  try {
+    for (const operation of ["click", "type"]) {
+      const snapshot = (await request("page.listElements", {}, { tabContext })) as unknown as {
+        snapshotId: string
+        elements: Array<{ ref: string; name: string }>
+      }
+      const target = snapshot.elements.find(
+        (element) =>
+          element.name === (operation === "click" ? "Navigate by reference" : "Type then navigate"),
+      )
+      if (!target) throw new Error("Missing navigation target")
+      const params = {
+        snapshotId: snapshot.snapshotId,
+        ref: target.ref,
+        ...(operation === "type" ? { text: "Written once" } : {}),
+      }
+      expect(await request(`page.${operation}`, params, { tabContext })).toMatchObject(
+        operation === "click" ? { clicked: true } : { typed: true },
+      )
+      await expect(page).toHaveURL(`${originalUrl}#${operation === "click" ? "clicked" : "typed"}`)
+      tabContext = await waitForCurrentTab(page.url())
+      await expect(request(`page.${operation}`, params, { tabContext })).rejects.toMatchObject({
+        code: "STALE_CONTEXT",
+      })
+    }
+    await expect(page.locator("#navigation-fixture")).toHaveAttribute("data-mutations", "2")
+    await expect(page.locator("#navigation-fixture input")).toHaveValue("Written once")
+  } finally {
+    await page.goto(originalUrl)
+    tabContext = await waitForCurrentTab(page.url())
+  }
+})
+
+test("rejects changed resolved submit overrides for direct, label and nested references", async () => {
+  for (const markup of [
+    '<button id="override-control" aria-label="Override target" formaction="relative-submit">Submit</button>',
+    '<input id="override-control" aria-label="Override target" type="submit" formaction="relative-submit">',
+    '<label role="button" aria-label="Override target" for="override-control">Submit</label><button id="override-control" formaction="relative-submit">Control</button>',
+    '<button id="override-control" formaction="relative-submit"><span role="button" aria-label="Override target">Submit</span></button>',
+  ]) {
+    await page.evaluate((markup) => {
+      const base = document.createElement("base")
+      base.id = "override-base"
+      base.href = new URL("/first/", location.href).href
+      document.head.append(base)
+      const form = document.createElement("form")
+      form.id = "override-fixture"
+      form.action = location.href
+      form.innerHTML = markup
+      form.dataset.submissions = "0"
+      form.addEventListener("submit", (event) => {
+        event.preventDefault()
+        form.dataset.submissions = String(Number(form.dataset.submissions) + 1)
+      })
+      document.body.prepend(form)
+    }, markup)
+    try {
+      const snapshot = (await request("page.listElements", {}, { tabContext })) as unknown as {
+        snapshotId: string
+        elements: Array<{ ref: string; name: string }>
+      }
+      const target = snapshot.elements.find((element) => element.name === "Override target")
+      if (!target) throw new Error("Missing submit override target")
+      const params = { snapshotId: snapshot.snapshotId, ref: target.ref }
+      await expect(request("page.click", params, { tabContext })).rejects.toMatchObject({
+        code: "CONFIRMATION_REQUIRED",
+      })
+      const changed = await page.evaluate(() => {
+        const control = document.querySelector("#override-control") as
+          | HTMLButtonElement
+          | HTMLInputElement
+        const action = control.form?.action
+        const before = control.formAction
+        const base = document.querySelector("#override-base") as HTMLBaseElement
+        base.href = new URL("/changed/", location.href).href
+        return (
+          control.formAction !== before &&
+          control.form?.action === action &&
+          control.getAttribute("formaction") === "relative-submit"
+        )
+      })
+      expect(changed).toBe(true)
+      await expect(
+        request("page.click", params, { tabContext, confirmed: true }),
+      ).rejects.toMatchObject({ code: "STALE_CONTEXT" })
+      await expect(page.locator("#override-fixture")).toHaveAttribute("data-submissions", "0")
+    } finally {
+      await page.evaluate(() => {
+        document.querySelector("#override-fixture")?.remove()
+        document.querySelector("#override-base")?.remove()
+      })
+    }
+  }
+})
+
 test("invalidates references on a real MV3 worker restart", async () => {
   const snapshot = (await request("page.listElements", {}, { tabContext })) as {
     snapshotId: string

@@ -15,6 +15,7 @@ let permission: boolean
 let tab: { id: number; url: string; active: boolean; windowId: number }
 let context: TabContext
 let beforeInjection: (() => Promise<void>) | undefined
+let afterInjection: (() => Promise<void>) | undefined
 let injectionCount: number
 
 function send(
@@ -42,11 +43,17 @@ async function state() {
   if (!value.ok) throw new Error(value.error.message)
   context = (value.result as { tabContext: TabContext }).tabContext
 }
-async function discover(): Promise<{ snapshotId: string; ref: string }> {
+async function discover(name?: string): Promise<{ snapshotId: string; ref: string }> {
   const value = await send("page.listElements")
   if (!value.ok) throw new Error(value.error.message)
-  const result = value.result as { snapshotId: string; elements: Array<{ ref: string }> }
-  return { snapshotId: result.snapshotId, ref: result.elements[0]?.ref ?? "" }
+  const result = value.result as {
+    snapshotId: string
+    elements: Array<{ ref: string; name: string }>
+  }
+  const element = name
+    ? result.elements.find((element) => element.name === name)
+    : result.elements[0]
+  return { snapshotId: result.snapshotId, ref: element?.ref ?? "" }
 }
 
 beforeEach(async () => {
@@ -54,6 +61,7 @@ beforeEach(async () => {
   permission = true
   injectionCount = 0
   beforeInjection = undefined
+  afterInjection = undefined
   tab = { id: 1, url: location.href, active: true, windowId: 1 }
   document.body.innerHTML = '<button type="button">Go</button><input aria-label="Title">'
   Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" })
@@ -129,7 +137,11 @@ beforeEach(async () => {
           const hook = beforeInjection
           beforeInjection = undefined
           await hook?.()
-          return [{ result: await func(...args) }]
+          const result = await func(...args)
+          const after = afterInjection
+          afterInjection = undefined
+          await after?.()
+          return [{ result }]
         },
       ),
     },
@@ -185,6 +197,123 @@ describe("worker element reference lifecycle", () => {
       expect(injectionCount).toBe(count)
     },
   )
+
+  test.each(["click", "type"])(
+    "reports successful %s when the mutation invalidates its own snapshot",
+    async (operation) => {
+      const target = await discover()
+      const node = document.querySelector(operation === "click" ? "button" : "input") as HTMLElement
+      const mutate = vi.fn(() => updated(tab.id, { status: "loading" }))
+      node.addEventListener(operation === "click" ? "click" : "input", mutate)
+      const params = operation === "click" ? target : { ...target, ref: "e2", text: "Written once" }
+      expect(await send(`page.${operation}`, params)).toMatchObject({ ok: true })
+      expect(mutate).toHaveBeenCalledOnce()
+      if (operation === "type") expect((node as HTMLInputElement).value).toBe("Written once")
+      await state()
+      expect(await send(`page.${operation}`, params)).toMatchObject({
+        ok: false,
+        error: { code: "STALE_CONTEXT" },
+      })
+      expect(mutate).toHaveBeenCalledOnce()
+    },
+  )
+
+  test("keeps successful confirmed submissions while rejecting navigation before mutation", async () => {
+    document.body.innerHTML = "<form><button>Submit</button></form>"
+    let target = await discover()
+    const submitted = vi.fn((event: Event) => {
+      event.preventDefault()
+      updated(tab.id, { status: "loading" })
+    })
+    document.querySelector("form")?.addEventListener("submit", submitted)
+    expect(await send("page.click", target)).toMatchObject({
+      ok: false,
+      error: { code: "CONFIRMATION_REQUIRED" },
+    })
+    expect(await send("page.click", target, { confirmed: true })).toMatchObject({
+      ok: true,
+      result: { clicked: true },
+    })
+    expect(submitted).toHaveBeenCalledOnce()
+    await state()
+    target = await discover()
+    beforeInjection = async () => {
+      updated(tab.id, { status: "loading" })
+    }
+    expect(await send("page.click", target)).toMatchObject({
+      ok: false,
+      error: { code: "STALE_CONTEXT" },
+    })
+    expect(submitted).toHaveBeenCalledOnce()
+  })
+
+  test("rejects discovery replaced while its result is returning", async () => {
+    afterInjection = async () => {
+      await discover()
+    }
+    expect(await send("page.listElements")).toMatchObject({
+      ok: false,
+      error: { code: "STALE_CONTEXT" },
+    })
+  })
+
+  test("rejects replaced references before deferred cross-origin navigation", async () => {
+    document.body.innerHTML = '<a href="https://destination.test/next">Go</a>'
+    vi.mocked(chrome.storage.local.get).mockImplementation(async () => ({
+      piChromeApprovedHostPermissions: [
+        `${location.protocol}//${location.hostname}/*`,
+        "https://destination.test/*",
+      ],
+    }))
+    const target = await discover()
+    // Let inspectClick finish, then replace the snapshot after click authorizes—but has not performed—navigation.
+    afterInjection = async () => {
+      afterInjection = async () => {
+        await discover()
+      }
+    }
+    expect(await send("page.click", target, { confirmed: true })).toMatchObject({
+      ok: false,
+      error: { code: "STALE_CONTEXT" },
+    })
+    expect(chrome.tabs.update).not.toHaveBeenCalled()
+  })
+
+  test.each([
+    '<button id="control" aria-label="Target" formaction="relative-submit">Submit</button>',
+    '<input id="control" aria-label="Target" type="submit" formaction="relative-submit">',
+    '<label role="button" aria-label="Target" for="control">Submit</label><button id="control" formaction="relative-submit">Control</button>',
+    '<button id="control" formaction="relative-submit"><span role="button" aria-label="Target">Submit</span></button>',
+  ])("rejects a changed resolved submit override during confirmation: %s", async (markup) => {
+    document.body.innerHTML = `<form action="https://fixed.test/submit">${markup}</form>`
+    const base = document.createElement("base")
+    base.href = "https://first.test/"
+    document.head.append(base)
+    const control = document.querySelector("#control") as HTMLButtonElement | HTMLInputElement
+    // jsdom lacks formAction; reproduce the native reflected URL getter (also tested in Chrome).
+    Object.defineProperty(control, "formAction", {
+      get: () => new URL(control.getAttribute("formaction") as string, document.baseURI).href,
+    })
+    const node = document.querySelector('[aria-label="Target"]') as HTMLElement
+    const clicked = vi.spyOn(node, "click").mockImplementation(() => {})
+    try {
+      const target = await discover("Target")
+      expect(await send("page.click", target)).toMatchObject({
+        ok: false,
+        error: { code: "CONFIRMATION_REQUIRED" },
+      })
+      base.href = "https://changed.test/"
+      expect(control.formAction).toBe("https://changed.test/relative-submit")
+      expect(control.form?.action).toBe("https://fixed.test/submit")
+      expect(await send("page.click", target, { confirmed: true })).toMatchObject({
+        ok: false,
+        error: { code: "STALE_CONTEXT" },
+      })
+      expect(clicked).not.toHaveBeenCalled()
+    } finally {
+      base.remove()
+    }
+  })
 
   test("rejects missing or revoked host permission", async () => {
     const target = await discover()

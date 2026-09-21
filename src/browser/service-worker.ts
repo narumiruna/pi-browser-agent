@@ -326,10 +326,18 @@ async function runPageOperation(
     await revalidateRequestContext(request, context)
     throw new RuntimeError(outcome.error.code, outcome.error.message, outcome.error.details)
   }
-  if (operation !== "click" && operation !== "type") {
+  const navigationPending =
+    operation === "click" &&
+    typeof outcome.result === "object" &&
+    outcome.result !== null &&
+    !Array.isArray(outcome.result) &&
+    outcome.result.navigationAllowed === true
+  // A successful injected mutation may itself invalidate its snapshot by navigating. Preserve
+  // that outcome; reads and navigation not yet performed still require a current snapshot.
+  if ((operation !== "click" && operation !== "type") || navigationPending) {
     await revalidateRequestContext(request, context)
+    if (snapshot && snapshot !== elementSnapshot) throwStaleContext(context)
   }
-  if (snapshot && snapshot !== elementSnapshot) throwStaleContext(context)
   return outcome.result
 }
 

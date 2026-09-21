@@ -154,6 +154,26 @@ export async function executePageOperation(
   }
   const labelControlFor = (element: Element): HTMLElement | null =>
     element.closest("label")?.control ?? null
+  const submitControlFor = (element: Element): HTMLButtonElement | HTMLInputElement | null => {
+    const labelControl = labelControlFor(element)
+    const ancestorButton = element.closest("button")
+    const ancestorInput = element.closest("input")
+    const button =
+      ancestorButton instanceof HTMLButtonElement
+        ? ancestorButton
+        : labelControl instanceof HTMLButtonElement
+          ? labelControl
+          : null
+    const input =
+      ancestorInput instanceof HTMLInputElement
+        ? ancestorInput
+        : labelControl instanceof HTMLInputElement
+          ? labelControl
+          : null
+    if (button?.type === "submit") return button
+    if (input && ["image", "submit"].includes(input.type)) return input
+    return null
+  }
   const sensitiveControl = (element: Element): boolean => {
     const control = labelControlFor(element)
     return [element, control].some(
@@ -161,13 +181,14 @@ export async function executePageOperation(
     )
   }
   const formFor = (element: HTMLElement): HTMLFormElement | null => {
+    const control = submitControlFor(element) ?? element
     if (
-      element instanceof HTMLInputElement ||
-      element instanceof HTMLButtonElement ||
-      element instanceof HTMLTextAreaElement ||
-      element instanceof HTMLSelectElement
+      control instanceof HTMLInputElement ||
+      control instanceof HTMLButtonElement ||
+      control instanceof HTMLTextAreaElement ||
+      control instanceof HTMLSelectElement
     )
-      return element.form
+      return control.form
     return element.closest("form")
   }
   const canType = (element: HTMLElement): boolean => {
@@ -236,6 +257,8 @@ export async function executePageOperation(
   const fingerprint = (element: HTMLElement): string => {
     const anchor = element.closest("a")
     const form = formFor(element)
+    const submitControl = submitControlFor(element)
+    const actionControl = submitControl ?? element
     return JSON.stringify([
       element.tagName,
       elementName(element),
@@ -251,9 +274,10 @@ export async function executePageOperation(
       form?.action,
       form?.method,
       form?.target,
-      element.getAttribute("formaction"),
-      element.getAttribute("formmethod"),
-      element.getAttribute("formtarget"),
+      submitControl?.formAction,
+      actionControl.getAttribute("formaction"),
+      actionControl.getAttribute("formmethod"),
+      actionControl.getAttribute("formtarget"),
     ])
   }
   const targetResult = (): JsonObject =>
@@ -400,25 +424,7 @@ export async function executePageOperation(
           return failure("PERMISSION_DENIED", "The selected control is sensitive or disabled")
 
         const anchor = found.closest("a")
-        const label = found.closest("label")
-        const labelControl = label instanceof HTMLLabelElement ? label.control : null
-        const ancestorButton = found.closest("button")
-        const ancestorInput = found.closest("input")
-        const button =
-          ancestorButton instanceof HTMLButtonElement
-            ? ancestorButton
-            : labelControl instanceof HTMLButtonElement
-              ? labelControl
-              : null
-        const input =
-          ancestorInput instanceof HTMLInputElement
-            ? ancestorInput
-            : labelControl instanceof HTMLInputElement
-              ? labelControl
-              : null
-        const submitControl =
-          (button instanceof HTMLButtonElement && button.type === "submit") ||
-          (input instanceof HTMLInputElement && ["image", "submit"].includes(input.type))
+        const submitControl = submitControlFor(found) !== null
         const crossOrigin =
           anchor instanceof HTMLAnchorElement && anchor.href
             ? new URL(anchor.href, location.href).origin !== location.origin
