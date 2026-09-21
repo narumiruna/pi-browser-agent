@@ -1676,12 +1676,19 @@ test("preserves streamed Markdown disclosures, focus, scroll, copying and safe r
       return new Response(
         new ReadableStream<Uint8Array>({
           start(stream) {
+            let closed = false
+            const close = () => {
+              if (closed) return
+              closed = true
+              stream.close()
+            }
             const state: StreamState = {
               send: (event) =>
                 stream.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`)),
-              close: () => stream.close(),
+              close,
               restore: () => {
                 window.fetch = original
+                close()
               },
               copied,
               settleCopies: () => {
@@ -1747,12 +1754,14 @@ test("preserves streamed Markdown disclosures, focus, scroll, copying and safe r
     await summary.focus()
     await summary.press("Enter")
     await expect(thinking).toHaveJSProperty("open", true)
-    await controller.locator("#transcript").evaluate((element) => {
-      element.scrollTop = 10
-    })
-    const scrollTop = await controller
-      .locator("#transcript")
-      .evaluate((element) => element.scrollTop)
+    const scrollTop = 10
+    await controller.locator("#transcript").evaluate((element, top) => {
+      element.scrollTop = top
+    }, scrollTop)
+    // CSS smooth scrolling must settle before capturing the reader's position.
+    await expect
+      .poll(() => controller.locator("#transcript").evaluate((element) => element.scrollTop))
+      .toBe(scrollTop)
     await sendEvents([{ type: "response.output_text.delta", output_index: 1, delta: tail }])
     await expect(controller.locator("#transcript")).toContainText("Finished.")
     await expect(thinking).toHaveJSProperty("open", true)
@@ -1908,6 +1917,7 @@ test("preserves streamed Markdown disclosures, focus, scroll, copying and safe r
         ).featureStream?.restore(),
       )
       .catch(() => undefined)
+    await expect(controller.locator("#run-status")).toHaveText("Ready")
     await controller.setViewportSize({ width: 654, height: 720 })
     await controller.emulateMedia({ colorScheme: "light" })
   }
