@@ -315,6 +315,37 @@ describe("worker element reference lifecycle", () => {
     }
   })
 
+  test.each([
+    ["button", "name", "changed-action"],
+    ["button", "value", "delete"],
+    ["button", "formenctype", "multipart/form-data"],
+    ["button", "formnovalidate", ""],
+    ["form", "enctype", "multipart/form-data"],
+    ["form", "novalidate", ""],
+  ])(
+    "rejects changed submit payload metadata %s.%s without exposing values",
+    async (selector, attribute, value) => {
+      document.body.innerHTML =
+        '<form><label role="button" aria-label="Target" for="control">Save</label><button id="control" name="private-submit-name" value="private-submit-value">Save</button></form>'
+      const discovery = await send("page.listElements")
+      expect(discovery.ok).toBe(true)
+      expect(JSON.stringify(discovery)).not.toContain("private-submit-")
+      const target = await discover("Target")
+      const label = document.querySelector("label") as HTMLLabelElement
+      const clicked = vi.spyOn(label, "click").mockImplementation(() => {})
+      expect(await send("page.click", target)).toMatchObject({
+        ok: false,
+        error: { code: "CONFIRMATION_REQUIRED" },
+      })
+      document.querySelector(selector)?.setAttribute(attribute, value)
+      expect(await send("page.click", target, { confirmed: true })).toMatchObject({
+        ok: false,
+        error: { code: "STALE_CONTEXT" },
+      })
+      expect(clicked).not.toHaveBeenCalled()
+    },
+  )
+
   test("rejects missing or revoked host permission", async () => {
     const target = await discover()
     permission = false

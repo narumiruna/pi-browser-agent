@@ -553,6 +553,55 @@ test("rejects changed resolved submit overrides for direct, label and nested ref
   }
 })
 
+test("rejects submit payload changes during confirmation without exposing submit values", async () => {
+  for (const [selector, attribute, value] of [
+    ["button", "name", "changed-action"],
+    ["button", "value", "delete"],
+    ["button", "formenctype", "multipart/form-data"],
+    ["button", "formnovalidate", ""],
+    ["form", "enctype", "multipart/form-data"],
+    ["form", "novalidate", ""],
+  ] as const) {
+    await page.evaluate(() => {
+      const form = document.createElement("form")
+      form.id = "payload-fixture"
+      form.innerHTML =
+        '<label role="button" aria-label="Payload target" for="payload-control">Save</label><button id="payload-control" name="private-submit-name" value="private-submit-value">Save</button>'
+      form.dataset.submissions = "0"
+      form.addEventListener("submit", (event) => {
+        event.preventDefault()
+        form.dataset.submissions = String(Number(form.dataset.submissions) + 1)
+      })
+      document.body.prepend(form)
+    })
+    try {
+      const snapshot = (await request("page.listElements", {}, { tabContext })) as unknown as {
+        snapshotId: string
+        elements: Array<{ ref: string; name: string }>
+      }
+      expect(JSON.stringify(snapshot)).not.toContain("private-submit-")
+      const target = snapshot.elements.find((element) => element.name === "Payload target")
+      if (!target) throw new Error("Missing payload target")
+      const params = { snapshotId: snapshot.snapshotId, ref: target.ref }
+      await expect(request("page.click", params, { tabContext })).rejects.toMatchObject({
+        code: "CONFIRMATION_REQUIRED",
+      })
+      await page
+        .locator(selector === "form" ? "#payload-fixture" : "#payload-control")
+        .evaluate((element, { attribute, value }) => element.setAttribute(attribute, value), {
+          attribute,
+          value,
+        })
+      await expect(
+        request("page.click", params, { tabContext, confirmed: true }),
+      ).rejects.toMatchObject({ code: "STALE_CONTEXT" })
+      await expect(page.locator("#payload-fixture")).toHaveAttribute("data-submissions", "0")
+    } finally {
+      await page.locator("#payload-fixture").evaluate((form) => form.remove())
+    }
+  }
+})
+
 test("invalidates references on a real MV3 worker restart", async () => {
   const snapshot = (await request("page.listElements", {}, { tabContext })) as {
     snapshotId: string

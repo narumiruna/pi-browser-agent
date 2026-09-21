@@ -274,10 +274,17 @@ export async function executePageOperation(
       form?.action,
       form?.method,
       form?.target,
+      form?.enctype,
+      form?.noValidate,
+      // Submitter payload metadata is private revalidation state, never discovery output.
+      submitControl?.name,
+      submitControl?.value,
       submitControl?.formAction,
       actionControl.getAttribute("formaction"),
       actionControl.getAttribute("formmethod"),
       actionControl.getAttribute("formtarget"),
+      actionControl.getAttribute("formenctype"),
+      actionControl.hasAttribute("formnovalidate"),
     ])
   }
   const targetResult = (): JsonObject =>
