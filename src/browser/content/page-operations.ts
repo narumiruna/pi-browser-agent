@@ -147,25 +147,31 @@ export async function executePageOperation(
     blockedFilters.set(element, blocked)
     return blocked
   }
+  const filterParent = (element: Element): Element | null => {
+    if ((element instanceof HTMLElement || element instanceof SVGElement) && element.assignedSlot)
+      return element.assignedSlot
+    const parent = element.parentNode
+    return parent instanceof ShadowRoot ? parent.host : element.parentElement
+  }
   const isVisible = (element: Element, requireTargetHit = false): boolean => {
     if (!(element instanceof HTMLElement)) return false
     const selectedStyle = getComputedStyle(element)
     if (selectedStyle.visibility === "hidden" || selectedStyle.visibility === "collapse") {
       return false
     }
-    let checkFilters = requireTargetHit
     for (let current: HTMLElement | null = element; current; current = current.parentElement) {
       const style = getComputedStyle(current)
-      if (
-        style.display === "none" ||
-        Number.parseFloat(style.opacity || "1") <= 0 ||
-        (checkFilters && filterBlocksVisibility(current, style))
-      ) {
-        return false
+      if (style.display === "none" || Number.parseFloat(style.opacity || "1") <= 0) return false
+    }
+    if (requireTargetHit) {
+      // Slotted light-DOM controls are also filtered by their slot's shadow-tree ancestors.
+      for (let current: Element | null = element; current; current = filterParent(current)) {
+        const style = getComputedStyle(current)
+        // Boxless ancestors (including default slots) do not apply their own filters.
+        if (style.display !== "contents" && filterBlocksVisibility(current, style)) return false
+        // Include the active top-layer root, but not its outside filtering ancestors.
+        if (current.matches(":modal, :popover-open, :fullscreen")) break
       }
-      // The active top-layer root is filtered, but its outside DOM ancestors do not filter it.
-      if (checkFilters && current.matches(":modal, :popover-open, :fullscreen"))
-        checkFilters = false
     }
 
     const clientRects = Array.from(element.getClientRects())

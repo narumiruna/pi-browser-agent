@@ -621,6 +621,140 @@ for (const mode of ["modal", "popover", "fullscreen"] as const) {
   })
 }
 
+for (const mode of ["inline", "modal"] as const) {
+  test(`checks composed filter ancestors of ${mode} slotted references`, async () => {
+    await page.evaluate((mode) => {
+      const fixture = document.createElement("div")
+      fixture.id = "slotted-fixture"
+      fixture.dataset.clicks = "0"
+      fixture.dataset.inputs = "0"
+      fixture.style.cssText = "position:fixed;left:50px;top:250px;z-index:1000;background:white"
+      fixture.innerHTML = `<div id="slotted-host">
+        <button id="slotted-button" type="button" aria-label="Slotted button">Go</button>
+        <input id="slotted-input" aria-label="Slotted input">
+        <span id="slotted-name">Slotted label</span>
+      </div><button type="button" aria-labelledby="slotted-name" aria-label="Slotted fallback">Answer</button>`
+      const host = fixture.querySelector("#slotted-host") as HTMLElement
+      const root = host.attachShadow({ mode: "open" })
+      root.innerHTML =
+        '<div id="slotted-outer"><div id="slotted-inner-host"><slot></slot></div></div>'
+      const innerHost = root.querySelector("#slotted-inner-host") as HTMLElement
+      const innerRoot = innerHost.attachShadow({ mode: "open" })
+      const tag = mode === "modal" ? "dialog" : "div"
+      innerRoot.innerHTML = `<${tag} id="slotted-surface"><div id="slotted-wrapper"><slot id="slotted-slot" style="display:block"></slot></div></${tag}><button type="button" aria-label="Shadow-owned">Hidden from discovery</button>`
+      fixture.querySelector("#slotted-button")?.addEventListener("click", () => {
+        fixture.dataset.clicks = String(Number(fixture.dataset.clicks) + 1)
+      })
+      fixture.querySelector("#slotted-input")?.addEventListener("input", () => {
+        fixture.dataset.inputs = String(Number(fixture.dataset.inputs) + 1)
+      })
+      document.body.append(fixture)
+      if (mode === "modal") {
+        host.style.filter = "opacity(0)"
+        ;(root.querySelector("#slotted-outer") as HTMLElement).style.filter = "opacity(0)"
+        ;(innerRoot.querySelector("dialog") as HTMLDialogElement).showModal()
+      }
+    }, mode)
+    const discover = async () =>
+      (await request("page.listElements", {}, { tabContext })) as unknown as {
+        snapshotId: string
+        elements: Array<{ ref: string; name: string }>
+      }
+    try {
+      for (const filter of ["opacity(0)", `url("data:image/svg+xml,${"x".repeat(4096)}")`]) {
+        await page.locator("#slotted-slot").evaluate((slot: HTMLElement, filter) => {
+          slot.style.display = "contents"
+          slot.style.filter = filter
+        }, filter)
+        const names = (await discover()).elements.map((element) => element.name)
+        expect(names).toContain("Slotted button")
+        expect(names).toContain("Slotted input")
+      }
+      await page.locator("#slotted-slot").evaluate((slot: HTMLElement) => {
+        slot.style.display = "block"
+        slot.style.filter = "none"
+      })
+      let allowed = 0
+      const selectors = ["#slotted-slot", "#slotted-wrapper", "#slotted-surface"]
+      if (mode === "inline") selectors.push("#slotted-outer")
+      for (const selector of selectors) {
+        for (const filter of ["opacity(0)", `url("data:image/svg+xml,${"x".repeat(4096)}")`]) {
+          const snapshot = await discover()
+          const names = snapshot.elements.map((element) => element.name)
+          expect(names).toContain("Slotted button")
+          expect(names).toContain("Slotted input")
+          expect(names).not.toContain("Shadow-owned")
+          const target = (name: string) => {
+            const element = snapshot.elements.find((element) => element.name === name)
+            if (!element) throw new Error(`Missing ${name}`)
+            return { snapshotId: snapshot.snapshotId, ref: element.ref }
+          }
+          await request("page.click", target("Slotted button"), { tabContext })
+          await request(
+            "page.type",
+            { ...target("Slotted input"), text: "Allowed" },
+            { tabContext },
+          )
+          allowed++
+          await page.locator(selector).evaluate((element: HTMLElement, filter) => {
+            element.style.filter = filter
+          }, filter)
+          expect(
+            await page.locator("#slotted-input").evaluate((input) => {
+              const rect = input.getBoundingClientRect()
+              return (
+                input.assignedSlot?.assignedSlot?.id === "slotted-slot" &&
+                document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2) ===
+                  input
+              )
+            }),
+          ).toBe(true)
+          await expect(
+            request("page.click", target("Slotted button"), { tabContext }),
+          ).rejects.toMatchObject({ code: "INVALID_REQUEST" })
+          await expect(
+            request(
+              "page.type",
+              { ...target("Slotted input"), text: "Never write" },
+              { tabContext },
+            ),
+          ).rejects.toMatchObject({ code: "INVALID_REQUEST" })
+          const blockedNames = (await discover()).elements.map((element) => element.name)
+          expect(blockedNames).not.toContain("Slotted button")
+          expect(blockedNames).not.toContain("Slotted input")
+          expect(blockedNames).not.toContain("Slotted label")
+          if (mode === "inline") expect(blockedNames).toContain("Slotted fallback")
+          await page.locator(selector).evaluate((element: HTMLElement) => {
+            element.style.filter = "none"
+          })
+        }
+      }
+      const snapshot = await discover()
+      const input = snapshot.elements.find((element) => element.name === "Slotted input")
+      if (!input) throw new Error("Missing slotted input")
+      await page.locator("#slotted-input").evaluate((input: HTMLInputElement) => {
+        input.blur()
+        input.addEventListener("focus", () => {
+          const wrapper = input.assignedSlot?.assignedSlot?.parentElement
+          if (wrapper) wrapper.style.filter = "opacity(0)"
+        })
+      })
+      await expect(
+        request(
+          "page.type",
+          { snapshotId: snapshot.snapshotId, ref: input.ref, text: "Never write" },
+          { tabContext },
+        ),
+      ).rejects.toMatchObject({ code: "STALE_CONTEXT" })
+      await expect(page.locator("#slotted-fixture")).toHaveAttribute("data-clicks", String(allowed))
+      await expect(page.locator("#slotted-fixture")).toHaveAttribute("data-inputs", String(allowed))
+      await expect(page.locator("#slotted-input")).toHaveValue("Allowed")
+    } finally {
+      await page.locator("#slotted-fixture").evaluate((fixture) => fixture.remove())
+    }
+  })
+}
+
 test("rejects oversized shared filter declarations on distinct controls", async () => {
   await page.evaluate(() => {
     const fixture = document.createElement("div")
