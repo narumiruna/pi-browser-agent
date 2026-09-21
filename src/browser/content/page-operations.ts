@@ -153,7 +153,11 @@ export async function executePageOperation(
     const parent = element.parentNode
     return parent instanceof ShadowRoot ? parent.host : element.parentElement
   }
-  const isVisible = (element: Element, requireTargetHit = false): boolean => {
+  const isVisible = (
+    element: Element,
+    requireTargetHit = false,
+    filterStart: Element = element,
+  ): boolean => {
     if (!(element instanceof HTMLElement)) return false
     const selectedStyle = getComputedStyle(element)
     if (selectedStyle.visibility === "hidden" || selectedStyle.visibility === "collapse") {
@@ -164,8 +168,8 @@ export async function executePageOperation(
       if (style.display === "none" || Number.parseFloat(style.opacity || "1") <= 0) return false
     }
     if (requireTargetHit) {
-      // Slotted light-DOM controls are also filtered by their slot's shadow-tree ancestors.
-      for (let current: Element | null = element; current; current = filterParent(current)) {
+      // Slotted controls and text are also filtered by their slot's shadow-tree ancestors.
+      for (let current: Element | null = filterStart; current; current = filterParent(current)) {
         const style = getComputedStyle(current)
         // Boxless ancestors (including default slots) do not apply their own filters.
         if (style.display !== "contents" && filterBlocksVisibility(current, style)) return false
@@ -244,12 +248,14 @@ export async function executePageOperation(
       const node = walker.nextNode()
       if (!node) break
       const parent = node.parentElement
+      // Directly slotted text has filter ancestry distinct from its parent host.
+      const slot = node instanceof Text ? node.assignedSlot : null
       if (
         !parent ||
         parent.closest(
           "input, textarea, select, [contenteditable], [hidden], [aria-hidden='true']",
         ) ||
-        !isVisible(parent, true)
+        !isVisible(parent, true, slot ?? parent)
       )
         continue
       text += " "

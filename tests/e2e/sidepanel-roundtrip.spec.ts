@@ -755,6 +755,141 @@ for (const mode of ["inline", "modal"] as const) {
   })
 }
 
+test("filters directly slotted name text and revalidates references after name changes", async () => {
+  await page.evaluate(() => {
+    const fixture = document.createElement("div")
+    fixture.id = "direct-text-fixture"
+    fixture.dataset.clicks = "0"
+    fixture.dataset.inputs = "0"
+    fixture.style.cssText =
+      "position:fixed;left:50px;top:250px;width:600px;z-index:1000;background:white"
+    fixture.innerHTML = `<div id="direct-name">Projected name</div>
+      <button id="direct-button" type="button" aria-labelledby="direct-name" aria-label="Button fallback">Go</button>
+      <input id="direct-input" aria-labelledby="direct-name" placeholder="Input fallback">`
+    const root = (fixture.querySelector("#direct-name") as HTMLElement).attachShadow({
+      mode: "open",
+    })
+    root.innerHTML =
+      '<div id="direct-outer"><div id="direct-inner-host"><slot></slot></div><slot name="visible"></slot></div>'
+    const inner = (root.querySelector("#direct-inner-host") as HTMLElement).attachShadow({
+      mode: "open",
+    })
+    inner.innerHTML =
+      '<div id="direct-wrapper"><slot id="direct-slot" style="display:block"></slot></div>'
+    fixture.querySelector("#direct-button")?.addEventListener("click", () => {
+      fixture.dataset.clicks = String(Number(fixture.dataset.clicks) + 1)
+    })
+    fixture.querySelector("#direct-input")?.addEventListener("input", () => {
+      fixture.dataset.inputs = String(Number(fixture.dataset.inputs) + 1)
+    })
+    document.body.append(fixture)
+  })
+  const discover = async () =>
+    (await request("page.listElements", {}, { tabContext })) as unknown as {
+      snapshotId: string
+      elements: Array<{ ref: string; name: string; tag: string }>
+    }
+  try {
+    for (const filter of ["opacity(0)", `url("data:image/svg+xml,${"x".repeat(4096)}")`]) {
+      await page.locator("#direct-slot").evaluate((slot: HTMLElement, filter) => {
+        slot.style.display = "contents"
+        slot.style.filter = filter
+      }, filter)
+      expect(
+        (await discover()).elements.filter((element) => element.name === "Projected name"),
+      ).toHaveLength(2)
+    }
+    await page.locator("#direct-slot").evaluate((slot: HTMLElement) => {
+      slot.style.display = "block"
+      slot.style.filter = "none"
+    })
+    let allowed = 0
+    for (const selector of ["#direct-slot", "#direct-wrapper", "#direct-outer"]) {
+      for (const filter of ["opacity(0)", `url("data:image/svg+xml,${"x".repeat(4096)}")`]) {
+        const snapshot = await discover()
+        const target = (tag: string) => {
+          const element = snapshot.elements.find(
+            (element) => element.tag === tag && element.name === "Projected name",
+          )
+          if (!element) throw new Error(`Missing directly named ${tag}`)
+          return { snapshotId: snapshot.snapshotId, ref: element.ref }
+        }
+        await request("page.click", target("button"), { tabContext })
+        await request("page.type", { ...target("input"), text: "Allowed" }, { tabContext })
+        allowed++
+        await page.locator(selector).evaluate((element: HTMLElement, filter) => {
+          element.style.filter = filter
+        }, filter)
+        expect(
+          await page.locator("#direct-name").evaluate((host) => {
+            const text = host.firstChild as Text
+            const range = document.createRange()
+            range.selectNodeContents(text)
+            const rect = range.getBoundingClientRect()
+            return (
+              text.assignedSlot?.assignedSlot?.id === "direct-slot" &&
+              document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2) === host
+            )
+          }),
+        ).toBe(true)
+        await expect(request("page.click", target("button"), { tabContext })).rejects.toMatchObject(
+          { code: "STALE_CONTEXT" },
+        )
+        await expect(
+          request("page.type", { ...target("input"), text: "Never write" }, { tabContext }),
+        ).rejects.toMatchObject({ code: "STALE_CONTEXT" })
+        const names = (await discover()).elements.map((element) => element.name)
+        expect(names).not.toContain("Projected name")
+        expect(names).toContain("Button fallback")
+        expect(names).toContain("Input fallback")
+        await page.locator(selector).evaluate((element: HTMLElement) => {
+          element.style.filter = "none"
+        })
+      }
+    }
+    const snapshot = await discover()
+    const input = snapshot.elements.find(
+      (element) => element.tag === "input" && element.name === "Projected name",
+    )
+    if (!input) throw new Error("Missing directly named input")
+    await page.locator("#direct-input").evaluate((input: HTMLInputElement) => {
+      input.blur()
+      input.addEventListener("focus", () => {
+        const text = document.querySelector("#direct-name")?.firstChild as Text
+        const wrapper = text.assignedSlot?.assignedSlot?.parentElement
+        if (wrapper) wrapper.style.filter = "opacity(0)"
+      })
+    })
+    await expect(
+      request(
+        "page.type",
+        { snapshotId: snapshot.snapshotId, ref: input.ref, text: "Never write" },
+        { tabContext },
+      ),
+    ).rejects.toMatchObject({ code: "STALE_CONTEXT" })
+    await expect(page.locator("#direct-input")).toHaveValue("Allowed")
+    await expect(page.locator("#direct-text-fixture")).toHaveAttribute(
+      "data-clicks",
+      String(allowed),
+    )
+    await expect(page.locator("#direct-text-fixture")).toHaveAttribute(
+      "data-inputs",
+      String(allowed),
+    )
+    await page.locator("#direct-name").evaluate((host) => {
+      const sibling = document.createElement("span")
+      sibling.slot = "visible"
+      sibling.textContent = "Visible sibling"
+      host.append(sibling)
+    })
+    const names = (await discover()).elements.map((element) => element.name)
+    expect(names.filter((name) => name === "Visible sibling")).toHaveLength(2)
+    expect(names.join(" ")).not.toContain("Projected name")
+  } finally {
+    await page.locator("#direct-text-fixture").evaluate((fixture) => fixture.remove())
+  }
+})
+
 test("rejects oversized shared filter declarations on distinct controls", async () => {
   await page.evaluate(() => {
     const fixture = document.createElement("div")
