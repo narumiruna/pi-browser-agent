@@ -34,6 +34,10 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   const promptInput = element<HTMLTextAreaElement>("prompt")
   const errorOutput = element<HTMLElement>("error")
   const runStatus = element<HTMLElement>("run-status")
+  const statusPillElement = runStatus.closest<HTMLElement>(".status-pill")
+  if (!statusPillElement) throw new Error("Missing run status container")
+  const statusPill: HTMLElement = statusPillElement
+  const scrollToBottomButton = element<HTMLButtonElement>("scroll-to-bottom")
   const sessionSelect = element<HTMLSelectElement>("sessions")
   const confirmDialog = element<HTMLDialogElement>("confirm-dialog")
   const confirmMessage = element<HTMLElement>("confirm-message")
@@ -122,6 +126,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   function setRunStatus(text: string, running = runtime.agent.state.isStreaming): void {
     runStatus.textContent = text
     runStatus.title = text
+    statusPill.hidden = !running && text === "Ready"
     document.body.dataset.state = running ? "running" : "idle"
     transcript.setAttribute("aria-busy", String(running))
     abortButton.hidden = !running
@@ -135,7 +140,31 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
 
   function resizePromptInput(): void {
     promptInput.style.height = "auto"
-    promptInput.style.height = `${Math.min(promptInput.scrollHeight, 160)}px`
+    promptInput.style.height = `${Math.min(promptInput.scrollHeight, 144)}px`
+  }
+
+  function updateScrollToBottomButton(): void {
+    const distanceFromBottom =
+      transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight
+    scrollToBottomButton.hidden =
+      transcript.scrollHeight <= transcript.clientHeight + 1 || distanceFromBottom < 48
+  }
+
+  const transcriptResizeObserver = new ResizeObserver(updateScrollToBottomButton)
+  const observedTranscriptElements = new Set<Element>()
+
+  function observeTranscriptLayout(): void {
+    const currentElements = new Set<Element>([transcript, ...Array.from(transcript.children)])
+    for (const observed of observedTranscriptElements) {
+      if (currentElements.has(observed)) continue
+      transcriptResizeObserver.unobserve(observed)
+      observedTranscriptElements.delete(observed)
+    }
+    for (const current of currentElements) {
+      if (observedTranscriptElements.has(current)) continue
+      transcriptResizeObserver.observe(current)
+      observedTranscriptElements.add(current)
+    }
   }
 
   function updateSendButton(): void {
@@ -171,8 +200,9 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       description.textContent = "Ask a question, find a detail, or explore the page you're on."
       emptyState.append(icon, title, description)
       transcript.append(emptyState)
-      return
     }
+    observeTranscriptLayout()
+    updateScrollToBottomButton()
   }
 
   async function refreshSessions(): Promise<void> {
@@ -508,6 +538,10 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     submitPrompt(event.altKey)
   })
   abortButton.addEventListener("click", () => runtime.abort())
+  transcript.addEventListener("scroll", updateScrollToBottomButton, { passive: true })
+  scrollToBottomButton.addEventListener("click", () => {
+    transcript.scrollTo({ top: transcript.scrollHeight, behavior: "smooth" })
+  })
   element<HTMLButtonElement>("open-settings").addEventListener("click", openSettingsTab)
   element<HTMLButtonElement>("new-session").addEventListener("click", () => {
     void run(async () => {
@@ -522,7 +556,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     }, setError)
   })
   element<HTMLButtonElement>("rename-session").addEventListener("click", () => {
-    const title = globalThis.prompt("Session name", runtime.activeSession.title)
+    const title = globalThis.prompt("Conversation name", runtime.activeSession.title)
     if (title === null) return
     void run(async () => {
       await runtime.renameSession(title)
@@ -530,14 +564,14 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     }, setError)
   })
   element<HTMLButtonElement>("delete-session").addEventListener("click", () => {
-    if (!confirm("Delete this session and its stored images?")) return
+    if (!confirm("Delete this conversation and its stored images?")) return
     void run(async () => {
       await runtime.deleteSession(sessionSelect.value)
       await refreshActiveSessionUi()
     }, setError)
   })
   element<HTMLButtonElement>("clear-sessions").addEventListener("click", () => {
-    if (!confirm("Delete every saved session and image?")) return
+    if (!confirm("Delete every saved conversation and image?")) return
     void run(async () => {
       await runtime.clearSessions()
       await refreshActiveSessionUi()
@@ -608,6 +642,8 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     }, setError)
   })
   window.addEventListener("pagehide", () => {
+    transcriptResizeObserver.disconnect()
+    observedTranscriptElements.clear()
     voiceInput?.abort()
     authentication?.abort()
     void runtime.shutdown()
