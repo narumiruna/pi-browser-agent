@@ -99,6 +99,7 @@ npm audit --omit=dev
 - [Architecture](docs/architecture.md)
 - [Authentication](docs/authentication.md)
 - [Permissions and data storage](docs/permissions-and-storage.md)
+- [Privacy policy](PRIVACY.md)
 - [Security model](docs/security.md)
 - [Manual acceptance](docs/manual-acceptance.md)
 - [WebMCP status](docs/webmcp.md)
