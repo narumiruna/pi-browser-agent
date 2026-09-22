@@ -13,6 +13,8 @@ export const RUNTIME_METHODS = [
   "bookmarks.search",
   "bookmarks.getRecent",
   "selection.takePending",
+  "elementPicker.start",
+  "elementPicker.stop",
   "requests.cancel",
   "page.getVisibleText",
   "page.listElements",
@@ -45,6 +47,8 @@ type RuntimeParams = {
   "bookmarks.search": { query: string; limit: number }
   "bookmarks.getRecent": { limit: number }
   "selection.takePending": { windowId: number }
+  "elementPicker.start": { clientId: string }
+  "elementPicker.stop": Record<string, never>
   "requests.cancel": { requestId: string }
   "page.getVisibleText": Record<string, never>
   "page.listElements": Record<string, never>
@@ -69,7 +73,14 @@ export type RuntimeRequest<M extends RuntimeMethod = RuntimeMethod> = {
 
 export interface RuntimeEvent {
   kind: "event"
-  name: "operation.progress" | "selection.queued" | "settings.saved" | "tab.changed"
+  name:
+    | "elementPicker.cancelled"
+    | "elementPicker.selected"
+    | "elementPicker.started"
+    | "operation.progress"
+    | "selection.queued"
+    | "settings.saved"
+    | "tab.changed"
   payload: JsonObject
   tabContext?: TabContext
 }
@@ -134,6 +145,7 @@ function hasValidTarget(params: Record<string, unknown>, extra: string[] = []): 
 function hasValidParams(method: RuntimeMethod, params: Record<string, unknown>): boolean {
   switch (method) {
     case "app.getState":
+    case "elementPicker.stop":
     case "tabs.getActive":
     case "page.getVisibleText":
     case "page.listElements":
@@ -141,6 +153,12 @@ function hasValidParams(method: RuntimeMethod, params: Record<string, unknown>):
     case "page.captureVisible":
     case "webmcp.listTools":
       return Object.keys(params).length === 0
+    case "elementPicker.start":
+      return (
+        hasOnlyKeys(params, ["clientId"]) &&
+        typeof params.clientId === "string" &&
+        /^[a-f0-9-]{36}$/.test(params.clientId)
+      )
     case "selection.takePending":
       return (
         hasOnlyKeys(params, ["windowId"]) &&

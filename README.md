@@ -32,9 +32,10 @@ Load the production artifact:
 3. Open the HTTP or HTTPS page you want to use. Pi Browser Agent follows the visible tab automatically.
 4. Enter a prompt. Pi Browser Agent approves only the current page and selected provider endpoint for ordinary access when needed.
 5. To include an image, paste it into the composer, review the preview, and send it with optional text. Choose a model marked **Image input**.
-6. To let Pi inspect the visible page, ask it to capture the screen and confirm the first screenshot request. Chrome asks for optional all-sites access because its screenshot API requires `<all_urls>` after the temporary `activeTab` grant ends; Pi Browser Agent still captures only the current visible HTTP(S) viewport.
-7. To dictate a prompt, select the microphone. The first use opens a full Pi Browser Agent tab where Chrome can request microphone access; approve it, close that tab, select the microphone again, and speak. Select it once more before reviewing and sending the transcript.
-8. When Pi requests a bookmark read, review the requested search or recent-item limit and confirm it. Chrome asks for the optional bookmark permission the first time.
+6. To point out a page element, select the cursor-and-dashed-box button beside the microphone, hover the page highlight, and select the target. Review or remove the resulting chip before sending. Selection supports the top-frame DOM and does not activate the target.
+7. To let Pi inspect the visible page, ask it to capture the screen and confirm the first screenshot request. Chrome asks for optional all-sites access because its screenshot API requires `<all_urls>` after the temporary `activeTab` grant ends; Pi Browser Agent still captures only the current visible HTTP(S) viewport. A completed screenshot result has an **Annotate screenshot** action; draw locally, attach the rendered image, then select **Send**.
+8. To dictate a prompt, select the microphone. The first use opens a full Pi Browser Agent tab where Chrome can request microphone access; approve it, close that tab, select the microphone again, and speak. Select it once more before reviewing and sending the transcript.
+9. When Pi requests a bookmark read, review the requested search or recent-item limit and confirm it. Chrome asks for the optional bookmark permission the first time.
 
 Voice input uses Chrome's Web Speech service in the browser language. Spoken audio may be processed by the browser's speech provider; only the resulting editable transcript is submitted to Pi when you select **Send**. The model transport is always SSE. Closing the Side Panel aborts the active run and marks the session interrupted; reopening never automatically repeats a browser mutation.
 
@@ -50,10 +51,13 @@ The agent can read visible text and selection, discover visible interactive elem
 - Form submissions, downloads, cross-origin links, cross-origin navigation, and all WebMCP calls require confirmation.
 - A request created before navigation or a visible-tab change is rejected as stale.
 - Visible text and selected text are capped at 50 KB; screenshots are capped at 3 MB.
+- The element picker accepts up to five chips and 16 KB of combined context. It includes bounded visible text, accessibility metadata, an allowlist of attributes, viewport geometry, and a best-effort CSS selector; it excludes field values, hidden text, full HTML, credential-bearing URLs, iframes, and Shadow DOM. Selectors are descriptive hints, not durable mutation authorization.
+- Picker mode uses a layout-neutral interaction shield so selecting a button, link, or submit control does not activate it. `Esc`, a repeated button click, selection, navigation, tab/focus change, timeout, or closing the Side Panel cancels the mode. A page-level listener installed before the picker may still observe an intercepted event.
 - Screenshot access is optional. Its first confirmation requests Chrome's broad `<all_urls>` capability, but the runtime accepts only the active visible HTTP(S) tab and captures only its viewport.
+- Screenshot annotation runs locally, downscales oversized-but-valid captures to a bounded canvas, and limits strokes, points, and output bytes. Attach creates a new normal composer image; only **Send** transmits it. The original result is unchanged, and both images can consume session storage.
 - Chrome can treat `<all_urls>` as satisfying narrower host requests. Pi Browser Agent separately records exact origins approved by explicit Send, login, site-access, catalog-load, or cross-origin confirmation actions and requires that approval for ordinary access.
 - A message accepts up to four pasted PNG, JPEG, WebP, or GIF images using at most 3 MB in total.
-- Page text, selections, screenshot metadata, bookmark data, and WebMCP results are labeled as untrusted model input.
+- Page text, selections, selected-element context, screenshot metadata, bookmark data, and WebMCP results are labeled as untrusted model input.
 - Bookmark access is optional and absent by default. Every search or recent-bookmark read requires confirmation, returns at most 50 items and 50 KB, and sends the returned titles and URLs to the selected model provider as part of the conversation.
 - Chrome's bookmark permission covers reads and writes, but Pi Browser Agent exposes only search and recent-read operations; the production artifact audit rejects bookmark mutation calls.
 - Credentials stay in trusted extension storage and are never sent to the service worker, content injection, page context, transcript, or diagnostic export.
@@ -98,6 +102,8 @@ Pushes to `main` create or update the **chore(release): version packages** pull 
 - **OpenAI Codex host access was revoked:** select **Add credential** → **Sign in with an account** → **OpenAI Codex**, then approve both requested OpenAI origins.
 - **A page tool is denied:** make the intended HTTP(S) page visible and send the prompt again. If access was previously declined, use **Account and site access → Allow current site**. Chrome internal pages cannot be controlled.
 - **A screenshot is denied:** request it again, confirm Pi Browser Agent's explanation, and approve Chrome's optional all-sites prompt. If the grant was revoked, Chrome asks again; ordinary per-site access is not enough for `captureVisibleTab()`.
+- **An annotation will not attach:** choose an image-capable model, add at least one stroke, and remove composer images if the four-image or 3 MB total limit is reached. Editing itself requests no permission and sends nothing until **Send**.
+- **The element picker will not start:** make an HTTP(S) page visible and approve current-site access. Press `Esc` or select the active picker button to reset it; navigation and site-access revocation require a fresh selection.
 - **A bookmark read is denied:** request it again and approve both Pi Browser Agent's operation confirmation and Chrome's optional permission prompt. Revoke bookmark access from Chrome's extension settings when it is no longer wanted.
 - **Expired element reference:** ask for a new element list and review the intended action before trying again. A saved reference is not a current target, and the extension never falls back to another element.
 - **Stale context:** the visible tab changed or navigated after the tool request began. Return to the intended page and retry; Pi Browser Agent automatically tracks the visible supported tab.

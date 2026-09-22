@@ -19,13 +19,13 @@ Pi Browser Agent stores credentials supplied for user-selected AI providers. Dep
 
 ### Prompts and conversations
 
-Pi Browser Agent handles prompts, editable voice transcripts, attached images, model responses, reasoning when supplied by the model, tool calls, tool results, and related error messages. Conversation messages are stored locally so users can resume sessions, subject to the retention and per-session size limits described below.
+Pi Browser Agent handles prompts, editable voice transcripts, attached images, model responses, reasoning when supplied by the model, tool calls, tool results, and related error messages. A user can annotate a completed screenshot locally; the editable strokes and unsent rendered preview remain in memory, and the new image is shared only after **Send**. The original screenshot is not modified. Conversation messages are stored locally so users can resume sessions, subject to the retention and per-session size limits described below.
 
 ### Current-page information
 
-When required by a user request, Pi Browser Agent may handle the active tab's URL and approved page context, including visible text, selected text, descriptions of visible interactive elements, screenshot content, and results returned by page or WebMCP tools. It targets only the active, visible HTTP or HTTPS tab in the focused Chrome window.
+When required by a user request, Pi Browser Agent may handle the active tab's URL and approved page context, including visible text, selected text, descriptions of visible interactive elements, screenshot content, and results returned by page or WebMCP tools. If the user activates the element picker, a selected context can include bounded visible text, accessibility metadata, allowlisted attributes, viewport geometry, and a best-effort selector. It excludes input values, hidden text, full HTML, URL credentials, iframe contents, and Shadow DOM. It targets only the active, visible HTTP or HTTPS tab in the focused Chrome window.
 
-Pi Browser Agent does not continuously collect page content or maintain a background browsing-history service. Page access occurs to provide the user-facing assistant features and is subject to Chrome permissions and Pi Browser Agent's runtime checks.
+Pi Browser Agent does not continuously collect page content or maintain a background browsing-history service. Page access occurs to provide the user-facing assistant features and is subject to Chrome permissions and Pi Browser Agent's runtime checks. Unsent selected-element chips remain only in memory and are cleared on relevant tab or session changes. They are shared only after the user selects **Send**.
 
 ### Bookmark information
 
@@ -68,7 +68,8 @@ Pi Browser Agent does not sell user data, transfer it to data brokers or adverti
 - Provider credentials, settings, the active session identifier, and approved origins remain in `chrome.storage.local` until the user removes or changes them, clears extension data, or uninstalls Pi Browser Agent.
 - An undelivered context-menu selection remains in `chrome.storage.session` until it is consumed or the browser session ends.
 - Conversation records are stored in the extension's IndexedDB database. Pi Browser Agent retains at most 50 sessions and limits each serialized session record to 5 MB. If a session exceeds that limit, Pi Browser Agent first replaces embedded images with omission placeholders and then, if necessary, removes the oldest messages until the record fits. The Side Panel reports this loss to the user.
-- Partial streaming output, unsent image previews, and live operation state are kept only in memory for the Side Panel's lifetime.
+- Partial streaming output, unsent pasted or annotated image previews, editable annotation strokes, unsent selected-element chips, and live picker/operation state are kept only in memory for the relevant Side Panel, page, or worker lifetime.
+- Sent selected-element JSON is stored as untrusted user-message text. Sent annotated images are embedded like other user images; an original screenshot and its annotated copy can both consume session storage.
 
 Users can delete individual sessions, select **Clear all session data**, remove provider credentials, revoke Chrome permissions, or uninstall the extension. Removing local data does not delete information already processed by an external provider; requests concerning provider-held data must be directed to that provider.
 

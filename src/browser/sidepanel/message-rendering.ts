@@ -5,13 +5,24 @@ import { CopyButton, type CopyButtonKind } from "./copy-button.js"
 import { imageContentSource } from "./images.js"
 import { renderMarkdown } from "./markdown.js"
 
+interface MessageRenderOptions {
+  developerDetails?: boolean
+  onAnnotateScreenshot?: (image: ImageContent) => void
+}
+
 interface ContentState {
   disclosures: Map<string, HTMLDetailsElement>
   images: Map<number, HTMLImageElement>
   copyButtons: Map<string, CopyButton>
+  annotationButtons: Map<number, HTMLButtonElement>
 }
 function newContentState(): ContentState {
-  return { disclosures: new Map(), images: new Map(), copyButtons: new Map() }
+  return {
+    disclosures: new Map(),
+    images: new Map(),
+    copyButtons: new Map(),
+    annotationButtons: new Map(),
+  }
 }
 
 function developerDetailsEnabled(): boolean {
@@ -36,6 +47,36 @@ function copyButton(
   }
   control.updateText(text)
   return control.element
+}
+
+function annotationButton(
+  state: ContentState,
+  index: number,
+  image: ImageContent,
+  onAnnotate: (image: ImageContent) => void,
+): HTMLButtonElement {
+  let button = state.annotationButtons.get(index)
+  if (!button) {
+    button = document.createElement("button")
+    button.type = "button"
+    button.className = "icon-button annotate-screenshot-button"
+    button.ariaLabel = "Annotate screenshot"
+    button.title = button.ariaLabel
+    button.dataset.focusKey = `annotate-screenshot-${index}`
+    const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+    icon.setAttribute("class", "radix-icon")
+    icon.setAttribute("viewBox", "0 0 15 15")
+    icon.setAttribute("aria-hidden", "true")
+    for (const data of ["m2 13 2.6-.6 7.7-7.7a1.4 1.4 0 0 0-2-2L2.6 10.4 2 13Z", "m8.9 4.1 2 2"]) {
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path")
+      path.setAttribute("d", data)
+      icon.append(path)
+    }
+    button.append(icon)
+    state.annotationButtons.set(index, button)
+  }
+  button.onclick = () => onAnnotate(image)
+  return button
 }
 
 function appendTextContent(container: HTMLElement, text: string): void {
@@ -131,7 +172,7 @@ export function renderMessageContent(
   message: AgentMessage,
   renderedImages: WeakMap<ImageContent, HTMLImageElement> = new WeakMap(),
   state: ContentState = newContentState(),
-  options: { developerDetails?: boolean } = {
+  options: MessageRenderOptions = {
     developerDetails: developerDetailsEnabled(),
   },
 ): { hasImage: boolean; roleLabel: string; text: string; toolCall: boolean } {
@@ -175,6 +216,14 @@ export function renderMessageContent(
         state.images.set(index, image)
         renderedImages.set(item, image)
         container.append(image)
+        if (
+          message.role === "toolResult" &&
+          !message.isError &&
+          message.toolName === "browser_capture_visible" &&
+          options.onAnnotateScreenshot
+        ) {
+          container.append(annotationButton(state, index, item, options.onAnnotateScreenshot))
+        }
       } else if (item.type === "text") {
         textParts.push(item.text)
         if (item.text) appendProse(container, item.text, message.role === "assistant", state, index)
@@ -260,11 +309,19 @@ export class TranscriptRenderer {
   private readonly views = new Map<string, MessageView>()
   private readonly turns = new Map<string, HTMLElement>()
   private images = new WeakMap<ImageContent, HTMLImageElement>()
+  private readonly developerDetails: boolean
+  private readonly options: MessageRenderOptions
 
   constructor(
     private readonly transcript: HTMLElement,
-    private readonly developerDetails = developerDetailsEnabled(),
-  ) {}
+    options: MessageRenderOptions | boolean = {},
+  ) {
+    this.options = typeof options === "boolean" ? {} : options
+    this.developerDetails =
+      typeof options === "boolean"
+        ? options
+        : (options.developerDetails ?? developerDetailsEnabled())
+  }
 
   render(messages: AgentMessage[], sessionId: string): void {
     const changedSession = sessionId !== this.sessionId
@@ -323,6 +380,7 @@ export class TranscriptRenderer {
             ? document.createElement("div")
             : view.content
         const rendered = renderMessageContent(renderTarget, message, this.images, view.state, {
+          ...this.options,
           developerDetails: this.developerDetails,
         })
         const heading = view.node.firstElementChild as HTMLElement

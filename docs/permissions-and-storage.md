@@ -17,7 +17,7 @@
 | --- | --- |
 | `<all_urls>` | Satisfy Chrome's `captureVisibleTab()` requirement after temporary `activeTab` access ends. Requested only from the first screenshot confirmation. |
 
-Chrome describes `<all_urls>` as access to all sites. Pi Browser Agent declares it as optional rather than required, requests it only from the screenshot confirmation's Confirm gesture, and rechecks it before every capture. The runtime continues to target only the active visible HTTP(S) tab in the focused window, reject stale tab contexts, capture only the viewport, and cap the PNG at 3 MB. Denial leaves the confirmation open; revocation causes the next screenshot request to ask again. Screenshot content is sent to the selected model provider and stored in the session transcript.
+Chrome describes `<all_urls>` as access to all sites. Pi Browser Agent declares it as optional rather than required, requests it only from the screenshot confirmation's Confirm gesture, and rechecks it before every capture. The runtime continues to target only the active visible HTTP(S) tab in the focused window, reject stale tab contexts, capture only the viewport, and cap the PNG at 3 MB. Denial leaves the confirmation open; revocation causes the next screenshot request to ask again. Screenshot content is sent to the selected model provider and stored in the session transcript. Opening the local annotation editor or attaching its rendered PNG requests no additional Chrome permission; only sending that new composer image shares it with the provider.
 
 ## Optional API permissions
 
@@ -43,8 +43,8 @@ Microphone access is a Chrome content permission for the extension origin, not a
 | --- | --- | --- |
 | `chrome.storage.local` | Provider-scoped API keys or Codex OAuth credential, selected provider/model, interface font and text-size preferences, system prompt, AGENTS-style instructions, active session ID, app-approved exact host patterns | Until credential removal, settings or host approval change, session selection, or extension data removal |
 | `chrome.storage.session` | An undelivered context-menu selection | Browser session |
-| IndexedDB `pi-browser-agent-sessions` | Versioned complete messages and tool results, including confirmed bookmark titles and URLs, model state, names, timestamps, embedded screenshot and pasted-image content | Until retention deletion or user clear |
-| Memory | Live agent, partial stream, confirmations, login cancellation, unsent pasted-image previews | Side Panel lifetime |
+| IndexedDB `pi-browser-agent-sessions` | Versioned complete messages and tool results, including confirmed bookmark titles and URLs, sent selected-element JSON, model state, names, timestamps, embedded original screenshots and sent pasted/annotated image content | Until retention deletion or user clear |
+| Memory | Live agent, partial stream, confirmations, login cancellation, picker token/overlay state, unsent selected-element chips, unsent pasted/annotated image previews, and editable annotation strokes | Side Panel, page, or worker lifetime as applicable |
 
 Local extension storage is restricted to trusted contexts. Content injection has no storage API channel and receives only operation parameters.
 
@@ -52,7 +52,9 @@ Local extension storage is restricted to trusted contexts. Content injection has
 
 Confirmed bookmark results are sent to the selected model provider as conversation tool results and then persist in the same transcript record as other complete messages. Search requires a non-empty query; search and recent reads return at most 50 normalized items and 50 KB. Pi Browser Agent does not keep a separate bookmark cache or index.
 
-Clipboard images are read only after an explicit paste into the composer. One message accepts up to four PNG, JPEG, WebP, or GIF images with a combined binary size of 3 MB. Images remain in memory until sent or removed; sent images are embedded in the transcript.
+Clipboard images are read only after an explicit paste into the composer. Screenshot annotation reads an already completed screenshot tool result locally and produces a new PNG only after the user draws and chooses **Attach**. One message accepts up to four PNG, JPEG, WebP, or GIF images with a combined binary size of 3 MB. Images remain in memory until sent or removed; sent images are embedded in the transcript. The original screenshot and an annotated copy are separate images and can both count toward the 5 MB session limit.
+
+The element picker runs only after its composer button is selected and exact current-site access is approved. Up to five contexts using at most 16 KB combined remain memory-only until sent or removed and are cleared on tab-context or session changes. Each context can include the page URL, tag, bounded ID/classes/visible text/accessibility metadata, allowlisted attributes, viewport rectangle/scroll metadata, and a best-effort selector. It excludes input values, hidden text, full HTML, URL credentials, iframe contents, and Shadow DOM. After Send, the versioned context is embedded as explicitly untrusted JSON in the user message, sent to the selected model provider, and retained with that message.
 
 IndexedDB stores at most 50 sessions, newest first. Each serialized session is limited to 5 MB. If a live transcript reaches that limit, embedded images and then the oldest messages are removed until the record can be saved, and the Side Panel reports the loss. The active session ID is stored separately so Side Panel and Chrome restarts restore the selected session even when records have equal timestamps. Deleting a session deletes its transcript and inline image content in the same record. Clearing session storage removes the object store contents before creating a new empty session.
 
