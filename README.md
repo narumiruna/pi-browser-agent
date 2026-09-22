@@ -62,7 +62,9 @@ The agent can read visible text and selection, discover visible interactive elem
 
 Assistant answers support Markdown headings, lists, tables, links, and fenced code. Raw HTML and Markdown images are not rendered; only explicit HTTP(S) links are clickable. Right-aligned copy icons provide **Copy answer** for the original Markdown and **Copy code** for code text, with tooltips and accessible names. Pending, successful, and failed copies use distinct icons, tooltips, and screen-reader status updates without requesting new permissions. User messages, tool data, and thinking remain plain text.
 
-Thinking and tool calls/results have separate disclosures so answers remain visible. Errors and image results open by default; manual expansion/collapse and keyboard focus survive streaming updates. The transcript follows new output only while you are near the bottom. Reopening a session restores default disclosure states; it does not change saved messages.
+Each Pi turn groups its activity and final answer in one response card. Production builds replace internal tool names and result payloads with quiet, human-readable activity labels; development builds retain expandable tool diagnostics. Thinking remains expandable, while errors and image results open by default. Manual expansion/collapse and keyboard focus survive streaming updates. The transcript follows new output only while you are near the bottom. Reopening a session restores default disclosure states; it does not change saved messages.
+
+The main conversation controls follow Traditional Chinese browser locales; other locales use English. During a run, **Send** becomes **Add instruction**, and a separate clock control queues the prompt for later. The shorter keyboard hint keeps Enter focused on the primary action.
 
 The Side Panel supports creating, resuming, renaming, and deleting sessions. Complete transcript boundaries, including confirmed bookmark tool results, are stored in versioned IndexedDB records. Storage keeps at most 50 sessions and limits each record to 5 MB. **Clear all session data** removes transcripts and embedded images.
 

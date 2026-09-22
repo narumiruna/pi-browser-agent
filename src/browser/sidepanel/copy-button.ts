@@ -1,8 +1,10 @@
+import { conversationText } from "./conversation-copy.js"
+
 const feedbackIcons = {
-  "Copying…": "M7.5 1.5a6 6 0 1 0 0 12 6 6 0 0 0 0-12ZM7.5 4v3.5H10",
-  Copied: "m2.5 7.5 3.5 3.5 6.5-7",
-  "Copy failed": "M7.5 1.5a6 6 0 1 0 0 12 6 6 0 0 0 0-12ZM7.5 4v4M7.5 10.5h.01",
-}
+  copying: "M7.5 1.5a6 6 0 1 0 0 12 6 6 0 0 0 0-12ZM7.5 4v3.5H10",
+  copied: "m2.5 7.5 3.5 3.5 6.5-7",
+  copyFailed: "M7.5 1.5a6 6 0 1 0 0 12 6 6 0 0 0 0-12ZM7.5 4v4M7.5 10.5h.01",
+} as const
 
 /** A message-scoped control whose feedback survives streamed content updates. */
 export class CopyButton {
@@ -35,19 +37,20 @@ export class CopyButton {
       const attempt = ++this.attempt
       const report = (feedback: keyof typeof feedbackIcons) => {
         if (attempt !== this.attempt) return
+        const message = conversationText(feedback)
         path.setAttribute("d", feedbackIcons[feedback])
-        button.title = `${label}: ${feedback}`
-        status.textContent = feedback
+        button.title = `${label}: ${message}`
+        status.textContent = message
       }
-      report("Copying…")
+      report("copying")
       // Capture current text synchronously in the user gesture; updates never copy automatically.
       try {
         void navigator.clipboard.writeText(this.text).then(
-          () => report("Copied"),
-          () => report("Copy failed"),
+          () => report("copied"),
+          () => report("copyFailed"),
         )
       } catch {
-        report("Copy failed")
+        report("copyFailed")
       }
     })
   }

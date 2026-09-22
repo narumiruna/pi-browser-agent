@@ -86,7 +86,7 @@ describe("conversation message rendering", () => {
     renderer.render([result], "one")
     const details = transcript.querySelector("details") as HTMLDetailsElement
     expect(details.open).toBe(true)
-    expect(details.querySelector("summary")?.textContent).toContain("Error")
+    expect(details.querySelector("summary")?.textContent).toBe("Could not select the page control")
     details.open = false
     renderer.render([{ ...result, content: [{ type: "text", text: "Updated error" }] }], "one")
     expect(details.open).toBe(false)
@@ -113,6 +113,40 @@ describe("conversation message rendering", () => {
     )
     expect(transcript.querySelector("img")).toBe(imageNode)
     expect(imageDetails.open).toBe(false)
+  })
+
+  test("hides internal tool names and result payloads outside developer builds", () => {
+    const document = installDocument()
+    const transcript = document.createElement("div")
+    const renderer = new TranscriptRenderer(transcript)
+    const toolCall = assistantContent([
+      { type: "toolCall", id: "call", name: "browser_read_page", arguments: {} },
+    ])
+    const result: AgentMessage = {
+      role: "toolResult",
+      toolCallId: "call",
+      toolName: "browser_read_page",
+      timestamp: 2,
+      isError: false,
+      content: [{ type: "text", text: "Private page payload" }],
+    }
+
+    renderer.render([toolCall, result], "one")
+
+    expect(transcript.querySelector(".assistant-turn")?.getAttribute("aria-label")).toBe(
+      "Pi · Browser assistant",
+    )
+    expect(transcript.textContent).toContain("Reading the page")
+    expect(transcript.textContent).toContain("Read the page")
+    expect(transcript.textContent).not.toContain("browser_read_page")
+    expect(transcript.textContent).not.toContain("Private page payload")
+    expect(transcript.querySelector(".toolResult")?.localName).toBe("article")
+
+    const developerTranscript = document.createElement("div")
+    new TranscriptRenderer(developerTranscript, true).render([toolCall, result], "one")
+    expect(developerTranscript.textContent).toContain("browser_read_page")
+    expect(developerTranscript.textContent).toContain("Private page payload")
+    expect(developerTranscript.querySelector(".toolResult")?.localName).toBe("details")
   })
 
   test("renders icon-only copy controls with action names, tooltips, and a live status", () => {
@@ -297,11 +331,13 @@ describe("conversation message rendering", () => {
       { type: "toolCall", id: "call-1", name: "browser_read_page", arguments: {} },
     ])
 
-    const rendered = renderMessageContent(container, message)
+    const rendered = renderMessageContent(container, message, undefined, undefined, {
+      developerDetails: true,
+    })
 
     expect(rendered).toEqual({
       hasImage: false,
-      roleLabel: "Tool call",
+      roleLabel: "Activity",
       text: "\nInspect safely\n[tool call: browser_read_page]\n{}",
       toolCall: true,
     })
@@ -310,6 +346,30 @@ describe("conversation message rendering", () => {
     expect(container.querySelector("details")?.open).toBe(false)
     expect(container.textContent).toContain("Inspect safely")
     expect(container.textContent).toContain("[tool call: browser_read_page]\n{}")
+  })
+
+  test("uses Traditional Chinese labels for a Traditional Chinese browser locale", () => {
+    const document = installDocument()
+    vi.stubGlobal("navigator", { language: "zh-TW", languages: ["zh-TW"] })
+    const transcript = document.createElement("div")
+    const renderer = new TranscriptRenderer(transcript)
+    renderer.render(
+      [
+        { role: "user", content: "你好", timestamp: 1 },
+        assistantContent([
+          { type: "thinking", thinking: "檢查內容" },
+          { type: "toolCall", id: "call", name: "browser_read_page", arguments: {} },
+        ]),
+      ],
+      "one",
+    )
+
+    expect(transcript.querySelector(".message.user .role")?.textContent).toBe("你")
+    expect(transcript.querySelector("details.thinking summary")?.textContent).toBe("思考中")
+    expect(transcript.textContent).toContain("正在讀取頁面")
+    expect(transcript.querySelector(".assistant-turn")?.getAttribute("aria-label")).toBe(
+      "Pi · 瀏覽器助理",
+    )
   })
 
   test("renders supported images with stable nodes and accessibility labels", () => {
@@ -369,7 +429,7 @@ describe("conversation message rendering", () => {
 
     expect(unavailable).toEqual({
       hasImage: true,
-      roleLabel: "Tool result",
+      roleLabel: "Activity",
       text: "[image: image/svg+xml]",
       toolCall: false,
     })
@@ -377,7 +437,7 @@ describe("conversation message rendering", () => {
     expect(unavailableContainer.querySelector("img")).toBeNull()
     expect(error).toEqual({
       hasImage: false,
-      roleLabel: "Tool result",
+      roleLabel: "Activity",
       text: "Error: Browser action was declined",
       toolCall: false,
     })
