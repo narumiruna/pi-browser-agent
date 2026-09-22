@@ -8,7 +8,10 @@ import {
   composeElementContext,
   composeSystemPrompt,
 } from "../../src/browser/agent/runtime.js"
-import type { SelectedElementContext } from "../../src/browser/runtime/element-context.js"
+import {
+  ELEMENT_PICKER_LIMITS,
+  type SelectedElementContext,
+} from "../../src/browser/runtime/element-context.js"
 import { DEFAULT_SETTINGS } from "../../src/browser/storage.js"
 
 function selectedElement(): SelectedElementContext {
@@ -85,6 +88,24 @@ describe("browser agent configuration", () => {
     expect(result).toContain("[Untrusted browser selected-element context")
     expect(result).toContain('"cssSelector": "#buy"')
     expect(composeElementContext("Plain", [])).toBe("Plain")
+  })
+
+  test("rejects a final serialized element context above the composer byte limit", () => {
+    const pagePrefix = "https://example.test/"
+    const large = selectedElement()
+    large.pageUrl = `${pagePrefix}${"p".repeat(ELEMENT_PICKER_LIMITS.pageUrl - pagePrefix.length)}`
+    large.id = "i".repeat(100)
+    large.classNames = ["c".repeat(128), "d".repeat(128)]
+    large.text = "t".repeat(ELEMENT_PICKER_LIMITS.text)
+    large.role = "r".repeat(ELEMENT_PICKER_LIMITS.attributes)
+    large.ariaLabel = "a".repeat(ELEMENT_PICKER_LIMITS.attributes)
+    large.cssSelector = "s".repeat(ELEMENT_PICKER_LIMITS.selector)
+    const elements = [large, structuredClone(large)]
+    const compactBytes = new TextEncoder().encode(
+      JSON.stringify({ version: 1, elements }),
+    ).byteLength
+    expect(compactBytes).toBeLessThan(ELEMENT_PICKER_LIMITS.composerBytes)
+    expect(() => composeElementContext("", elements)).toThrow("composer limit")
   })
 
   test("passes structured element context through prompt, steer, and follow-up messages", async () => {

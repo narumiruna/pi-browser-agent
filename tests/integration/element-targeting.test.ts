@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
+import type { SelectedElementContext } from "../../src/browser/runtime/element-context.js"
 import type { RuntimeResponse } from "../../src/browser/runtime/messages.js"
 import type { JsonObject, TabContext } from "../../src/browser/runtime/types.js"
 
@@ -43,6 +44,32 @@ function send(
 }
 function startPickerRequest(): Promise<RuntimeResponse> {
   return send("elementPicker.start", { clientId: crypto.randomUUID() })
+}
+function selectedElement(): SelectedElementContext {
+  return {
+    version: 1,
+    pageUrl: location.href,
+    tagName: "button",
+    id: "",
+    classNames: [],
+    text: "Go",
+    role: "",
+    ariaLabel: "",
+    attributes: {
+      alt: "",
+      href: "",
+      name: "",
+      placeholder: "",
+      src: "",
+      title: "",
+      type: "button",
+    },
+    rect: { x: 0, y: 0, top: 0, right: 20, bottom: 20, left: 0, width: 20, height: 20 },
+    viewport: { width: 1024, height: 768, scrollX: 0, scrollY: 0 },
+    cssSelector: "button",
+    selectorUnique: true,
+    capturedAt: Date.now(),
+  }
 }
 async function state() {
   const value = await send("app.getState", {}, { tabContext: undefined })
@@ -453,7 +480,7 @@ describe("worker element picker lifecycle", () => {
   const host = (): HTMLElement | null =>
     document.querySelector("[data-pi-browser-agent-element-picker]")
 
-  test("starts, selects through the interaction shield, and emits bounded context", async () => {
+  test("rejects synthetic shield clicks and accepts a validated top-frame result", async () => {
     const button = document.querySelector("button") as HTMLButtonElement
     const clicked = vi.fn()
     button.addEventListener("click", clicked)
@@ -469,12 +496,40 @@ describe("worker element picker lifecycle", () => {
     expect(host()).not.toBeNull()
     expect(emittedEvents).toContainEqual(expect.objectContaining({ name: "elementPicker.started" }))
 
-    host()?.dispatchEvent(
-      new MouseEvent("click", { bubbles: true, cancelable: true, clientX: 10, clientY: 10 }),
-    )
+    const synthetic = new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      clientX: 10,
+      clientY: 10,
+    })
+    host()?.dispatchEvent(synthetic)
+    await Promise.resolve()
+    expect(synthetic.isTrusted).toBe(false)
+    expect(host()).not.toBeNull()
+    expect(emittedEvents.some((event) => event.name === "elementPicker.selected")).toBe(false)
 
+    const isolated = globalThis as typeof globalThis & {
+      __piBrowserAgentElementPicker?: { cleanup: () => void; token: string }
+    }
+    const token = isolated.__piBrowserAgentElementPicker?.token
+    expect(token).toBeTypeOf("string")
+    isolated.__piBrowserAgentElementPicker?.cleanup()
+    const accepted = await new Promise<RuntimeResponse>((resolve) => {
+      listener(
+        {
+          kind: "element-picker-result",
+          status: "selected",
+          token,
+          tabContext: context,
+          element: selectedElement(),
+        },
+        { id: "extension", tab, frameId: 0 } as chrome.runtime.MessageSender,
+        resolve,
+      )
+    })
+
+    expect(accepted).toMatchObject({ ok: true, result: { accepted: true } })
     await vi.waitFor(() => {
-      expect(host()).toBeNull()
       expect(emittedEvents).toContainEqual(
         expect.objectContaining({
           name: "elementPicker.selected",
@@ -499,18 +554,30 @@ describe("worker element picker lifecycle", () => {
   })
 
   test("rejects a selection after exact-origin access is revoked", async () => {
-    const button = document.querySelector("button") as HTMLButtonElement
-    Object.defineProperty(document, "elementFromPoint", {
-      configurable: true,
-      value: () => button,
-    })
     expect(await startPickerRequest()).toMatchObject({ ok: true })
+    const isolated = globalThis as typeof globalThis & {
+      __piBrowserAgentElementPicker?: { cleanup: () => void; token: string }
+    }
+    const token = isolated.__piBrowserAgentElementPicker?.token
+    expect(token).toBeTypeOf("string")
+    isolated.__piBrowserAgentElementPicker?.cleanup()
     permission = false
 
-    host()?.dispatchEvent(
-      new MouseEvent("click", { bubbles: true, cancelable: true, clientX: 10, clientY: 10 }),
-    )
+    const response = await new Promise<RuntimeResponse>((resolve) => {
+      listener(
+        {
+          kind: "element-picker-result",
+          status: "selected",
+          token,
+          tabContext: context,
+          element: selectedElement(),
+        },
+        { id: "extension", tab, frameId: 0 } as chrome.runtime.MessageSender,
+        resolve,
+      )
+    })
 
+    expect(response).toMatchObject({ ok: false, error: { code: "PERMISSION_DENIED" } })
     await vi.waitFor(() => {
       expect(host()).toBeNull()
       expect(emittedEvents).toContainEqual(

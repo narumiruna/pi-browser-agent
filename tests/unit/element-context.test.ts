@@ -4,6 +4,7 @@ import {
   parseSelectedElementContext,
   type SelectedElementContext,
   selectedElementContextBytes,
+  serializeSelectedElementContext,
 } from "../../src/browser/runtime/element-context.js"
 
 function context(overrides: Partial<SelectedElementContext> = {}): SelectedElementContext {
@@ -80,6 +81,11 @@ describe("selected element context", () => {
       cssSelector: `div.${"x".repeat(1_900)}`,
     })
     expect(() => parseSelectedElementContext(large)).not.toThrow()
+    const serialized = serializeSelectedElementContext([large])
+    expect(serialized).toContain("[Untrusted browser selected-element context")
+    expect(selectedElementContextBytes([large])).toBe(
+      new TextEncoder().encode(serialized).byteLength,
+    )
     expect(selectedElementContextBytes([large])).toBeLessThan(ELEMENT_PICKER_LIMITS.composerBytes)
     expect(selectedElementContextBytes([large, large, large])).toBeGreaterThan(
       ELEMENT_PICKER_LIMITS.composerBytes,

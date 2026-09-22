@@ -2753,6 +2753,40 @@ test("selects page elements without activating them and sends bounded structured
     await expect(controller.locator("#selected-elements")).toBeHidden()
   }
 
+  await controller.locator("#prompt").fill("Wait for element selection")
+  await startPicker()
+  await controller.locator("#prompt").press("Enter")
+  await expect(controller.locator("#error")).toContainText(
+    "Finish or cancel element selection before sending",
+  )
+  await expect(controller.locator("#prompt")).toHaveValue("Wait for element selection")
+  await expect(pickerHost).toHaveCount(1)
+  await controller.keyboard.press("Escape")
+  await expect(pickerHost).toHaveCount(0)
+  await controller.locator("#prompt").fill("")
+
+  await startPicker()
+  await page.evaluate(() => {
+    const target = document.querySelector("#ordinary")
+    const host = document.querySelector("[data-pi-browser-agent-element-picker]")
+    if (!(target instanceof HTMLElement) || !(host instanceof HTMLElement)) {
+      throw new Error("Missing picker synthetic-event fixture")
+    }
+    const rectangle = target.getBoundingClientRect()
+    host.dispatchEvent(
+      new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        clientX: rectangle.left + rectangle.width / 2,
+        clientY: rectangle.top + rectangle.height / 2,
+      }),
+    )
+  })
+  await expect(pickerHost).toHaveCount(1)
+  await expect(controller.locator("#selected-elements")).toBeHidden()
+  await page.keyboard.press("Escape")
+  await expect(pickerHost).toHaveCount(0)
+
   const ordinaryBounds = await page.locator("#ordinary").boundingBox()
   if (!ordinaryBounds) throw new Error("Missing ordinary button bounds")
   const beforeHighlight = await page.screenshot({
@@ -2854,6 +2888,37 @@ test("selects page elements without activating them and sends bounded structured
   }
 
   await page.evaluate(() => {
+    const fixture = document.createElement("div")
+    fixture.id = "picker-fallback-fixture"
+    for (const [index, text] of ["First target", "Visible fallback target"].entries()) {
+      const section = document.createElement("section")
+      const target = document.createElement("a")
+      target.className = "picker-card"
+      target.href = "https://user:secret@example.test/next"
+      target.setAttribute("aria-label", "Fallback target")
+      target.style.display = "block"
+      target.style.minHeight = "40px"
+      target.textContent = text
+      if (index === 1) {
+        const hidden = document.createElement("span")
+        hidden.style.opacity = "0"
+        hidden.style.pointerEvents = "none"
+        hidden.innerHTML = "<b>Hidden fallback target</b>"
+        const input = document.createElement("input")
+        input.value = "private-fallback-value"
+        input.style.pointerEvents = "none"
+        target.append(hidden, input)
+      }
+      section.append(target)
+      fixture.append(section)
+    }
+    document.body.append(fixture)
+  })
+  await startPicker()
+  await selectTarget("#picker-fallback-fixture section:nth-of-type(2) > .picker-card")
+  await expect(controller.locator(".selected-element-chip")).toContainText("a.picker-card")
+
+  await page.evaluate(() => {
     const spacer = document.createElement("div")
     spacer.id = "picker-spacer"
     spacer.style.height = "1200px"
@@ -2881,7 +2946,9 @@ test("selects page elements without activating them and sends bounded structured
     dynamicBounds.x + dynamicBounds.width / 2,
     dynamicBounds.y + dynamicBounds.height / 2,
   )
-  await expect(controller.locator(".selected-element-chip")).toContainText("button#picker-dynamic")
+  await expect(
+    controller.locator(".selected-element-chip").filter({ hasText: "button#picker-dynamic" }),
+  ).toBeVisible()
 
   const codexUrl = "https://chatgpt.com/backend-api/codex/responses"
   let providerBody = ""
@@ -2900,7 +2967,13 @@ test("selects page elements without activating them and sends bounded structured
     expect(providerBody).toContain('\\"tagName\\": \\"button\\"')
     expect(providerBody).toContain('\\"text\\": \\"After replacement\\"')
     expect(providerBody).toContain('\\"cssSelector\\": \\"#picker-dynamic\\"')
+    expect(providerBody).toContain(":nth-of-type(2)")
+    expect(providerBody).toContain("Visible fallback target")
+    expect(providerBody).toContain("https://example.test/next")
     expect(providerBody).not.toContain("picker-secret-value")
+    expect(providerBody).not.toContain("private-fallback-value")
+    expect(providerBody).not.toContain("Hidden fallback target")
+    expect(providerBody).not.toContain("user:secret")
     await expect(controller.locator("#selected-elements")).toBeHidden()
   } finally {
     await context.unroute(codexUrl)
@@ -2942,6 +3015,7 @@ test("selects page elements without activating them and sends bounded structured
     await page.evaluate(() => {
       document.querySelector("#picker-spacer")?.remove()
       document.querySelector("#picker-dynamic")?.remove()
+      document.querySelector("#picker-fallback-fixture")?.remove()
       scrollTo(0, 0)
     })
   }

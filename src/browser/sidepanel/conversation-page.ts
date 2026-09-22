@@ -556,6 +556,10 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
 
   function submitPrompt(queueAfterCurrentTask = false): void {
     if (activeSubmissionGuard) return
+    if (pickerActive || pickerStarting) {
+      setError("Finish or cancel element selection before sending")
+      return
+    }
     if (voiceInputStarting) {
       setError("Wait for the microphone access check to finish")
       return

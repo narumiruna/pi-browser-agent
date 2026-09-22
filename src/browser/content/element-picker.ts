@@ -411,6 +411,7 @@ export function executeElementPicker(
   }
   const select = (event: MouseEvent): void => {
     block(event)
+    if (!event.isTrusted) return
     const selected = hitTest(event.clientX, event.clientY) ?? current
     if (selected) notify("selected", contextFor(selected))
   }
