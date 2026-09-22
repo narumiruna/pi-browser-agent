@@ -505,16 +505,25 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       await stopElementPicker()
       return
     }
+    const permissionContext = currentTabContext
+    if (!permissionContext) {
+      throw new Error("Open an HTTP or HTTPS page before selecting an element")
+    }
     pickerStarting = true
-    const clientId = crypto.randomUUID()
-    pickerClientId = clientId
     updateSendButton()
     try {
-      const context = await refreshTabContext()
-      if (!context) throw new Error("Open an HTTP or HTTPS page before selecting an element")
-      if (!(await requestSiteAccess(context.url))) {
+      // Request access before any await so Chrome retains the button's user gesture.
+      if (!(await requestSiteAccess(permissionContext.url))) {
         throw new Error("Site access is required to select an element")
       }
+      // Chrome's permission prompt temporarily changes browser focus and invalidates the old epoch.
+      const context = await refreshTabContext()
+      if (!context) throw new Error("Open an HTTP or HTTPS page before selecting an element")
+      if (context.tabId !== permissionContext.tabId || context.url !== permissionContext.url) {
+        throw new Error("The page changed while site access was being granted. Select it again.")
+      }
+      const clientId = crypto.randomUUID()
+      pickerClientId = clientId
       const result = await sendRuntimeRequest(
         "elementPicker.start",
         { clientId },
