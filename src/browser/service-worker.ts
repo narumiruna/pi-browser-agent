@@ -31,6 +31,8 @@ import {
 import { executeWebMcpOperation, type WebMcpOperation } from "./webmcp/adapter.js"
 
 const SELECTION_CONTEXT_MENU_ID = "pi-browser-agent-send-selection"
+const VISIBLE_TAB_FOCUS_RETRY_ATTEMPTS = 5
+const VISIBLE_TAB_FOCUS_RETRY_MS = 50
 const activeRequests = new Map<string, AbortController>()
 let boundContext: TabContext | undefined
 let elementSnapshot: ElementSnapshot | undefined
@@ -134,6 +136,7 @@ async function latestVisibleTabContext(version: number): Promise<TabContext | un
 }
 
 async function findFocusedVisibleTab(version: number): Promise<chrome.tabs.Tab | undefined | null> {
+  let focusAttempts = 0
   while (version === visibleTabSyncVersion) {
     const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
     if (version !== visibleTabSyncVersion) return null
@@ -144,7 +147,10 @@ async function findFocusedVisibleTab(version: number): Promise<chrome.tabs.Tab |
     const [latestTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
     if (version !== visibleTabSyncVersion) return null
     if (!sameTab(tab, latestTab)) continue
-    return window.focused ? latestTab : undefined
+    if (window.focused) return latestTab
+    focusAttempts += 1
+    if (focusAttempts >= VISIBLE_TAB_FOCUS_RETRY_ATTEMPTS) return undefined
+    await new Promise((resolve) => setTimeout(resolve, VISIBLE_TAB_FOCUS_RETRY_MS))
   }
   return null
 }

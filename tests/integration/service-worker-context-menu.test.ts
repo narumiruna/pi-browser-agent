@@ -410,6 +410,18 @@ describe("service worker visible-tab targeting", () => {
       }),
     )
 
+    activeTab = { id: 10, url: "https://next-window.test/page", windowId: 4 }
+    const focusHandoffState = appState("focus-handoff-state")
+    setTimeout(() => {
+      focusedWindowId = 4
+      listeners.focusChanged?.(4)
+    }, 0)
+    await expect(focusHandoffState).resolves.toMatchObject({
+      ok: true,
+      result: { tabContext: { tabId: 10, url: "https://next-window.test/page" } },
+    })
+
+    activeTab = { id: 7, url: "https://example.test/page", windowId: 3 }
     focusedWindowId = 3
     listeners.focusChanged?.(3)
     const currentResponse = await vi.waitFor(async () => {
