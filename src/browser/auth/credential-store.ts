@@ -6,8 +6,8 @@ import type {
 } from "@earendil-works/pi-ai"
 import { withExclusiveStorageWrite } from "../storage-lock.js"
 
-export const CREDENTIALS_KEY = "piChromeCredentialsV1"
-const CREDENTIALS_WRITE_LOCK = "pi-chrome-credentials-write"
+export const CREDENTIALS_KEY = "piBrowserAgentCredentialsV1"
+const CREDENTIALS_WRITE_LOCK = "pi-browser-agent-credentials-write"
 
 type StorageArea = Pick<chrome.storage.StorageArea, "get" | "set" | "remove">
 

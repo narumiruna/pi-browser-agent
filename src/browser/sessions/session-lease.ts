@@ -1,4 +1,4 @@
-const LOCK_PREFIX = "pi-chrome-session:"
+const LOCK_PREFIX = "pi-browser-agent-session:"
 
 interface HeldLease {
   id: string

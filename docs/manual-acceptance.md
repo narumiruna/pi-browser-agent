@@ -4,7 +4,7 @@ Use a production build from `npm run build`. Do not test login with development 
 
 ## Recorded environment
 
-- Extension: `pi-chrome` 0.1.0
+- Extension: `pi-browser-agent` 0.1.0
 - `@earendil-works/pi-agent-core`: 0.85.1
 - `@earendil-works/pi-ai`: 0.85.1
 - Automated browser round trips: Google Chrome for Testing 153.0.8010.12
@@ -23,7 +23,7 @@ Use a production build from `npm run build`. Do not test login with development 
 1. **Clean setup and Side Panel header**
    - Remove prior extension data, run `npm run build`, and load `dist/chrome` unpacked.
    - Confirm the action opens the Side Panel and no native or local process is running.
-   - Expected: Chrome's native header shows one blue-purple Pi icon and one **Pi Chrome** title; the extension content does not repeat that branding.
+   - Expected: Chrome's native header shows one blue-purple Pi icon and one **Pi Browser Agent** title; the extension content does not repeat that branding.
    - Resize the Side Panel through normal and 320–360 px widths in light and dark themes, including 24 px text. Expected: the session selector, new-session button, session actions, and gear menu share one header row; both menus open without clipping and there is no horizontal page scrolling. The current URL is not repeated.
    - Check the idle and working states. Expected: run status sits at the bottom-left of the input card; microphone, Stop (only while working), and Send sit at the bottom-right without overlapping. Keyboard hints appear below the card, and long status text truncates with its full value available on hover.
    - Open the top-right gear menu, choose **Settings**, select a different font, drag the font-size slider, and save. Expected: Settings opens in a new full browser tab while the Side Panel conversation remains intact; saving closes the Settings tab, returns to the previous tab, updates the full interface, and both choices remain after closing and reopening the Side Panel.
@@ -50,21 +50,21 @@ Use a production build from `npm run build`. Do not test login with development 
    - Expected: a removable preview appears; sending with optional text shows the image in the transcript and lets the model inspect it.
    - Reopen the session and confirm the image still renders. Try an image larger than 3 MB and confirm it is rejected without being attached.
 6. **Voice input**
-   - In a clean profile, select the microphone in the composer. Expected: Pi Chrome opens a full access tab because Chrome suppresses microphone prompts in the Side Panel.
+   - In a clean profile, select the microphone in the composer. Expected: Pi Browser Agent opens a full access tab because Chrome suppresses microphone prompts in the Side Panel.
    - Select **Allow microphone access**, approve Chrome's prompt, close the access tab, select the composer microphone again, and dictate a short phrase.
    - Expected: the button shows a listening state, interim text appears in the composer, and selecting the microphone again leaves an editable transcript without sending it.
-   - Deny microphone access in a clean profile. Expected: the access tab reports that Chrome blocked access, offers to open Chrome microphone settings, and text entry remains usable. Remove Pi Chrome from **Not allowed**, retry the grant, and verify dictation works.
+   - Deny microphone access in a clean profile. Expected: the access tab reports that Chrome blocked access, offers to open Chrome microphone settings, and text entry remains usable. Remove Pi Browser Agent from **Not allowed**, retry the grant, and verify dictation works.
 7. **Browser tool and optional screenshot round trip**
    - In a clean profile, ask the agent to read a unique heading, capture the visible page, type into a non-sensitive test field, and click an ordinary button.
-   - Expected on the first screenshot: Pi Chrome explains that Chrome grants all-sites access while Pi Chrome captures only the visible HTTP(S) viewport. Cancel once and verify no permission prompt or image result appears. Ask again, confirm, decline Chrome's native prompt, and verify the confirmation stays open with an access error. Ask a third time and grant access; verify a PNG result appears.
+   - Expected on the first screenshot: Pi Browser Agent explains that Chrome grants all-sites access while Pi Browser Agent captures only the visible HTTP(S) viewport. Cancel once and verify no permission prompt or image result appears. Ask again, confirm, decline Chrome's native prompt, and verify the confirmation stays open with an access error. Ask a third time and grant access; verify a PNG result appears.
    - Switch to another HTTP(S) tab without clicking the extension action and capture again. Expected: the Side Panel follows it and capture succeeds from the persisted optional grant. Switch to an internal Chrome page and confirm no page remains targeted.
-   - Revoke all-sites access in Chrome's extension settings and request another screenshot. Expected: Pi Chrome returns to the explicit confirmation flow and never requests access in the background.
+   - Revoke all-sites access in Chrome's extension settings and request another screenshot. Expected: Pi Browser Agent returns to the explicit confirmation flow and never requests access in the background.
    - Expected: the read output is marked untrusted and each operation affects only the currently visible HTTP(S) tab.
    - Ask it to submit a form or call a WebMCP tool.
    - Expected: the operation waits for explicit confirmation.
 8. **Read-only bookmark access**
    - Add two distinctive test bookmarks and note their exact titles, URLs, and folders. Ask Pi to search for one distinctive title.
-   - Expected: Pi Chrome first shows an operation confirmation stating that returned titles and URLs go to the selected model provider and the session. Cancel it and verify no result appears.
+   - Expected: Pi Browser Agent first shows an operation confirmation stating that returned titles and URLs go to the selected model provider and the session. Cancel it and verify no result appears.
    - Ask again, confirm the operation, and decline Chrome's native optional bookmark prompt. Expected: the confirmation stays open, an access error appears inside the dialog, and no bookmark result is sent.
    - Ask again, confirm the operation, and grant Chrome's optional bookmark prompt. Expected: only matching bounded results appear, labeled as untrusted bookmark data. Ask for recent bookmarks and approve its separate confirmation.
    - Revoke bookmark access in Chrome's extension settings and approve another read. Expected: the read fails without retrying, requesting background access, or changing any bookmark.

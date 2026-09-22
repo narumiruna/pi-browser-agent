@@ -69,7 +69,7 @@ export async function requestMicrophoneAccess(
 function recognitionErrorMessage(code: string): string {
   switch (code) {
     case "not-allowed":
-      return "Microphone access was denied. Allow microphone access for Pi Chrome and try again."
+      return "Microphone access was denied. Allow microphone access for Pi Browser Agent and try again."
     case "service-not-allowed":
       return "Voice recognition is blocked by Chrome."
     case "audio-capture":

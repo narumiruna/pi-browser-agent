@@ -72,7 +72,7 @@ describe("browser permissions", () => {
   test("does not treat broad screenshot access as approval for an exact origin", async () => {
     const contains = vi.fn().mockResolvedValue(true)
     const getAll = vi.fn().mockResolvedValue({ origins: [SCREENSHOT_HOST_PERMISSION] })
-    const get = vi.fn().mockResolvedValue({ piChromeApprovedHostPermissions: [] })
+    const get = vi.fn().mockResolvedValue({ piBrowserAgentApprovedHostPermissions: [] })
     const set = vi.fn()
     vi.stubGlobal("chrome", {
       permissions: { contains, getAll },
@@ -88,7 +88,7 @@ describe("browser permissions", () => {
     const contains = vi.fn().mockResolvedValue(true)
     const getAll = vi.fn()
     const get = vi.fn().mockResolvedValue({
-      piChromeApprovedHostPermissions: ["https://example.test/*"],
+      piBrowserAgentApprovedHostPermissions: ["https://example.test/*"],
     })
     vi.stubGlobal("chrome", {
       permissions: { contains, getAll },
@@ -102,7 +102,7 @@ describe("browser permissions", () => {
   test("migrates an independently granted exact origin to app approval", async () => {
     const contains = vi.fn().mockResolvedValue(true)
     const getAll = vi.fn().mockResolvedValue({ origins: ["https://example.test/*"] })
-    const get = vi.fn().mockResolvedValue({ piChromeApprovedHostPermissions: [] })
+    const get = vi.fn().mockResolvedValue({ piBrowserAgentApprovedHostPermissions: [] })
     const set = vi.fn().mockResolvedValue(undefined)
     vi.stubGlobal("chrome", {
       permissions: { contains, getAll },
@@ -111,16 +111,16 @@ describe("browser permissions", () => {
 
     await expect(hasHostPermission("https://example.test/path")).resolves.toBe(true)
     expect(set).toHaveBeenCalledWith({
-      piChromeApprovedHostPermissions: ["https://example.test/*"],
+      piBrowserAgentApprovedHostPermissions: ["https://example.test/*"],
     })
   })
 
   test("requests only normalized, deduplicated destination permissions and records approval", async () => {
     const request = vi.fn().mockResolvedValue(true)
     let approved: string[] = []
-    const get = vi.fn(async () => ({ piChromeApprovedHostPermissions: approved }))
-    const set = vi.fn(async (value: { piChromeApprovedHostPermissions: string[] }) => {
-      approved = value.piChromeApprovedHostPermissions
+    const get = vi.fn(async () => ({ piBrowserAgentApprovedHostPermissions: approved }))
+    const set = vi.fn(async (value: { piBrowserAgentApprovedHostPermissions: string[] }) => {
+      approved = value.piBrowserAgentApprovedHostPermissions
     })
     vi.stubGlobal("chrome", {
       permissions: { request },
@@ -141,7 +141,10 @@ describe("browser permissions", () => {
       origins: ["https://example.test/*", "https://api.example.test/*"],
     })
     expect(set).toHaveBeenLastCalledWith({
-      piChromeApprovedHostPermissions: ["https://api.example.test/*", "https://example.test/*"],
+      piBrowserAgentApprovedHostPermissions: [
+        "https://api.example.test/*",
+        "https://example.test/*",
+      ],
     })
   })
 
@@ -151,9 +154,9 @@ describe("browser permissions", () => {
       async (_name: string, _options: LockOptions, operation: () => Promise<void>) => operation(),
     )
     let approved: string[] = []
-    const get = vi.fn(async () => ({ piChromeApprovedHostPermissions: approved }))
-    const set = vi.fn(async (value: { piChromeApprovedHostPermissions: string[] }) => {
-      approved = value.piChromeApprovedHostPermissions
+    const get = vi.fn(async () => ({ piBrowserAgentApprovedHostPermissions: approved }))
+    const set = vi.fn(async (value: { piBrowserAgentApprovedHostPermissions: string[] }) => {
+      approved = value.piBrowserAgentApprovedHostPermissions
     })
     vi.stubGlobal("chrome", {
       permissions: { request },
@@ -169,7 +172,7 @@ describe("browser permissions", () => {
     expect(approved).toEqual(["https://one.example.test/*", "https://two.example.test/*"])
     expect(lockRequest).toHaveBeenCalledTimes(2)
     expect(lockRequest).toHaveBeenCalledWith(
-      "pi-chrome-approved-host-permissions-write",
+      "pi-browser-agent-approved-host-permissions-write",
       { mode: "exclusive" },
       expect.any(Function),
     )

@@ -1,6 +1,6 @@
 import type { AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core"
 
-const DATABASE_NAME = "pi-chrome-sessions"
+const DATABASE_NAME = "pi-browser-agent-sessions"
 const DATABASE_VERSION = 1
 const STORE_NAME = "sessions"
 export const MAX_SESSIONS = 50

@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Pi Chrome",
+  "name": "Pi Browser Agent",
   "description": "A Chrome-native AI assistant for the page you are viewing.",
   "version": "0.1.0",
   "minimum_chrome_version": "116",
@@ -24,7 +24,7 @@
     "type": "module"
   },
   "action": {
-    "default_title": "Open Pi Chrome",
+    "default_title": "Open Pi Browser Agent",
     "default_icon": {
       "16": "icons/icon-16.png",
       "32": "icons/icon-32.png"

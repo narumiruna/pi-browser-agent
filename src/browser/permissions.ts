@@ -2,8 +2,8 @@ import { withExclusiveStorageWrite } from "./storage-lock.js"
 
 export const BOOKMARKS_PERMISSION = "bookmarks" as const
 export const SCREENSHOT_HOST_PERMISSION = "<all_urls>" as const
-const APPROVED_HOST_PERMISSIONS_KEY = "piChromeApprovedHostPermissions"
-const APPROVED_HOST_PERMISSIONS_LOCK = "pi-chrome-approved-host-permissions-write"
+const APPROVED_HOST_PERMISSIONS_KEY = "piBrowserAgentApprovedHostPermissions"
+const APPROVED_HOST_PERMISSIONS_LOCK = "pi-browser-agent-approved-host-permissions-write"
 
 export function hasBookmarkPermission(): Promise<boolean> {
   return chrome.permissions.contains({ permissions: [BOOKMARKS_PERMISSION] })

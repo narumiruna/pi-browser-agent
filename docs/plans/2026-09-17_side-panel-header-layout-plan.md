@@ -2,20 +2,20 @@
 
 ## Goal
 
-Remove the duplicate in-page Pi Chrome branding while preserving the blue-purple Pi identity in Chrome's native Side Panel header, then move the current-page URL into a compact top row beside the run status and account menu.
+Remove the duplicate in-page Pi Browser Agent branding while preserving the blue-purple Pi identity in Chrome's native Side Panel header, then move the current-page URL into a compact top row beside the run status and account menu.
 
 ## Context
 
 - Chrome owns the Side Panel header containing the extension icon, extension name, pin control, and close control. Extension HTML and CSS cannot remove or rearrange that header.
-- `manifest.json` declares the `Pi Chrome` name but no icons, so Chrome currently renders a placeholder `P` icon.
+- `manifest.json` declares the `Pi Browser Agent` name but no icons, so Chrome currently renders a placeholder `P` icon.
 - `src/browser/sidepanel/index.html` renders a second brand mark and title inside `.brand-row`, while `.page-context` occupies a separate row below it.
 - The URL is display-only. `src/browser/sidepanel/index.ts` updates `#tab-status`; this behavior does not need to change.
 
 ## Assumptions
 
-- Pi Chrome remains a Chrome Side Panel rather than moving to a popup, separate window, or normal tab.
+- Pi Browser Agent remains a Chrome Side Panel rather than moving to a popup, separate window, or normal tab.
 - “Keep the blue-purple logo” means applying that visual identity to the manifest icon shown by Chrome and removing the duplicate in-page brand.
-- The Chrome-owned title remains `Pi Chrome`; the extension does not attempt unsupported DOM or CSS manipulation of browser UI.
+- The Chrome-owned title remains `Pi Browser Agent`; the extension does not attempt unsupported DOM or CSS manipulation of browser UI.
 - On narrow panels, preserving readable status and controls is more important than forcing every item to remain on one line.
 
 ## Non-Goals
@@ -40,11 +40,11 @@ Remove the duplicate in-page Pi Chrome branding while preserving the blue-purple
 - [x] Extend `tests/e2e/sidepanel-roundtrip.spec.ts` with layout assertions for normal and narrow viewports, including no in-page brand, visible current-page text, same-row placement at normal width, URL truncation, and no horizontal overflow; `npm run test:e2e` passed all 9 tests.
 - [x] Strengthen `scripts/audit-artifact.mjs` to reject missing manifest icon files so packaging cannot silently restore Chrome's placeholder icon; the production audit passed, and a negative check rejected a removed declared icon.
 - [x] Run `npm run check`, `npm test`, `npm run build`, and `npm run test:e2e`; all commands passed.
-- [ ] Load `dist/chrome` as an unpacked extension in stable Chrome and confirm the native Side Panel header shows one blue-purple Pi icon with one `Pi Chrome` title, the URL/status row matches the intended layout, menus open without clipping, and long URLs remain readable at narrow and normal widths. Not run: the agent environment has no stable Chrome executable or graphical browser session.
+- [ ] Load `dist/chrome` as an unpacked extension in stable Chrome and confirm the native Side Panel header shows one blue-purple Pi icon with one `Pi Browser Agent` title, the URL/status row matches the intended layout, menus open without clipping, and long URLs remain readable at narrow and normal widths. Not run: the agent environment has no stable Chrome executable or graphical browser session.
 
 ## Completion Checklist
 
-- [ ] Chrome's native Side Panel header is the only location showing the Pi Chrome logo and title. Automated coverage confirms the extension content has no brand; native browser chrome awaits manual acceptance.
+- [ ] Chrome's native Side Panel header is the only location showing the Pi Browser Agent logo and title. Automated coverage confirms the extension content has no brand; native browser chrome awaits manual acceptance.
 - [ ] The native header uses the blue-purple Pi icon instead of the placeholder `P`. The built manifest and icon files are verified; native rendering awaits manual acceptance.
 - [x] The current-page URL, run status, and account menu share the compact application row at the target width.
 - [x] A 320–360 px Side Panel has no horizontal page scrolling and retains usable controls.

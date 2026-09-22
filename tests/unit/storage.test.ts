@@ -29,7 +29,7 @@ describe("browser storage", () => {
     await saveSettings({ ...DEFAULT_SETTINGS, fontFamily: "serif", fontSize: 19 })
     await expect(getSettings()).resolves.toMatchObject({ fontFamily: "serif", fontSize: 19 })
 
-    values.piChromeSettings = {
+    values.piBrowserAgentSettings = {
       systemPrompt: "Older prompt",
       agentInstructions: "Older instructions",
     }
@@ -42,7 +42,7 @@ describe("browser storage", () => {
       modelId: "gpt-5.6-terra",
     })
 
-    values.piChromeSettings = { ...DEFAULT_SETTINGS, fontFamily: "invalid", fontSize: 25 }
+    values.piBrowserAgentSettings = { ...DEFAULT_SETTINGS, fontFamily: "invalid", fontSize: 25 }
     await expect(getSettings()).resolves.toEqual(DEFAULT_SETTINGS)
   })
 

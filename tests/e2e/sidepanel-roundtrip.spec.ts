@@ -19,7 +19,7 @@ function startFixture(): Promise<{ port: number; server: Server }> {
       return
     }
     response.end(`<!doctype html>
-      <title>Pi Chrome fixture</title>
+      <title>Pi Browser Agent fixture</title>
       <main>
         <h1>Visible browser text</h1>
         <input id="title" type="text" aria-label="Title">
@@ -200,7 +200,7 @@ async function releaseSubmissionPreflight(): Promise<void> {
 
 test.beforeAll(async () => {
   fixture = await startFixture()
-  const directory = await mkdtemp(join(tmpdir(), "pi-chrome-e2e-"))
+  const directory = await mkdtemp(join(tmpdir(), "pi-browser-agent-e2e-"))
   profileDirectory = join(directory, "profile")
   extensionPath = join(directory, "extension")
   await cp(resolve("dist/chrome"), extensionPath, { recursive: true })
@@ -232,13 +232,13 @@ test.beforeAll(async () => {
   await controller.goto(`chrome-extension://${extensionId}/${panelPath}`)
   await controller.evaluate(async () => {
     await chrome.storage.local.set({
-      piChromeApprovedHostPermissions: ["http://127.0.0.1/*"],
+      piBrowserAgentApprovedHostPermissions: ["http://127.0.0.1/*"],
     })
   })
   testBookmarkIds = await controller.evaluate(async () => {
     const bookmarks = await Promise.all([
       chrome.bookmarks.create({
-        title: "Pi Chrome pichromebookmarkneedle",
+        title: "Pi Browser Agent pibrowseragentbookmarkneedle",
         url: "https://bookmark.example.test/matching",
       }),
       chrome.bookmarks.create({
@@ -282,7 +282,7 @@ test("discovers isolated node references and fails closed across replacement and
     }
   let snapshot = await discover()
   expect(snapshot.elements.some((element) => element.type === "password")).toBe(false)
-  expect(await page.evaluate(() => "__piChromeElements" in globalThis)).toBe(false)
+  expect(await page.evaluate(() => "__piBrowserAgentElements" in globalThis)).toBe(false)
   const title = snapshot.elements.find((element) => element.name === "Title")
   const click = snapshot.elements.find((element) => element.name === "Click")
   if (!title || !click) throw new Error("Missing discovered fixture controls")
@@ -1407,7 +1407,7 @@ test("grants microphone access from a full extension page", async () => {
   })
   await microphonePage.goto(`chrome-extension://${extensionId}/${panelPath}?view=microphone`)
 
-  await expect(microphonePage).toHaveTitle("Microphone access · Pi Chrome")
+  await expect(microphonePage).toHaveTitle("Microphone access · Pi Browser Agent")
   await expect(microphonePage.locator("#microphone-access-page")).toBeVisible()
   await expect(microphonePage.locator("#microphone-access-status")).toContainText(
     "Select Allow microphone access",
@@ -1429,7 +1429,7 @@ test("grants microphone access from a full extension page", async () => {
   const pendingSelectionKey = await controller.evaluate(async () => {
     const windowId = (await chrome.windows.getCurrent()).id
     if (windowId === undefined) throw new Error("Current window has no ID")
-    const key = `piChromePendingSelection:${windowId}`
+    const key = `piBrowserAgentPendingSelection:${windowId}`
     await chrome.storage.session.set({
       [key]: {
         windowId,
@@ -1583,7 +1583,7 @@ test("opens Settings in a full browser tab and persists the selected interface f
   const settingsPage = settingsTab.locator("#settings-page")
   const settingsError = settingsTab.locator("#settings-error")
 
-  await expect(settingsTab).toHaveTitle("Settings · Pi Chrome")
+  await expect(settingsTab).toHaveTitle("Settings · Pi Browser Agent")
   expect(new URL(settingsTab.url()).searchParams.get("view")).toBe("settings")
   await expect(settingsPage).toBeVisible()
   await expect(accountDisclosure).toHaveJSProperty("open", false)
@@ -1627,24 +1627,24 @@ test("opens Settings in a full browser tab and persists the selected interface f
     accountId: "existing-test-account",
   }
   const previousHostApprovals = await settingsTab.evaluate(async () => {
-    const stored = await chrome.storage.local.get("piChromeApprovedHostPermissions")
-    const approvals = stored.piChromeApprovedHostPermissions
+    const stored = await chrome.storage.local.get("piBrowserAgentApprovedHostPermissions")
+    const approvals = stored.piBrowserAgentApprovedHostPermissions
     return Array.isArray(approvals)
       ? approvals.filter((approval): approval is string => typeof approval === "string")
       : []
   })
   await settingsTab.evaluate(async (credential) => {
-    const stored = await chrome.storage.local.get("piChromeApprovedHostPermissions")
-    const approvals = Array.isArray(stored.piChromeApprovedHostPermissions)
-      ? stored.piChromeApprovedHostPermissions.filter(
+    const stored = await chrome.storage.local.get("piBrowserAgentApprovedHostPermissions")
+    const approvals = Array.isArray(stored.piBrowserAgentApprovedHostPermissions)
+      ? stored.piBrowserAgentApprovedHostPermissions.filter(
           (approval): approval is string => typeof approval === "string",
         )
       : []
     await chrome.storage.local.set({
-      piChromeApprovedHostPermissions: [
+      piBrowserAgentApprovedHostPermissions: [
         ...new Set([...approvals, "https://auth.openai.com/*", "https://chatgpt.com/*"]),
       ],
-      piChromeCredentialsV1: { "openai-codex": credential },
+      piBrowserAgentCredentialsV1: { "openai-codex": credential },
     })
   }, existingCodexCredential)
   await settingsTab.evaluate(() => {
@@ -1712,14 +1712,14 @@ test("opens Settings in a full browser tab and persists the selected interface f
   await expect
     .poll(() =>
       settingsTab.evaluate(async () => {
-        const stored = await chrome.storage.local.get("piChromeCredentialsV1")
-        return (stored.piChromeCredentialsV1 as Record<string, unknown>)["openai-codex"]
+        const stored = await chrome.storage.local.get("piBrowserAgentCredentialsV1")
+        return (stored.piBrowserAgentCredentialsV1 as Record<string, unknown>)["openai-codex"]
       }),
     )
     .toEqual(existingCodexCredential)
   await controller.evaluate(async (hostApprovals) => {
-    await chrome.storage.local.set({ piChromeApprovedHostPermissions: hostApprovals })
-    await chrome.storage.local.remove("piChromeCredentialsV1")
+    await chrome.storage.local.set({ piBrowserAgentApprovedHostPermissions: hostApprovals })
+    await chrome.storage.local.remove("piBrowserAgentCredentialsV1")
   }, previousHostApprovals)
 
   const modelSearch = settingsTab.locator("#model-search")
@@ -1759,7 +1759,8 @@ test("opens Settings in a full browser tab and persists the selected interface f
       chrome.storage.local.set = originalSet
     }
     chrome.storage.local.set = (async (items) => {
-      if (Object.hasOwn(items, "piChromeSettings")) throw new Error("Test settings save failed")
+      if (Object.hasOwn(items, "piBrowserAgentSettings"))
+        throw new Error("Test settings save failed")
       await callOriginalSet(items)
     }) as typeof chrome.storage.local.set
   })
@@ -1837,7 +1838,7 @@ test("opens Settings in a full browser tab and persists the selected interface f
 })
 
 test("stores API keys through the method-first account flow without changing models", async () => {
-  await controller.evaluate(async () => chrome.storage.local.remove("piChromeCredentialsV1"))
+  await controller.evaluate(async () => chrome.storage.local.remove("piBrowserAgentCredentialsV1"))
   await controller.evaluate(() => {
     const state = window as typeof window & {
       authSetupPermissionRequests?: number
@@ -1876,9 +1877,11 @@ test("stores API keys through the method-first account flow without changing mod
   }
   const storedAnthropicCredential = () =>
     controller.evaluate(async () => {
-      const stored = await chrome.storage.local.get("piChromeCredentialsV1")
+      const stored = await chrome.storage.local.get("piBrowserAgentCredentialsV1")
       return (
-        stored.piChromeCredentialsV1 as Record<string, { type: string; key?: string }> | undefined
+        stored.piBrowserAgentCredentialsV1 as
+          | Record<string, { type: string; key?: string }>
+          | undefined
       )?.anthropic
     })
 
@@ -1936,7 +1939,9 @@ test("stores API keys through the method-first account flow without changing mod
       delete (state as typeof state & { authSetupPermissionRequests?: number })
         .authSetupPermissionRequests
     })
-    await controller.evaluate(async () => chrome.storage.local.remove("piChromeCredentialsV1"))
+    await controller.evaluate(async () =>
+      chrome.storage.local.remove("piBrowserAgentCredentialsV1"),
+    )
   }
 })
 
@@ -2026,7 +2031,7 @@ test("keeps header and composer controls usable at normal and narrow widths", as
   try {
     await controller.setViewportSize({ width: 480, height: 720 })
     await expect(controller.locator(".brand, .brand-mark")).toHaveCount(0)
-    await expect(controller.locator(".app-header")).not.toContainText("Pi Chrome")
+    await expect(controller.locator(".app-header")).not.toContainText("Pi Browser Agent")
     await expect(controller.locator(".page-context, #tab-status")).toHaveCount(0)
 
     const sharesRow = await controller.locator(".header-row").evaluate((header) => {
@@ -2189,7 +2194,7 @@ test("does not use all-sites Chrome access without exact app approval", async ()
   await page.bringToFront()
   tabContext = await waitForCurrentTab(`http://127.0.0.1:${fixture.port}/`)
   await controller.evaluate(async () => {
-    await chrome.storage.local.remove("piChromeApprovedHostPermissions")
+    await chrome.storage.local.remove("piBrowserAgentApprovedHostPermissions")
   })
   try {
     await expect(request("page.getVisibleText", {}, { tabContext })).rejects.toMatchObject({
@@ -2198,7 +2203,7 @@ test("does not use all-sites Chrome access without exact app approval", async ()
   } finally {
     await controller.evaluate(async () => {
       await chrome.storage.local.set({
-        piChromeApprovedHostPermissions: ["http://127.0.0.1/*"],
+        piBrowserAgentApprovedHostPermissions: ["http://127.0.0.1/*"],
       })
     })
   }
@@ -2237,8 +2242,8 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
   }
   await controller.evaluate(async (credential) => {
     await chrome.storage.local.set({
-      piChromeApprovedHostPermissions: ["https://auth.openai.com/*", "https://chatgpt.com/*"],
-      piChromeCredentialsV1: { "openai-codex": credential },
+      piBrowserAgentApprovedHostPermissions: ["https://auth.openai.com/*", "https://chatgpt.com/*"],
+      piBrowserAgentCredentialsV1: { "openai-codex": credential },
     })
   }, credential)
   await controller.reload()
@@ -2267,7 +2272,7 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
     let credentialGetCount = 0
     chrome.storage.local.get = (async (key: string) => {
       const result = await callOriginalGet(key)
-      if (key !== "piChromeCredentialsV1") return result
+      if (key !== "piBrowserAgentCredentialsV1") return result
       credentialGetCount += 1
       if (credentialGetCount !== 1) return result
       markEntered()
@@ -2283,7 +2288,7 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
   })
   await settingsTab.evaluate(async (credential) => {
     await chrome.storage.local.set({
-      piChromeCredentialsV1: {
+      piBrowserAgentCredentialsV1: {
         "openai-codex": { ...credential, refresh: "updated-test-refresh-token" },
       },
     })
@@ -2298,7 +2303,7 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
     await gate.entered
   })
 
-  await settingsTab.evaluate(async () => chrome.storage.local.remove("piChromeCredentialsV1"))
+  await settingsTab.evaluate(async () => chrome.storage.local.remove("piBrowserAgentCredentialsV1"))
   await expect(configureProvider).toHaveText("Configure authentication")
   await expect(controller.locator("#auth-status")).toHaveText("OpenAI Codex not configured")
   await controller.evaluate(() => {
@@ -2324,7 +2329,7 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
 
   await controller.evaluate(async (credential) => {
     await chrome.storage.local.set({
-      piChromeCredentialsV1: { "openai-codex": credential },
+      piBrowserAgentCredentialsV1: { "openai-codex": credential },
     })
   }, credential)
   await expect(configureProvider).toHaveText("Configure authentication")
@@ -2457,9 +2462,9 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
 async function prepareFeatureSession(): Promise<void> {
   await controller.evaluate(async () => {
     const access = `e30.${btoa(JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "test-account" } }))}.signature`
-    const stored = await chrome.storage.local.get("piChromeSettings")
+    const stored = await chrome.storage.local.get("piBrowserAgentSettings")
     await chrome.storage.local.set({
-      piChromeCredentialsV1: {
+      piBrowserAgentCredentialsV1: {
         "openai-codex": {
           type: "oauth",
           access,
@@ -2468,12 +2473,12 @@ async function prepareFeatureSession(): Promise<void> {
           accountId: "test-account",
         },
       },
-      piChromeSettings: {
-        ...(stored.piChromeSettings as Record<string, unknown> | undefined),
+      piBrowserAgentSettings: {
+        ...(stored.piBrowserAgentSettings as Record<string, unknown> | undefined),
         modelProvider: "openai-codex",
         modelId: "gpt-5.6-terra",
       },
-      piChromeApprovedHostPermissions: [
+      piBrowserAgentApprovedHostPermissions: [
         "http://127.0.0.1/*",
         "https://auth.openai.com/*",
         "https://chatgpt.com/*",
@@ -2870,7 +2875,7 @@ test("confirms and returns bounded bookmark data through a mocked model call", a
   const codexUrl = "https://chatgpt.com/backend-api/codex/responses"
   const responses = [
     toolCall(20, "browser_search_bookmarks", {
-      query: "pichromebookmarkneedle",
+      query: "pibrowseragentbookmarkneedle",
       limit: 10,
     }),
     finalText(21, "Bookmark lookup complete."),
@@ -2896,12 +2901,14 @@ test("confirms and returns bounded bookmark data through a mocked model call", a
   await expect(controller.locator("#confirm-message")).toContainText(
     "sent to the selected model provider",
   )
-  await expect(controller.locator("#confirm-message")).toContainText("pichromebookmarkneedle")
+  await expect(controller.locator("#confirm-message")).toContainText("pibrowseragentbookmarkneedle")
   await controller.locator('#confirm-dialog button[value="confirm"]').click()
 
   await expect(controller.locator("#transcript")).toContainText("Bookmark lookup complete.")
   await expect(controller.locator("#transcript")).toContainText("Untrusted browser bookmark data")
-  await expect(controller.locator("#transcript")).toContainText("Pi Chrome pichromebookmarkneedle")
+  await expect(controller.locator("#transcript")).toContainText(
+    "Pi Browser Agent pibrowseragentbookmarkneedle",
+  )
   await expect(controller.locator("#transcript")).not.toContainText("Private unrelated bookmark")
   expect(requestCount).toBe(responses.length)
   const bookmarks = await controller.evaluate(
@@ -2912,7 +2919,7 @@ test("confirms and returns bounded bookmark data through a mocked model call", a
     expect.arrayContaining([
       expect.objectContaining({
         id: testBookmarkIds[0],
-        title: "Pi Chrome pichromebookmarkneedle",
+        title: "Pi Browser Agent pibrowseragentbookmarkneedle",
         url: "https://bookmark.example.test/matching",
       }),
       expect.objectContaining({
@@ -3081,7 +3088,7 @@ test("preserves non-permission screenshot failures", async () => {
 
 test("round-trips read, selection, screenshot, click, and type through the Side Panel path", async () => {
   const active = await request("tabs.getActive")
-  expect(active.title).toBe("Pi Chrome fixture")
+  expect(active.title).toBe("Pi Browser Agent fixture")
 
   const text = await request("page.getVisibleText", {}, { tabContext })
   expect(text.text).toContain("Visible browser text")

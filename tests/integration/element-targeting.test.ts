@@ -89,7 +89,7 @@ beforeEach(async () => {
       local: {
         setAccessLevel: vi.fn(async () => {}),
         get: vi.fn(async () => ({
-          piChromeApprovedHostPermissions: [`${location.protocol}//${location.hostname}/*`],
+          piBrowserAgentApprovedHostPermissions: [`${location.protocol}//${location.hostname}/*`],
         })),
       },
     },
@@ -269,7 +269,7 @@ describe("worker element reference lifecycle", () => {
   test("rejects replaced references before deferred cross-origin navigation", async () => {
     document.body.innerHTML = '<a href="https://destination.test/next">Go</a>'
     vi.mocked(chrome.storage.local.get).mockImplementation(async () => ({
-      piChromeApprovedHostPermissions: [
+      piBrowserAgentApprovedHostPermissions: [
         `${location.protocol}//${location.hostname}/*`,
         "https://destination.test/*",
       ],

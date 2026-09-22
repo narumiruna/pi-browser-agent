@@ -2,7 +2,7 @@
 
 ## Goal
 
-Let the Pi Chrome agent search and inspect a bounded set of Chrome bookmarks after explicit user approval, without adding any bookmark mutation path or broadening the extension's default install-time access.
+Let the Pi Browser Agent agent search and inspect a bounded set of Chrome bookmarks after explicit user approval, without adding any bookmark mutation path or broadening the extension's default install-time access.
 
 ## Context
 

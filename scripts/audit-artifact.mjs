@@ -2,7 +2,7 @@ import { readdir, readFile } from "node:fs/promises"
 import { join, relative, resolve } from "node:path"
 import { containsNodeBuiltinImport } from "../tooling/node-builtins.mjs"
 
-const root = resolve(process.env.PI_CHROME_ARTIFACT_ROOT ?? "dist/chrome")
+const root = resolve(process.env.PI_BROWSER_AGENT_ARTIFACT_ROOT ?? "dist/chrome")
 const files = (await readdir(root, { recursive: true, withFileTypes: true }))
   .filter((entry) => entry.isFile())
   .map((entry) => join(entry.parentPath, entry.name))

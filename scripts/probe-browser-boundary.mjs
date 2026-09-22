@@ -4,7 +4,7 @@ import { join, relative, resolve } from "node:path"
 import { build } from "esbuild"
 import { containsNodeBuiltinImport } from "../tooling/node-builtins.mjs"
 
-const output = await mkdtemp(join(tmpdir(), "pi-chrome-browser-probe-"))
+const output = await mkdtemp(join(tmpdir(), "pi-browser-agent-browser-probe-"))
 try {
   await build({
     entryPoints: [resolve("scripts/probes/browser-boundary.ts")],

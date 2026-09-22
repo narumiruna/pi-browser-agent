@@ -1,5 +1,5 @@
 {
-  "name": "pi-chrome",
+  "name": "pi-browser-agent",
   "version": "0.1.0",
   "description": "A Chrome-native AI assistant with bounded browser tools",
   "type": "module",
@@ -11,7 +11,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/narumiruna/pi-chrome.git"
+    "url": "git+https://github.com/narumiruna/pi-browser-agent.git"
   },
   "scripts": {
     "audit:artifact": "node scripts/audit-artifact.mjs",
@@ -21,7 +21,7 @@
     "check": "biome ci .",
     "ci": "npm run check && npm test && npm run build && npm run test:e2e",
     "dev:chrome": "extension dev --browser=chrome",
-    "pack": "npm run build && extension build --browser=chrome --zip --zip-filename=pi-chrome.zip",
+    "pack": "npm run build && extension build --browser=chrome --zip --zip-filename=pi-browser-agent.zip",
     "prepare": "husky",
     "probe:browser": "node scripts/probe-browser-boundary.mjs",
     "release": "changeset publish",

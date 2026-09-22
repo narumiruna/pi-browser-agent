@@ -28,7 +28,10 @@ describe("service worker visible-tab targeting", () => {
   test("tracks the visible page, rejects stale contexts, and persists a sent selection", async () => {
     const listeners: ListenerMap = {}
     const local: Record<string, unknown> = {
-      piChromeApprovedHostPermissions: ["https://destination.test/*", "https://example.test/*"],
+      piBrowserAgentApprovedHostPermissions: [
+        "https://destination.test/*",
+        "https://example.test/*",
+      ],
     }
     const session: Record<string, unknown> = {}
     const create = vi.fn()
@@ -78,7 +81,7 @@ describe("service worker visible-tab targeting", () => {
         },
         session: {
           get: vi.fn(async (key: string) => {
-            if (key === "piChromePendingSelection:3" && failPendingRead) {
+            if (key === "piBrowserAgentPendingSelection:3" && failPendingRead) {
               failPendingRead = false
               throw new Error("Temporary session storage failure")
             }
@@ -490,12 +493,12 @@ describe("service worker visible-tab targeting", () => {
 
     activeTab = { id: 7, url: "https://example.test/page", windowId: 3 }
     listeners.contextClicked?.(
-      { menuItemId: "pi-chrome-send-selection", selectionText: "selected text" },
+      { menuItemId: "pi-browser-agent-send-selection", selectionText: "selected text" },
       activeTab,
     )
     expect(open).toHaveBeenCalledWith({ windowId: 3 })
     await vi.waitFor(() => {
-      expect(session["piChromePendingSelection:3"]).toMatchObject({
+      expect(session["piBrowserAgentPendingSelection:3"]).toMatchObject({
         windowId: 3,
         payload: { text: "selected text", untrusted: true },
         tabContext: { tabId: 7, url: "https://example.test/page" },
@@ -505,7 +508,7 @@ describe("service worker visible-tab targeting", () => {
     listeners.installed?.()
     expect(create).toHaveBeenCalledTimes(1)
     expect(create).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "pi-chrome-send-selection", contexts: ["selection"] }),
+      expect.objectContaining({ id: "pi-browser-agent-send-selection", contexts: ["selection"] }),
     )
 
     const takeSelection = (requestId: string, windowId: number): Promise<unknown> =>
@@ -517,13 +520,13 @@ describe("service worker visible-tab targeting", () => {
       })
 
     await expect(takeSelection("wrong-window", 4)).resolves.toEqual({ ok: true, result: null })
-    expect(session["piChromePendingSelection:3"]).toBeDefined()
+    expect(session["piBrowserAgentPendingSelection:3"]).toBeDefined()
     failPendingRead = true
     await expect(takeSelection("first-take", 3)).resolves.toMatchObject({ ok: false })
     await expect(takeSelection("second-take", 3)).resolves.toMatchObject({
       ok: true,
       result: { payload: { text: "selected text" } },
     })
-    expect(session["piChromePendingSelection:3"]).toBeUndefined()
+    expect(session["piBrowserAgentPendingSelection:3"]).toBeUndefined()
   })
 })
