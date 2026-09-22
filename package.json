@@ -27,6 +27,7 @@
     "release": "changeset publish",
     "test": "vitest run",
     "test:e2e": "playwright test",
+    "test:e2e:smoke": "playwright test tests/e2e/extension-smoke.spec.ts",
     "typecheck": "tsc --noEmit",
     "version-packages": "changeset version && node scripts/sync-manifest-version.mjs && npm install --package-lock-only --ignore-scripts"
   },

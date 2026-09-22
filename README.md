@@ -79,10 +79,13 @@ Open **Account and settings** (the fixed avatar button in the top-right) and cho
 ```sh
 npm run dev:chrome
 npm test
+npm run test:e2e:smoke
 npm run test:e2e
 npm run ci
 npm audit --omit=dev
 ```
+
+Run `npm run build` before either E2E command. The focused smoke test launches a temporary copy of `dist/chrome`, serves a local fixture, and mocks the model response; the full E2E command runs all browser scenarios. Test setup never edits the production artifact.
 
 `npm run build` runs the isolated browser bundle probe, production extension build, typecheck, and artifact security audit. `npm run pack` creates the Chrome zip without publishing anything.
 
