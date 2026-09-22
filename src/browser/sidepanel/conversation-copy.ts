@@ -108,15 +108,19 @@ const TRADITIONAL_CHINESE: Record<ConversationTextKey, string> = {
   working: "處理中",
 }
 
-function usesTraditionalChinese(): boolean {
+export function conversationLanguage(): "en" | "zh-TW" {
   const languages = globalThis.navigator?.languages?.length
     ? globalThis.navigator.languages
     : [globalThis.navigator?.language ?? "en"]
-  return languages.some((language) => /^(zh-(?:TW|HK|MO|Hant)|zh-Hant)/i.test(language))
+  for (const language of languages) {
+    if (/^zh-(?:Hant|TW|HK|MO)(?:-|$)/i.test(language)) return "zh-TW"
+    if (/^en(?:-|$)/i.test(language)) return "en"
+  }
+  return "en"
 }
 
 export function conversationText(key: ConversationTextKey): string {
-  return (usesTraditionalChinese() ? TRADITIONAL_CHINESE : ENGLISH)[key]
+  return (conversationLanguage() === "zh-TW" ? TRADITIONAL_CHINESE : ENGLISH)[key]
 }
 
 type ActivityStage = "active" | "complete"
@@ -254,11 +258,8 @@ const ACTIVITY_KEYS: Record<string, ActivityKey> = {
 }
 
 export function activityText(name: string, stage: ActivityStage, error = false): string {
-  const labels = usesTraditionalChinese() ? TRADITIONAL_CHINESE_ACTIVITIES : ENGLISH_ACTIVITIES
+  const labels =
+    conversationLanguage() === "zh-TW" ? TRADITIONAL_CHINESE_ACTIVITIES : ENGLISH_ACTIVITIES
   const activity = labels[ACTIVITY_KEYS[name] ?? "default"]
   return error ? activity.error : activity[stage]
-}
-
-export function conversationLanguage(): "en" | "zh-TW" {
-  return usesTraditionalChinese() ? "zh-TW" : "en"
 }
