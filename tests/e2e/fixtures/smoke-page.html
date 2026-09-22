@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pi Browser Agent E2E Fixture</title>
+  </head>
+  <body>
+    <main>
+      <h1>Production extension smoke fixture</h1>
+      <p id="marker">The deterministic E2E marker is meadow-42.</p>
+      <label for="note">Note</label>
+      <input id="note" type="text" />
+      <button id="complete" type="button">Complete fixture</button>
+      <output id="result">idle</output>
+    </main>
+    <script>
+      document.querySelector("#complete").addEventListener("click", () => {
+        document.querySelector("#result").textContent = "complete"
+      })
+    </script>
+  </body>
+</html>
