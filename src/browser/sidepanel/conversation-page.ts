@@ -135,16 +135,19 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     })
   }
 
-  function setRunStatus(text: string, running = runtime.agent.state.isStreaming): void {
+  function setRunStatus(text: string, options: { busy?: boolean; streaming?: boolean } = {}): void {
+    const streaming = options.streaming ?? runtime.agent.state.isStreaming
+    const busy = options.busy ?? streaming
     runStatus.textContent = text
     runStatus.title = text
-    document.body.dataset.state = running ? "running" : "idle"
-    transcript.setAttribute("aria-busy", String(running))
-    abortButton.hidden = !running
-    queueInstructionButton.hidden = !running
-    promptInput.placeholder = conversationText(running ? "promptRunning" : "promptIdle")
-    composerHint.textContent = conversationText(running ? "hintRunning" : "hintIdle")
-    const sendText = conversationText(running ? "addInstruction" : "send")
+    document.body.dataset.state = streaming ? "running" : "idle"
+    document.body.dataset.busy = String(busy)
+    transcript.setAttribute("aria-busy", String(busy))
+    abortButton.hidden = !streaming
+    queueInstructionButton.hidden = !streaming
+    promptInput.placeholder = conversationText(streaming ? "promptRunning" : "promptIdle")
+    composerHint.textContent = conversationText(streaming ? "hintRunning" : "hintIdle")
+    const sendText = conversationText(streaming ? "addInstruction" : "send")
     sendLabel.textContent = sendText
     sendButton.ariaLabel = sendText
     sendButton.title = sendText
@@ -211,7 +214,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   function onAgentEvent(event: AgentEvent): void {
     switch (event.type) {
       case "agent_start":
-        setRunStatus(conversationText("working"), true)
+        setRunStatus(conversationText("working"), { busy: true, streaming: true })
         setError()
         break
       case "message_update":
@@ -221,10 +224,10 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
         renderMessages()
         break
       case "tool_execution_start":
-        setRunStatus(activityText(event.toolName, "active"), true)
+        setRunStatus(activityText(event.toolName, "active"), { busy: true, streaming: true })
         break
       case "agent_end":
-        setRunStatus(conversationText("ready"), false)
+        setRunStatus(conversationText("ready"), { busy: false, streaming: false })
         renderMessages()
         if (runtime.agent.state.errorMessage) setError(runtime.agent.state.errorMessage)
         void refreshSessions()
@@ -402,7 +405,8 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
         )
         releaseSubmissionGuard(submissionGuard)
         const mode = await submission
-        if (mode !== "prompt") setRunStatus(conversationText("instructionQueued"), true)
+        if (mode !== "prompt")
+          setRunStatus(conversationText("instructionQueued"), { busy: true, streaming: true })
       } finally {
         releaseSubmissionGuard(submissionGuard)
       }
@@ -611,7 +615,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
           : runtime.agent.state.isStreaming
             ? conversationText("working")
             : conversationText("ready"),
-        event.payload.status === "started" || runtime.agent.state.isStreaming,
+        { busy: event.payload.status === "started" || runtime.agent.state.isStreaming },
       )
     }
     const selectionWindowId = event.payload?.windowId
@@ -645,7 +649,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   )
   renderMessages()
   resizePromptInput()
-  setRunStatus(conversationText("ready"), false)
+  setRunStatus(conversationText("ready"), { busy: false, streaming: false })
   await Promise.all([
     refreshSessions(),
     authentication.refresh(),

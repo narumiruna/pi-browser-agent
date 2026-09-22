@@ -1384,6 +1384,41 @@ test("loads the Side Panel without uncaught errors", async () => {
   await controller.evaluate(() => window.scrollTo(0, 0))
 })
 
+test("keeps idle composer controls hidden during background operations", async () => {
+  const sendProgress = (status: "started" | "finished") =>
+    worker.evaluate(async (progressStatus) => {
+      await chrome.runtime.sendMessage({
+        kind: "event",
+        name: "operation.progress",
+        payload: {
+          method: "page.getVisibleText",
+          requestId: "idle-operation-test",
+          status: progressStatus,
+        },
+      })
+    }, status)
+
+  await sendProgress("started")
+  try {
+    await expect(controller.locator("#run-status")).toHaveText("Reading the page")
+    await expect(controller.locator("body")).toHaveAttribute("data-busy", "true")
+    await expect(controller.locator("body")).toHaveAttribute("data-state", "idle")
+    await expect(controller.locator("#transcript")).toHaveAttribute("aria-busy", "true")
+    await expect(controller.locator("#abort")).toBeHidden()
+    await expect(controller.locator("#queue-instruction")).toBeHidden()
+    await expect(controller.locator("#send-label")).toHaveText("Send")
+    await expect(controller.locator("#prompt")).toHaveAttribute(
+      "placeholder",
+      "Ask about the current page",
+    )
+  } finally {
+    await sendProgress("finished")
+  }
+  await expect(controller.locator("#run-status")).toHaveText("Ready")
+  await expect(controller.locator("body")).toHaveAttribute("data-busy", "false")
+  await expect(controller.locator("#transcript")).toHaveAttribute("aria-busy", "false")
+})
+
 test("grants microphone access from a full extension page", async () => {
   const microphonePage = await context.newPage()
   const pageErrors: string[] = []

@@ -200,7 +200,7 @@ button.danger {
   background: var(--success);
 }
 
-body[data-state="running"] .status-dot {
+body[data-busy="true"] .status-dot {
   background: var(--accent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
   animation: pulse 1.5s ease-in-out infinite;
@@ -1217,7 +1217,7 @@ dialog p {
     transition: none;
   }
 
-  body[data-state="running"] .status-dot,
+  body[data-busy="true"] .status-dot,
   .voice-button[aria-pressed="true"] {
     animation: none;
   }
