@@ -2061,6 +2061,8 @@ test("keeps header and composer controls usable at normal and narrow widths", as
       statusTitle: status?.title ?? "",
       state: document.body.dataset.state ?? "idle",
       sendLabel: document.querySelector<HTMLElement>("#send-label")?.textContent ?? "Send",
+      sessionTitle:
+        document.querySelector<HTMLElement>("#session-trigger-label")?.textContent ?? "New session",
       queueHidden: document.querySelector<HTMLButtonElement>("#queue-instruction")?.hidden ?? true,
       statusHidden: status?.closest<HTMLElement>(".status-pill")?.hidden ?? false,
     }
@@ -2095,6 +2097,8 @@ test("keeps header and composer controls usable at normal and narrow widths", as
 
     const sessionTrigger = controller.locator("#session-trigger")
     const sessionMenu = controller.locator("#session-menu")
+    const accountTrigger = controller.locator("#account-menu-trigger")
+    const accountDisclosure = controller.locator(".account-disclosure")
     await sessionTrigger.click()
     await expect(sessionMenu).toBeVisible()
     const sessionMenuLayout = await controller.evaluate(() => {
@@ -2143,6 +2147,19 @@ test("keeps header and composer controls usable at normal and narrow widths", as
     })
     await sessionTrigger.click()
     await expect(sessionMenu).toBeHidden()
+
+    await accountTrigger.click()
+    await expect(accountDisclosure).toHaveJSProperty("open", true)
+    await sessionTrigger.focus()
+    await sessionTrigger.press("ArrowDown")
+    await expect(accountDisclosure).toHaveJSProperty("open", false)
+    await expect(sessionMenu).toBeVisible()
+    await controller.keyboard.press("Escape")
+    await expect(sessionMenu).toBeHidden()
+
+    await controller.locator("#session-trigger-label").evaluate((label) => {
+      label.textContent = "A long session title that must not widen the Side Panel"
+    })
 
     const headerColors = []
     for (const colorScheme of ["light", "dark"] as const) {
@@ -2247,7 +2264,6 @@ test("keeps header and composer controls usable at normal and narrow widths", as
     expect(headerColors[0]).not.toBe(headerColors[1])
 
     await controller.setViewportSize({ width: 320, height: 720 })
-    const accountTrigger = controller.locator("#account-menu-trigger")
     await controller.locator("#new-session").focus()
     await controller.keyboard.press("Tab")
     await expect(accountTrigger).toBeFocused()
@@ -2287,6 +2303,8 @@ test("keeps header and composer controls usable at normal and narrow widths", as
       if (queue) queue.hidden = original.queueHidden
       const sendLabel = document.querySelector<HTMLElement>("#send-label")
       if (sendLabel) sendLabel.textContent = original.sendLabel
+      const sessionTitle = document.querySelector<HTMLElement>("#session-trigger-label")
+      if (sessionTitle) sessionTitle.textContent = original.sessionTitle
     }, originalUi)
     await controller.emulateMedia({ colorScheme: null })
     await controller.setViewportSize(originalViewport)

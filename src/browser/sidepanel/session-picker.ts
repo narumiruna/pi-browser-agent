@@ -12,6 +12,7 @@ interface SessionPickerElements {
   menu: HTMLElement
   listbox: HTMLElement
   emptyText: string
+  onOpen?: () => void
 }
 
 export class SessionPicker {
@@ -161,6 +162,7 @@ export class SessionPicker {
     const { menu, trigger } = this.elements
     if (trigger.disabled) return
 
+    this.elements.onOpen?.()
     this.renderOptions()
     menu.hidden = false
     trigger.setAttribute("aria-expanded", "true")

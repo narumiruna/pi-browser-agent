@@ -7,7 +7,7 @@ function required<T extends Element>(element: T | null): T {
   return element
 }
 
-function setup() {
+function setup(onOpen?: () => void) {
   const dom = new JSDOM(`
     <div id="picker">
       <button id="trigger" type="button" aria-expanded="false">
@@ -35,6 +35,7 @@ function setup() {
     menu,
     listbox,
     emptyText: "New session",
+    onOpen,
   })
   return { dom, trigger, triggerLabel, select, menu, listbox, picker }
 }
@@ -63,6 +64,17 @@ describe("SessionPicker", () => {
     expect(renderedOptions.item(1).getAttribute("aria-selected")).toBe("true")
     expect(renderedOptions.item(1).title).toBe("A very long session title")
     expect(renderedOptions.item(1).textContent).toContain("Interrupted")
+  })
+
+  test("coordinates with other menus before opening", () => {
+    const onOpen = vi.fn()
+    const { trigger, menu, picker } = setup(onOpen)
+    picker.setOptions(options, "first")
+
+    trigger.click()
+
+    expect(onOpen).toHaveBeenCalledOnce()
+    expect(menu.hidden).toBe(false)
   })
 
   test("chooses a session and mirrors the selection through the native control", () => {

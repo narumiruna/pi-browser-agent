@@ -73,6 +73,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   const statusPill: HTMLElement = statusPillElement
   const scrollToBottomButton = element<HTMLButtonElement>("scroll-to-bottom")
   const sessionSelect = element<HTMLSelectElement>("sessions")
+  const disclosures = document.querySelectorAll<HTMLDetailsElement>("details.disclosure")
   const sessionPicker = new SessionPicker({
     container: element<HTMLElement>("session-picker"),
     trigger: element<HTMLButtonElement>("session-trigger"),
@@ -81,6 +82,9 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     menu: element<HTMLElement>("session-menu"),
     listbox: element<HTMLElement>("session-options"),
     emptyText: conversationText("newSession"),
+    onOpen: () => {
+      for (const disclosure of disclosures) disclosure.open = false
+    },
   })
   const newSessionButton = element<HTMLButtonElement>("new-session")
   const confirmDialog = element<HTMLDialogElement>("confirm-dialog")
@@ -871,7 +875,6 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     { capture: true },
   )
 
-  const disclosures = document.querySelectorAll<HTMLDetailsElement>("details.disclosure")
   for (const disclosure of disclosures) {
     disclosure.addEventListener("toggle", () => {
       if (!disclosure.open) return

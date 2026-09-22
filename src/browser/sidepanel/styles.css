@@ -385,6 +385,7 @@ body[data-busy="true"] .status-dot {
 
 .session-picker {
   position: relative;
+  width: 0;
   min-width: 0;
   height: 40px;
   flex: 1;
@@ -393,6 +394,7 @@ body[data-busy="true"] .status-dot {
 .session-trigger {
   display: flex;
   width: 100%;
+  min-width: 0;
   height: 40px;
   min-height: 40px;
   align-items: center;
