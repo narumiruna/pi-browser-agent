@@ -61,6 +61,7 @@ describe("SessionPicker", () => {
     expect(trigger.getAttribute("aria-expanded")).toBe("true")
     const renderedOptions = listbox.querySelectorAll<HTMLButtonElement>("[role='option']")
     expect(renderedOptions).toHaveLength(2)
+    expect([...renderedOptions].map((option) => option.tabIndex)).toEqual([-1, 0])
     expect(renderedOptions.item(1).getAttribute("aria-selected")).toBe("true")
     expect(renderedOptions.item(1).title).toBe("A very long session title")
     expect(renderedOptions.item(1).textContent).toContain("Interrupted")
@@ -102,16 +103,15 @@ describe("SessionPicker", () => {
     )
 
     expect(menu.hidden).toBe(false)
-    expect(trigger.ownerDocument.activeElement).toBe(
-      listbox.querySelectorAll<HTMLButtonElement>("[role='option']").item(0),
-    )
+    const renderedOptions = listbox.querySelectorAll<HTMLButtonElement>("[role='option']")
+    expect([...renderedOptions].map((option) => option.tabIndex)).toEqual([0, -1])
+    expect(trigger.ownerDocument.activeElement).toBe(renderedOptions.item(0))
 
     trigger.ownerDocument.activeElement?.dispatchEvent(
       new dom.window.KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
     )
-    expect(trigger.ownerDocument.activeElement).toBe(
-      listbox.querySelectorAll<HTMLButtonElement>("[role='option']").item(1),
-    )
+    expect([...renderedOptions].map((option) => option.tabIndex)).toEqual([-1, 0])
+    expect(trigger.ownerDocument.activeElement).toBe(renderedOptions.item(1))
 
     required(trigger.ownerDocument.querySelector<HTMLButtonElement>("#outside")).focus()
     expect(menu.hidden).toBe(true)

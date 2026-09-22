@@ -66,6 +66,8 @@ export class SessionPicker {
   private renderOptions(): void {
     const { listbox, select } = this.elements
     listbox.replaceChildren()
+    const selectedIndex = this.options.findIndex((item) => item.value === select.value)
+    const tabbableIndex = Math.max(0, selectedIndex)
 
     for (const [index, item] of this.options.entries()) {
       const option = listbox.ownerDocument.createElement("button")
@@ -75,6 +77,7 @@ export class SessionPicker {
       option.dataset.value = item.value
       option.setAttribute("role", "option")
       option.setAttribute("aria-selected", String(item.value === select.value))
+      option.tabIndex = index === tabbableIndex ? 0 : -1
       option.title = item.label
 
       const check = listbox.ownerDocument.createElement("span")
@@ -140,7 +143,15 @@ export class SessionPicker {
       const direction = event.key === "ArrowDown" ? 1 : -1
       nextIndex = (index + direction + this.options.length) % this.options.length
     }
-    this.optionElements().item(nextIndex).focus()
+    this.focusOption(nextIndex)
+  }
+
+  private focusOption(index: number): void {
+    const options = this.optionElements()
+    options.forEach((option, optionIndex) => {
+      option.tabIndex = optionIndex === index ? 0 : -1
+    })
+    options.item(index).focus()
   }
 
   private choose(index: number): void {
@@ -167,7 +178,7 @@ export class SessionPicker {
     menu.hidden = false
     trigger.setAttribute("aria-expanded", "true")
     this.elements.container.dataset.open = "true"
-    if (focusIndex !== undefined) this.optionElements().item(focusIndex).focus()
+    if (focusIndex !== undefined) this.focusOption(focusIndex)
   }
 
   private close(returnFocus = false): void {
