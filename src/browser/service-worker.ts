@@ -579,6 +579,16 @@ async function navigate(request: RuntimeRequest<"tabs.navigate">): Promise<JsonV
   return updated
 }
 
+function elementPickerPageUrl(value: string): string {
+  const url = new URL(value)
+  url.username = ""
+  url.password = ""
+  if (url.href.length > ELEMENT_PICKER_LIMITS.pageUrl) {
+    throw new RuntimeError("INVALID_REQUEST", "Current page URL exceeds the element picker limit")
+  }
+  return url.href
+}
+
 async function startElementPicker(
   request: RuntimeRequest<"elementPicker.start">,
 ): Promise<JsonValue> {
@@ -586,6 +596,7 @@ async function startElementPicker(
   const context = await refreshBoundContext()
   if (operationVersion !== elementPickerOperationVersion) return { active: false }
   assertTabContext(request.tabContext, context)
+  elementPickerPageUrl(context.url)
   if (!(await hasHostPermission(context.url))) {
     throw new RuntimeError(
       "PERMISSION_DENIED",
@@ -877,12 +888,24 @@ async function acceptElementPickerResult(
     sender.id !== chrome.runtime.id ||
     sender.tab?.id !== picker.context.tabId ||
     sender.frameId !== 0 ||
-    message.token !== picker.token ||
-    Date.now() >= picker.expiresAt
+    message.token !== picker.token
   ) {
     throw new RuntimeError("PERMISSION_DENIED", "Invalid or expired element picker result")
   }
   assertTabContext(message.tabContext, picker.context)
+  if (Date.now() >= picker.expiresAt) {
+    activeElementPicker = undefined
+    emitEvent({
+      kind: "event",
+      name: "elementPicker.cancelled",
+      payload: { reason: "timeout", clientId: picker.clientId },
+      tabContext: picker.context,
+    })
+    if (message.status === "cancelled" && message.reason === "timeout") {
+      return { accepted: true }
+    }
+    throw new RuntimeError("PERMISSION_DENIED", "Invalid or expired element picker result")
+  }
   if (message.status === "cancelled") {
     activeElementPicker = undefined
     emitEvent({
@@ -906,10 +929,7 @@ async function acceptElementPickerResult(
       throw new RuntimeError("PERMISSION_DENIED", "Current site access was revoked")
     }
     const element = parseSelectedElementContext(message.element)
-    const expectedUrl = new URL(picker.context.url)
-    expectedUrl.username = ""
-    expectedUrl.password = ""
-    if (element.pageUrl !== expectedUrl.href) {
+    if (element.pageUrl !== elementPickerPageUrl(picker.context.url)) {
       throw new RuntimeError("STALE_CONTEXT", "The selected element came from a different page")
     }
     emitEvent({

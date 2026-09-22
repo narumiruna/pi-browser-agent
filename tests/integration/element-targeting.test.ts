@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
-import type { SelectedElementContext } from "../../src/browser/runtime/element-context.js"
+import {
+  ELEMENT_PICKER_LIMITS,
+  type SelectedElementContext,
+} from "../../src/browser/runtime/element-context.js"
 import type { RuntimeResponse } from "../../src/browser/runtime/messages.js"
 import type { JsonObject, TabContext } from "../../src/browser/runtime/types.js"
 
@@ -551,6 +554,62 @@ describe("worker element picker lifecycle", () => {
     })
     expect(injectionCount).toBe(count)
     expect(host()).toBeNull()
+  })
+
+  test("rejects an over-limit page URL before injecting the picker", async () => {
+    tab.url = `https://example.test/?q=${"x".repeat(ELEMENT_PICKER_LIMITS.pageUrl)}`
+    await state()
+    const count = injectionCount
+
+    expect(await startPickerRequest()).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_REQUEST", message: expect.stringContaining("URL") },
+    })
+    expect(injectionCount).toBe(count)
+    expect(host()).toBeNull()
+  })
+
+  test.each([
+    ["accepts an authenticated timeout cancellation", "cancelled", true],
+    ["rejects an expired selection", "selected", false],
+  ] as const)("%s while releasing Side Panel state", async (_label, status, accepted) => {
+    expect(await startPickerRequest()).toMatchObject({ ok: true })
+    const isolated = globalThis as typeof globalThis & {
+      __piBrowserAgentElementPicker?: { cleanup: () => void; token: string }
+    }
+    const token = isolated.__piBrowserAgentElementPicker?.token
+    expect(token).toBeTypeOf("string")
+    isolated.__piBrowserAgentElementPicker?.cleanup()
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + ELEMENT_PICKER_LIMITS.lifetimeMs + 1_000)
+
+    const response = await new Promise<RuntimeResponse>((resolve) => {
+      listener(
+        {
+          kind: "element-picker-result",
+          status,
+          token,
+          tabContext: context,
+          ...(status === "cancelled" ? { reason: "timeout" } : { element: selectedElement() }),
+        },
+        { id: "extension", tab, frameId: 0 } as chrome.runtime.MessageSender,
+        resolve,
+      )
+    })
+
+    expect(response).toMatchObject(
+      accepted
+        ? { ok: true, result: { accepted: true } }
+        : { ok: false, error: { code: "PERMISSION_DENIED" } },
+    )
+    await vi.waitFor(() => {
+      expect(emittedEvents).toContainEqual(
+        expect.objectContaining({
+          name: "elementPicker.cancelled",
+          payload: expect.objectContaining({ reason: "timeout" }),
+        }),
+      )
+    })
+    expect(emittedEvents.some((event) => event.name === "elementPicker.selected")).toBe(false)
   })
 
   test("rejects a selection after exact-origin access is revoked", async () => {

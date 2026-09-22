@@ -76,7 +76,7 @@ export function executeElementPicker(
       const url = new URL(location.href)
       url.username = ""
       url.password = ""
-      return bounded(url.href, limits.pageUrl)
+      return url.href.length <= limits.pageUrl ? url.href : ""
     } catch {
       return ""
     }
