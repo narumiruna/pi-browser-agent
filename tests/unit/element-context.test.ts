@@ -43,6 +43,10 @@ describe("selected element context", () => {
     expect(parsed).not.toBe(source)
   })
 
+  test.each(["x_y", "x.y", "x:y"])("accepts the valid HTML tag name %s", (tagName) => {
+    expect(parseSelectedElementContext(context({ tagName })).tagName).toBe(tagName)
+  })
+
   test("rejects extra, sensitive, reserved, and credential-bearing fields", () => {
     const cases: unknown[] = [
       { ...context(), outerHTML: "<div>private</div>" },
@@ -64,7 +68,9 @@ describe("selected element context", () => {
   test("rejects malformed and oversized scalar and geometry values", () => {
     for (const value of [
       context({ pageUrl: "javascript:alert(1)" }),
+      context({ tagName: "" }),
       context({ tagName: "DIV SCRIPT" }),
+      context({ tagName: "x".repeat(65) }),
       context({ text: "x".repeat(ELEMENT_PICKER_LIMITS.text + 1) }),
       context({ classNames: Array(ELEMENT_PICKER_LIMITS.classes + 1).fill("x") }),
       context({ capturedAt: -1 }),

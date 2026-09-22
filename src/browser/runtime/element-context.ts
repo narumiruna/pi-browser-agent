@@ -69,6 +69,15 @@ function boundedString(value: unknown, length: number): value is string {
   return typeof value === "string" && value.length <= length
 }
 
+function htmlTagName(value: unknown): value is string {
+  return (
+    boundedString(value, 64) &&
+    value.length > 0 &&
+    value === value.toLowerCase() &&
+    !/[\0\t\n\f\r />]/u.test(value)
+  )
+}
+
 function finiteNumber(value: unknown, minimum = -10_000_000): value is number {
   return (
     typeof value === "number" && Number.isFinite(value) && value >= minimum && value <= 10_000_000
@@ -101,8 +110,7 @@ export function parseSelectedElementContext(value: unknown): SelectedElementCont
     value.version !== 1 ||
     !boundedString(value.pageUrl, ELEMENT_PICKER_LIMITS.pageUrl) ||
     !/^https?:\/\//.test(value.pageUrl) ||
-    typeof value.tagName !== "string" ||
-    !/^[a-z][a-z0-9-]{0,63}$/.test(value.tagName) ||
+    !htmlTagName(value.tagName) ||
     !boundedString(value.id, ELEMENT_PICKER_LIMITS.id) ||
     !Array.isArray(value.classNames) ||
     value.classNames.length > ELEMENT_PICKER_LIMITS.classes ||
