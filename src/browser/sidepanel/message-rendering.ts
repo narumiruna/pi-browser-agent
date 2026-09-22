@@ -1,6 +1,6 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core"
 import type { ImageContent } from "@earendil-works/pi-ai"
-import { CopyButton } from "./copy-button.js"
+import { CopyButton, type CopyButtonKind } from "./copy-button.js"
 import { imageContentSource } from "./images.js"
 import { renderMarkdown } from "./markdown.js"
 
@@ -18,10 +18,11 @@ function copyButton(
   key: string,
   label: string,
   text: string,
+  kind: CopyButtonKind,
 ): HTMLButtonElement {
   let control = state.copyButtons.get(key)
   if (!control) {
-    control = new CopyButton(label, text)
+    control = new CopyButton(label, text, kind)
     control.element.dataset.focusKey = key
     state.copyButtons.set(key, control)
   }
@@ -52,15 +53,14 @@ function appendProse(
   block.append(renderMarkdown(text))
   for (const [index, pre] of block.querySelectorAll("pre").entries()) {
     const wrapper = document.createElement("div")
-    wrapper.className = "code-block"
-    const copy = copyButton(
-      state,
-      `code-${blockKey}-${index}`,
-      "Copy code",
-      pre.querySelector("code")?.textContent ?? "",
-    )
+    const codeText = pre.querySelector("code")?.textContent ?? ""
+    const visualExample = /[\u2500-\u257f]/u.test(codeText)
+    wrapper.className = visualExample ? "code-block visual-example" : "code-block"
     pre.replaceWith(wrapper)
-    wrapper.append(copy, pre)
+    wrapper.append(pre)
+    if (!visualExample && codeText) {
+      wrapper.append(copyButton(state, `code-${blockKey}-${index}`, "Copy code", codeText, "code"))
+    }
   }
   for (const [index, link] of block.querySelectorAll("a").entries())
     link.dataset.focusKey = `link-${blockKey}-${index}:${link.href}`
@@ -175,7 +175,10 @@ export function renderMessageContent(
     text = textParts.join("\n")
   }
   if (answers.some(Boolean)) {
-    container.append(copyButton(state, "copy-answer", "Copy answer", answers.join("\n")))
+    const actions = document.createElement("footer")
+    actions.className = "message-actions"
+    actions.append(copyButton(state, "copy-answer", "Copy all", answers.join("\n"), "answer"))
+    container.append(actions)
   }
   const roleLabel = toolCall
     ? "Tool call"

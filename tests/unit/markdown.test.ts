@@ -66,11 +66,11 @@ describe("restricted assistant Markdown", () => {
     buttons[1]?.click()
     expect(writeText).toHaveBeenLastCalledWith(text)
     await Promise.resolve()
-    expect(buttons[1]?.textContent).toBe("Copied")
+    expect(buttons[1]?.querySelector(".copy-label")?.textContent).toBe("Copied")
     writeText.mockRejectedValueOnce(new Error("Denied"))
     buttons[1]?.click()
     await Promise.resolve()
-    expect(buttons[1]?.textContent).toBe("Copy failed")
+    expect(buttons[1]?.querySelector(".copy-label")?.textContent).toBe("Copy failed")
   })
 
   test("keeps user, tool, and thinking text plain when rendering saved messages", () => {
