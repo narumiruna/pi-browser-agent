@@ -82,6 +82,16 @@ npm audit --omit=dev
 
 `npm run build` runs the isolated browser bundle probe, production extension build, typecheck, and artifact security audit. `npm run pack` creates the Chrome zip without publishing anything.
 
+## Release management
+
+Create and commit a changeset for every releaseable change:
+
+```sh
+npm run changeset
+```
+
+Pushes to `main` create or update the **chore(release): version packages** pull request. Merging that pull request updates `package.json`, `package-lock.json`, `manifest.json`, and `CHANGELOG.md`, creates the matching `vX.Y.Z` GitHub release, and uploads `pi-browser-agent.zip`. The repository must allow GitHub Actions to create pull requests.
+
 ## Troubleshooting
 
 - **Provider host access was declined or revoked:** send again and approve the selected endpoint, or reconfigure the provider if its endpoint changed.
