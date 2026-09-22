@@ -72,7 +72,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   const setError = (error?: unknown): void => setErrorOutput(errorOutput, error)
   let activeSubmissionGuard: object | undefined
   let pendingPasteOperations = 0
-  let pasteQueue = Promise.resolve()
+  let imageAttachmentQueue = Promise.resolve()
   let composerImages: Array<ComposerImage & { id: string }> = []
   let selectedElements: Array<{ context: SelectedElementContext; id: string }> = []
   let currentTabContext: TabContext | undefined
@@ -417,26 +417,35 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     updateSendButton()
   }
 
-  async function attachComposerImages(
-    files: Blob[],
-    source: "annotation" | "paste",
-  ): Promise<void> {
-    if (composerImages.length + files.length > MAX_PASTED_IMAGES) {
-      throw new Error(`Attach up to ${MAX_PASTED_IMAGES} images at a time`)
-    }
-    const additions: Array<ComposerImage & { id: string }> = []
-    let usedBytes = composerImages.reduce((total, image) => total + image.byteLength, 0)
-    for (const file of files) {
-      const remaining = MAX_PASTED_IMAGE_BYTES - usedBytes
-      const composerImage =
-        source === "paste"
-          ? await readPastedImage(file, remaining)
-          : await readGeneratedImage(file, remaining)
-      additions.push({ ...composerImage, id: crypto.randomUUID() })
-      usedBytes += composerImage.byteLength
-    }
-    composerImages.push(...additions)
-    renderComposerImages()
+  function attachComposerImages(files: Blob[], source: "annotation" | "paste"): Promise<void> {
+    const operation = imageAttachmentQueue.then(async () => {
+      if (composerImages.length + files.length > MAX_PASTED_IMAGES) {
+        throw new Error(`Attach up to ${MAX_PASTED_IMAGES} images at a time`)
+      }
+      const additions: Array<ComposerImage & { id: string }> = []
+      let usedBytes = composerImages.reduce((total, image) => total + image.byteLength, 0)
+      for (const file of files) {
+        const remaining = MAX_PASTED_IMAGE_BYTES - usedBytes
+        const composerImage =
+          source === "paste"
+            ? await readPastedImage(file, remaining)
+            : await readGeneratedImage(file, remaining)
+        additions.push({ ...composerImage, id: crypto.randomUUID() })
+        usedBytes += composerImage.byteLength
+      }
+      const currentBytes = composerImages.reduce((total, image) => total + image.byteLength, 0)
+      const addedBytes = additions.reduce((total, image) => total + image.byteLength, 0)
+      if (
+        composerImages.length + additions.length > MAX_PASTED_IMAGES ||
+        currentBytes + addedBytes > MAX_PASTED_IMAGE_BYTES
+      ) {
+        throw new Error("Composer image limits changed while attachments were loading")
+      }
+      composerImages.push(...additions)
+      renderComposerImages()
+    })
+    imageAttachmentQueue = operation.catch(() => undefined)
+    return operation
   }
 
   function attachPastedImages(files: File[]): Promise<void> {
@@ -742,11 +751,12 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     setError()
     pendingPasteOperations += 1
     updateSendButton()
-    const operation = pasteQueue.then(() => attachPastedImages(files))
-    pasteQueue = operation.catch(setError).finally(() => {
-      pendingPasteOperations -= 1
-      updateSendButton()
-    })
+    void attachPastedImages(files)
+      .catch(setError)
+      .finally(() => {
+        pendingPasteOperations -= 1
+        updateSendButton()
+      })
   })
   promptInput.addEventListener("input", () => {
     voiceInput?.stop({ discardResults: true })

@@ -2644,6 +2644,80 @@ test("annotates a captured screenshot locally and submits the rendered image", a
   await action.click()
   await waitForCanvas()
   await draw(-0.15)
+  await controller.evaluate(() => {
+    const state = window as typeof window & {
+      imageAttachmentGate?: {
+        original: typeof Blob.prototype.arrayBuffer
+        release: () => void
+        started: Promise<void>
+      }
+    }
+    let release: () => void = () => undefined
+    let markStarted: () => void = () => undefined
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve
+    })
+    const original = Blob.prototype.arrayBuffer
+    Blob.prototype.arrayBuffer = function delayedGeneratedImage() {
+      if (this instanceof File) return original.call(this)
+      markStarted()
+      return gate.then(() => original.call(this))
+    }
+    state.imageAttachmentGate = { original, release, started }
+  })
+  try {
+    await attach.click()
+    await controller.evaluate(async () => {
+      const state = window as typeof window & {
+        imageAttachmentGate?: { started: Promise<void> }
+      }
+      await state.imageAttachmentGate?.started
+    })
+    await controller.locator("#prompt").evaluate((target) => {
+      const encoded =
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nL8AAAAASUVORK5CYII="
+      const bytes = Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0))
+      const clipboard = new DataTransfer()
+      for (let index = 0; index < 4; index += 1) {
+        clipboard.items.add(new File([bytes], `concurrent-${index}.png`, { type: "image/png" }))
+      }
+      target.dispatchEvent(
+        new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: clipboard }),
+      )
+    })
+    await controller.evaluate(() => {
+      const state = window as typeof window & {
+        imageAttachmentGate?: { release: () => void }
+      }
+      state.imageAttachmentGate?.release()
+    })
+    await expect(dialog).toBeHidden()
+    await expect(controller.locator("#pasted-images img")).toHaveCount(1)
+    await expect(controller.locator("#error")).toContainText("Attach up to 4 images")
+  } finally {
+    await controller.evaluate(() => {
+      const state = window as typeof window & {
+        imageAttachmentGate?: {
+          original: typeof Blob.prototype.arrayBuffer
+          release: () => void
+        }
+      }
+      state.imageAttachmentGate?.release()
+      if (state.imageAttachmentGate) {
+        Blob.prototype.arrayBuffer = state.imageAttachmentGate.original
+      }
+      delete state.imageAttachmentGate
+    })
+  }
+  await controller.locator(".remove-pasted-image").click()
+  await expect(controller.locator("#pasted-images")).toBeHidden()
+
+  await action.click()
+  await waitForCanvas()
+  await draw(-0.15)
   await attach.click()
   const attachedSource = await controller.locator("#pasted-images img").getAttribute("src")
   if (!attachedSource) throw new Error("Missing attached annotation source")
@@ -2788,6 +2862,14 @@ test("selects page elements without activating them and sends bounded structured
   await page.keyboard.press("Escape")
   await expect(pickerHost).toHaveCount(0)
 
+  await startPicker()
+  await page.locator("[data-pi-browser-agent-element-picker]").evaluate((host) => host.remove())
+  await expect(pickerHost).toHaveCount(0)
+  await expect(controller.locator("#element-picker")).toHaveAttribute(
+    "aria-label",
+    "Select page element",
+  )
+
   const ordinaryBounds = await page.locator("#ordinary").boundingBox()
   if (!ordinaryBounds) throw new Error("Missing ordinary button bounds")
   const beforeHighlight = await page.screenshot({
@@ -2905,10 +2987,14 @@ test("selects page elements without activating them and sends bounded structured
         hidden.style.opacity = "0"
         hidden.style.pointerEvents = "none"
         hidden.innerHTML = "<b>Hidden fallback target</b>"
+        const filterHidden = document.createElement("span")
+        filterHidden.style.filter = "opacity(0)"
+        filterHidden.style.pointerEvents = "none"
+        filterHidden.textContent = "Filter-hidden fallback target"
         const input = document.createElement("input")
         input.value = "private-fallback-value"
         input.style.pointerEvents = "none"
-        target.append(hidden, input)
+        target.append(hidden, filterHidden, input)
       }
       section.append(target)
       fixture.append(section)
@@ -2974,6 +3060,7 @@ test("selects page elements without activating them and sends bounded structured
     expect(providerBody).not.toContain("picker-secret-value")
     expect(providerBody).not.toContain("private-fallback-value")
     expect(providerBody).not.toContain("Hidden fallback target")
+    expect(providerBody).not.toContain("Filter-hidden fallback target")
     expect(providerBody).not.toContain("user:secret")
     await expect(controller.locator("#selected-elements")).toBeHidden()
   } finally {

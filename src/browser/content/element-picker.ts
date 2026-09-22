@@ -152,6 +152,23 @@ export function executeElementPicker(
   }
   const visibleText = (element: Element): string => {
     if (element.matches("input, textarea, select, [contenteditable]")) return ""
+    const blockedFilters = new WeakMap<Element, boolean>()
+    const filterBlocksVisibility = (element: Element, style: CSSStyleDeclaration): boolean => {
+      const cached = blockedFilters.get(element)
+      if (cached !== undefined) return cached
+      const filter = style.filter
+      let blocked = filter.length > 4_096
+      if (!blocked) {
+        for (const [, amount] of filter.matchAll(/url\("(?:[^"\\]|\\.)*"\)|opacity\(([^)]+)\)/g)) {
+          if (Number.parseFloat(amount ?? "") === 0) {
+            blocked = true
+            break
+          }
+        }
+      }
+      blockedFilters.set(element, blocked)
+      return blocked
+    }
     const hasVisibleAncestors = (element: Element): boolean => {
       let current: Element | null = element
       for (let depth = 0; current && depth < 64; depth += 1) {
@@ -161,7 +178,8 @@ export function executeElementPicker(
           style.display === "none" ||
           style.visibility === "hidden" ||
           style.visibility === "collapse" ||
-          Number.parseFloat(style.opacity || "1") <= 0
+          Number.parseFloat(style.opacity || "1") <= 0 ||
+          (style.display !== "contents" && filterBlocksVisibility(current, style))
         ) {
           return false
         }
@@ -294,6 +312,10 @@ export function executeElementPicker(
     | ((message: unknown, sender: chrome.runtime.MessageSender) => false)
     | undefined
   const observer = new MutationObserver((records) => {
+    if (!host.isConnected) {
+      notify("cancelled", undefined, "overlay-detached")
+      return
+    }
     if (records.some((record) => record.target !== host && !host.contains(record.target))) {
       scheduleRefresh()
     }
@@ -373,11 +395,11 @@ export function executeElementPicker(
     if (isolated.__piBrowserAgentElementPicker?.token === token)
       delete isolated.__piBrowserAgentElementPicker
   }
-  const notify = (
+  function notify(
     status: "cancelled" | "selected",
     element?: SelectedElementContext,
     reason?: string,
-  ): void => {
+  ): void {
     if (finished) return
     finished = true
     cleanup()

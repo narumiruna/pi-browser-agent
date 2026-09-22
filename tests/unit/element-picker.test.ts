@@ -104,6 +104,19 @@ describe("injected element picker", () => {
     ).toBeDefined()
   })
 
+  test("cancels when the page detaches the extension overlay", async () => {
+    executeElementPicker("start", "detached", context, ELEMENT_PICKER_LIMITS)
+    pickerHost()?.remove()
+
+    await vi.waitFor(() => {
+      expect(sent).toMatchObject([{ status: "cancelled", reason: "overlay-detached" }])
+    })
+    expect(
+      (globalThis as typeof globalThis & { __piBrowserAgentElementPicker?: unknown })
+        .__piBrowserAgentElementPicker,
+    ).toBeUndefined()
+  })
+
   test("preserves page-owned nodes that use the overlay marker", () => {
     const pageOwned = document.createElement("div")
     pageOwned.dataset.piBrowserAgentElementPicker = ""
