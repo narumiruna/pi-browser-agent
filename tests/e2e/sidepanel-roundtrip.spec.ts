@@ -2013,7 +2013,9 @@ test("synchronizes provider controls when a new session restores the latest mode
   await configuredSettingsTab.locator("#cancel-settings").click()
   await configuredSettingsTabClosed
 
-  await sessionSelect.selectOption(initialSessionId)
+  await controller.locator("#session-trigger").click()
+  await controller.locator(`.session-option[data-value="${initialSessionId}"]`).click()
+  await expect(sessionSelect).toHaveValue(initialSessionId)
   await expect(controller.locator("#auth-status")).toHaveText("OpenAI Codex not configured")
   const restoredSessionSettingsTab = await openSettingsTab()
   await expect(restoredSessionSettingsTab.locator("#provider")).toHaveValue("openai-codex")
@@ -2091,6 +2093,57 @@ test("keeps header and composer controls usable at normal and narrow widths", as
       .evaluate((element) => element.getBoundingClientRect().top)
     expect(transcriptTop).toBeLessThan(70)
 
+    const sessionTrigger = controller.locator("#session-trigger")
+    const sessionMenu = controller.locator("#session-menu")
+    await sessionTrigger.click()
+    await expect(sessionMenu).toBeVisible()
+    const sessionMenuLayout = await controller.evaluate(() => {
+      const trigger = document.querySelector<HTMLElement>("#session-trigger")
+      const menu = document.querySelector<HTMLElement>("#session-menu")
+      const option = document.querySelector<HTMLElement>('.session-option[aria-selected="true"]')
+      const label = document.querySelector<HTMLElement>("#session-trigger-label")
+      if (!trigger || !menu || !option || !label) throw new Error("Missing session menu")
+      const triggerBounds = trigger.getBoundingClientRect()
+      const menuBounds = menu.getBoundingClientRect()
+      const optionBounds = option.getBoundingClientRect()
+      const menuStyle = getComputedStyle(menu)
+      const optionStyle = getComputedStyle(option)
+      const labelStyle = getComputedStyle(label)
+      return {
+        triggerLeft: triggerBounds.left,
+        triggerWidth: triggerBounds.width,
+        menuLeft: menuBounds.left,
+        menuWidth: menuBounds.width,
+        optionHeight: optionBounds.height,
+        menuRadius: menuStyle.borderRadius,
+        menuShadow: menuStyle.boxShadow,
+        optionBackground: optionStyle.backgroundColor,
+        optionColor: optionStyle.color,
+        labelOverflow: labelStyle.overflow,
+        labelTextOverflow: labelStyle.textOverflow,
+        optionTitle: option.title,
+      }
+    })
+    expect(sessionMenuLayout.menuLeft).toBeCloseTo(sessionMenuLayout.triggerLeft, 1)
+    expect(sessionMenuLayout.menuWidth).toBeCloseTo(sessionMenuLayout.triggerWidth, 1)
+    expect(sessionMenuLayout.optionHeight).toBeGreaterThanOrEqual(40)
+    expect(sessionMenuLayout.optionHeight).toBeLessThanOrEqual(44)
+    expect(sessionMenuLayout.menuRadius).toBe("8px")
+    expect(sessionMenuLayout.menuShadow).not.toBe("none")
+    expect(sessionMenuLayout.optionBackground).not.toBe("rgb(0, 0, 255)")
+    expect(sessionMenuLayout.optionColor).not.toBe("rgb(255, 255, 255)")
+    expect(sessionMenuLayout.labelOverflow).toBe("hidden")
+    expect(sessionMenuLayout.labelTextOverflow).toBe("ellipsis")
+    expect(sessionMenuLayout.optionTitle).not.toBe("")
+    const sessionMenuPath = testInfo.outputPath("session-menu.png")
+    await controller.screenshot({ path: sessionMenuPath })
+    await testInfo.attach("session-menu", {
+      path: sessionMenuPath,
+      contentType: "image/png",
+    })
+    await sessionTrigger.click()
+    await expect(sessionMenu).toBeHidden()
+
     const headerColors = []
     for (const colorScheme of ["light", "dark"] as const) {
       await controller.emulateMedia({ colorScheme })
@@ -2129,7 +2182,7 @@ test("keeps header and composer controls usable at normal and narrow widths", as
                 document.body.dataset.state === "running" &&
                 document.documentElement.clientWidth <= 360
               const selectors = [
-                "#sessions",
+                "#session-trigger",
                 "#new-session",
                 "#account-menu-trigger",
                 "#prompt",

@@ -9,15 +9,38 @@
     <header class="app-header">
       <div class="header-row">
         <section class="session-row" aria-label="Conversations">
-          <div class="session-picker">
-            <svg class="radix-icon session-icon" viewBox="0 0 15 15" aria-hidden="true">
-              <path d="M2 2.5h11v8H7l-3.5 2v-2H2Z" />
-            </svg>
-            <label for="sessions" class="visually-hidden">Saved conversations</label>
-            <select id="sessions" aria-label="Saved conversations"></select>
-            <svg class="radix-icon session-chevron" viewBox="0 0 15 15" aria-hidden="true">
-              <path d="m4.5 6 3 3 3-3" />
-            </svg>
+          <div id="session-picker" class="session-picker">
+            <button
+              type="button"
+              id="session-trigger"
+              class="session-trigger"
+              aria-haspopup="listbox"
+              aria-expanded="false"
+              aria-controls="session-options"
+            >
+              <svg class="radix-icon session-icon" viewBox="0 0 15 15" aria-hidden="true">
+                <path d="M2 2.5h11v8H7l-3.5 2v-2H2Z" />
+              </svg>
+              <span class="visually-hidden">Saved conversations: </span>
+              <span id="session-trigger-label" class="session-trigger-label">New session</span>
+              <svg
+                class="radix-icon session-chevron"
+                viewBox="0 0 15 15"
+                aria-hidden="true"
+              >
+                <path d="m4.5 6 3 3 3-3" />
+              </svg>
+            </button>
+            <select id="sessions" tabindex="-1" aria-hidden="true"></select>
+            <div id="session-menu" class="session-menu" hidden>
+              <span class="session-menu-label">Recent sessions</span>
+              <div
+                id="session-options"
+                class="session-options"
+                role="listbox"
+                aria-label="Recent sessions"
+              ></div>
+            </div>
           </div>
           <button
             type="button"

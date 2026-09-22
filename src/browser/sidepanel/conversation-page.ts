@@ -30,6 +30,7 @@ import {
 } from "./images.js"
 import { TranscriptRenderer } from "./message-rendering.js"
 import { ScreenshotAnnotationController } from "./screenshot-annotation.js"
+import { SessionPicker } from "./session-picker.js"
 import { applyAppearance, element, run, setErrorOutput } from "./ui.js"
 import {
   createVoiceInput,
@@ -72,6 +73,15 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   const statusPill: HTMLElement = statusPillElement
   const scrollToBottomButton = element<HTMLButtonElement>("scroll-to-bottom")
   const sessionSelect = element<HTMLSelectElement>("sessions")
+  const sessionPicker = new SessionPicker({
+    container: element<HTMLElement>("session-picker"),
+    trigger: element<HTMLButtonElement>("session-trigger"),
+    triggerLabel: element<HTMLElement>("session-trigger-label"),
+    select: sessionSelect,
+    menu: element<HTMLElement>("session-menu"),
+    listbox: element<HTMLElement>("session-options"),
+    emptyText: conversationText("newSession"),
+  })
   const newSessionButton = element<HTMLButtonElement>("new-session")
   const confirmDialog = element<HTMLDialogElement>("confirm-dialog")
   const confirmMessage = element<HTMLElement>("confirm-message")
@@ -287,17 +297,14 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
 
   async function refreshSessions(): Promise<void> {
     const sessions = await runtime.listSessions()
-    sessionSelect.replaceChildren()
-    for (const session of sessions) {
-      const option = document.createElement("option")
-      option.value = session.id
-      const title = session.title === "New session" ? conversationText("newSession") : session.title
-      option.textContent = `${title}${
-        session.status === "interrupted" ? ` (${conversationText("interrupted")})` : ""
-      }`
-      option.selected = session.id === runtime.activeSession.id
-      sessionSelect.append(option)
-    }
+    sessionPicker.setOptions(
+      sessions.map((session) => ({
+        value: session.id,
+        label: session.title === "New session" ? conversationText("newSession") : session.title,
+        statusLabel: session.status === "interrupted" ? conversationText("interrupted") : undefined,
+      })),
+      runtime.activeSession.id,
+    )
   }
 
   function onAgentEvent(event: AgentEvent): void {
