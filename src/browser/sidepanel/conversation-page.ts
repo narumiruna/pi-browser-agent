@@ -254,6 +254,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       pickerStarting ||
       voiceInputStarting ||
       voiceInput?.active === true ||
+      (!pickerActive && currentTabContext === undefined) ||
       (!pickerActive && selectedElements.length >= ELEMENT_PICKER_LIMITS.elements)
   }
 
@@ -487,6 +488,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     const context =
       typeof state === "object" && state !== null && !Array.isArray(state) ? state.tabContext : null
     currentTabContext = tabContextFrom(context)
+    updateSendButton()
     return currentTabContext
   }
 

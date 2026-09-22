@@ -2830,6 +2830,53 @@ test("selects page elements without activating them and sends bounded structured
     await expect(controller.locator("#selected-elements")).toBeHidden()
   }
 
+  await controller.evaluate(() => {
+    const state = window as typeof window & {
+      pickerDisabledObserver?: MutationObserver
+      pickerWasDisabled?: boolean
+    }
+    const button = document.querySelector<HTMLButtonElement>("#element-picker")
+    if (!button) throw new Error("Missing element picker button")
+    state.pickerWasDisabled = false
+    state.pickerDisabledObserver = new MutationObserver(() => {
+      if (button.disabled) state.pickerWasDisabled = true
+    })
+    state.pickerDisabledObserver.observe(button, {
+      attributeFilter: ["disabled"],
+      attributes: true,
+    })
+  })
+  try {
+    await worker.evaluate(async () => {
+      await chrome.runtime
+        .sendMessage({ kind: "event", name: "tab.changed", payload: {} })
+        .catch(() => undefined)
+    })
+    await expect
+      .poll(() =>
+        controller.evaluate(
+          () =>
+            (
+              window as typeof window & {
+                pickerWasDisabled?: boolean
+              }
+            ).pickerWasDisabled,
+        ),
+      )
+      .toBe(true)
+    await expect(pickerButton).toBeEnabled()
+  } finally {
+    await controller.evaluate(() => {
+      const state = window as typeof window & {
+        pickerDisabledObserver?: MutationObserver
+        pickerWasDisabled?: boolean
+      }
+      state.pickerDisabledObserver?.disconnect()
+      delete state.pickerDisabledObserver
+      delete state.pickerWasDisabled
+    })
+  }
+
   // Simulate Chrome's site-access prompt invalidating the cached epoch without changing pages.
   await controller.evaluate(() => {
     const state = window as typeof window & {
