@@ -111,6 +111,12 @@
           aria-live="polite"
           hidden
         ></div>
+        <div
+          id="selected-elements"
+          class="selected-elements"
+          aria-live="polite"
+          hidden
+        ></div>
         <textarea
           id="prompt"
           rows="2"
@@ -124,6 +130,19 @@
           </span>
           <div class="row composer-actions">
             <span id="voice-status" class="visually-hidden" aria-live="polite"></span>
+            <button
+              type="button"
+              id="element-picker"
+              class="icon-button element-picker-button"
+              aria-label="Select page element"
+              aria-pressed="false"
+              title="選取網頁元素"
+            >
+              <svg class="radix-icon" viewBox="0 0 15 15" aria-hidden="true">
+                <path d="M2 1.5v10l2.7-2.7 2 4.2 1.8-.9-2-4.1H10L2 1.5Z" />
+                <path d="M9.5 1.5h4v4M13.5 9.5v4h-4" stroke-dasharray="1.5 1.5" />
+              </svg>
+            </button>
             <button
               type="button"
               id="voice-input"
@@ -296,6 +315,36 @@
         </div>
       </main>
     </section>
+
+    <dialog
+      id="screenshot-annotation-dialog"
+      class="screenshot-annotation-dialog"
+      aria-labelledby="screenshot-annotation-title"
+    >
+      <div class="annotation-editor">
+        <h2 id="screenshot-annotation-title">Annotate screenshot</h2>
+        <p>Draw over the screenshot, then attach the marked image to your next message.</p>
+        <div class="annotation-canvas-frame">
+          <canvas
+            id="screenshot-annotation-canvas"
+            width="1"
+            height="1"
+            aria-label="Screenshot annotation canvas"
+          ></canvas>
+        </div>
+        <div class="annotation-toolbar">
+          <label for="annotation-pen-width">Pen width</label>
+          <input id="annotation-pen-width" type="range" min="2" max="32" value="8" />
+          <button type="button" id="annotation-undo" class="subtle" disabled>Undo</button>
+          <button type="button" id="annotation-clear" class="subtle" disabled>Clear</button>
+        </div>
+        <p id="annotation-error" role="alert"></p>
+        <div class="dialog-actions">
+          <button type="button" id="annotation-cancel" class="subtle">Cancel</button>
+          <button type="button" id="annotation-attach" class="primary" disabled>Attach</button>
+        </div>
+      </div>
+    </dialog>
 
     <dialog id="confirm-dialog">
       <form method="dialog">

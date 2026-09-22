@@ -57,6 +57,22 @@ describe("internal runtime messages", () => {
         params: { limit: 5 },
       }),
     ).toMatchObject({ method: "bookmarks.getRecent", params: { limit: 5 } })
+    expect(
+      parseRuntimeRequest({
+        kind: "request",
+        requestId: "request-picker-start",
+        method: "elementPicker.start",
+        params: { clientId: "11111111-1111-4111-8111-111111111111" },
+      }),
+    ).toMatchObject({ method: "elementPicker.start" })
+    expect(
+      parseRuntimeRequest({
+        kind: "request",
+        requestId: "request-picker-stop",
+        method: "elementPicker.stop",
+        params: {},
+      }),
+    ).toMatchObject({ method: "elementPicker.stop", params: {} })
   })
 
   test.each([
@@ -70,6 +86,20 @@ describe("internal runtime messages", () => {
       params: { selector: "#x", extra: true },
     },
     { kind: "request", requestId: "", method: "page.type", params: {} },
+    {
+      kind: "request",
+      requestId: "1",
+      method: "elementPicker.start",
+      params: { clientId: "11111111-1111-4111-8111-111111111111", extra: true },
+    },
+    { kind: "request", requestId: "1", method: "elementPicker.start", params: {} },
+    {
+      kind: "request",
+      requestId: "1",
+      method: "elementPicker.stop",
+      params: {},
+      tabContext: { tabId: 1, url: "", epoch: 0 },
+    },
     { kind: "request", requestId: "1", method: "selection.takePending", params: {} },
     {
       kind: "request",

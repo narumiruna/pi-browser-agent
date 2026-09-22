@@ -2542,6 +2542,411 @@ async function prepareFeatureSession(): Promise<void> {
   tabContext = await waitForCurrentTab(page.url())
 }
 
+test("annotates a captured screenshot locally and submits the rendered image", async () => {
+  await prepareFeatureSession()
+  await page.goto(`http://127.0.0.1:${fixture.port}/`)
+  await page.bringToFront()
+  tabContext = await waitForCurrentTab(page.url())
+  const codexUrl = "https://chatgpt.com/backend-api/codex/responses"
+  let turn = 0
+  await context.route(codexUrl, async (route) => {
+    const body =
+      turn++ === 0 ? toolCall(80, "browser_capture_visible", {}) : finalText(81, "Captured.")
+    await route.fulfill({ status: 200, contentType: "text/event-stream", body })
+  })
+  try {
+    await controller.locator("#prompt").fill("Capture the current page")
+    await controller.locator("#send").click()
+    await expect(controller.locator("#transcript")).toContainText("Captured.")
+  } finally {
+    await context.unroute(codexUrl)
+  }
+
+  const action = controller.locator(".annotate-screenshot-button")
+  const dialog = controller.locator("#screenshot-annotation-dialog")
+  const canvas = controller.locator("#screenshot-annotation-canvas")
+  const attach = controller.locator("#annotation-attach")
+  const waitForCanvas = async (): Promise<void> => {
+    await expect
+      .poll(() => canvas.evaluate((element) => (element as HTMLCanvasElement).width))
+      .toBeGreaterThan(1)
+  }
+  const draw = async (verticalOffset = 0): Promise<void> => {
+    const bounds = await canvas.boundingBox()
+    if (!bounds) throw new Error("Missing annotation canvas bounds")
+    const y = bounds.y + bounds.height * (0.5 + verticalOffset)
+    await controller.mouse.move(bounds.x + bounds.width * 0.25, y)
+    await controller.mouse.down()
+    await controller.mouse.move(bounds.x + bounds.width * 0.75, y, { steps: 8 })
+    await controller.mouse.up()
+  }
+
+  await expect(action).toHaveCount(1)
+  await action.click()
+  await expect(dialog).toBeVisible()
+  await controller.keyboard.press("Escape")
+  await expect(dialog).toBeHidden()
+  await expect(controller.locator("#pasted-images")).toBeHidden()
+
+  await action.click()
+  await expect(canvas).toBeVisible()
+  await waitForCanvas()
+  const centerPixel = () =>
+    canvas.evaluate((element) => {
+      const value = element as HTMLCanvasElement
+      const context = value.getContext("2d")
+      if (!context) throw new Error("Missing canvas context")
+      return Array.from(context.getImageData(value.width / 2, value.height / 2, 1, 1).data)
+    })
+  const beforeDrawing = await centerPixel()
+  await draw()
+  expect(await centerPixel()).not.toEqual(beforeDrawing)
+  await expect(attach).toBeEnabled()
+  await controller.locator("#annotation-undo").click()
+  await expect(attach).toBeDisabled()
+  await draw(-0.1)
+  await controller.locator("#annotation-clear").click()
+  await expect(attach).toBeDisabled()
+  await controller.locator("#annotation-pen-width").evaluate((input) => {
+    const control = input as HTMLInputElement
+    control.value = "12"
+    control.dispatchEvent(new Event("input", { bubbles: true }))
+  })
+  await draw(0.1)
+
+  await controller.evaluate(() => {
+    const state = window as typeof window & {
+      annotationToBlob?: typeof HTMLCanvasElement.prototype.toBlob
+    }
+    state.annotationToBlob = HTMLCanvasElement.prototype.toBlob
+    HTMLCanvasElement.prototype.toBlob = function oversized(callback) {
+      callback(new Blob([new Uint8Array(3_000_001)], { type: "image/png" }))
+    }
+  })
+  try {
+    await attach.click()
+    await expect(controller.locator("#annotation-error")).toContainText("3 MB or less")
+  } finally {
+    await controller.evaluate(() => {
+      const state = window as typeof window & {
+        annotationToBlob?: typeof HTMLCanvasElement.prototype.toBlob
+      }
+      if (state.annotationToBlob) HTMLCanvasElement.prototype.toBlob = state.annotationToBlob
+      delete state.annotationToBlob
+    })
+  }
+  await attach.click()
+  await expect(dialog).toBeHidden()
+  await expect(controller.locator("#pasted-images img")).toHaveCount(1)
+  await controller.locator(".remove-pasted-image").click()
+  await expect(controller.locator("#pasted-images")).toBeHidden()
+
+  await action.click()
+  await waitForCanvas()
+  await draw(-0.15)
+  await attach.click()
+  const attachedSource = await controller.locator("#pasted-images img").getAttribute("src")
+  if (!attachedSource) throw new Error("Missing attached annotation source")
+  const attachedBase64 = attachedSource.slice(attachedSource.indexOf(",") + 1)
+  let sentBody = ""
+  await context.route(codexUrl, async (route) => {
+    sentBody = JSON.stringify(route.request().postDataJSON())
+    await route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body: finalText(82, "Annotation received."),
+    })
+  })
+  try {
+    await controller.locator("#send").click()
+    await expect(controller.locator("#transcript")).toContainText("Annotation received.")
+    expect(sentBody.split(attachedBase64).length - 1).toBe(1)
+    await expect(controller.locator("#pasted-images")).toBeHidden()
+  } finally {
+    await context.unroute(codexUrl)
+  }
+
+  await controller.reload()
+  await expect(controller.locator('#transcript img[alt="Pasted image"]')).toBeVisible()
+  await expect(controller.locator(".annotate-screenshot-button")).toHaveCount(1)
+
+  let releaseFirst: () => void = () => undefined
+  let markFirstStarted: () => void = () => undefined
+  const firstStarted = new Promise<void>((resolve) => {
+    markFirstStarted = resolve
+  })
+  const firstGate = new Promise<void>((resolve) => {
+    releaseFirst = resolve
+  })
+  let queuedBody = ""
+  let queuedRequest = 0
+  await context.route(codexUrl, async (route) => {
+    const index = queuedRequest++
+    if (index === 0) {
+      markFirstStarted()
+      await firstGate
+    } else {
+      queuedBody = JSON.stringify(route.request().postDataJSON())
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body: finalText(
+        83 + index,
+        index === 0 ? "Initial run complete." : "Follow-up image received.",
+      ),
+    })
+  })
+  try {
+    await controller.locator("#prompt").fill("Start a run for the follow-up test")
+    await controller.locator("#send").click()
+    await firstStarted
+    await controller.locator(".annotate-screenshot-button").click()
+    await waitForCanvas()
+    await draw(0.2)
+    await attach.click()
+    const queuedSource = await controller.locator("#pasted-images img").getAttribute("src")
+    if (!queuedSource) throw new Error("Missing queued annotation source")
+    const queuedBase64 = queuedSource.slice(queuedSource.indexOf(",") + 1)
+    await controller.locator("#prompt").press("Alt+Enter")
+    await expect(controller.locator("#pasted-images")).toBeHidden()
+    releaseFirst()
+    await expect(controller.locator("#transcript")).toContainText("Follow-up image received.")
+    expect(queuedBody.split(queuedBase64).length - 1).toBe(1)
+    expect(queuedRequest).toBe(2)
+  } finally {
+    releaseFirst()
+    await context.unroute(codexUrl)
+  }
+})
+
+test("selects page elements without activating them and sends bounded structured context", async () => {
+  await prepareFeatureSession()
+  await page.goto(`http://127.0.0.1:${fixture.port}/`)
+  await page.bringToFront()
+  tabContext = await waitForCurrentTab(page.url())
+  await page.locator("#result").evaluate((element) => {
+    element.textContent = "idle"
+  })
+  await page.locator("#password").fill("picker-secret-value")
+
+  const pickerButton = controller.locator("#element-picker")
+  await expect(pickerButton).toHaveAttribute("title", "選取網頁元素")
+  expect(await pickerButton.evaluate((button) => button.nextElementSibling?.id)).toBe("voice-input")
+
+  const pickerHost = page.locator("[data-pi-browser-agent-element-picker]")
+  const startPicker = async (): Promise<void> => {
+    await pickerButton.click()
+    await expect(pickerButton).toHaveAttribute("aria-pressed", "true")
+    await expect(pickerHost).toHaveCount(1)
+  }
+  const selectTarget = async (selector: string): Promise<void> => {
+    const bounds = await page.locator(selector).boundingBox()
+    if (!bounds) throw new Error(`Missing bounds for ${selector}`)
+    await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
+    await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
+    await expect(pickerHost).toHaveCount(0)
+    await expect(pickerButton).toHaveAttribute("aria-pressed", "false")
+  }
+  const removeSelection = async (): Promise<void> => {
+    await controller.locator(".remove-selected-element").click()
+    await expect(controller.locator("#selected-elements")).toBeHidden()
+  }
+
+  const ordinaryBounds = await page.locator("#ordinary").boundingBox()
+  if (!ordinaryBounds) throw new Error("Missing ordinary button bounds")
+  const beforeHighlight = await page.screenshot({
+    clip: {
+      x: Math.max(0, ordinaryBounds.x - 5),
+      y: Math.max(0, ordinaryBounds.y - 5),
+      width: ordinaryBounds.width + 10,
+      height: ordinaryBounds.height + 10,
+    },
+  })
+  await startPicker()
+  await page.mouse.move(
+    ordinaryBounds.x + ordinaryBounds.width / 2,
+    ordinaryBounds.y + ordinaryBounds.height / 2,
+  )
+  const highlighted = await page.screenshot({
+    clip: {
+      x: Math.max(0, ordinaryBounds.x - 5),
+      y: Math.max(0, ordinaryBounds.y - 5),
+      width: ordinaryBounds.width + 10,
+      height: ordinaryBounds.height + 10,
+    },
+  })
+  expect(highlighted.equals(beforeHighlight)).toBe(false)
+  await page.keyboard.press("Escape")
+  await expect(pickerHost).toHaveCount(0)
+  await expect(pickerButton).toHaveAttribute("aria-pressed", "false")
+
+  await startPicker()
+  await selectTarget("#ordinary")
+  await expect(page.locator("#result")).toHaveText("idle")
+  await expect(controller.locator(".selected-element-chip")).toContainText("button#ordinary")
+  await removeSelection()
+
+  const pageUrl = page.url()
+  await startPicker()
+  await selectTarget("#download")
+  await expect(page).toHaveURL(pageUrl)
+  await removeSelection()
+
+  await startPicker()
+  await selectTarget("#submit")
+  await expect(page.locator("#result")).toHaveText("idle")
+  await removeSelection()
+
+  await startPicker()
+  await pickerButton.click()
+  await expect(pickerButton).toHaveAttribute("aria-pressed", "false")
+  await expect(pickerHost).toHaveCount(0)
+  await startPicker()
+  await controller.keyboard.press("Escape")
+  await expect(pickerHost).toHaveCount(0)
+
+  await startPicker()
+  await page.evaluate(() => history.pushState({}, "", "/spa-picker-test"))
+  await expect(pickerHost).toHaveCount(0)
+  await expect(pickerButton).toHaveAttribute("aria-pressed", "false")
+  await page.goBack()
+  tabContext = await waitForCurrentTab(`http://127.0.0.1:${fixture.port}/`)
+
+  await startPicker()
+  await controller.reload()
+  await expect(pickerHost).toHaveCount(0)
+  await expect(controller.locator("#auth-status")).toHaveText(
+    "OpenAI Codex configured with an account",
+  )
+
+  await startPicker()
+  const cdp = await context.browser()?.newBrowserCDPSession()
+  if (!cdp) throw new Error("No browser CDP session")
+  try {
+    const targets = await cdp.send("Target.getTargets")
+    const serviceWorker = targets.targetInfos.find(
+      (target) => target.type === "service_worker" && target.url === worker.url(),
+    )
+    if (!serviceWorker) throw new Error("No service worker target")
+    await cdp.send("Target.closeTarget", { targetId: serviceWorker.targetId })
+    await request("app.getState")
+    await expect(pickerHost).toHaveCount(0)
+    await expect(pickerButton).toHaveAttribute("aria-pressed", "false")
+    tabContext = await waitForCurrentTab(page.url())
+  } finally {
+    await cdp.detach().catch(() => undefined)
+  }
+
+  await startPicker()
+  const approvedOrigins = await controller.evaluate(async () => {
+    const stored = await chrome.storage.local.get("piBrowserAgentApprovedHostPermissions")
+    await chrome.storage.local.remove("piBrowserAgentApprovedHostPermissions")
+    return stored.piBrowserAgentApprovedHostPermissions as string[]
+  })
+  try {
+    await selectTarget("#ordinary")
+    await expect(controller.locator("#selected-elements")).toBeHidden()
+  } finally {
+    await controller.evaluate(async (origins) => {
+      await chrome.storage.local.set({ piBrowserAgentApprovedHostPermissions: origins })
+    }, approvedOrigins)
+  }
+
+  await page.evaluate(() => {
+    const spacer = document.createElement("div")
+    spacer.id = "picker-spacer"
+    spacer.style.height = "1200px"
+    const target = document.createElement("button")
+    target.id = "picker-dynamic"
+    target.className = "dynamic"
+    target.type = "button"
+    target.textContent = "Before replacement"
+    document.body.append(spacer, target)
+    target.scrollIntoView({ block: "center" })
+  })
+  await startPicker()
+  const dynamicBounds = await page.locator("#picker-dynamic").boundingBox()
+  if (!dynamicBounds) throw new Error("Missing dynamic target bounds")
+  await page.mouse.move(
+    dynamicBounds.x + dynamicBounds.width / 2,
+    dynamicBounds.y + dynamicBounds.height / 2,
+  )
+  await page.locator("#picker-dynamic").evaluate((target) => {
+    const replacement = target.cloneNode(true) as HTMLButtonElement
+    replacement.textContent = "After replacement"
+    target.replaceWith(replacement)
+  })
+  await page.mouse.click(
+    dynamicBounds.x + dynamicBounds.width / 2,
+    dynamicBounds.y + dynamicBounds.height / 2,
+  )
+  await expect(controller.locator(".selected-element-chip")).toContainText("button#picker-dynamic")
+
+  const codexUrl = "https://chatgpt.com/backend-api/codex/responses"
+  let providerBody = ""
+  await context.route(codexUrl, async (route) => {
+    providerBody = JSON.stringify(route.request().postDataJSON())
+    await route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body: finalText(90, "Element context received."),
+    })
+  })
+  try {
+    await controller.locator("#send").click()
+    await expect(controller.locator("#transcript")).toContainText("Element context received.")
+    expect(providerBody).toContain("Untrusted browser selected-element context")
+    expect(providerBody).toContain('\\"tagName\\": \\"button\\"')
+    expect(providerBody).toContain('\\"text\\": \\"After replacement\\"')
+    expect(providerBody).toContain('\\"cssSelector\\": \\"#picker-dynamic\\"')
+    expect(providerBody).not.toContain("picker-secret-value")
+    await expect(controller.locator("#selected-elements")).toBeHidden()
+  } finally {
+    await context.unroute(codexUrl)
+  }
+
+  await controller.reload()
+  await expect(controller.locator("#transcript")).toContainText(
+    "Untrusted browser selected-element context",
+  )
+
+  await controller.evaluate(async () => {
+    const state = window as typeof window & {
+      restorePickerPermissionRequest?: () => void
+    }
+    const originalRequest = chrome.permissions.request
+    state.restorePickerPermissionRequest = () => {
+      chrome.permissions.request = originalRequest
+    }
+    chrome.permissions.request = (async () => false) as typeof chrome.permissions.request
+    await chrome.storage.local.remove("piBrowserAgentApprovedHostPermissions")
+  })
+  try {
+    await pickerButton.click()
+    await expect(controller.locator("#error")).toContainText(
+      "Site access is required to select an element",
+    )
+    await expect(pickerHost).toHaveCount(0)
+  } finally {
+    await controller.evaluate(async () => {
+      const state = window as typeof window & {
+        restorePickerPermissionRequest?: () => void
+      }
+      state.restorePickerPermissionRequest?.()
+      delete state.restorePickerPermissionRequest
+      await chrome.storage.local.set({
+        piBrowserAgentApprovedHostPermissions: ["http://127.0.0.1/*"],
+      })
+    })
+    await page.evaluate(() => {
+      document.querySelector("#picker-spacer")?.remove()
+      document.querySelector("#picker-dynamic")?.remove()
+      scrollTo(0, 0)
+    })
+  }
+})
+
 test("feeds actual discovered references back through mocked model tools and confirmations", async () => {
   await prepareFeatureSession()
   const url = "https://chatgpt.com/backend-api/codex/responses"

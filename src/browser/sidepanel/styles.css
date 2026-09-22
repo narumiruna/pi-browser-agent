@@ -905,6 +905,10 @@ textarea {
   background: var(--surface-subtle);
 }
 
+.annotate-screenshot-button {
+  align-self: flex-end;
+}
+
 .message:is(.toolResult, .toolCall, .thinking) {
   width: 100%;
   max-width: 100%;
@@ -1223,6 +1227,58 @@ textarea {
   display: none;
 }
 
+.selected-elements {
+  display: flex;
+  gap: 6px;
+  padding: 3px 4px 7px;
+  overflow-x: auto;
+}
+
+.selected-elements[hidden] {
+  display: none;
+}
+
+.selected-element-chip {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 220px;
+  flex: 0 0 auto;
+  gap: 5px;
+  padding: 4px 5px 4px 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--border));
+  border-radius: 999px;
+  color: var(--text);
+  background: var(--accent-soft);
+  font:
+    0.72rem ui-monospace,
+    "Cascadia Code",
+    "SFMono-Regular",
+    Consolas,
+    monospace;
+}
+
+.selected-element-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.remove-selected-element {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  min-height: 20px;
+  flex: 0 0 auto;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  line-height: 1;
+}
+
 .pasted-image {
   position: relative;
   width: 72px;
@@ -1313,6 +1369,13 @@ body[data-state="running"] .send-button svg {
   display: none;
 }
 
+.element-picker-button[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
+  color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
 .voice-button[aria-pressed="true"] {
   border-color: color-mix(in srgb, var(--danger) 40%, var(--border));
   color: var(--danger);
@@ -1352,6 +1415,66 @@ dialog {
 dialog::backdrop {
   background: rgb(12 13 18 / 48%);
   backdrop-filter: blur(3px);
+}
+
+.screenshot-annotation-dialog {
+  width: min(920px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  overflow: auto;
+}
+
+.annotation-editor {
+  display: grid;
+  gap: 12px;
+}
+
+.annotation-editor > :is(h2, p) {
+  margin: 0;
+}
+
+.annotation-canvas-frame {
+  display: grid;
+  max-height: min(65vh, 680px);
+  overflow: auto;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-subtle);
+}
+
+#screenshot-annotation-canvas {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  max-height: min(65vh, 680px);
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.annotation-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.annotation-toolbar label {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+#annotation-pen-width {
+  min-width: 100px;
+  flex: 1 1 160px;
+}
+
+#annotation-error {
+  color: var(--danger);
+  font-size: 0.875rem;
+}
+
+#annotation-error:empty {
+  display: none;
 }
 
 dialog h2 {
@@ -1454,6 +1577,14 @@ dialog p {
 
   body[data-state="running"] .voice-button {
     display: none;
+  }
+
+  body[data-state="running"] .send-button #send-label {
+    display: none;
+  }
+
+  body[data-state="running"] .send-button svg {
+    display: block;
   }
 }
 

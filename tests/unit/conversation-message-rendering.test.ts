@@ -444,6 +444,52 @@ describe("conversation message rendering", () => {
     expect(firstImage?.getAttribute("src")).toBe("data:image/png;base64,cG5n")
   })
 
+  test("offers a stable annotation action only for screenshot tool images", () => {
+    const document = installDocument()
+    const transcript = document.createElement("div")
+    document.body.append(transcript)
+    const annotate = vi.fn()
+    const renderer = new TranscriptRenderer(transcript, { onAnnotateScreenshot: annotate })
+    const image = { type: "image" as const, data: "cG5n", mimeType: "image/png" }
+    const screenshot: AgentMessage = {
+      role: "toolResult",
+      toolCallId: "capture",
+      toolName: "browser_capture_visible",
+      timestamp: 1,
+      isError: false,
+      content: [image],
+    }
+
+    renderer.render([screenshot], "one")
+    const button = transcript.querySelector<HTMLButtonElement>(
+      'button[aria-label="Annotate screenshot"]',
+    )
+    expect(button).not.toBeNull()
+    button?.focus()
+    button?.click()
+    expect(annotate).toHaveBeenCalledExactlyOnceWith(image)
+
+    renderer.render([structuredClone(screenshot)], "one")
+    expect(
+      transcript.querySelector<HTMLButtonElement>('button[aria-label="Annotate screenshot"]'),
+    ).toBe(button)
+    expect(document.activeElement).toBe(button)
+
+    renderer.render(
+      [
+        { ...screenshot, toolCallId: "error", isError: true },
+        { ...screenshot, toolCallId: "other", toolName: "other_image_tool" },
+        {
+          role: "user",
+          timestamp: 2,
+          content: [{ type: "image", data: "cG5n", mimeType: "image/png" }],
+        },
+      ],
+      "two",
+    )
+    expect(transcript.querySelector('[aria-label="Annotate screenshot"]')).toBeNull()
+  })
+
   test("keeps unavailable-image and error preview metadata unchanged", () => {
     const document = installDocument()
     const unavailableContainer = document.createElement("span")

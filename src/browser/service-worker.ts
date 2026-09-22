@@ -1,4 +1,9 @@
 import { getRecentBookmarks, searchBookmarks } from "./bookmarks.js"
+import {
+  type ElementPickerOperationResult,
+  executeElementPicker,
+  stopElementPickerInjection,
+} from "./content/element-picker.js"
 import { executePageOperation, type PageOperation } from "./content/page-operations.js"
 import { assertTabContext } from "./content/tab-context.js"
 import {
@@ -8,6 +13,7 @@ import {
   hasScreenshotPermission,
   SCREENSHOT_HOST_PERMISSION,
 } from "./permissions.js"
+import { ELEMENT_PICKER_LIMITS, parseSelectedElementContext } from "./runtime/element-context.js"
 import { parseRuntimeRequest, type RuntimeEvent, type RuntimeRequest } from "./runtime/messages.js"
 import {
   ELEMENT_LIMITS,
@@ -28,6 +34,10 @@ const SELECTION_CONTEXT_MENU_ID = "pi-browser-agent-send-selection"
 const activeRequests = new Map<string, AbortController>()
 let boundContext: TabContext | undefined
 let elementSnapshot: ElementSnapshot | undefined
+let activeElementPicker:
+  | { clientId: string; context: TabContext; expiresAt: number; token: string }
+  | undefined
+let elementPickerOperationVersion = 0
 let contextEpoch = 0
 let visibleTabSyncVersion = 0
 let latestVisibleTabSync: { version: number; promise: Promise<TabContext | undefined> } | undefined
@@ -50,7 +60,42 @@ function emitTabChanged(): void {
   emitEvent({ kind: "event", name: "tab.changed", payload: {}, tabContext: boundContext })
 }
 
+async function notifyInjectedElementPickerToStop(context: TabContext): Promise<void> {
+  if (typeof chrome.tabs.sendMessage !== "function") return
+  await chrome.tabs
+    .sendMessage(context.tabId, { kind: "element-picker-stop" }, { frameId: 0 })
+    .catch(() => undefined)
+}
+
+async function stopInjectedElementPicker(context: TabContext): Promise<void> {
+  await notifyInjectedElementPickerToStop(context)
+  await chrome.scripting
+    .executeScript({
+      target: { tabId: context.tabId },
+      func: stopElementPickerInjection,
+      world: "ISOLATED",
+      args: [],
+    })
+    .catch(() => undefined)
+}
+
+async function stopActiveElementPicker(reason: string, emit = true): Promise<void> {
+  const picker = activeElementPicker
+  activeElementPicker = undefined
+  if (picker) await stopInjectedElementPicker(picker.context)
+  if (emit) {
+    emitEvent({
+      kind: "event",
+      name: "elementPicker.cancelled",
+      payload: { reason, ...(picker ? { clientId: picker.clientId } : {}) },
+      ...(picker ? { tabContext: picker.context } : {}),
+    })
+  }
+}
+
 function clearBoundTab(): void {
+  elementPickerOperationVersion += 1
+  if (activeElementPicker) void stopActiveElementPicker("tab-context-cleared")
   if (!boundContext) return
   contextEpoch = Math.max(contextEpoch, boundContext.epoch) + 1
   boundContext = undefined
@@ -66,6 +111,8 @@ function setBoundTab(tab: chrome.tabs.Tab | undefined): TabContext | undefined {
   if (boundContext?.tabId === tab.id && boundContext.url === tab.url) {
     return { ...boundContext }
   }
+  elementPickerOperationVersion += 1
+  if (activeElementPicker) void stopActiveElementPicker("tab-changed")
   if (boundContext) contextEpoch = Math.max(contextEpoch, boundContext.epoch) + 1
   elementSnapshot = undefined
   boundContext = { tabId: tab.id, url: tab.url, epoch: contextEpoch }
@@ -142,7 +189,8 @@ async function syncUpdatedVisibleTab(updatedTabId: number): Promise<void> {
 
 async function initialize(): Promise<void> {
   await restrictLocalStorageToTrustedContexts()
-  await syncVisibleTab()
+  const context = await syncVisibleTab()
+  if (context) await notifyInjectedElementPickerToStop(context)
 }
 
 function bindSelectionTab(tab: chrome.tabs.Tab | undefined): TabContext {
@@ -531,6 +579,85 @@ async function navigate(request: RuntimeRequest<"tabs.navigate">): Promise<JsonV
   return updated
 }
 
+async function startElementPicker(
+  request: RuntimeRequest<"elementPicker.start">,
+): Promise<JsonValue> {
+  const operationVersion = ++elementPickerOperationVersion
+  const context = await refreshBoundContext()
+  if (operationVersion !== elementPickerOperationVersion) return { active: false }
+  assertTabContext(request.tabContext, context)
+  if (!(await hasHostPermission(context.url))) {
+    throw new RuntimeError(
+      "PERMISSION_DENIED",
+      "Grant access to the current site before selecting an element",
+    )
+  }
+  if (operationVersion !== elementPickerOperationVersion) return { active: false }
+  if (activeElementPicker) await stopActiveElementPicker("replaced")
+  if (operationVersion !== elementPickerOperationVersion) return { active: false }
+  const token = crypto.randomUUID()
+  activeElementPicker = {
+    clientId: request.params.clientId,
+    context,
+    token,
+    expiresAt: Date.now() + ELEMENT_PICKER_LIMITS.lifetimeMs,
+  }
+  try {
+    const results = (await chrome.scripting.executeScript({
+      target: { tabId: context.tabId },
+      func: executeElementPicker,
+      world: "ISOLATED",
+      args: ["start", token, context, ELEMENT_PICKER_LIMITS],
+    })) as chrome.scripting.InjectionResult<ElementPickerOperationResult>[]
+    const outcome = results[0]?.result
+    if (!outcome?.ok || outcome.result.started !== true) {
+      throw new RuntimeError("STALE_CONTEXT", "The page changed before the element picker started")
+    }
+    await revalidateRequestContext(request, context)
+    const active = activeElementPicker?.token === token
+    if (active) {
+      emitEvent({
+        kind: "event",
+        name: "elementPicker.started",
+        payload: { active: true, clientId: request.params.clientId },
+        tabContext: context,
+      })
+    }
+    return { active, clientId: request.params.clientId }
+  } catch (error) {
+    if (activeElementPicker?.token === token) activeElementPicker = undefined
+    await stopInjectedElementPicker(context)
+    if (error instanceof RuntimeError) throw error
+    throw new RuntimeError(
+      "PERMISSION_DENIED",
+      error instanceof Error ? error.message : "Chrome denied access to the current tab",
+    )
+  }
+}
+
+async function stopElementPicker(
+  request: RuntimeRequest<"elementPicker.stop">,
+): Promise<JsonValue> {
+  elementPickerOperationVersion += 1
+  const picker = activeElementPicker
+  if (picker) {
+    await stopActiveElementPicker("user")
+    return { active: false }
+  }
+  const context = await syncVisibleTab()
+  if (context) {
+    if (request.tabContext) assertTabContext(request.tabContext, context)
+    await stopInjectedElementPicker(context)
+  }
+  emitEvent({
+    kind: "event",
+    name: "elementPicker.cancelled",
+    payload: { reason: "user" },
+    ...(context ? { tabContext: context } : {}),
+  })
+  return { active: false }
+}
+
 async function dispatch(request: RuntimeRequest, signal: AbortSignal): Promise<JsonValue> {
   await initialization
   if (signal.aborted) throw new RuntimeError("REQUEST_CANCELLED", "Browser request was cancelled")
@@ -551,6 +678,12 @@ async function dispatch(request: RuntimeRequest, signal: AbortSignal): Promise<J
       break
     case "selection.takePending":
       result = await consumePendingSelection(request.params.windowId)
+      break
+    case "elementPicker.start":
+      result = await startElementPicker(request)
+      break
+    case "elementPicker.stop":
+      result = await stopElementPicker(request)
       break
     case "requests.cancel":
       activeRequests.get(request.params.requestId)?.abort()
@@ -620,11 +753,15 @@ chrome.runtime.onInstalled.addListener(() => {
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   if (!changeInfo.url && changeInfo.status !== "loading") return
+  elementPickerOperationVersion += 1
+  if (activeElementPicker?.context.tabId === tabId) void stopActiveElementPicker("navigation")
   if (boundContext?.tabId === tabId) elementSnapshot = undefined
   void initialization.then(() => syncUpdatedVisibleTab(tabId)).catch(() => undefined)
 })
 
 chrome.tabs.onActivated.addListener(() => {
+  elementPickerOperationVersion += 1
+  if (activeElementPicker) void stopActiveElementPicker("tab-activated")
   elementSnapshot = undefined
   void initialization.then(() => syncVisibleTab()).catch(() => undefined)
 })
@@ -637,6 +774,8 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 })
 
 chrome.windows.onFocusChanged.addListener((windowId) => {
+  elementPickerOperationVersion += 1
+  if (activeElementPicker) void stopActiveElementPicker("window-focus-changed")
   elementSnapshot = undefined
   if (windowId === chrome.windows.WINDOW_ID_NONE) {
     visibleTabSyncVersion += 1
@@ -676,7 +815,163 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
     .catch(() => undefined)
 })
 
+function isElementPickerResultMessage(message: unknown): message is {
+  element?: unknown
+  kind: "element-picker-result"
+  reason?: string
+  status: "cancelled" | "selected"
+  tabContext: TabContext
+  token: string
+} {
+  if (typeof message !== "object" || message === null || Array.isArray(message)) return false
+  const value = message as Record<string, unknown>
+  if (
+    value.kind !== "element-picker-result" ||
+    typeof value.token !== "string" ||
+    !/^[a-f0-9-]{36}$/.test(value.token) ||
+    (value.status !== "cancelled" && value.status !== "selected") ||
+    typeof value.tabContext !== "object" ||
+    value.tabContext === null ||
+    Array.isArray(value.tabContext) ||
+    (value.reason !== undefined && (typeof value.reason !== "string" || value.reason.length > 128))
+  ) {
+    return false
+  }
+  const context = value.tabContext as Record<string, unknown>
+  if (
+    Object.keys(context).length !== 3 ||
+    !Object.keys(context).every((key) => ["epoch", "tabId", "url"].includes(key)) ||
+    !Number.isSafeInteger(context.tabId) ||
+    (context.tabId as number) < 0 ||
+    !Number.isSafeInteger(context.epoch) ||
+    (context.epoch as number) < 0 ||
+    typeof context.url !== "string" ||
+    context.url.length === 0 ||
+    context.url.length > 16_384
+  ) {
+    return false
+  }
+  const allowedKeys =
+    value.status === "selected"
+      ? ["element", "kind", "status", "tabContext", "token"]
+      : ["kind", "reason", "status", "tabContext", "token"]
+  return (
+    Object.keys(value).every((key) => allowedKeys.includes(key)) &&
+    (value.status !== "selected" || "element" in value)
+  )
+}
+
+async function acceptElementPickerResult(
+  message: {
+    element?: unknown
+    reason?: string
+    status: "cancelled" | "selected"
+    tabContext: TabContext
+    token: string
+  },
+  sender: chrome.runtime.MessageSender,
+): Promise<JsonValue> {
+  const picker = activeElementPicker
+  if (
+    !picker ||
+    sender.id !== chrome.runtime.id ||
+    sender.tab?.id !== picker.context.tabId ||
+    sender.frameId !== 0 ||
+    message.token !== picker.token ||
+    Date.now() >= picker.expiresAt
+  ) {
+    throw new RuntimeError("PERMISSION_DENIED", "Invalid or expired element picker result")
+  }
+  assertTabContext(message.tabContext, picker.context)
+  if (message.status === "cancelled") {
+    activeElementPicker = undefined
+    emitEvent({
+      kind: "event",
+      name: "elementPicker.cancelled",
+      payload: {
+        reason: (message.reason ?? "page").slice(0, 128),
+        clientId: picker.clientId,
+      },
+      tabContext: picker.context,
+    })
+    return { accepted: true }
+  }
+
+  activeElementPicker = undefined
+  try {
+    const current = await syncVisibleTab()
+    if (!current) throwStaleContext(picker.context)
+    assertTabContext(picker.context, current)
+    if (!(await hasHostPermission(picker.context.url))) {
+      throw new RuntimeError("PERMISSION_DENIED", "Current site access was revoked")
+    }
+    const element = parseSelectedElementContext(message.element)
+    const expectedUrl = new URL(picker.context.url)
+    expectedUrl.username = ""
+    expectedUrl.password = ""
+    if (element.pageUrl !== expectedUrl.href) {
+      throw new RuntimeError("STALE_CONTEXT", "The selected element came from a different page")
+    }
+    emitEvent({
+      kind: "event",
+      name: "elementPicker.selected",
+      payload: { element, clientId: picker.clientId },
+      tabContext: picker.context,
+    })
+    return { accepted: true }
+  } catch (error) {
+    emitEvent({
+      kind: "event",
+      name: "elementPicker.cancelled",
+      payload: {
+        reason:
+          error instanceof RuntimeError && error.code === "PERMISSION_DENIED"
+            ? "access-revoked"
+            : "invalid-result",
+        clientId: picker.clientId,
+      },
+      tabContext: picker.context,
+    })
+    throw error
+  }
+}
+
+chrome.permissions.onRemoved?.addListener(() => {
+  const picker = activeElementPicker
+  if (!picker) return
+  void hasHostPermission(picker.context.url)
+    .then((allowed) => {
+      if (!allowed && activeElementPicker?.token === picker.token) {
+        elementPickerOperationVersion += 1
+        return stopActiveElementPicker("access-revoked")
+      }
+    })
+    .catch(() => undefined)
+})
+
 chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
+  if (
+    typeof message === "object" &&
+    message !== null &&
+    "kind" in message &&
+    message.kind === "element-picker-result"
+  ) {
+    if (!isElementPickerResultMessage(message)) {
+      sendResponse({
+        ok: false,
+        error: new RuntimeError("INVALID_REQUEST", "Malformed element picker result").toData(),
+      })
+      return false
+    }
+    void acceptElementPickerResult(message, sender)
+      .then((result) => sendResponse({ ok: true, result }))
+      .catch((error) => {
+        const runtimeError =
+          error instanceof RuntimeError ? error : new RuntimeError("INVALID_REQUEST", String(error))
+        sendResponse({ ok: false, error: runtimeError.toData() })
+      })
+    return true
+  }
   const mutationContext = mutationTargetContext(message)
   if (mutationContext) {
     void assertCurrentMutationTarget(
@@ -711,13 +1006,20 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
   }
 
   const controller = new AbortController()
+  const reportsProgress = ![
+    "elementPicker.start",
+    "elementPicker.stop",
+    "requests.cancel",
+  ].includes(request.method)
   if (request.method !== "requests.cancel") {
     activeRequests.set(request.requestId, controller)
-    emitEvent({
-      kind: "event",
-      name: "operation.progress",
-      payload: { method: request.method, requestId: request.requestId, status: "started" },
-    })
+    if (reportsProgress) {
+      emitEvent({
+        kind: "event",
+        name: "operation.progress",
+        payload: { method: request.method, requestId: request.requestId, status: "started" },
+      })
+    }
   }
   void dispatch(request, controller.signal)
     .then((result) => sendResponse({ ok: true, result }))
@@ -727,7 +1029,7 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
       sendResponse({ ok: false, error: runtimeError.toData() })
     })
     .finally(() => {
-      if (activeRequests.delete(request.requestId)) {
+      if (activeRequests.delete(request.requestId) && reportsProgress) {
         emitEvent({
           kind: "event",
           name: "operation.progress",

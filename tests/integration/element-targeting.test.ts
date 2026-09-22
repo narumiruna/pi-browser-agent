@@ -11,12 +11,15 @@ type Listener = (
 let listener: Listener
 let updated: (id: number, change: object) => void
 let activated: () => void
+let focusChanged: (windowId: number) => void
+let permissionRemoved: () => void
 let permission: boolean
 let tab: { id: number; url: string; active: boolean; windowId: number }
 let context: TabContext
 let beforeInjection: (() => Promise<void>) | undefined
 let afterInjection: (() => Promise<void>) | undefined
 let injectionCount: number
+let emittedEvents: Array<{ name?: string; payload?: unknown }>
 
 function send(
   method: string,
@@ -37,6 +40,9 @@ function send(
       resolve,
     ),
   )
+}
+function startPickerRequest(): Promise<RuntimeResponse> {
+  return send("elementPicker.start", { clientId: crypto.randomUUID() })
 }
 async function state() {
   const value = await send("app.getState", {}, { tabContext: undefined })
@@ -60,6 +66,7 @@ beforeEach(async () => {
   vi.resetModules()
   permission = true
   injectionCount = 0
+  emittedEvents = []
   beforeInjection = undefined
   afterInjection = undefined
   tab = { id: 1, url: location.href, active: true, windowId: 1 }
@@ -96,6 +103,11 @@ beforeEach(async () => {
     permissions: {
       contains: vi.fn(async () => permission),
       getAll: vi.fn(async () => ({ origins: [] })),
+      onRemoved: {
+        addListener: (value: typeof permissionRemoved) => {
+          permissionRemoved = value
+        },
+      },
     },
     runtime: {
       id: "extension",
@@ -105,17 +117,23 @@ beforeEach(async () => {
           listener = value
         },
       },
-      sendMessage: (message: { kind?: string }) =>
+      sendMessage: (message: { kind?: string; name?: string; payload?: unknown }) =>
         new Promise((resolve) => {
           if (message.kind === "event") {
+            emittedEvents.push(message)
             resolve(undefined)
             return
           }
-          listener(message, { id: "extension", tab } as chrome.runtime.MessageSender, resolve)
+          listener(
+            message,
+            { id: "extension", tab, frameId: 0 } as chrome.runtime.MessageSender,
+            resolve,
+          )
         }),
     },
     tabs: {
       query: vi.fn(async () => [tab]),
+      sendMessage: vi.fn(async () => undefined),
       get: vi.fn(async () => tab),
       update: vi.fn(async (_id: number, value: { url: string }) => {
         tab.url = value.url
@@ -136,7 +154,11 @@ beforeEach(async () => {
     windows: {
       WINDOW_ID_NONE: -1,
       get: vi.fn(async () => ({ focused: true })),
-      onFocusChanged: noopEvent,
+      onFocusChanged: {
+        addListener: (value: typeof focusChanged) => {
+          focusChanged = value
+        },
+      },
     },
     contextMenus: { onClicked: noopEvent },
     scripting: {
@@ -424,5 +446,208 @@ describe("worker element reference lifecycle", () => {
       error: { code: "STALE_CONTEXT" },
     })
     expect(chrome.tabs.update).not.toHaveBeenCalled()
+  })
+})
+
+describe("worker element picker lifecycle", () => {
+  const host = (): HTMLElement | null =>
+    document.querySelector("[data-pi-browser-agent-element-picker]")
+
+  test("starts, selects through the interaction shield, and emits bounded context", async () => {
+    const button = document.querySelector("button") as HTMLButtonElement
+    const clicked = vi.fn()
+    button.addEventListener("click", clicked)
+    Object.defineProperty(document, "elementFromPoint", {
+      configurable: true,
+      value: () => button,
+    })
+
+    expect(await startPickerRequest()).toMatchObject({
+      ok: true,
+      result: { active: true },
+    })
+    expect(host()).not.toBeNull()
+    expect(emittedEvents).toContainEqual(expect.objectContaining({ name: "elementPicker.started" }))
+
+    host()?.dispatchEvent(
+      new MouseEvent("click", { bubbles: true, cancelable: true, clientX: 10, clientY: 10 }),
+    )
+
+    await vi.waitFor(() => {
+      expect(host()).toBeNull()
+      expect(emittedEvents).toContainEqual(
+        expect.objectContaining({
+          name: "elementPicker.selected",
+          payload: expect.objectContaining({
+            element: expect.objectContaining({ tagName: "button", pageUrl: location.href }),
+          }),
+        }),
+      )
+    })
+    expect(clicked).not.toHaveBeenCalled()
+  })
+
+  test("rejects picker start when exact-origin access was revoked", async () => {
+    permission = false
+    const count = injectionCount
+    expect(await startPickerRequest()).toMatchObject({
+      ok: false,
+      error: { code: "PERMISSION_DENIED" },
+    })
+    expect(injectionCount).toBe(count)
+    expect(host()).toBeNull()
+  })
+
+  test("rejects a selection after exact-origin access is revoked", async () => {
+    const button = document.querySelector("button") as HTMLButtonElement
+    Object.defineProperty(document, "elementFromPoint", {
+      configurable: true,
+      value: () => button,
+    })
+    expect(await startPickerRequest()).toMatchObject({ ok: true })
+    permission = false
+
+    host()?.dispatchEvent(
+      new MouseEvent("click", { bubbles: true, cancelable: true, clientX: 10, clientY: 10 }),
+    )
+
+    await vi.waitFor(() => {
+      expect(host()).toBeNull()
+      expect(emittedEvents).toContainEqual(
+        expect.objectContaining({
+          name: "elementPicker.cancelled",
+          payload: expect.objectContaining({ reason: "access-revoked" }),
+        }),
+      )
+    })
+    expect(emittedEvents.some((event) => event.name === "elementPicker.selected")).toBe(false)
+  })
+
+  test("cancels an active picker when exact-origin access is revoked", async () => {
+    expect(await startPickerRequest()).toMatchObject({ ok: true })
+    permission = false
+
+    permissionRemoved()
+
+    await vi.waitFor(() => {
+      expect(host()).toBeNull()
+      expect(emittedEvents).toContainEqual(
+        expect.objectContaining({
+          name: "elementPicker.cancelled",
+          payload: expect.objectContaining({ reason: "access-revoked" }),
+        }),
+      )
+    })
+  })
+
+  test("does not start after a concurrent stop wins permission preflight", async () => {
+    let enterPermission: () => void = () => undefined
+    let releasePermission: () => void = () => undefined
+    const entered = new Promise<void>((resolve) => {
+      enterPermission = resolve
+    })
+    const gate = new Promise<void>((resolve) => {
+      releasePermission = resolve
+    })
+    vi.mocked(chrome.permissions.contains).mockImplementationOnce(async () => {
+      enterPermission()
+      await gate
+      return true
+    })
+
+    const starting = startPickerRequest()
+    await entered
+    expect(await send("elementPicker.stop")).toMatchObject({ ok: true })
+    releasePermission()
+
+    await expect(starting).resolves.toMatchObject({ ok: true, result: { active: false } })
+    expect(host()).toBeNull()
+  })
+
+  test("cancels and removes the injected picker when navigation starts", async () => {
+    expect(await startPickerRequest()).toMatchObject({ ok: true })
+    expect(host()).not.toBeNull()
+
+    updated(tab.id, { status: "loading" })
+
+    await vi.waitFor(() => {
+      expect(host()).toBeNull()
+      expect(emittedEvents).toContainEqual(
+        expect.objectContaining({
+          name: "elementPicker.cancelled",
+          payload: expect.objectContaining({ reason: "navigation" }),
+        }),
+      )
+    })
+  })
+
+  test.each([
+    ["tab activation", () => activated(), "tab-activated"],
+    ["window focus change", () => focusChanged(-1), "window-focus-changed"],
+  ])("cancels on %s", async (_label, cancel, reason) => {
+    expect(await startPickerRequest()).toMatchObject({ ok: true })
+    cancel()
+    await vi.waitFor(() => {
+      expect(host()).toBeNull()
+      expect(emittedEvents).toContainEqual(
+        expect.objectContaining({
+          name: "elementPicker.cancelled",
+          payload: expect.objectContaining({ reason }),
+        }),
+      )
+    })
+  })
+
+  test("rejects forged picker tokens and senders", async () => {
+    expect(await startPickerRequest()).toMatchObject({ ok: true })
+    const isolated = globalThis as typeof globalThis & {
+      __piBrowserAgentElementPicker?: { token: string }
+    }
+    const token = isolated.__piBrowserAgentElementPicker?.token
+    expect(token).toBeTypeOf("string")
+    const result = (overrides: Record<string, unknown>, sender: chrome.runtime.MessageSender) =>
+      new Promise<RuntimeResponse>((resolve) => {
+        listener(
+          {
+            kind: "element-picker-result",
+            status: "cancelled",
+            token,
+            tabContext: context,
+            ...overrides,
+          },
+          sender,
+          resolve,
+        )
+      })
+
+    await expect(
+      result({ token: "00000000-0000-4000-8000-000000000000" }, {
+        id: "extension",
+        tab,
+        frameId: 0,
+      } as chrome.runtime.MessageSender),
+    ).resolves.toMatchObject({ ok: false, error: { code: "PERMISSION_DENIED" } })
+    await expect(
+      result({}, { id: "other-extension", tab, frameId: 0 } as chrome.runtime.MessageSender),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "PERMISSION_DENIED" },
+    })
+    expect(host()).not.toBeNull()
+  })
+
+  test("stop cleans an orphaned overlay after a service-worker restart", async () => {
+    expect(await startPickerRequest()).toMatchObject({ ok: true })
+    expect(host()).not.toBeNull()
+
+    vi.resetModules()
+    await import("../../src/browser/service-worker.js")
+    await state()
+    expect(await send("elementPicker.stop")).toMatchObject({
+      ok: true,
+      result: { active: false },
+    })
+
+    expect(host()).toBeNull()
   })
 })

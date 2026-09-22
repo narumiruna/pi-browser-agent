@@ -9,19 +9,27 @@ import {
   requestScreenshotPermission,
   SCREENSHOT_HOST_PERMISSION,
 } from "../permissions.js"
+import {
+  ELEMENT_PICKER_LIMITS,
+  parseSelectedElementContext,
+  type SelectedElementContext,
+  selectedElementContextBytes,
+} from "../runtime/element-context.js"
 import { type RuntimeEvent, sendRuntimeRequest } from "../runtime/messages.js"
-import type { JsonObject } from "../runtime/types.js"
+import type { JsonObject, TabContext } from "../runtime/types.js"
 import { SETTINGS_KEY } from "../storage.js"
 import { AuthenticationController } from "./authentication.js"
 import { activityText, conversationText } from "./conversation-copy.js"
 import {
+  type ComposerImage,
   imageContentSource,
   MAX_PASTED_IMAGE_BYTES,
   MAX_PASTED_IMAGES,
-  type PastedImage,
+  readGeneratedImage,
   readPastedImage,
 } from "./images.js"
 import { TranscriptRenderer } from "./message-rendering.js"
+import { ScreenshotAnnotationController } from "./screenshot-annotation.js"
 import { applyAppearance, element, run, setErrorOutput } from "./ui.js"
 import {
   createVoiceInput,
@@ -51,14 +59,26 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   const queueInstructionButton = element<HTMLButtonElement>("queue-instruction")
   const composerHint = element<HTMLElement>("composer-hint")
   const pastedImages = element<HTMLElement>("pasted-images")
+  const selectedElementsOutput = element<HTMLElement>("selected-elements")
+  const elementPickerButton = element<HTMLButtonElement>("element-picker")
   const voiceButton = element<HTMLButtonElement>("voice-input")
   const voiceStatus = element<HTMLElement>("voice-status")
-  const transcriptRenderer = new TranscriptRenderer(transcript)
+  let screenshotAnnotation: ScreenshotAnnotationController | undefined
+  const transcriptRenderer = new TranscriptRenderer(transcript, {
+    onAnnotateScreenshot(image) {
+      void screenshotAnnotation?.open(image)
+    },
+  })
   const setError = (error?: unknown): void => setErrorOutput(errorOutput, error)
   let activeSubmissionGuard: object | undefined
   let pendingPasteOperations = 0
   let pasteQueue = Promise.resolve()
-  let composerImages: Array<PastedImage & { id: string }> = []
+  let composerImages: Array<ComposerImage & { id: string }> = []
+  let selectedElements: Array<{ context: SelectedElementContext; id: string }> = []
+  let currentTabContext: TabContext | undefined
+  let pickerActive = false
+  let pickerStarting = false
+  let pickerClientId: string | undefined
   let voiceInput: VoiceInputController | undefined
   let voiceInputStarting = false
   let authentication: AuthenticationController | undefined
@@ -190,11 +210,23 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     sendButton.disabled =
       activeSubmissionGuard !== undefined ||
       pendingPasteOperations > 0 ||
+      pickerActive ||
+      pickerStarting ||
       voiceInputStarting ||
       voiceInput?.active === true
     voiceButton.disabled =
-      voiceInput === undefined || activeSubmissionGuard !== undefined || voiceInputStarting
+      voiceInput === undefined ||
+      activeSubmissionGuard !== undefined ||
+      pickerActive ||
+      pickerStarting ||
+      voiceInputStarting
     queueInstructionButton.disabled = sendButton.disabled
+    elementPickerButton.disabled =
+      activeSubmissionGuard !== undefined ||
+      pickerStarting ||
+      voiceInputStarting ||
+      voiceInput?.active === true ||
+      (!pickerActive && selectedElements.length >= ELEMENT_PICKER_LIMITS.elements)
   }
 
   function releaseSubmissionGuard(guard: object): void {
@@ -272,6 +304,16 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     onPersistenceError: setError,
   })
 
+  screenshotAnnotation = new ScreenshotAnnotationController({
+    async onAttach(image) {
+      if (!runtime.model.input.includes("image")) {
+        throw new Error(`${runtime.model.name} does not support image input`)
+      }
+      await attachComposerImages([image], "annotation")
+      promptInput.focus()
+    },
+  })
+
   function providerName(providerId: string): string | undefined {
     return runtime.configuration.getProviders().find((provider) => provider.id === providerId)?.name
   }
@@ -301,31 +343,164 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     }
   }
 
-  async function attachPastedImages(files: File[]): Promise<void> {
-    if (composerImages.length + files.length > MAX_PASTED_IMAGES) {
-      throw new Error(`Paste up to ${MAX_PASTED_IMAGES} images at a time`)
+  function selectedElementLabel(context: SelectedElementContext): string {
+    const id = context.id ? `#${context.id}` : ""
+    const className = context.classNames[0] ? `.${context.classNames[0]}` : ""
+    return `${context.tagName}${id}${className}`
+  }
+
+  function renderSelectedElements(): void {
+    selectedElementsOutput.replaceChildren()
+    selectedElementsOutput.hidden = selectedElements.length === 0
+    for (const selected of selectedElements) {
+      const chip = document.createElement("span")
+      chip.className = "selected-element-chip"
+      chip.title = `${selectedElementLabel(selected.context)} — ${selected.context.pageUrl}`
+      const label = document.createElement("span")
+      label.className = "selected-element-label"
+      label.textContent = selectedElementLabel(selected.context)
+      const remove = document.createElement("button")
+      remove.type = "button"
+      remove.className = "remove-selected-element"
+      remove.ariaLabel = `Remove selected element ${label.textContent}`
+      remove.title = remove.ariaLabel
+      remove.textContent = "×"
+      remove.addEventListener("click", () => {
+        selectedElements = selectedElements.filter((candidate) => candidate.id !== selected.id)
+        renderSelectedElements()
+        updateSendButton()
+        promptInput.focus()
+      })
+      chip.append(label, remove)
+      selectedElementsOutput.append(chip)
     }
-    const additions: Array<PastedImage & { id: string }> = []
+  }
+
+  function clearSelectedElements(): void {
+    if (selectedElements.length === 0) return
+    selectedElements = []
+    renderSelectedElements()
+    updateSendButton()
+  }
+
+  function setPickerActive(active: boolean, clientId?: string): void {
+    pickerActive = active
+    pickerClientId = active ? clientId : undefined
+    elementPickerButton.setAttribute("aria-pressed", String(active))
+    elementPickerButton.ariaLabel = active ? "Cancel element selection" : "Select page element"
+    elementPickerButton.title = active ? "取消選取網頁元素" : "選取網頁元素"
+    updateSendButton()
+  }
+
+  function addSelectedElement(value: unknown): void {
+    const context = parseSelectedElementContext(value)
+    if (selectedElements.length >= ELEMENT_PICKER_LIMITS.elements) {
+      throw new Error(`Attach up to ${ELEMENT_PICKER_LIMITS.elements} selected elements`)
+    }
+    if (
+      context.selectorUnique &&
+      selectedElements.some(
+        (selected) =>
+          selected.context.selectorUnique &&
+          selected.context.pageUrl === context.pageUrl &&
+          selected.context.cssSelector === context.cssSelector,
+      )
+    ) {
+      return
+    }
+    const next = [...selectedElements.map((selected) => selected.context), context]
+    if (selectedElementContextBytes(next) > ELEMENT_PICKER_LIMITS.composerBytes) {
+      throw new Error("Selected element context exceeds the 16 KB composer limit")
+    }
+    selectedElements.push({ context, id: crypto.randomUUID() })
+    renderSelectedElements()
+    updateSendButton()
+  }
+
+  async function attachComposerImages(
+    files: Blob[],
+    source: "annotation" | "paste",
+  ): Promise<void> {
+    if (composerImages.length + files.length > MAX_PASTED_IMAGES) {
+      throw new Error(`Attach up to ${MAX_PASTED_IMAGES} images at a time`)
+    }
+    const additions: Array<ComposerImage & { id: string }> = []
     let usedBytes = composerImages.reduce((total, image) => total + image.byteLength, 0)
     for (const file of files) {
-      const pastedImage = await readPastedImage(file, MAX_PASTED_IMAGE_BYTES - usedBytes)
-      additions.push({ ...pastedImage, id: crypto.randomUUID() })
-      usedBytes += pastedImage.byteLength
+      const remaining = MAX_PASTED_IMAGE_BYTES - usedBytes
+      const composerImage =
+        source === "paste"
+          ? await readPastedImage(file, remaining)
+          : await readGeneratedImage(file, remaining)
+      additions.push({ ...composerImage, id: crypto.randomUUID() })
+      usedBytes += composerImage.byteLength
     }
     composerImages.push(...additions)
     renderComposerImages()
   }
 
-  async function refreshTab(): Promise<string | undefined> {
+  function attachPastedImages(files: File[]): Promise<void> {
+    return attachComposerImages(files, "paste")
+  }
+
+  async function refreshTabContext(): Promise<TabContext | undefined> {
     const state = await sendRuntimeRequest("app.getState")
     const context =
       typeof state === "object" && state !== null && !Array.isArray(state) ? state.tabContext : null
-    return typeof context === "object" &&
+    currentTabContext =
+      typeof context === "object" &&
       context !== null &&
       !Array.isArray(context) &&
-      typeof context.url === "string"
-      ? context.url
-      : undefined
+      typeof context.tabId === "number" &&
+      typeof context.url === "string" &&
+      typeof context.epoch === "number"
+        ? (context as unknown as TabContext)
+        : undefined
+    return currentTabContext
+  }
+
+  async function refreshTab(): Promise<string | undefined> {
+    return (await refreshTabContext())?.url
+  }
+
+  async function stopElementPicker(): Promise<void> {
+    setPickerActive(false)
+    const context = currentTabContext ?? (await refreshTabContext().catch(() => undefined))
+    await sendRuntimeRequest("elementPicker.stop", {}, context ? { tabContext: context } : {})
+  }
+
+  async function toggleElementPicker(): Promise<void> {
+    if (pickerActive) {
+      await stopElementPicker()
+      return
+    }
+    pickerStarting = true
+    const clientId = crypto.randomUUID()
+    pickerClientId = clientId
+    updateSendButton()
+    try {
+      const context = await refreshTabContext()
+      if (!context) throw new Error("Open an HTTP or HTTPS page before selecting an element")
+      if (!(await requestSiteAccess(context.url))) {
+        throw new Error("Site access is required to select an element")
+      }
+      const result = await sendRuntimeRequest(
+        "elementPicker.start",
+        { clientId },
+        { tabContext: context },
+      )
+      if (pickerClientId !== clientId) return
+      const active =
+        typeof result === "object" &&
+        result !== null &&
+        !Array.isArray(result) &&
+        result.active === true &&
+        result.clientId === clientId
+      setPickerActive(active, active ? clientId : undefined)
+    } finally {
+      pickerStarting = false
+      updateSendButton()
+    }
   }
 
   function requestSiteAccess(url: string): Promise<boolean> {
@@ -398,7 +573,11 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       id: image.id,
       content: { ...image.content },
     }))
-    if (!text && submittedImages.length === 0) return
+    const submittedElements = selectedElements.map((selected) => ({
+      id: selected.id,
+      context: structuredClone(selected.context),
+    }))
+    if (!text && submittedImages.length === 0 && submittedElements.length === 0) return
     if (submittedImages.length > 0 && !runtime.model.input.includes("image")) {
       setError(`${runtime.model.name} does not support image input`)
       return
@@ -423,14 +602,20 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
           )
         }
         const submittedImageIds = new Set(submittedImages.map((image) => image.id))
+        const submittedElementIds = new Set(submittedElements.map((element) => element.id))
         composerImages = composerImages.filter((image) => !submittedImageIds.has(image.id))
+        selectedElements = selectedElements.filter(
+          (element) => !submittedElementIds.has(element.id),
+        )
         promptInput.value = ""
         renderComposerImages()
+        renderSelectedElements()
         resizePromptInput()
         const submission = runtime.submit(
           text,
           queueAfterCurrentTask ? "followUp" : "steer",
           submittedImages.map((image) => image.content),
+          submittedElements.map((element) => element.context),
         )
         releaseSubmissionGuard(submissionGuard)
         const mode = await submission
@@ -445,6 +630,11 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   async function refreshActiveSessionUi(): Promise<void> {
     renderMessages()
     await Promise.all([refreshSessions(), authentication?.refresh()])
+  }
+
+  async function clearElementComposerContext(): Promise<void> {
+    if (pickerActive || pickerStarting) await stopElementPicker().catch(() => undefined)
+    clearSelectedElements()
   }
 
   function openSettingsTab(): void {
@@ -527,6 +717,9 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   })
   sendButton.addEventListener("click", () => submitPrompt())
   queueInstructionButton.addEventListener("click", () => submitPrompt(true))
+  elementPickerButton.addEventListener("click", () => {
+    void run(toggleElementPicker, setError)
+  })
   voiceButton.addEventListener("click", () => {
     if (voiceInput?.active) {
       setError()
@@ -573,12 +766,14 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   element<HTMLButtonElement>("open-settings").addEventListener("click", openSettingsTab)
   newSessionButton.addEventListener("click", () => {
     void run(async () => {
+      await clearElementComposerContext()
       await runtime.newSession()
       await refreshActiveSessionUi()
     }, setError)
   })
   sessionSelect.addEventListener("change", () => {
     void run(async () => {
+      await clearElementComposerContext()
       await runtime.resumeSession(sessionSelect.value)
       await refreshActiveSessionUi()
     }, setError)
@@ -594,6 +789,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   element<HTMLButtonElement>("delete-session").addEventListener("click", () => {
     if (!confirm("Delete this conversation and its stored images?")) return
     void run(async () => {
+      await clearElementComposerContext()
       await runtime.deleteSession(sessionSelect.value)
       await refreshActiveSessionUi()
     }, setError)
@@ -601,10 +797,22 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   element<HTMLButtonElement>("clear-sessions").addEventListener("click", () => {
     if (!confirm("Delete every saved conversation and image?")) return
     void run(async () => {
+      await clearElementComposerContext()
       await runtime.clearSessions()
       await refreshActiveSessionUi()
     }, setError)
   })
+
+  document.addEventListener(
+    "keydown",
+    (event) => {
+      if (event.key !== "Escape" || !pickerActive) return
+      event.preventDefault()
+      event.stopPropagation()
+      void run(stopElementPicker, setError)
+    },
+    { capture: true },
+  )
 
   const disclosures = document.querySelectorAll<HTMLDetailsElement>("details.disclosure")
   for (const disclosure of disclosures) {
@@ -640,7 +848,23 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       }, setError)
       return false
     }
-    if (event.name === "tab.changed") void refreshTab()
+    if (event.name === "tab.changed") {
+      currentTabContext = undefined
+      setPickerActive(false)
+      clearSelectedElements()
+      void refreshTab()
+    }
+    const eventPickerClientId = event.payload?.clientId
+    const currentPickerEvent =
+      typeof eventPickerClientId === "string" && eventPickerClientId === pickerClientId
+    if (event.name === "elementPicker.started" && currentPickerEvent) {
+      setPickerActive(true, eventPickerClientId)
+    }
+    if (event.name === "elementPicker.cancelled" && currentPickerEvent) setPickerActive(false)
+    if (event.name === "elementPicker.selected" && currentPickerEvent) {
+      setPickerActive(false)
+      void run(async () => addSelectedElement(event.payload?.element), setError)
+    }
     if (event.name === "operation.progress" && event.payload) {
       setRunStatus(
         event.payload.status === "started"
@@ -673,6 +897,8 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     transcriptResizeObserver.disconnect()
     observedTranscriptElements.clear()
     voiceInput?.abort()
+    screenshotAnnotation?.close()
+    if (pickerActive || pickerStarting) void stopElementPicker().catch(() => undefined)
     authentication?.abort()
     void runtime.shutdown()
   })

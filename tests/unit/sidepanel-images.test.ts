@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest"
 import {
   imageContentSource,
   MAX_PASTED_IMAGE_BYTES,
+  readGeneratedImage,
   readPastedImage,
 } from "../../src/browser/sidepanel/images.js"
 
@@ -32,6 +33,16 @@ describe("Side Panel images", () => {
         }),
       ),
     ).rejects.toThrow("3 MB or less")
+  })
+
+  test("applies the same bounds to generated composer images", async () => {
+    await expect(
+      readGeneratedImage(new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" }), 2),
+    ).rejects.toThrow("3 MB or less")
+    await expect(
+      readGeneratedImage(new Blob([new Uint8Array([1])], { type: "image/svg+xml" })),
+    ).rejects.toThrow("PNG, JPEG, WebP, or GIF")
+    await expect(readGeneratedImage(new Blob([], { type: "image/png" }))).rejects.toThrow("empty")
   })
 
   test("does not construct data URLs for invalid stored image content", () => {
