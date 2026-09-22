@@ -2152,12 +2152,15 @@ test("keeps header and composer controls usable at normal and narrow widths", as
                 }
               })
               const status = document.querySelector(".status-pill")?.getBoundingClientRect()
+              const toolbar = document.querySelector(".composer-toolbar")?.getBoundingClientRect()
               const actions = document.querySelector(".composer-actions")?.getBoundingClientRect()
-              if (!status || !actions) throw new Error("Missing composer controls")
+              if (!status || !toolbar || !actions) throw new Error("Missing composer controls")
               return {
                 controls,
                 statusRight: status.right,
+                toolbarRight: toolbar.right,
                 actionsLeft: actions.left,
+                actionsRight: actions.right,
                 viewportWidth: document.documentElement.clientWidth,
                 viewportHeight: document.documentElement.clientHeight,
                 pageWidth: document.documentElement.scrollWidth,
@@ -2165,6 +2168,7 @@ test("keeps header and composer controls usable at normal and narrow widths", as
             })
             expect(layout.pageWidth).toBeLessThanOrEqual(layout.viewportWidth)
             expect(layout.statusRight).toBeLessThanOrEqual(layout.actionsLeft)
+            expect(layout.actionsRight).toBeCloseTo(layout.toolbarRight, 1)
             for (const control of layout.controls) {
               expect(control.width, control.selector).toBeGreaterThan(0)
               expect(control.left).toBeGreaterThanOrEqual(0)
@@ -3396,7 +3400,9 @@ test("preserves streamed Markdown disclosures, focus, scroll, copying and safe r
     await expect.poll(() => controller.evaluate(() => "featureStream" in window)).toBe(true)
     await expect(controller.locator("#send-label")).toHaveText("Add instruction")
     await expect(controller.locator("#queue-instruction")).toBeVisible()
-    await expect(controller.locator("#composer-hint")).not.toContainText("Alt+Enter")
+    await expect(controller.locator("#composer-hint")).toHaveText(
+      "Enter to add an instruction · Shift+Enter for a new line",
+    )
     await sendEvents([
       {
         type: "response.output_item.added",
@@ -3509,6 +3515,9 @@ test("preserves streamed Markdown disclosures, focus, scroll, copying and safe r
     await expect(controller.locator("#run-status")).toHaveText("Ready")
     await expect(controller.locator("#send-label")).toHaveText("Send")
     await expect(controller.locator("#queue-instruction")).toBeHidden()
+    await expect(controller.locator("#composer-hint")).toHaveText(
+      "Enter to send · Shift+Enter for a new line",
+    )
     await expect(summary).toBeFocused()
     await expect(thinking).toHaveJSProperty("open", true)
     await expect(copyAll.locator(".copy-label")).toHaveText("Copied")
