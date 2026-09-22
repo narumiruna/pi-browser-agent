@@ -198,7 +198,7 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
   })
   window.addEventListener("pagehide", () => authentication?.abort())
 
-  document.title = "Settings · Pi Chrome"
+  document.title = "Settings · Pi Browser Agent"
   document.body.dataset.view = "settings"
   initialSelection = await configuration.initialize(initialModel)
   populateSettings()

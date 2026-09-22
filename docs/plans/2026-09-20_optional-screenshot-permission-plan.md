@@ -7,10 +7,10 @@ Make `browser_capture_visible` work after tab switches by requesting Chrome's `<
 ## Context
 
 - `chrome.tabs.captureVisibleTab()` requires either a live per-tab `activeTab` grant or `<all_urls>`.
-- Pi Chrome's Side Panel follows newly active tabs, but `activeTab` is temporary and is not granted merely by switching tabs.
+- Pi Browser Agent's Side Panel follows newly active tabs, but `activeTab` is temporary and is not granted merely by switching tabs.
 - The current per-origin host grants support page operations but do not satisfy the screenshot API requirement.
 - The E2E fixture currently injects required `<all_urls>`, which proves capture but bypasses the production permission path.
-- Chrome requires optional permission requests to run from a user gesture. Pi Chrome's existing confirmation button provides that gesture.
+- Chrome requires optional permission requests to run from a user gesture. Pi Browser Agent's existing confirmation button provides that gesture.
 
 ## Architecture
 
@@ -33,7 +33,7 @@ sequenceDiagram
   Worker-->>Model: bounded PNG image
 ```
 
-The broad host capability remains optional. Pi Chrome continues to reject non-HTTP(S) targets, capture only the active visible viewport, cap screenshots at 3 MB, and send the resulting image to the selected model provider and session transcript. Because Chrome can use `<all_urls>` to satisfy narrower permission checks, ordinary page, navigation, WebMCP, authentication, and provider access also requires an app-approved normalized exact origin recorded from an explicit user action.
+The broad host capability remains optional. Pi Browser Agent continues to reject non-HTTP(S) targets, capture only the active visible viewport, cap screenshots at 3 MB, and send the resulting image to the selected model provider and session transcript. Because Chrome can use `<all_urls>` to satisfy narrower permission checks, ordinary page, navigation, WebMCP, authentication, and provider access also requires an app-approved normalized exact origin recorded from an explicit user action.
 
 ## Plan
 
@@ -52,7 +52,7 @@ The broad host capability remains optional. Pi Chrome continues to reject non-HT
 
 - `<all_urls>` is a broad Chrome capability. It must remain optional and be requested only from the screenshot confirmation gesture.
 - Chrome owns the native permission prompt; headless automated tests may not complete it. Pure permission helpers, confirmation routing, artifact policy, and the already-working capture path provide automated coverage, with stable-Chrome grant/deny/revoke cases retained in manual acceptance.
-- Granting `<all_urls>` technically gives Chrome broad host access. Pi Chrome separately requires app-approved exact origins for ordinary host operations, while runtime tab binding, HTTP(S)-only checks, stale-context validation, and fixed browser tools constrain screenshots and other exposed actions.
+- Granting `<all_urls>` technically gives Chrome broad host access. Pi Browser Agent separately requires app-approved exact origins for ordinary host operations, while runtime tab binding, HTTP(S)-only checks, stale-context validation, and fixed browser tools constrain screenshots and other exposed actions.
 
 ## Completion Checklist
 
@@ -60,4 +60,4 @@ The broad host capability remains optional. Pi Chrome continues to reject non-HT
 - [x] First screenshot without the grant explains and requests access from the Confirm click; automated coverage verifies routing and denial, while the Chrome-owned native prompt remains manual acceptance.
 - [ ] Granting access returns a PNG tool result, while denial or revocation fails without background permission requests; automated coverage passes, and a 2026-09-20 manual grant produced a PNG and successful model translation after one expected stale-context retry. Native revocation and explicit cross-tab acceptance remain pending.
 - [x] Existing page, bookmark, provider, session, security, and E2E checks pass in the final review-fix `npm run ci` with 136 unit/integration tests and 16 E2E tests.
-- [x] Documentation clearly states the breadth of Chrome's grant, Chrome's suppression of narrower native prompts, and Pi Chrome's independent exact-origin approval and runtime constraints.
+- [x] Documentation clearly states the breadth of Chrome's grant, Chrome's suppression of narrower native prompts, and Pi Browser Agent's independent exact-origin approval and runtime constraints.

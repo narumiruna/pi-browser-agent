@@ -1,9 +1,9 @@
 import { DEFAULT_MODEL_SELECTION } from "./defaults.js"
 import type { JsonObject, TabContext } from "./runtime/types.js"
 
-export const SETTINGS_KEY = "piChromeSettings"
-const ACTIVE_SESSION_KEY = "piChromeActiveSessionId"
-const PENDING_SELECTION_KEY = "piChromePendingSelection"
+export const SETTINGS_KEY = "piBrowserAgentSettings"
+const ACTIVE_SESSION_KEY = "piBrowserAgentActiveSessionId"
+const PENDING_SELECTION_KEY = "piBrowserAgentPendingSelection"
 
 export const FONT_FAMILIES = ["system", "sans", "serif", "monospace"] as const
 export type FontFamily = (typeof FONT_FAMILIES)[number]

@@ -51,7 +51,7 @@ export async function executePageOperation(
     labelControl: HTMLElement | null
   }
   type Registry = { snapshot: ElementSnapshot; nodes: Map<string, Entry> }
-  const isolated = globalThis as typeof globalThis & { __piChromeElements?: Registry }
+  const isolated = globalThis as typeof globalThis & { __piBrowserAgentElements?: Registry }
   const staleReference = (): PageOperationFailure =>
     failure(
       "STALE_CONTEXT",
@@ -72,7 +72,7 @@ export async function executePageOperation(
   }
   const findElement = (): Element | PageOperationFailure => {
     if ("snapshotId" in params || "ref" in params) {
-      const registry = isolated.__piChromeElements
+      const registry = isolated.__piBrowserAgentElements
       if (
         "selector" in params ||
         !snapshot ||
@@ -391,7 +391,7 @@ export async function executePageOperation(
         if (!snapshot || !expectedContext)
           return failure("INVALID_REQUEST", "A snapshot context is required")
         const registry: Registry = { snapshot, nodes: new Map() }
-        isolated.__piChromeElements = registry
+        isolated.__piBrowserAgentElements = registry
         const result: { snapshotId: string; elements: JsonObject[]; truncated: boolean } = {
           snapshotId: snapshot.id,
           elements: [],

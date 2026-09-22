@@ -4,7 +4,7 @@ import { getMicrophonePermissionState, requestMicrophoneAccess } from "./voice-i
 
 function microphoneAccessErrorMessage(error: unknown): string {
   if (error instanceof DOMException && error.name === "NotAllowedError") {
-    return "Chrome blocked microphone access. Open Chrome microphone settings, remove Pi Chrome from Not allowed, then return here and try again."
+    return "Chrome blocked microphone access. Open Chrome microphone settings, remove Pi Browser Agent from Not allowed, then return here and try again."
   }
   if (error instanceof DOMException && error.name === "NotFoundError") {
     return "Chrome could not find a microphone. Connect or enable one, then try again."
@@ -24,7 +24,7 @@ export async function initializeMicrophonePage(): Promise<void> {
     openSettingsButton.hidden = state !== "denied"
     status.textContent =
       state === "granted"
-        ? "Microphone access is allowed. Close this tab and select the microphone in Pi Chrome."
+        ? "Microphone access is allowed. Close this tab and select the microphone in Pi Browser Agent."
         : state === "denied"
           ? "Microphone access is blocked. Open Chrome microphone settings to allow it."
           : "Select Allow microphone access, then approve Chrome's prompt."
@@ -39,7 +39,7 @@ export async function initializeMicrophonePage(): Promise<void> {
         allowButton.disabled = false
         allowButton.hidden = true
         status.textContent =
-          "Microphone access is allowed. Close this tab and select the microphone in Pi Chrome."
+          "Microphone access is allowed. Close this tab and select the microphone in Pi Browser Agent."
       })
       .catch(async (error: unknown) => {
         const state = await getMicrophonePermissionState().catch(() => undefined)
@@ -61,7 +61,7 @@ export async function initializeMicrophonePage(): Promise<void> {
     if (document.visibilityState === "visible") void refresh()
   })
 
-  document.title = "Microphone access · Pi Chrome"
+  document.title = "Microphone access · Pi Browser Agent"
   document.body.dataset.view = "microphone"
   page.hidden = false
   await refresh()

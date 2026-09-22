@@ -24,7 +24,7 @@ import {
 } from "./storage.js"
 import { executeWebMcpOperation, type WebMcpOperation } from "./webmcp/adapter.js"
 
-const SELECTION_CONTEXT_MENU_ID = "pi-chrome-send-selection"
+const SELECTION_CONTEXT_MENU_ID = "pi-browser-agent-send-selection"
 const activeRequests = new Map<string, AbortController>()
 let boundContext: TabContext | undefined
 let elementSnapshot: ElementSnapshot | undefined
@@ -446,7 +446,7 @@ async function captureVisible(request: RuntimeRequest<"page.captureVisible">): P
   if (!permissionGranted && !request.confirmed) {
     throw new RuntimeError(
       "CONFIRMATION_REQUIRED",
-      "Allow screenshots of visible HTTP(S) tabs? Chrome grants access to all sites, but Pi Chrome captures only the current visible viewport and separately limits ordinary access to exact origins approved through explicit actions. Screenshots are sent to the selected model provider and saved in this session.",
+      "Allow screenshots of visible HTTP(S) tabs? Chrome grants access to all sites, but Pi Browser Agent captures only the current visible viewport and separately limits ordinary access to exact origins approved through explicit actions. Screenshots are sent to the selected model provider and saved in this session.",
       { requiredPermission: SCREENSHOT_HOST_PERMISSION },
     )
   }
@@ -612,7 +612,7 @@ chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
       id: SELECTION_CONTEXT_MENU_ID,
-      title: "Send selection to Pi Chrome",
+      title: "Send selection to Pi Browser Agent",
       contexts: ["selection"],
     })
   })

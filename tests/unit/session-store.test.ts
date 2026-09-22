@@ -60,7 +60,7 @@ describe("session storage", () => {
     const indexedDb = new IDBFactory()
     const store = new SessionStore(indexedDb)
     await store.put(createSession("gpt-5.4"))
-    const request = indexedDb.open("pi-chrome-sessions")
+    const request = indexedDb.open("pi-browser-agent-sessions")
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
       request.onsuccess = () => resolve(request.result)
       request.onerror = () => reject(request.error)

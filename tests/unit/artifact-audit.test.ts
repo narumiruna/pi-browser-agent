@@ -11,7 +11,7 @@ async function artifactFixture(options: {
   bookmarksRequired?: boolean
   screenshotPermissionOmitted?: boolean
 }): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), "pi-chrome-artifact-audit-"))
+  const root = await mkdtemp(join(tmpdir(), "pi-browser-agent-artifact-audit-"))
   temporaryDirectories.push(root)
   await mkdir(join(root, "icons"))
   await mkdir(join(root, "background"))
@@ -54,7 +54,7 @@ function audit(root: string) {
   return spawnSync(process.execPath, [resolve("scripts/audit-artifact.mjs")], {
     cwd: process.cwd(),
     encoding: "utf8",
-    env: { ...process.env, PI_CHROME_ARTIFACT_ROOT: root },
+    env: { ...process.env, PI_BROWSER_AGENT_ARTIFACT_ROOT: root },
   })
 }
 

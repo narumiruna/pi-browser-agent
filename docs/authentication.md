@@ -1,6 +1,6 @@
 # Authentication
 
-Pi Chrome supports API-key authentication for browser-compatible built-in `pi-ai` providers and browser device-code OAuth for OpenAI Codex.
+Pi Browser Agent supports API-key authentication for browser-compatible built-in `pi-ai` providers and browser device-code OAuth for OpenAI Codex.
 
 ## Provider setup
 
@@ -19,11 +19,11 @@ Adding a credential does not change the active or pending model selection. Crede
 - Radius requests access to `radius.pi.dev`, stores its key, and refreshes its dynamic model catalog.
 - Google Vertex AI exposes its API-key path. Filesystem-based ADC and service-account-file flows are unavailable in a browser.
 
-OpenAI Codex is currently the only provider under **Sign in with an account**. Pi Chrome does not expose other provider OAuth implementations because those `pi-ai` flows intentionally load Node-only callback-server or PKCE modules. Amazon Bedrock is also unavailable because its adapter intentionally loads a Node-only AWS SDK module.
+OpenAI Codex is currently the only provider under **Sign in with an account**. Pi Browser Agent does not expose other provider OAuth implementations because those `pi-ai` flows intentionally load Node-only callback-server or PKCE modules. Amazon Bedrock is also unavailable because its adapter intentionally loads a Node-only AWS SDK module.
 
 ## OpenAI Codex device flow
 
-1. After **Sign in with an account** and **OpenAI Codex** are selected, Pi Chrome requests optional access to `https://auth.openai.com/*` and `https://chatgpt.com/*`.
+1. After **Sign in with an account** and **OpenAI Codex** are selected, Pi Browser Agent requests optional access to `https://auth.openai.com/*` and `https://chatgpt.com/*`.
 2. The Side Panel requests a device authorization from OpenAI.
 3. It displays the verification URI and user code.
 4. Polling follows the server interval, adds five seconds after `slow_down`, and stops on completion, denial, expiry, cancellation, or an unexpected response.
@@ -33,7 +33,7 @@ OpenAI Codex is currently the only provider under **Sign in with an account**. P
 
 ## Request authorization and refresh
 
-`pi-ai` resolves the selected provider's credential through `ChromeCredentialStore`. Browser environment and filesystem lookups always return unavailable, so requests cannot silently pick up machine credentials. Static API-key entry requests no model endpoint access; before sending, Pi Chrome requests optional access to the exact selected model endpoint. Authentication status names the provider and method without exposing credential values. Pi Chrome never inserts API keys into host-permission patterns, UI status, runtime messages, model messages, or diagnostics.
+`pi-ai` resolves the selected provider's credential through `ChromeCredentialStore`. Browser environment and filesystem lookups always return unavailable, so requests cannot silently pick up machine credentials. Static API-key entry requests no model endpoint access; before sending, Pi Browser Agent requests optional access to the exact selected model endpoint. Authentication status names the provider and method without exposing credential values. Pi Browser Agent never inserts API keys into host-permission patterns, UI status, runtime messages, model messages, or diagnostics.
 
 If an OAuth access token is near expiry, refresh occurs inside `CredentialStore.modify()`. Credential-map mutations serialize across providers and Side Panel contexts through a Web Lock; later callers reuse a newly refreshed credential, and rotated refresh and access tokens are committed together. A refresh error preserves the previous credential for an explicit retry or new login; it does not trigger another provider or destination.
 
