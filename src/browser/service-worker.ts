@@ -795,8 +795,9 @@ chrome.windows.onFocusChanged.addListener((windowId) => {
   if (activeElementPicker) void stopActiveElementPicker("window-focus-changed")
   elementSnapshot = undefined
   if (windowId === chrome.windows.WINDOW_ID_NONE) {
-    visibleTabSyncVersion += 1
     clearBoundTab()
+    // Register recovery immediately so in-flight lookups await the focus handoff.
+    void syncVisibleTab().catch(() => undefined)
     return
   }
   void initialization.then(() => syncVisibleTab()).catch(() => undefined)

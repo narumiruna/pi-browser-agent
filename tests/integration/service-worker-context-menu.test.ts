@@ -362,6 +362,42 @@ describe("service worker visible-tab targeting", () => {
     )
 
     activeTab = { id: 7, url: "https://example.test/page", windowId: 3 }
+    focusedWindowId = 3
+    await expect(appState("current-before-focus-handoff-race")).resolves.toMatchObject({
+      ok: true,
+      result: { tabContext: { tabId: 7 } },
+    })
+    let focusHandoffQueued = false
+    queryTabs.mockResolvedValueOnce([activeTab]).mockImplementationOnce(async () => [
+      {
+        id: activeTab.id,
+        windowId: activeTab.windowId,
+        get url() {
+          if (!focusHandoffQueued) {
+            focusHandoffQueued = true
+            queueMicrotask(() => {
+              focusedWindowId = -1
+              listeners.focusChanged?.(-1)
+              activeTab = { id: 10, url: "https://next-window.test/page", windowId: 4 }
+              setTimeout(() => {
+                focusedWindowId = 4
+                listeners.focusChanged?.(4)
+              }, 0)
+            })
+          }
+          return activeTab.url
+        },
+      },
+    ])
+    await expect(appState("focus-handoff-before-commit")).resolves.toMatchObject({
+      ok: true,
+      result: { tabContext: { tabId: 10, url: "https://next-window.test/page" } },
+    })
+    expect(focusHandoffQueued).toBe(true)
+
+    activeTab = { id: 7, url: "https://example.test/page", windowId: 3 }
+    focusedWindowId = 3
+    listeners.focusChanged?.(3)
     await expect(appState("current-before-focus-loss-race")).resolves.toMatchObject({
       ok: true,
       result: { tabContext: { tabId: 7 } },
