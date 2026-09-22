@@ -34,6 +34,7 @@ function installDocument(): Document {
 }
 
 afterEach(() => {
+  vi.useRealTimers()
   vi.unstubAllGlobals()
 })
 
@@ -149,7 +150,7 @@ describe("conversation message rendering", () => {
     expect(developerTranscript.querySelector(".toolResult")?.localName).toBe("details")
   })
 
-  test("renders icon-only copy controls with action names, tooltips, and a live status", () => {
+  test("renders copy controls with distinct scope, placement, labels, and live status", () => {
     const document = installDocument()
     const transcript = document.createElement("div")
     const renderer = new TranscriptRenderer(transcript)
@@ -157,22 +158,59 @@ describe("conversation message rendering", () => {
       [assistantContent([{ type: "text", text: "Answer\n\n```ts\nconst x = 1\n```" }])],
       "one",
     )
-    const buttons = transcript.querySelectorAll<HTMLButtonElement>("button.copy-button")
-    expect(buttons).toHaveLength(2)
-    for (const [index, label] of ["Copy code", "Copy answer"].entries()) {
-      const button = buttons[index] as HTMLButtonElement
-      expect(button.classList.contains("icon-button")).toBe(true)
-      expect(button.getAttribute("aria-label")).toBe(label)
-      expect(button.title).toBe(label)
-      expect(button.textContent).toBe("")
-      expect(button.querySelectorAll("svg[aria-hidden='true'] path")).toHaveLength(1)
-      const status = button.querySelector("[role='status']")
+    const codeButton = transcript.querySelector<HTMLButtonElement>(".code-block .copy-button")
+    const answerButton = transcript.querySelector<HTMLButtonElement>(
+      ".message-actions .copy-button",
+    )
+    expect(codeButton?.classList.contains("code-copy-button")).toBe(true)
+    expect(answerButton?.classList.contains("answer-copy-button")).toBe(true)
+    expect(codeButton?.getAttribute("aria-label")).toBe("Copy code")
+    expect(answerButton?.getAttribute("aria-label")).toBe("Copy all")
+    expect(codeButton?.querySelector(".copy-label")?.textContent).toBe("Copy code")
+    expect(answerButton?.querySelector(".copy-label")?.textContent).toBe("Copy all")
+    expect(codeButton?.querySelector("path")?.getAttribute("d")).not.toBe(
+      answerButton?.querySelector("path")?.getAttribute("d"),
+    )
+    for (const button of [codeButton, answerButton]) {
+      expect(button?.title).toBe(button?.getAttribute("aria-label"))
+      expect(button?.querySelectorAll("svg[aria-hidden='true'] path")).toHaveLength(1)
+      const status = button?.querySelector("[role='status']")
       expect(status?.className).toBe("visually-hidden")
       expect(status?.getAttribute("aria-atomic")).toBe("true")
     }
   })
 
-  test("keeps Copy answer focused when new code controls arrive during streaming", () => {
+  test("omits local copy for box-drawing visual examples", () => {
+    const document = installDocument()
+    const transcript = document.createElement("div")
+    const renderer = new TranscriptRenderer(transcript)
+    renderer.render(
+      [assistantContent([{ type: "text", text: "```text\n┌───┐\n│ N │\n└───┘\n```" }])],
+      "one",
+    )
+    expect(transcript.querySelector(".visual-example")).not.toBeNull()
+    expect(transcript.querySelector(".visual-example .copy-button")).toBeNull()
+    expect(transcript.querySelector('[aria-label="Copy all"]')).not.toBeNull()
+  })
+
+  test("restores copy labels after temporary feedback", async () => {
+    vi.useFakeTimers()
+    const document = installDocument()
+    const transcript = document.createElement("div")
+    const renderer = new TranscriptRenderer(transcript)
+    vi.stubGlobal("navigator", { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } })
+    renderer.render([assistantContent([{ type: "text", text: "Answer" }])], "one")
+    const button = transcript.querySelector("button") as HTMLButtonElement
+    button.click()
+    await Promise.resolve()
+    expect(button.querySelector(".copy-label")?.textContent).toBe("Copied")
+    vi.advanceTimersByTime(2_000)
+    expect(button.querySelector(".copy-label")?.textContent).toBe("Copy all")
+    expect(button.querySelector("[role='status']")?.textContent).toBe("")
+    expect(button.title).toBe("Copy all")
+  })
+
+  test("keeps Copy all focused when new code controls arrive during streaming", () => {
     const document = installDocument()
     const transcript = document.createElement("div")
     document.body.append(transcript)
@@ -183,12 +221,12 @@ describe("conversation message rendering", () => {
       [assistantContent([{ type: "text", text: "Start\n\n```ts\nconst x = 1\n```" }])],
       "one",
     )
-    expect(document.activeElement?.getAttribute("aria-label")).toBe("Copy answer")
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("Copy all")
   })
 
   test.each([
-    ["Copy answer", "Copied"],
-    ["Copy answer", "Copy failed"],
+    ["Copy all", "Copied"],
+    ["Copy all", "Copy failed"],
     ["Copy code", "Copied"],
     ["Copy code", "Copy failed"],
   ])("preserves %s icons and feedback through streaming: %s", async (label, feedback) => {
@@ -216,7 +254,7 @@ describe("conversation message rendering", () => {
     const pendingIcon = path.getAttribute("d")
     expect(pendingIcon).not.toBe(initialIcon)
     expect(writeText).toHaveBeenCalledExactlyOnceWith(
-      label === "Copy answer" ? first : "const first = 1",
+      label === "Copy all" ? first : "const first = 1",
     )
     renderer.render([assistantContent([{ type: "text", text: latest }])], "one")
     expect(writeText).toHaveBeenCalledTimes(1)
@@ -232,16 +270,16 @@ describe("conversation message rendering", () => {
     expect(resultIcon).not.toBe(pendingIcon)
     expect(button()).toBe(clicked)
     renderer.render([assistantContent([{ type: "text", text: `${latest}\n\nDone.` }])], "one")
-    expect(button().textContent).toBe(feedback)
+    expect(button().querySelector(".copy-label")?.textContent).toBe(feedback)
     expect(path.getAttribute("d")).toBe(resultIcon)
     expect(button().getAttribute("aria-label")).toBe(label)
     button().click()
     expect(path.getAttribute("d")).toBe(pendingIcon)
     expect(writeText).toHaveBeenLastCalledWith(
-      label === "Copy answer" ? `${latest}\n\nDone.` : "const first = 1\nconst second = 2",
+      label === "Copy all" ? `${latest}\n\nDone.` : "const first = 1\nconst second = 2",
     )
     await Promise.resolve()
-    expect(button().textContent).toBe("Copied")
+    expect(button().querySelector(".copy-label")?.textContent).toBe("Copied")
   })
 
   test("ignores older clipboard completions and isolates pending feedback across sessions", async () => {
@@ -273,19 +311,19 @@ describe("conversation message rendering", () => {
     button.click()
     failSecond()
     await Promise.resolve()
-    expect(button.textContent).toBe("Copy failed")
+    expect(button.querySelector(".copy-label")?.textContent).toBe("Copy failed")
     finishFirst()
     await Promise.resolve()
-    expect(button.textContent).toBe("Copy failed")
+    expect(button.querySelector(".copy-label")?.textContent).toBe("Copy failed")
 
     button.click()
     renderer.render([message], "two")
     const newButton = transcript.querySelector("button") as HTMLButtonElement
     expect(newButton).not.toBe(button)
     await Promise.resolve()
-    expect(button.textContent).toBe("Copied")
-    expect(newButton.textContent).toBe("")
-    expect(newButton.title).toBe("Copy answer")
+    expect(button.querySelector(".copy-label")?.textContent).toBe("Copied")
+    expect(newButton.querySelector(".copy-label")?.textContent).toBe("Copy all")
+    expect(newButton.title).toBe("Copy all")
   })
 
   test.each([
@@ -304,7 +342,7 @@ describe("conversation message rendering", () => {
     const button = transcript.querySelector("button") as HTMLButtonElement
     button.click()
     renderer.render([assistantContent([{ type: "text", text: "Start and finish" }])], "one")
-    expect(transcript.querySelector("button")?.textContent).toBe("Copy failed")
+    expect(transcript.querySelector("button .copy-label")?.textContent).toBe("Copy failed")
   })
 
   test("does not force readers back to the bottom on updates", () => {

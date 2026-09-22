@@ -3,7 +3,7 @@ type ConversationTextKey =
   | "addInstruction"
   | "assistantIdentity"
   | "copied"
-  | "copyAnswer"
+  | "copyAll"
   | "copyCode"
   | "copyFailed"
   | "copying"
@@ -39,7 +39,7 @@ const ENGLISH: Record<ConversationTextKey, string> = {
   addInstruction: "Add instruction",
   assistantIdentity: "Browser assistant",
   copied: "Copied",
-  copyAnswer: "Copy answer",
+  copyAll: "Copy all",
   copyCode: "Copy code",
   copyFailed: "Copy failed",
   copying: "Copying…",

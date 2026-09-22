@@ -1350,10 +1350,8 @@ test("loads the Side Panel without uncaught errors", async () => {
   await expect(controller.locator("#abort")).toBeHidden()
   await expect(controller.locator("#steer, #follow-up")).toHaveCount(0)
   await expect(controller.locator("#rename-session")).toBeHidden()
-  await controller.locator(".session-disclosure > summary").click()
-  await expect(controller.locator("#rename-session")).toBeVisible()
-  await controller.locator(".session-disclosure > summary").click()
   await controller.locator("#account-menu-trigger").click()
+  await expect(controller.locator("#rename-session")).toBeVisible()
   await expect(controller.locator("#grant-site")).toBeVisible()
   const addCredential = controller.locator("#login")
   await expect(addCredential).toHaveText("Add credential")
@@ -1375,13 +1373,11 @@ test("loads the Side Panel without uncaught errors", async () => {
 
   const viewport = controller.viewportSize() ?? { width: 1280, height: 720 }
   await controller.setViewportSize({ width: 360, height: 200 })
-  expect(await controller.evaluate(() => document.documentElement.scrollHeight)).toBeGreaterThan(
-    200,
-  )
-  await controller.mouse.wheel(0, 1_000)
-  await expect.poll(() => controller.evaluate(() => window.scrollY)).toBeGreaterThan(0)
+  expect(await controller.evaluate(() => document.documentElement.scrollHeight)).toBe(200)
+  expect(await controller.evaluate(() => window.scrollY)).toBe(0)
+  await expect(controller.locator("#prompt")).toBeVisible()
+  await expect(controller.locator("#send")).toBeVisible()
   await controller.setViewportSize(viewport)
-  await controller.evaluate(() => window.scrollTo(0, 0))
 })
 
 test("keeps idle composer controls hidden during background operations", async () => {
@@ -1938,6 +1934,7 @@ test("stores API keys through the method-first account flow without changing mod
     await expect(controller.locator("#run-status")).toHaveText(
       "Anthropic configured with an API key",
     )
+    await expect(controller.locator(".composer-toolbar .status-pill")).toBeVisible()
 
     await openAnthropicPrompt()
     await controller.locator("#auth-prompt-dialog").getByRole("button", { name: "Cancel" }).click()
@@ -2051,6 +2048,7 @@ test("synchronizes provider controls when a new session restores the latest mode
 })
 
 test("keeps header and composer controls usable at normal and narrow widths", async () => {
+  await controller.reload()
   const testInfo = test.info()
   const originalViewport = controller.viewportSize() ?? { width: 1280, height: 720 }
   const originalUi = await controller.evaluate(() => {
@@ -2062,6 +2060,7 @@ test("keeps header and composer controls usable at normal and narrow widths", as
       state: document.body.dataset.state ?? "idle",
       sendLabel: document.querySelector<HTMLElement>("#send-label")?.textContent ?? "Send",
       queueHidden: document.querySelector<HTMLButtonElement>("#queue-instruction")?.hidden ?? true,
+      statusHidden: status?.closest<HTMLElement>(".status-pill")?.hidden ?? false,
     }
   })
 
@@ -2072,7 +2071,7 @@ test("keeps header and composer controls usable at normal and narrow widths", as
     await expect(controller.locator(".page-context, #tab-status")).toHaveCount(0)
 
     const sharesRow = await controller.locator(".header-row").evaluate((header) => {
-      const selectors = ["#sessions", "#new-session", ".session-disclosure", ".account-disclosure"]
+      const selectors = [".session-picker", "#new-session", ".account-disclosure"]
       const rectangles = selectors.map((selector) => {
         const element = header.querySelector(selector)
         if (!(element instanceof HTMLElement)) throw new Error(`Missing ${selector}`)
@@ -2085,7 +2084,7 @@ test("keeps header and composer controls usable at normal and narrow widths", as
     })
     expect(sharesRow).toBe(true)
     await expect(controller.locator(".app-header #run-status")).toHaveCount(0)
-    await expect(controller.locator(".composer-toolbar #run-status")).toBeVisible()
+    await expect(controller.locator(".composer-toolbar .status-pill")).toBeHidden()
     await expect(controller.locator("#composer-hint")).toBeVisible()
     const transcriptTop = await controller
       .locator("#transcript")
@@ -2113,6 +2112,8 @@ test("keeps header and composer controls usable at normal and narrow widths", as
                   const text = running ? "Using browser_read_visible_page_text" : "Ready"
                   status.textContent = text
                   status.title = text
+                  const pill = status.closest<HTMLElement>(".status-pill")
+                  if (pill) pill.hidden = !running
                 }
                 const abort = document.querySelector<HTMLButtonElement>("#abort")
                 if (abort) abort.hidden = !running
@@ -2130,14 +2131,12 @@ test("keeps header and composer controls usable at normal and narrow widths", as
               const selectors = [
                 "#sessions",
                 "#new-session",
-                ".session-disclosure > summary",
                 "#account-menu-trigger",
                 "#prompt",
-                "#run-status",
                 ...(narrowRunning ? [] : ["#voice-input"]),
                 "#send",
                 ...(document.body.dataset.state === "running"
-                  ? ["#abort", "#queue-instruction"]
+                  ? ["#run-status", "#abort", "#queue-instruction"]
                   : []),
               ]
               const controls = selectors.map((selector) => {
@@ -2192,7 +2191,7 @@ test("keeps header and composer controls usable at normal and narrow widths", as
 
     await controller.setViewportSize({ width: 320, height: 720 })
     const accountTrigger = controller.locator("#account-menu-trigger")
-    await controller.locator(".session-disclosure > summary").focus()
+    await controller.locator("#new-session").focus()
     await controller.keyboard.press("Tab")
     await expect(accountTrigger).toBeFocused()
     const focusOutline = await accountTrigger.evaluate((element) => {
@@ -2211,15 +2210,9 @@ test("keeps header and composer controls usable at normal and narrow widths", as
     })
     expect(menuBounds.left).toBeGreaterThanOrEqual(0)
     expect(menuBounds.right).toBeLessThanOrEqual(320)
+    await expect(accountMenu.locator("#rename-session")).toBeVisible()
+    await expect(accountMenu.locator("#open-settings")).toBeVisible()
     await accountTrigger.click()
-    await controller.locator(".session-disclosure > summary").click()
-    const sessionMenu = controller.locator(".session-menu")
-    await expect(sessionMenu).toBeVisible()
-    const sessionBounds = await sessionMenu.boundingBox()
-    if (!sessionBounds) throw new Error("Missing session menu bounds")
-    expect(sessionBounds.x).toBeGreaterThanOrEqual(0)
-    expect(sessionBounds.x + sessionBounds.width).toBeLessThanOrEqual(320)
-    await controller.locator(".session-disclosure > summary").click()
   } finally {
     await controller.evaluate((original) => {
       document.documentElement.style.setProperty("--app-font-size", original.fontSize)
@@ -2228,6 +2221,8 @@ test("keeps header and composer controls usable at normal and narrow widths", as
       if (status) {
         status.textContent = original.status
         status.title = original.statusTitle
+        const pill = status.closest<HTMLElement>(".status-pill")
+        if (pill) pill.hidden = original.statusHidden
       }
       const abort = document.querySelector<HTMLButtonElement>("#abort")
       if (abort) abort.hidden = original.state !== "running"
@@ -2712,23 +2707,29 @@ test("preserves streamed Markdown disclosures, focus, scroll, copying and safe r
       { type: "response.output_text.delta", output_index: 1, delta: initial },
     ])
     await expect(controller.locator("#transcript h1")).toHaveText("Streamed answer")
-    const copyAnswer = controller.getByRole("button", { name: "Copy answer", exact: true })
+    const copyAll = controller.getByRole("button", { name: "Copy all", exact: true })
     const copyCode = controller.getByRole("button", { name: "Copy code", exact: true })
     for (const [button, label] of [
-      [copyAnswer, "Copy answer"],
+      [copyAll, "Copy all"],
       [copyCode, "Copy code"],
     ] as const) {
-      await expect(button).toHaveText("")
+      await expect(button.locator(".copy-label")).toHaveText(label)
       await expect(button).toHaveAttribute("title", label)
       await expect(button.locator("svg[aria-hidden='true']")).toBeVisible()
     }
-    await copyAnswer.focus()
-    await copyAnswer.press("Enter")
+    await expect(
+      copyAll.locator("xpath=ancestor::footer[contains(@class, 'message-actions')]"),
+    ).toBeVisible()
+    await expect(
+      copyCode.locator("xpath=ancestor::div[contains(@class, 'code-block')]"),
+    ).toBeVisible()
+    await copyAll.focus()
+    await copyAll.press("Enter")
     await copyCode.focus()
     await copyCode.press("Space")
-    await expect(copyAnswer).toHaveText("Copying…")
-    await expect(copyCode).toHaveText("Copying…")
-    await expect(copyAnswer).toHaveAttribute("title", "Copy answer: Copying…")
+    await expect(copyAll.locator(".copy-label")).toHaveText("Copying…")
+    await expect(copyCode.locator(".copy-label")).toHaveText("Copying…")
+    await expect(copyAll).toHaveAttribute("title", "Copy all: Copying…")
     await expect(copyCode).toHaveAttribute("title", "Copy code: Copying…")
     const thinking = controller.locator("#transcript details.thinking")
     await expect(thinking).toHaveJSProperty("open", false)
@@ -2751,8 +2752,8 @@ test("preserves streamed Markdown disclosures, focus, scroll, copying and safe r
     expect(
       await controller.locator("#transcript").evaluate((element) => element.scrollTop),
     ).toBeCloseTo(scrollTop, 0)
-    await expect(copyAnswer).toHaveText("Copying…")
-    await expect(copyCode).toHaveText("Copying…")
+    await expect(copyAll.locator(".copy-label")).toHaveText("Copying…")
+    await expect(copyCode.locator(".copy-label")).toHaveText("Copying…")
     const copiedDuringStream = await controller.evaluate(() => {
       const stream = (
         window as typeof window & {
@@ -2764,9 +2765,9 @@ test("preserves streamed Markdown disclosures, focus, scroll, copying and safe r
       return stream.copied
     })
     expect(copiedDuringStream).toEqual([initial, 'const text = "<tag>"'])
-    await expect(copyAnswer).toHaveText("Copied")
-    await expect(copyCode).toHaveText("Copy failed")
-    await expect(copyAnswer).toHaveAttribute("title", "Copy answer: Copied")
+    await expect(copyAll.locator(".copy-label")).toHaveText("Copied")
+    await expect(copyCode.locator(".copy-label")).toHaveText("Copy failed")
+    await expect(copyAll).toHaveAttribute("title", "Copy all: Copied")
     await expect(copyCode).toHaveAttribute("title", "Copy code: Copy failed")
     const output = [
       {
@@ -2805,8 +2806,52 @@ test("preserves streamed Markdown disclosures, focus, scroll, copying and safe r
     await expect(controller.locator("#queue-instruction")).toBeHidden()
     await expect(summary).toBeFocused()
     await expect(thinking).toHaveJSProperty("open", true)
-    await expect(copyAnswer).toHaveText("Copied")
-    await expect(copyCode).toHaveText("Copy failed")
+    await expect(copyAll.locator(".copy-label")).toHaveText("Copied")
+    await expect(copyCode.locator(".copy-label")).toHaveText("Copy failed")
+    const scrollToBottom = controller.locator("#scroll-to-bottom")
+    await expect(scrollToBottom).toBeVisible()
+    await scrollToBottom.click()
+    await expect
+      .poll(() =>
+        controller
+          .locator("#transcript")
+          .evaluate((element) =>
+            Math.round(element.scrollHeight - element.scrollTop - element.clientHeight),
+          ),
+      )
+      .toBeLessThan(48)
+    await expect(scrollToBottom).toBeHidden()
+
+    const transcriptViewport = controller.viewportSize()
+    if (!transcriptViewport) throw new Error("Missing Side Panel viewport")
+    await controller.setViewportSize({
+      width: transcriptViewport.width,
+      height: transcriptViewport.height - 200,
+    })
+    await expect(scrollToBottom).toBeVisible()
+    await controller.setViewportSize(transcriptViewport)
+    await expect(scrollToBottom).toBeHidden()
+
+    const transcriptElement = controller.locator("#transcript")
+    await transcriptElement.evaluate((element) => {
+      element.style.overflowAnchor = "none"
+      element.scrollTop = element.scrollHeight - element.clientHeight - 20
+    })
+    await expect(scrollToBottom).toBeHidden()
+    const lastMessage = controller.locator("#transcript > .message").last()
+    await lastMessage.evaluate((element) => {
+      element.style.paddingBottom = "240px"
+    })
+    await expect(scrollToBottom).toBeVisible()
+    await lastMessage.evaluate((element) => {
+      element.style.removeProperty("padding-bottom")
+    })
+    await transcriptElement.evaluate((element) => {
+      element.style.removeProperty("overflow-anchor")
+      element.scrollTop = element.scrollHeight
+    })
+    await expect(scrollToBottom).toBeHidden()
+
     await controller.evaluate(() => {
       const stream = (
         window as typeof window & {
@@ -2816,7 +2861,7 @@ test("preserves streamed Markdown disclosures, focus, scroll, copying and safe r
       if (!stream) throw new Error("No mock stream")
       stream.copyImmediately()
     })
-    await controller.getByRole("button", { name: "Copy answer", exact: true }).click()
+    await controller.getByRole("button", { name: "Copy all", exact: true }).click()
     expect(
       await controller.evaluate(
         () =>
@@ -2842,10 +2887,10 @@ test("preserves streamed Markdown disclosures, focus, scroll, copying and safe r
         },
       }),
     )
-    await controller.getByRole("button", { name: "Copy answer", exact: true }).click()
-    await expect(controller.getByRole("button", { name: "Copy answer", exact: true })).toHaveText(
-      "Copy failed",
-    )
+    await controller.getByRole("button", { name: "Copy all", exact: true }).click()
+    await expect(
+      controller.getByRole("button", { name: "Copy all", exact: true }).locator(".copy-label"),
+    ).toHaveText("Copy failed")
     for (const width of [320, 360])
       for (const size of [12, 24])
         for (const colorScheme of ["light", "dark"] as const) {
@@ -2854,29 +2899,51 @@ test("preserves streamed Markdown disclosures, focus, scroll, copying and safe r
           await controller.evaluate((size) => {
             document.documentElement.style.setProperty("--app-font-size", `${size}px`)
           }, size)
+          const horizontalLayout = await controller.evaluate(() => ({
+            pageWidth: document.documentElement.scrollWidth,
+            viewportWidth: window.innerWidth,
+            offenders: Array.from(document.querySelectorAll<HTMLElement>("body *"))
+              .map((element) => {
+                const bounds = element.getBoundingClientRect()
+                return {
+                  selector: `${element.tagName.toLowerCase()}${element.id ? `#${element.id}` : ""}${Array.from(
+                    element.classList,
+                  )
+                    .map((name) => `.${name}`)
+                    .join("")}`,
+                  left: bounds.left,
+                  right: bounds.right,
+                  width: bounds.width,
+                }
+              })
+              .filter((bounds) => bounds.left < -1 || bounds.right > window.innerWidth + 1),
+          }))
           expect(
-            await controller.evaluate(
-              () => document.documentElement.scrollWidth <= window.innerWidth,
-            ),
-          ).toBe(true)
-          for (const button of [copyAnswer, copyCode]) {
+            horizontalLayout.pageWidth,
+            JSON.stringify(horizontalLayout.offenders),
+          ).toBeLessThanOrEqual(horizontalLayout.viewportWidth)
+          for (const button of [copyAll, copyCode]) {
             const layout = await button.evaluate((element) => {
               const bounds = element.getBoundingClientRect()
               const parent = element.parentElement as HTMLElement
               const icon = element.querySelector("svg") as SVGSVGElement
+              const label = element.querySelector(".copy-label") as HTMLElement
               const status = element.querySelector("[role='status']") as HTMLElement
               return {
+                code: element.classList.contains("code-copy-button"),
                 rightGap: parent.getBoundingClientRect().right - bounds.right,
                 width: bounds.width,
                 height: bounds.height,
                 iconWidth: icon.getBoundingClientRect().width,
+                labelWidth: label.getBoundingClientRect().width,
                 statusClip: getComputedStyle(status).clip,
               }
             })
-            expect(layout.rightGap).toBeCloseTo(0, 0)
-            expect(layout.width).toBe(40)
-            expect(layout.height).toBe(40)
-            expect(layout.iconWidth).toBe(16)
+            expect(layout.rightGap).toBeCloseTo(layout.code ? 8 : 0, 0)
+            expect(layout.width).toBeGreaterThan(50)
+            expect(layout.height).toBeGreaterThanOrEqual(30)
+            expect(layout.iconWidth).toBe(14)
+            expect(layout.labelWidth).toBeGreaterThan(0)
             expect(layout.statusClip).toBe("rect(0px, 0px, 0px, 0px)")
           }
           expect(
@@ -2924,6 +2991,9 @@ test("preserves streamed Markdown disclosures, focus, scroll, copying and safe r
       )
       .catch(() => undefined)
     await expect(controller.locator("#run-status")).toHaveText("Ready")
+    await controller.evaluate(() => {
+      document.documentElement.style.setProperty("--app-font-size", "16px")
+    })
     await controller.setViewportSize({ width: 654, height: 720 })
     await controller.emulateMedia({ colorScheme: "light" })
   }
