@@ -96,26 +96,27 @@ export function executeElementPicker(
       .replace(/\\/g, "\\\\")
       .replace(/"/g, '\\"')
       .replace(/[\r\n\f]/g, " ")
-  const selectorCount = (selector: string): number => {
+  const uniquelySelects = (selector: string, element: Element): boolean => {
     try {
-      return document.querySelectorAll(selector).length
+      const matches = document.querySelectorAll(selector)
+      return matches.length === 1 && matches[0] === element
     } catch {
-      return 0
+      return false
     }
   }
   const selectorFor = (element: Element): { selector: string; unique: boolean } => {
     const tag = element.tagName.toLowerCase()
-    const id = bounded(element.id, limits.id)
+    const id = element.id.length <= limits.id ? element.id : ""
     if (id) {
       const selector = `#${identifier(id)}`
-      if (selector.length <= limits.selector && selectorCount(selector) === 1)
+      if (selector.length <= limits.selector && uniquelySelects(selector, element))
         return { selector, unique: true }
     }
     for (const name of ["data-testid", "data-test", "aria-label", "name"] as const) {
-      const value = bounded(element.getAttribute(name), limits.attributes)
-      if (!value) continue
+      const value = element.getAttribute(name)
+      if (!value || value.length > limits.attributes) continue
       const selector = `${tag}[${name}="${attributeValue(value)}"]`
-      if (selector.length <= limits.selector && selectorCount(selector) === 1)
+      if (selector.length <= limits.selector && uniquelySelects(selector, element))
         return { selector, unique: true }
     }
 
@@ -123,12 +124,11 @@ export function executeElementPicker(
     let current: Element | null = element
     for (let depth = 0; current && depth < 6; depth += 1) {
       let part = current.tagName.toLowerCase()
-      const currentId = bounded(current.id, limits.id)
+      const currentId = current.id.length <= limits.id ? current.id : ""
       if (currentId) part += `#${identifier(currentId)}`
       else {
         const classes = Array.from(current.classList)
-          .map((name) => bounded(name, limits.className))
-          .filter(Boolean)
+          .filter((name) => name.length <= limits.className)
           .slice(0, 2)
         if (classes.length > 0) part += classes.map((name) => `.${identifier(name)}`).join("")
         const parent = current.parentElement
@@ -141,14 +141,14 @@ export function executeElementPicker(
       }
       parts.unshift(part)
       const selector = parts.join(" > ")
-      if (selector.length <= limits.selector && selectorCount(selector) === 1)
+      if (selector.length <= limits.selector && uniquelySelects(selector, element))
         return { selector, unique: true }
       current = current.parentElement
     }
     const selector = parts.join(" > ")
     return selector.length <= limits.selector
-      ? { selector, unique: selectorCount(selector) === 1 }
-      : { selector: tag, unique: selectorCount(tag) === 1 }
+      ? { selector, unique: uniquelySelects(selector, element) }
+      : { selector: tag, unique: uniquelySelects(tag, element) }
   }
   const visibleText = (element: Element): string => {
     if (element.matches("input, textarea, select, [contenteditable]")) return ""
@@ -187,29 +187,61 @@ export function executeElementPicker(
       }
       return current === null
     }
+    const hasVisiblePoint = (rect: DOMRect, parent: Element): boolean => {
+      const left = Math.max(0, rect.left)
+      const right = Math.min(window.innerWidth, rect.right)
+      const top = Math.max(0, rect.top)
+      const bottom = Math.min(window.innerHeight, rect.bottom)
+      if (left >= right || top >= bottom) return false
+      if (typeof document.elementFromPoint !== "function") return true
+      const insetX = Math.min(1, (right - left) / 2)
+      const insetY = Math.min(1, (bottom - top) / 2)
+      return [
+        [(left + right) / 2, (top + bottom) / 2],
+        [left + insetX, top + insetY],
+        [right - insetX, top + insetY],
+        [left + insetX, bottom - insetY],
+        [right - insetX, bottom - insetY],
+      ].some(([x, y]) => document.elementFromPoint(x ?? 0, y ?? 0) === parent)
+    }
     const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT)
+    const range = document.createRange()
+    const inspectionLimit = Math.min(2_048, limits.text * 4)
     let text = ""
-    for (let inspected = 0; inspected < 100 && text.length < limits.text; inspected += 1) {
-      const node = walker.nextNode()
-      if (!node) break
-      const parent = node.parentElement
-      if (
-        !parent ||
-        parent.closest(
-          "input, textarea, select, [contenteditable], [hidden], [aria-hidden='true'], script, style",
+    let inspected = 0
+    const pointerEvents = host.style.pointerEvents
+    host.style.pointerEvents = "none"
+    try {
+      for (let count = 0; count < 100 && text.length < limits.text; count += 1) {
+        const node = walker.nextNode()
+        if (!node || inspected >= inspectionLimit) break
+        const parent = node.parentElement
+        if (
+          !parent ||
+          parent.closest(
+            "input, textarea, select, [contenteditable], [hidden], [aria-hidden='true'], script, style",
+          ) ||
+          !hasVisibleAncestors(parent)
         )
-      )
-        continue
-      if (!hasVisibleAncestors(parent)) continue
-      const visible = Array.from(parent.getClientRects()).some(
-        (rect) =>
-          rect.right > 0 &&
-          rect.bottom > 0 &&
-          rect.left < window.innerWidth &&
-          rect.top < window.innerHeight,
-      )
-      if (!visible) continue
-      text += ` ${node.textContent ?? ""}`
+          continue
+        text += " "
+        let offset = 0
+        for (const character of node.textContent ?? "") {
+          if (inspected + character.length > inspectionLimit) break
+          inspected += character.length
+          range.setStart(node, offset)
+          offset += character.length
+          range.setEnd(node, offset)
+          if (
+            /\s/.test(character) ||
+            Array.from(range.getClientRects()).some((rect) => hasVisiblePoint(rect, parent))
+          ) {
+            text += character
+          }
+        }
+      }
+    } finally {
+      host.style.pointerEvents = pointerEvents
     }
     return bounded(text, limits.text)
   }
@@ -497,12 +529,13 @@ export function executeElementPicker(
   window.addEventListener(
     "keydown",
     (event) => {
-      if (event.key !== "Escape") return
       block(event)
-      notify("cancelled", undefined, "escape")
+      if (event.key === "Escape") notify("cancelled", undefined, "escape")
     },
     { capture: true, signal: controller.signal },
   )
+  window.addEventListener("keypress", block, { capture: true, signal: controller.signal })
+  window.addEventListener("keyup", block, { capture: true, signal: controller.signal })
   window.addEventListener("pagehide", () => notify("cancelled", undefined, "pagehide"), {
     signal: controller.signal,
   })

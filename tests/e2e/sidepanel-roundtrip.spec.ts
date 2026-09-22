@@ -2839,6 +2839,20 @@ test("selects page elements without activating them and sends bounded structured
   await expect(pickerHost).toHaveCount(0)
   await controller.locator("#prompt").fill("")
 
+  await page.evaluate(() => {
+    const input = document.createElement("input")
+    input.id = "picker-keyboard-target"
+    document.body.append(input)
+  })
+  await startPicker()
+  await page.locator("#picker-keyboard-target").focus()
+  await page.keyboard.type("blocked input")
+  await expect(page.locator("#picker-keyboard-target")).toHaveValue("")
+  await expect(pickerHost).toHaveCount(1)
+  await page.keyboard.press("Escape")
+  await expect(pickerHost).toHaveCount(0)
+  await page.locator("#picker-keyboard-target").evaluate((input) => input.remove())
+
   await startPicker()
   await page.evaluate(() => {
     const target = document.querySelector("#ordinary")
@@ -3029,19 +3043,53 @@ test("selects page elements without activating them and sends bounded structured
         filterHidden.style.filter = "opacity(0)"
         filterHidden.style.pointerEvents = "none"
         filterHidden.textContent = "Filter-hidden fallback target"
+        const clipped = document.createElement("span")
+        clipped.style.clipPath = "inset(100%)"
+        clipped.textContent = "Clipped fallback target"
+        const occluded = document.createElement("span")
+        occluded.style.position = "relative"
+        occluded.style.display = "inline-block"
+        const occludedText = document.createElement("span")
+        occludedText.textContent = "Occluded fallback target"
+        const cover = document.createElement("span")
+        Object.assign(cover.style, {
+          background: "black",
+          inset: "0",
+          position: "absolute",
+        })
+        occluded.append(occludedText, cover)
         const input = document.createElement("input")
         input.value = "private-fallback-value"
         input.style.pointerEvents = "none"
-        target.append(hidden, filterHidden, input)
+        target.append(hidden, filterHidden, clipped, occluded, input)
       }
       section.append(target)
       fixture.append(section)
     }
+    const truncatedId = "x".repeat(128)
+    const truncatedAttribute = "d".repeat(256)
+    const collision = document.createElement("div")
+    collision.id = truncatedId
+    collision.setAttribute("data-testid", truncatedAttribute)
+    const longIdentifierTarget = document.createElement("div")
+    longIdentifierTarget.id = `${truncatedId}y`
+    longIdentifierTarget.className = "selector-long-target"
+    longIdentifierTarget.setAttribute("data-testid", `${truncatedAttribute}e`)
+    longIdentifierTarget.textContent = "Long identifier target"
+    fixture.append(collision, longIdentifierTarget)
     document.body.append(fixture)
   })
   await startPicker()
+  await selectTarget("#picker-fallback-fixture .selector-long-target")
+  await expect(
+    controller.locator(".selected-element-chip").filter({ hasText: "div#" }),
+  ).toBeVisible()
+
+  await startPicker()
   await selectTarget("#picker-fallback-fixture section:nth-of-type(2) > .picker-card")
-  await expect(controller.locator(".selected-element-chip")).toContainText("a.picker-card")
+  await expect(
+    controller.locator(".selected-element-chip").filter({ hasText: "a.picker-card" }),
+  ).toBeVisible()
 
   await page.evaluate(() => {
     const spacer = document.createElement("div")
@@ -3093,12 +3141,18 @@ test("selects page elements without activating them and sends bounded structured
     expect(providerBody).toContain('\\"text\\": \\"After replacement\\"')
     expect(providerBody).toContain('\\"cssSelector\\": \\"#picker-dynamic\\"')
     expect(providerBody).toContain(":nth-of-type(2)")
+    expect(providerBody).toContain(
+      '\\"cssSelector\\": \\"div.selector-long-target:nth-of-type(2)\\"',
+    )
+    expect(providerBody).toContain("Long identifier target")
     expect(providerBody).toContain("Visible fallback target")
     expect(providerBody).toContain("https://example.test/next")
     expect(providerBody).not.toContain("picker-secret-value")
     expect(providerBody).not.toContain("private-fallback-value")
     expect(providerBody).not.toContain("Hidden fallback target")
     expect(providerBody).not.toContain("Filter-hidden fallback target")
+    expect(providerBody).not.toContain("Clipped fallback target")
+    expect(providerBody).not.toContain("Occluded fallback target")
     expect(providerBody).not.toContain("user:secret")
     await expect(controller.locator("#selected-elements")).toBeHidden()
   } finally {

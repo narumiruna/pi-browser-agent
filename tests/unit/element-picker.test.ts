@@ -180,6 +180,22 @@ describe("injected element picker", () => {
     expect(sent).toHaveLength(0)
   })
 
+  test("blocks non-Escape keyboard interaction while active", () => {
+    const input = document.createElement("input")
+    document.body.append(input)
+    const received = vi.fn()
+    input.addEventListener("keydown", received)
+    executeElementPicker("start", "keyboard", context, ELEMENT_PICKER_LIMITS)
+    const event = new KeyboardEvent("keydown", { key: "a", bubbles: true, cancelable: true })
+
+    input.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(received).not.toHaveBeenCalled()
+    expect(pickerHost()).not.toBeNull()
+    expect(sent).toHaveLength(0)
+  })
+
   test("cancels on Escape and removes its overlay once", async () => {
     executeElementPicker("start", "escape", context, ELEMENT_PICKER_LIMITS)
     const event = new KeyboardEvent("keydown", { key: "Escape", cancelable: true })
