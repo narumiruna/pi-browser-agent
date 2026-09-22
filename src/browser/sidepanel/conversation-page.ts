@@ -126,7 +126,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   function setRunStatus(text: string, running = runtime.agent.state.isStreaming): void {
     runStatus.textContent = text
     runStatus.title = text
-    statusPill.hidden = !running
+    statusPill.hidden = !running && text === "Ready"
     document.body.dataset.state = running ? "running" : "idle"
     transcript.setAttribute("aria-busy", String(running))
     abortButton.hidden = !running
@@ -148,6 +148,23 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight
     scrollToBottomButton.hidden =
       transcript.scrollHeight <= transcript.clientHeight + 1 || distanceFromBottom < 48
+  }
+
+  const transcriptResizeObserver = new ResizeObserver(updateScrollToBottomButton)
+  const observedTranscriptElements = new Set<Element>()
+
+  function observeTranscriptLayout(): void {
+    const currentElements = new Set<Element>([transcript, ...Array.from(transcript.children)])
+    for (const observed of observedTranscriptElements) {
+      if (currentElements.has(observed)) continue
+      transcriptResizeObserver.unobserve(observed)
+      observedTranscriptElements.delete(observed)
+    }
+    for (const current of currentElements) {
+      if (observedTranscriptElements.has(current)) continue
+      transcriptResizeObserver.observe(current)
+      observedTranscriptElements.add(current)
+    }
   }
 
   function updateSendButton(): void {
@@ -184,6 +201,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       emptyState.append(icon, title, description)
       transcript.append(emptyState)
     }
+    observeTranscriptLayout()
     updateScrollToBottomButton()
   }
 
@@ -624,6 +642,8 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     }, setError)
   })
   window.addEventListener("pagehide", () => {
+    transcriptResizeObserver.disconnect()
+    observedTranscriptElements.clear()
     voiceInput?.abort()
     authentication?.abort()
     void runtime.shutdown()

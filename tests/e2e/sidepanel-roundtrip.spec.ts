@@ -1899,6 +1899,7 @@ test("stores API keys through the method-first account flow without changing mod
     await expect(controller.locator("#run-status")).toHaveText(
       "Anthropic configured with an API key",
     )
+    await expect(controller.locator(".composer-toolbar .status-pill")).toBeVisible()
 
     await openAnthropicPrompt()
     await controller.locator("#auth-prompt-dialog").getByRole("button", { name: "Cancel" }).click()
@@ -2012,6 +2013,7 @@ test("synchronizes provider controls when a new session restores the latest mode
 })
 
 test("keeps header and composer controls usable at normal and narrow widths", async () => {
+  await controller.reload()
   const testInfo = test.info()
   const originalViewport = controller.viewportSize() ?? { width: 1280, height: 720 }
   const originalUi = await controller.evaluate(() => {
@@ -2761,6 +2763,37 @@ test("preserves streamed Markdown disclosures, focus, scroll, copying and safe r
       )
       .toBeLessThan(48)
     await expect(scrollToBottom).toBeHidden()
+
+    const transcriptViewport = controller.viewportSize()
+    if (!transcriptViewport) throw new Error("Missing Side Panel viewport")
+    await controller.setViewportSize({
+      width: transcriptViewport.width,
+      height: transcriptViewport.height - 200,
+    })
+    await expect(scrollToBottom).toBeVisible()
+    await controller.setViewportSize(transcriptViewport)
+    await expect(scrollToBottom).toBeHidden()
+
+    const transcriptElement = controller.locator("#transcript")
+    await transcriptElement.evaluate((element) => {
+      element.style.overflowAnchor = "none"
+      element.scrollTop = element.scrollHeight - element.clientHeight - 20
+    })
+    await expect(scrollToBottom).toBeHidden()
+    const lastMessage = controller.locator("#transcript > .message").last()
+    await lastMessage.evaluate((element) => {
+      element.style.paddingBottom = "240px"
+    })
+    await expect(scrollToBottom).toBeVisible()
+    await lastMessage.evaluate((element) => {
+      element.style.removeProperty("padding-bottom")
+    })
+    await transcriptElement.evaluate((element) => {
+      element.style.removeProperty("overflow-anchor")
+      element.scrollTop = element.scrollHeight
+    })
+    await expect(scrollToBottom).toBeHidden()
+
     await controller.evaluate(() => {
       const stream = (
         window as typeof window & {
