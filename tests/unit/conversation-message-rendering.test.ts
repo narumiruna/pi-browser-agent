@@ -3,10 +3,6 @@ import type { AssistantMessage } from "@earendil-works/pi-ai"
 import { JSDOM } from "jsdom"
 import { afterEach, describe, expect, test, vi } from "vitest"
 import {
-  conversationLanguage,
-  conversationText,
-} from "../../src/browser/sidepanel/conversation-copy.js"
-import {
   renderMessageContent,
   TranscriptRenderer,
 } from "../../src/browser/sidepanel/message-rendering.js"
@@ -352,7 +348,7 @@ describe("conversation message rendering", () => {
     expect(container.textContent).toContain("[tool call: browser_read_page]\n{}")
   })
 
-  test("uses Traditional Chinese labels for a Traditional Chinese browser locale", () => {
+  test("keeps conversation labels in English for a Traditional Chinese browser locale", () => {
     const document = installDocument()
     vi.stubGlobal("navigator", { language: "zh-TW", languages: ["zh-TW"] })
     const transcript = document.createElement("div")
@@ -368,33 +364,13 @@ describe("conversation message rendering", () => {
       "one",
     )
 
-    expect(transcript.querySelector(".message.user .role")?.textContent).toBe("你")
-    expect(transcript.querySelector("details.thinking summary")?.textContent).toBe("思考中")
-    expect(transcript.textContent).toContain("正在讀取頁面")
+    expect(transcript.querySelector(".message.user .role")?.textContent).toBe("You")
+    expect(transcript.querySelector("details.thinking summary")?.textContent).toBe("Thinking")
+    expect(transcript.textContent).toContain("Reading the page")
     expect(transcript.querySelector(".assistant-turn")?.getAttribute("aria-label")).toBe(
-      "Pi · 瀏覽器助理",
+      "Pi · Browser assistant",
     )
   })
-
-  test.each([
-    { languages: ["en-US", "zh-TW"], fallback: "en-US", language: "en", user: "You" },
-    {
-      languages: ["fr-FR", "zh-Hant-HK", "en-US"],
-      fallback: "fr-FR",
-      language: "zh-TW",
-      user: "你",
-    },
-    { languages: ["fr-FR", "en-GB", "zh-TW"], fallback: "fr-FR", language: "en", user: "You" },
-    { languages: [], fallback: "zh-HK", language: "zh-TW", user: "你" },
-  ])(
-    "uses the first supported preferred locale from $languages",
-    ({ languages, fallback, language, user }) => {
-      vi.stubGlobal("navigator", { language: fallback, languages })
-
-      expect(conversationLanguage()).toBe(language)
-      expect(conversationText("user")).toBe(user)
-    },
-  )
 
   test("renders supported images with stable nodes and accessibility labels", () => {
     const document = installDocument()

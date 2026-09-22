@@ -13,7 +13,7 @@ import { type RuntimeEvent, sendRuntimeRequest } from "../runtime/messages.js"
 import type { JsonObject } from "../runtime/types.js"
 import { SETTINGS_KEY } from "../storage.js"
 import { AuthenticationController } from "./authentication.js"
-import { activityText, conversationLanguage, conversationText } from "./conversation-copy.js"
+import { activityText, conversationText } from "./conversation-copy.js"
 import {
   imageContentSource,
   MAX_PASTED_IMAGE_BYTES,
@@ -59,7 +59,6 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   let voiceInputStarting = false
   let authentication: AuthenticationController | undefined
 
-  document.documentElement.lang = conversationLanguage()
   newSessionButton.ariaLabel = conversationText("newSession")
   newSessionButton.title = conversationText("newSession")
   abortButton.textContent = conversationText("stop")

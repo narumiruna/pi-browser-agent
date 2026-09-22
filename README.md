@@ -64,7 +64,7 @@ Assistant answers support Markdown headings, lists, tables, links, and fenced co
 
 Each Pi turn groups its activity and final answer in one response card. Production builds replace internal tool names and result payloads with quiet, human-readable activity labels; development builds retain expandable tool diagnostics. Thinking remains expandable, while errors and image results open by default. Manual expansion/collapse and keyboard focus survive streaming updates. The transcript follows new output only while you are near the bottom. Reopening a session restores default disclosure states; it does not change saved messages.
 
-The main conversation controls follow Traditional Chinese browser locales; other locales use English. During a run, **Send** becomes **Add instruction**, and a separate clock control queues the prompt for later. The shorter keyboard hint keeps Enter focused on the primary action.
+The conversation interface uses English. During a run, **Send** becomes **Add instruction**, and a separate clock control queues the prompt for later. The shorter keyboard hint keeps Enter focused on the primary action.
 
 The Side Panel supports creating, resuming, renaming, and deleting sessions. Complete transcript boundaries, including confirmed bookmark tool results, are stored in versioned IndexedDB records. Storage keeps at most 50 sessions and limits each record to 5 MB. **Clear all session data** removes transcripts and embedded images.
 
