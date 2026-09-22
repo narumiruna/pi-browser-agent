@@ -35,7 +35,24 @@ beforeEach(() => {
     configurable: true,
     value: () => hit,
   })
-  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(rectangle)
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function bounds(
+    this: HTMLElement,
+  ) {
+    if (this.hasAttribute("data-pi-browser-agent-element-picker")) {
+      return {
+        x: 0,
+        y: 0,
+        top: 0,
+        right: window.innerWidth,
+        bottom: window.innerHeight,
+        left: 0,
+        width: window.innerWidth,
+        height: window.innerHeight,
+        toJSON: () => ({}),
+      } as DOMRect
+    }
+    return rectangle
+  })
   vi.spyOn(HTMLElement.prototype, "getClientRects").mockReturnValue([
     rectangle,
   ] as unknown as DOMRectList)
@@ -102,6 +119,18 @@ describe("injected element picker", () => {
       (globalThis as typeof globalThis & { __piBrowserAgentElementPicker?: unknown })
         .__piBrowserAgentElementPicker,
     ).toBeDefined()
+  })
+
+  test("cancels when the page tampers with the extension shield", async () => {
+    executeElementPicker("start", "tampered", context, ELEMENT_PICKER_LIMITS)
+    const host = pickerHost()
+    if (!host) throw new Error("Missing picker host")
+    host.style.pointerEvents = "none"
+
+    await vi.waitFor(() => {
+      expect(sent).toMatchObject([{ status: "cancelled", reason: "overlay-tampered" }])
+    })
+    expect(host.isConnected).toBe(false)
   })
 
   test("cancels when the page detaches the extension overlay", async () => {

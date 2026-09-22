@@ -2870,6 +2870,44 @@ test("selects page elements without activating them and sends bounded structured
     "Select page element",
   )
 
+  await startPicker()
+  await page.locator("[data-pi-browser-agent-element-picker]").evaluate((host) => {
+    const shield = host as HTMLElement
+    shield.style.pointerEvents = "none"
+  })
+  await expect(pickerHost).toHaveCount(0)
+  await expect(controller.locator("#element-picker")).toHaveAttribute(
+    "aria-label",
+    "Select page element",
+  )
+
+  await page.evaluate(() => {
+    const dialog = document.createElement("dialog")
+    dialog.id = "picker-top-layer"
+    const button = document.createElement("button")
+    button.id = "picker-top-layer-action"
+    button.textContent = "Top-layer target"
+    button.addEventListener("click", () => {
+      const result = document.querySelector("#result")
+      if (result) result.textContent = "top-layer-clicked"
+    })
+    dialog.append(button)
+    document.body.append(dialog)
+    dialog.showModal()
+  })
+  await startPicker()
+  await selectTarget("#picker-top-layer-action")
+  await expect(page.locator("#result")).toHaveText("idle")
+  await expect(controller.locator(".selected-element-chip")).toContainText(
+    "button#picker-top-layer-action",
+  )
+  await removeSelection()
+  await page.evaluate(() => {
+    const dialog = document.querySelector("#picker-top-layer")
+    if (dialog instanceof HTMLDialogElement) dialog.close()
+    dialog?.remove()
+  })
+
   const ordinaryBounds = await page.locator("#ordinary").boundingBox()
   if (!ordinaryBounds) throw new Error("Missing ordinary button bounds")
   const beforeHighlight = await page.screenshot({

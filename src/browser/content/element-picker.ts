@@ -278,6 +278,26 @@ export function executeElementPicker(
     width: "100vw",
     zIndex: "2147483647",
   })
+  const shieldIntact = (): boolean => {
+    const computed = getComputedStyle(host)
+    const rectangle = host.getBoundingClientRect()
+    return (
+      host.isConnected &&
+      !host.hidden &&
+      computed.display !== "none" &&
+      computed.visibility !== "hidden" &&
+      computed.visibility !== "collapse" &&
+      computed.pointerEvents === "auto" &&
+      computed.position === "fixed" &&
+      ["", "none"].includes(computed.transform) &&
+      ["", "none"].includes(computed.clipPath) &&
+      Number.parseFloat(computed.opacity || "1") > 0 &&
+      rectangle.left <= 0 &&
+      rectangle.top <= 0 &&
+      rectangle.right >= window.innerWidth &&
+      rectangle.bottom >= window.innerHeight
+    )
+  }
   const shadow = host.attachShadow({ mode: "closed" })
   const style = document.createElement("style")
   style.textContent = `
@@ -314,6 +334,10 @@ export function executeElementPicker(
   const observer = new MutationObserver((records) => {
     if (!host.isConnected) {
       notify("cancelled", undefined, "overlay-detached")
+      return
+    }
+    if (!shieldIntact()) {
+      notify("cancelled", undefined, "overlay-tampered")
       return
     }
     if (records.some((record) => record.target !== host && !host.contains(record.target))) {
@@ -425,7 +449,15 @@ export function executeElementPicker(
   const select = (event: MouseEvent): void => {
     block(event)
     if (!event.isTrusted) return
-    const selected = hitTest(event.clientX, event.clientY) ?? current
+    if (!shieldIntact()) {
+      notify("cancelled", undefined, "overlay-tampered")
+      return
+    }
+    const eventTarget =
+      event.target instanceof Element && event.target !== host && !host.contains(event.target)
+        ? event.target
+        : null
+    const selected = hitTest(event.clientX, event.clientY) ?? eventTarget ?? current
     if (selected) notify("selected", contextFor(selected))
   }
   const blockPointer = (event: PointerEvent): void => {
@@ -451,12 +483,15 @@ export function executeElementPicker(
     }
     chrome.runtime.onMessage.addListener(runtimeStopListener)
   }
-  host.addEventListener("pointermove", track, { signal: controller.signal })
-  host.addEventListener("pointerdown", blockPointer, { signal: controller.signal })
-  host.addEventListener("pointerup", blockPointer, { signal: controller.signal })
-  host.addEventListener("click", select, { signal: controller.signal })
+  window.addEventListener("pointermove", track, { capture: true, signal: controller.signal })
+  window.addEventListener("pointerdown", blockPointer, {
+    capture: true,
+    signal: controller.signal,
+  })
+  window.addEventListener("pointerup", blockPointer, { capture: true, signal: controller.signal })
+  window.addEventListener("click", select, { capture: true, signal: controller.signal })
   for (const name of ["auxclick", "dblclick", "contextmenu", "dragstart"])
-    host.addEventListener(name, block, { signal: controller.signal })
+    window.addEventListener(name, block, { capture: true, signal: controller.signal })
   window.addEventListener("scroll", scheduleRefresh, { capture: true, signal: controller.signal })
   window.addEventListener("resize", scheduleRefresh, { signal: controller.signal })
   window.addEventListener(
