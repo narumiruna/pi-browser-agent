@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
-import { executeElementPicker } from "../../src/browser/content/element-picker.js"
+import {
+  executeElementPicker,
+  stopElementPickerInjection,
+} from "../../src/browser/content/element-picker.js"
 import { ELEMENT_PICKER_LIMITS } from "../../src/browser/runtime/element-context.js"
 import type { TabContext } from "../../src/browser/runtime/types.js"
 
@@ -86,6 +89,37 @@ describe("injected element picker", () => {
     expect(clicked).not.toHaveBeenCalled()
     expect(pickerHost()).toBe(host)
     expect(sent).toHaveLength(0)
+  })
+
+  test("ignores page-generated cleanup signals", () => {
+    executeElementPicker("start", "protected", context, ELEMENT_PICKER_LIMITS)
+    const host = pickerHost()
+
+    window.dispatchEvent(new Event("__piBrowserAgentStopElementPicker"))
+
+    expect(host?.isConnected).toBe(true)
+    expect(
+      (globalThis as typeof globalThis & { __piBrowserAgentElementPicker?: unknown })
+        .__piBrowserAgentElementPicker,
+    ).toBeDefined()
+  })
+
+  test("preserves page-owned nodes that use the overlay marker", () => {
+    const pageOwned = document.createElement("div")
+    pageOwned.dataset.piBrowserAgentElementPicker = ""
+    document.body.append(pageOwned)
+
+    executeElementPicker("start", "owned-node", context, ELEMENT_PICKER_LIMITS)
+    const extensionHost = Array.from(
+      document.querySelectorAll("[data-pi-browser-agent-element-picker]"),
+    ).find((node) => node !== pageOwned)
+    expect(pageOwned.isConnected).toBe(true)
+    expect(extensionHost).toBeDefined()
+
+    stopElementPickerInjection()
+
+    expect(pageOwned.isConnected).toBe(true)
+    expect(extensionHost?.isConnected).toBe(false)
   })
 
   test("replaces and stops picker state without leaving listeners or overlays", async () => {

@@ -2772,6 +2772,7 @@ test("selects page elements without activating them and sends bounded structured
     if (!(target instanceof HTMLElement) || !(host instanceof HTMLElement)) {
       throw new Error("Missing picker synthetic-event fixture")
     }
+    window.dispatchEvent(new Event("__piBrowserAgentStopElementPicker"))
     const rectangle = target.getBoundingClientRect()
     host.dispatchEvent(
       new MouseEvent("click", {

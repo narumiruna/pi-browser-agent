@@ -13,11 +13,7 @@ export function stopElementPickerInjection(): ElementPickerOperationResult {
   const isolated = globalThis as typeof globalThis & {
     __piBrowserAgentElementPicker?: { cleanup: () => void }
   }
-  window.dispatchEvent(new Event("__piBrowserAgentStopElementPicker"))
   isolated.__piBrowserAgentElementPicker?.cleanup()
-  for (const orphan of document.querySelectorAll("[data-pi-browser-agent-element-picker]")) {
-    orphan.remove()
-  }
   delete isolated.__piBrowserAgentElementPicker
   return { ok: true, result: { stopped: true } }
 }
@@ -49,13 +45,8 @@ export function executeElementPicker(
   const isolated = globalThis as typeof globalThis & {
     __piBrowserAgentElementPicker?: PickerState
   }
-  const stopEventName = "__piBrowserAgentStopElementPicker"
   const previous = isolated.__piBrowserAgentElementPicker
-  window.dispatchEvent(new Event(stopEventName))
   if (previous) previous.cleanup()
-  for (const orphan of document.querySelectorAll("[data-pi-browser-agent-element-picker]")) {
-    orphan.remove()
-  }
   if (operation === "stop") return { ok: true, result: { stopped: true } }
 
   if (
@@ -438,7 +429,6 @@ export function executeElementPicker(
     }
     chrome.runtime.onMessage.addListener(runtimeStopListener)
   }
-  window.addEventListener(stopEventName, cleanup, { signal: controller.signal })
   host.addEventListener("pointermove", track, { signal: controller.signal })
   host.addEventListener("pointerdown", blockPointer, { signal: controller.signal })
   host.addEventListener("pointerup", blockPointer, { signal: controller.signal })
