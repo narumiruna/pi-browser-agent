@@ -3077,7 +3077,12 @@ test("selects page elements without activating them and sends bounded structured
     longIdentifierTarget.setAttribute("data-testid", `${truncatedAttribute}e`)
     longIdentifierTarget.textContent = "Long identifier target"
     fixture.append(collision, longIdentifierTarget)
-    document.body.append(fixture)
+    const unusualTagTarget = document.createElement("x_y")
+    unusualTagTarget.id = "picker-unusual-tag"
+    unusualTagTarget.style.display = "block"
+    unusualTagTarget.style.minHeight = "40px"
+    unusualTagTarget.textContent = "Unusual tag target"
+    document.body.append(fixture, unusualTagTarget)
   })
   await startPicker()
   await selectTarget("#picker-fallback-fixture .selector-long-target")
@@ -3089,6 +3094,12 @@ test("selects page elements without activating them and sends bounded structured
   await selectTarget("#picker-fallback-fixture section:nth-of-type(2) > .picker-card")
   await expect(
     controller.locator(".selected-element-chip").filter({ hasText: "a.picker-card" }),
+  ).toBeVisible()
+
+  await startPicker()
+  await selectTarget("#picker-unusual-tag")
+  await expect(
+    controller.locator(".selected-element-chip").filter({ hasText: "x_y#picker-unusual-tag" }),
   ).toBeVisible()
 
   await page.evaluate(() => {
@@ -3138,6 +3149,7 @@ test("selects page elements without activating them and sends bounded structured
     await expect(controller.locator("#transcript")).toContainText("Element context received.")
     expect(providerBody).toContain("Untrusted browser selected-element context")
     expect(providerBody).toContain('\\"tagName\\": \\"button\\"')
+    expect(providerBody).toContain('\\"tagName\\": \\"x_y\\"')
     expect(providerBody).toContain('\\"text\\": \\"After replacement\\"')
     expect(providerBody).toContain('\\"cssSelector\\": \\"#picker-dynamic\\"')
     expect(providerBody).toContain(":nth-of-type(2)")
@@ -3158,6 +3170,39 @@ test("selects page elements without activating them and sends bounded structured
   } finally {
     await context.unroute(codexUrl)
   }
+
+  await startPicker()
+  await selectTarget("#picker-dynamic")
+  await gateNextSubmissionPreflight()
+  let staleProviderRequests = 0
+  await context.route(codexUrl, async (route) => {
+    staleProviderRequests += 1
+    await route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body: finalText(91, "Stale element context was sent."),
+    })
+  })
+  try {
+    await controller.locator("#prompt").fill("Do not send stale selected-element context")
+    await controller.locator("#send").click()
+    await waitForSubmissionPreflight()
+    await page.reload()
+    tabContext = await waitForCurrentTab(page.url())
+    await releaseSubmissionPreflight()
+    await expect(controller.locator("#error")).toContainText(
+      "The page changed before selected elements could be sent. Select them again.",
+    )
+    await expect(controller.locator("#prompt")).toHaveValue(
+      "Do not send stale selected-element context",
+    )
+    await expect(controller.locator("#selected-elements")).toBeHidden()
+    expect(staleProviderRequests).toBe(0)
+  } finally {
+    await releaseSubmissionPreflight()
+    await context.unroute(codexUrl)
+  }
+  await controller.locator("#prompt").fill("")
 
   await controller.reload()
   await expect(controller.locator("#transcript")).toContainText(
@@ -3196,6 +3241,7 @@ test("selects page elements without activating them and sends bounded structured
       document.querySelector("#picker-spacer")?.remove()
       document.querySelector("#picker-dynamic")?.remove()
       document.querySelector("#picker-fallback-fixture")?.remove()
+      document.querySelector("#picker-unusual-tag")?.remove()
       scrollTo(0, 0)
     })
   }

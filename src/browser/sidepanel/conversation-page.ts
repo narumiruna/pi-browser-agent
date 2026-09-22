@@ -37,6 +37,30 @@ import {
   type VoiceInputController,
 } from "./voice-input.js"
 
+function tabContextFrom(value: unknown): TabContext | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined
+  const context = value as Record<string, unknown>
+  if (
+    !Number.isSafeInteger(context.tabId) ||
+    (context.tabId as number) < 0 ||
+    typeof context.url !== "string" ||
+    context.url.length === 0 ||
+    !Number.isSafeInteger(context.epoch) ||
+    (context.epoch as number) < 0
+  ) {
+    return undefined
+  }
+  return {
+    tabId: context.tabId as number,
+    url: context.url,
+    epoch: context.epoch as number,
+  }
+}
+
+function sameTabContext(left: TabContext, right: TabContext): boolean {
+  return left.tabId === right.tabId && left.url === right.url && left.epoch === right.epoch
+}
+
 export async function initializeConversationPage(params: URLSearchParams): Promise<void> {
   const settingsContextId = params.get("source") ?? crypto.randomUUID()
   const transcript = element<HTMLElement>("transcript")
@@ -74,7 +98,11 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   let pendingPasteOperations = 0
   let imageAttachmentQueue = Promise.resolve()
   let composerImages: Array<ComposerImage & { id: string }> = []
-  let selectedElements: Array<{ context: SelectedElementContext; id: string }> = []
+  let selectedElements: Array<{
+    context: SelectedElementContext
+    id: string
+    tabContext: TabContext
+  }> = []
   let currentTabContext: TabContext | undefined
   let pickerActive = false
   let pickerStarting = false
@@ -392,8 +420,10 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     updateSendButton()
   }
 
-  function addSelectedElement(value: unknown): void {
+  function addSelectedElement(value: unknown, source: unknown): void {
     const context = parseSelectedElementContext(value)
+    const tabContext = tabContextFrom(source)
+    if (!tabContext) throw new Error("Selected element is missing its page context")
     if (selectedElements.length >= ELEMENT_PICKER_LIMITS.elements) {
       throw new Error(`Attach up to ${ELEMENT_PICKER_LIMITS.elements} selected elements`)
     }
@@ -412,7 +442,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     if (selectedElementContextBytes(next) > ELEMENT_PICKER_LIMITS.composerBytes) {
       throw new Error("Selected element context exceeds the 16 KB composer limit")
     }
-    selectedElements.push({ context, id: crypto.randomUUID() })
+    selectedElements.push({ context, id: crypto.randomUUID(), tabContext })
     renderSelectedElements()
     updateSendButton()
   }
@@ -456,15 +486,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     const state = await sendRuntimeRequest("app.getState")
     const context =
       typeof state === "object" && state !== null && !Array.isArray(state) ? state.tabContext : null
-    currentTabContext =
-      typeof context === "object" &&
-      context !== null &&
-      !Array.isArray(context) &&
-      typeof context.tabId === "number" &&
-      typeof context.url === "string" &&
-      typeof context.epoch === "number"
-        ? (context as unknown as TabContext)
-        : undefined
+    currentTabContext = tabContextFrom(context)
     return currentTabContext
   }
 
@@ -524,15 +546,18 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     }
   }
 
-  async function requestRunAccess(): Promise<void> {
-    const currentTabUrl = await refreshTab()
-    if (!currentTabUrl) throw new Error("Open an HTTP or HTTPS page before sending a prompt")
+  async function requestRunAccess(): Promise<TabContext> {
+    const initialTabContext = await refreshTabContext()
+    if (!initialTabContext) throw new Error("Open an HTTP or HTTPS page before sending a prompt")
     const modelEndpoints = await runtime.configuration.requiredModelEndpointUrls(
       () => runtime.model,
     )
-    if (!(await requestHostPermissions([currentTabUrl, ...modelEndpoints]))) {
+    if (!(await requestHostPermissions([initialTabContext.url, ...modelEndpoints]))) {
       throw new Error("Current-page and model-provider access are required for this request")
     }
+    const currentTabContext = await refreshTabContext()
+    if (!currentTabContext) throw new Error("Open an HTTP or HTTPS page before sending a prompt")
+    return currentTabContext
   }
 
   function microphoneAccessUrl(): string {
@@ -589,6 +614,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     const submittedElements = selectedElements.map((selected) => ({
       id: selected.id,
       context: structuredClone(selected.context),
+      tabContext: { ...selected.tabContext },
     }))
     if (!text && submittedImages.length === 0 && submittedElements.length === 0) return
     if (submittedImages.length > 0 && !runtime.model.input.includes("image")) {
@@ -606,7 +632,17 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
             `Configure ${providerName(runtime.model.provider) ?? "the provider"} before sending a prompt`,
           )
         }
-        await requestRunAccess()
+        const submissionTabContext = await requestRunAccess()
+        if (
+          submittedElements.some(
+            (element) => !sameTabContext(element.tabContext, submissionTabContext),
+          )
+        ) {
+          clearSelectedElements()
+          throw new Error(
+            "The page changed before selected elements could be sent. Select them again.",
+          )
+        }
         if (submittedWhileStreaming !== runtime.agent.state.isStreaming) {
           throw new Error(
             submittedWhileStreaming
@@ -877,7 +913,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     if (event.name === "elementPicker.cancelled" && currentPickerEvent) setPickerActive(false)
     if (event.name === "elementPicker.selected" && currentPickerEvent) {
       setPickerActive(false)
-      void run(async () => addSelectedElement(event.payload?.element), setError)
+      void run(async () => addSelectedElement(event.payload?.element, event.tabContext), setError)
     }
     if (event.name === "operation.progress" && event.payload) {
       setRunStatus(
