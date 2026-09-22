@@ -1,5 +1,6 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core"
 import type { ImageContent } from "@earendil-works/pi-ai"
+import { activityText, conversationText } from "./conversation-copy.js"
 import { CopyButton, type CopyButtonKind } from "./copy-button.js"
 import { imageContentSource } from "./images.js"
 import { renderMarkdown } from "./markdown.js"
@@ -11,6 +12,13 @@ interface ContentState {
 }
 function newContentState(): ContentState {
   return { disclosures: new Map(), images: new Map(), copyButtons: new Map() }
+}
+
+function developerDetailsEnabled(): boolean {
+  return (
+    typeof __PI_BROWSER_AGENT_DEVELOPER_MODE__ !== "undefined" &&
+    __PI_BROWSER_AGENT_DEVELOPER_MODE__
+  )
 }
 
 function copyButton(
@@ -59,7 +67,15 @@ function appendProse(
     pre.replaceWith(wrapper)
     wrapper.append(pre)
     if (!visualExample && codeText) {
-      wrapper.append(copyButton(state, `code-${blockKey}-${index}`, "Copy code", codeText, "code"))
+      wrapper.append(
+        copyButton(
+          state,
+          `code-${blockKey}-${index}`,
+          conversationText("copyCode"),
+          codeText,
+          "code",
+        ),
+      )
     }
   }
   for (const [index, link] of block.querySelectorAll("a").entries())
@@ -70,11 +86,24 @@ function appendProse(
     wrapper.tabIndex = 0
     wrapper.dataset.focusKey = `table-${blockKey}-${index}`
     wrapper.setAttribute("role", "region")
-    wrapper.setAttribute("aria-label", "Table")
+    wrapper.setAttribute("aria-label", conversationText("table"))
     table.replaceWith(wrapper)
     wrapper.append(table)
   }
   container.append(block)
+}
+
+function activityItem(title: string, className: string): HTMLElement {
+  const item = document.createElement("div")
+  item.className = `${className} activity-only`
+  const marker = document.createElement("span")
+  marker.className = "activity-marker"
+  marker.setAttribute("aria-hidden", "true")
+  const label = document.createElement("span")
+  label.className = "activity-title"
+  label.textContent = title
+  item.append(marker, label)
+  return item
 }
 
 function disclosure(
@@ -102,6 +131,9 @@ export function renderMessageContent(
   message: AgentMessage,
   renderedImages: WeakMap<ImageContent, HTMLImageElement> = new WeakMap(),
   state: ContentState = newContentState(),
+  options: { developerDetails?: boolean } = {
+    developerDetails: developerDetailsEnabled(),
+  },
 ): { hasImage: boolean; roleLabel: string; text: string; toolCall: boolean } {
   let hasImage = false
   let toolCall = false
@@ -132,7 +164,10 @@ export function renderMessageContent(
         if (!image) {
           image = document.createElement("img")
           image.className = "message-image"
-          image.alt = message.role === "user" ? "Pasted image" : "Image result"
+          image.alt =
+            message.role === "user"
+              ? conversationText("pastedImage")
+              : conversationText("imageResult")
           image.loading = "lazy"
           image.decoding = "async"
         }
@@ -148,20 +183,29 @@ export function renderMessageContent(
         toolCall = message.role === "assistant"
         const value = `[tool call: ${item.name}]\n${JSON.stringify(item.arguments, null, 2)}`
         textParts.push(value)
-        const details = disclosure(
-          state,
-          `tool-${index}`,
-          `Tool call · ${item.name}`,
-          "message toolCall",
-        )
-        const content = details.lastElementChild as HTMLElement
-        content.className = "content"
-        content.replaceChildren()
-        appendTextContent(content, value)
-        container.append(details)
+        if (options.developerDetails) {
+          const details = disclosure(
+            state,
+            `tool-${index}`,
+            activityText(item.name, "active"),
+            "message toolCall",
+          )
+          const content = details.lastElementChild as HTMLElement
+          content.className = "content"
+          content.replaceChildren()
+          appendTextContent(content, value)
+          container.append(details)
+        } else {
+          container.append(activityItem(activityText(item.name, "active"), "message toolCall"))
+        }
       } else if (item.type === "thinking") {
         textParts.push(item.thinking)
-        const details = disclosure(state, `thinking-${index}`, "Thinking", "message thinking")
+        const details = disclosure(
+          state,
+          `thinking-${index}`,
+          conversationText("thinking"),
+          "message thinking",
+        )
         const content = details.lastElementChild as HTMLElement
         content.className = "content"
         content.replaceChildren()
@@ -177,17 +221,19 @@ export function renderMessageContent(
   if (answers.some(Boolean)) {
     const actions = document.createElement("footer")
     actions.className = "message-actions"
-    actions.append(copyButton(state, "copy-answer", "Copy all", answers.join("\n"), "answer"))
+    actions.append(
+      copyButton(state, "copy-answer", conversationText("copyAll"), answers.join("\n"), "answer"),
+    )
     container.append(actions)
   }
   const roleLabel = toolCall
-    ? "Tool call"
+    ? conversationText("activity")
     : message.role === "user"
-      ? "You"
+      ? conversationText("user")
       : message.role === "assistant"
         ? "Pi"
         : message.role === "toolResult"
-          ? "Tool result"
+          ? conversationText("activity")
           : message.role
   return { hasImage, roleLabel, text, toolCall }
 }
@@ -200,13 +246,25 @@ interface MessageView {
   initialized: boolean
 }
 
+function toolResultHasImage(message: AgentMessage): boolean {
+  return (
+    message.role === "toolResult" &&
+    Array.isArray(message.content) &&
+    message.content.some((item) => item.type === "image")
+  )
+}
+
 /** UI-only state. No disclosure state or rendered HTML enters saved/model messages. */
 export class TranscriptRenderer {
   private sessionId = ""
   private readonly views = new Map<string, MessageView>()
+  private readonly turns = new Map<string, HTMLElement>()
   private images = new WeakMap<ImageContent, HTMLImageElement>()
 
-  constructor(private readonly transcript: HTMLElement) {}
+  constructor(
+    private readonly transcript: HTMLElement,
+    private readonly developerDetails = developerDetailsEnabled(),
+  ) {}
 
   render(messages: AgentMessage[], sessionId: string): void {
     const changedSession = sessionId !== this.sessionId
@@ -219,25 +277,37 @@ export class TranscriptRenderer {
     if (changedSession) {
       this.sessionId = sessionId
       this.views.clear()
+      this.turns.clear()
       this.images = new WeakMap()
       this.transcript.replaceChildren()
     }
     const used = new Set<string>()
     const occurrences = new Map<string, number>()
-    let cursor = this.transcript.firstChild
+    const ordered: Array<{ key: string; message: AgentMessage; view: MessageView }> = []
     for (const message of messages) {
       const base = `${message.role}:${"timestamp" in message ? message.timestamp : ""}:${message.role === "toolResult" ? message.toolCallId : ""}`
       const occurrence = occurrences.get(base) ?? 0
       occurrences.set(base, occurrence + 1)
       const key = `${base}:${occurrence}`
       used.add(key)
+      const expandableToolResult =
+        message.role === "toolResult" &&
+        (this.developerDetails || message.isError || toolResultHasImage(message))
+      const tagName = message.role === "toolResult" && expandableToolResult ? "details" : "article"
       let view = this.views.get(key)
+      if (view && view.node.localName !== tagName) {
+        view.node.remove()
+        this.views.delete(key)
+        view = undefined
+      }
       if (!view) {
-        const node = document.createElement(message.role === "toolResult" ? "details" : "article")
-        node.className = `message ${message.role}`
+        const node = document.createElement(tagName)
+        node.className = `message ${message.role}${
+          message.role === "toolResult" && !expandableToolResult ? " activity-only" : ""
+        }`
         node.dataset.messageKey = key
-        const heading = document.createElement(message.role === "toolResult" ? "summary" : "span")
-        heading.className = "role"
+        const heading = document.createElement(tagName === "details" ? "summary" : "span")
+        heading.className = message.role === "toolResult" ? "role activity-title" : "role"
         heading.dataset.focusKey = "heading"
         const content = document.createElement("div")
         content.className = "content"
@@ -248,19 +318,27 @@ export class TranscriptRenderer {
       const signature = JSON.stringify(message)
       if (view.signature !== signature) {
         view.content.replaceChildren()
-        const rendered = renderMessageContent(view.content, message, this.images, view.state)
+        const renderTarget =
+          message.role === "toolResult" && !expandableToolResult
+            ? document.createElement("div")
+            : view.content
+        const rendered = renderMessageContent(renderTarget, message, this.images, view.state, {
+          developerDetails: this.developerDetails,
+        })
         const heading = view.node.firstElementChild as HTMLElement
         if (message.role === "toolResult") {
-          heading.textContent = `Tool result · ${message.toolName}${message.isError ? " · Error" : ""}`
-          if (!view.initialized)
-            (view.node as HTMLDetailsElement).open = message.isError || rendered.hasImage
-        } else heading.textContent = message.role === "assistant" ? "Pi" : rendered.roleLabel
+          heading.textContent = activityText(message.toolName, "complete", message.isError)
+          if (!view.initialized && expandableToolResult) {
+            const details = view.node as HTMLDetailsElement
+            details.open = message.isError || rendered.hasImage
+          }
+        } else {
+          heading.textContent = message.role === "assistant" ? "Pi" : rendered.roleLabel
+        }
         view.signature = signature
         view.initialized = true
       }
-      // Leave already ordered nodes attached: unchanged controls keep focus and image state.
-      if (view.node !== cursor) this.transcript.insertBefore(view.node, cursor)
-      cursor = view.node.nextSibling
+      ordered.push({ key, message, view })
     }
     for (const [key, view] of this.views) {
       if (!used.has(key)) {
@@ -268,11 +346,71 @@ export class TranscriptRenderer {
         this.views.delete(key)
       }
     }
+
+    const usedTurns = new Set<string>()
+    const topLevelNodes: HTMLElement[] = []
+    const groupedViews = new Map<HTMLElement, MessageView[]>()
+    let boundaryKey = "start"
+    let assistantTurn: HTMLElement | undefined
+    for (const { key, message, view } of ordered) {
+      if (message.role === "user") {
+        boundaryKey = key
+        assistantTurn = undefined
+        topLevelNodes.push(view.node)
+        continue
+      }
+      if (!assistantTurn) {
+        const turnKey = `turn:${boundaryKey}`
+        usedTurns.add(turnKey)
+        assistantTurn = this.turns.get(turnKey)
+        if (!assistantTurn) {
+          assistantTurn = document.createElement("section")
+          assistantTurn.className = "assistant-turn"
+          assistantTurn.setAttribute("aria-label", `Pi · ${conversationText("assistantIdentity")}`)
+          const heading = document.createElement("div")
+          heading.className = "assistant-turn-heading"
+          const name = document.createElement("strong")
+          name.textContent = "Pi"
+          const identity = document.createElement("span")
+          identity.textContent = conversationText("assistantIdentity")
+          heading.append(name, identity)
+          assistantTurn.append(heading)
+          this.turns.set(turnKey, assistantTurn)
+        }
+        topLevelNodes.push(assistantTurn)
+        groupedViews.set(assistantTurn, [])
+      }
+      groupedViews.get(assistantTurn)?.push(view)
+    }
+    for (const [turnKey, turn] of this.turns) {
+      if (!usedTurns.has(turnKey)) {
+        turn.remove()
+        this.turns.delete(turnKey)
+      }
+    }
+    for (const [turn, turnViews] of groupedViews) {
+      let cursor = turn.firstElementChild?.nextSibling ?? null
+      for (const view of turnViews) {
+        if (view.node !== cursor) turn.insertBefore(view.node, cursor)
+        cursor = view.node.nextSibling
+      }
+      while (cursor) {
+        const next = cursor.nextSibling
+        cursor.remove()
+        cursor = next
+      }
+    }
+    let cursor = this.transcript.firstChild
+    for (const node of topLevelNodes) {
+      if (node !== cursor) this.transcript.insertBefore(node, cursor)
+      cursor = node.nextSibling
+    }
     while (cursor) {
       const next = cursor.nextSibling
       cursor.remove()
       cursor = next
     }
+
     if (!changedSession && focusedMessage && focusedKey) {
       const node = this.views.get(focusedMessage)?.node
       const target = Array.from(node?.querySelectorAll<HTMLElement>("[data-focus-key]") ?? []).find(

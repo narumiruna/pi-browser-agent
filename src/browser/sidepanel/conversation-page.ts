@@ -13,6 +13,7 @@ import { type RuntimeEvent, sendRuntimeRequest } from "../runtime/messages.js"
 import type { JsonObject } from "../runtime/types.js"
 import { SETTINGS_KEY } from "../storage.js"
 import { AuthenticationController } from "./authentication.js"
+import { activityText, conversationText } from "./conversation-copy.js"
 import {
   imageContentSource,
   MAX_PASTED_IMAGE_BYTES,
@@ -39,12 +40,15 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   const statusPill: HTMLElement = statusPillElement
   const scrollToBottomButton = element<HTMLButtonElement>("scroll-to-bottom")
   const sessionSelect = element<HTMLSelectElement>("sessions")
+  const newSessionButton = element<HTMLButtonElement>("new-session")
   const confirmDialog = element<HTMLDialogElement>("confirm-dialog")
   const confirmMessage = element<HTMLElement>("confirm-message")
   const confirmError = element<HTMLElement>("confirm-error")
   const confirmActionButton = element<HTMLButtonElement>("confirm-action")
   const sendButton = element<HTMLButtonElement>("send")
+  const sendLabel = element<HTMLElement>("send-label")
   const abortButton = element<HTMLButtonElement>("abort")
+  const queueInstructionButton = element<HTMLButtonElement>("queue-instruction")
   const composerHint = element<HTMLElement>("composer-hint")
   const pastedImages = element<HTMLElement>("pasted-images")
   const voiceButton = element<HTMLButtonElement>("voice-input")
@@ -58,6 +62,17 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   let voiceInput: VoiceInputController | undefined
   let voiceInputStarting = false
   let authentication: AuthenticationController | undefined
+
+  newSessionButton.ariaLabel = conversationText("newSession")
+  newSessionButton.title = conversationText("newSession")
+  abortButton.textContent = conversationText("stop")
+  queueInstructionButton.ariaLabel = conversationText("queueInstruction")
+  queueInstructionButton.title = conversationText("queueInstruction")
+  sendLabel.textContent = conversationText("send")
+  sendButton.ariaLabel = conversationText("send")
+  promptInput.placeholder = conversationText("promptIdle")
+  composerHint.textContent = conversationText("hintIdle")
+  runStatus.textContent = conversationText("ready")
 
   function confirmation(
     message: string,
@@ -123,19 +138,23 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     })
   }
 
-  function setRunStatus(text: string, running = runtime.agent.state.isStreaming): void {
+  function setRunStatus(text: string, options: { busy?: boolean; streaming?: boolean } = {}): void {
+    const streaming = options.streaming ?? runtime.agent.state.isStreaming
+    const busy = options.busy ?? streaming
     runStatus.textContent = text
     runStatus.title = text
-    statusPill.hidden = !running && text === "Ready"
-    document.body.dataset.state = running ? "running" : "idle"
-    transcript.setAttribute("aria-busy", String(running))
-    abortButton.hidden = !running
-    promptInput.placeholder = running
-      ? "Add an instruction while Pi is working"
-      : "Ask about the current page"
-    composerHint.textContent = running
-      ? "Enter to guide the current task · Alt+Enter to queue it for later"
-      : "Enter to send · Shift+Enter for a new line"
+    statusPill.hidden = !busy && text === conversationText("ready")
+    document.body.dataset.state = streaming ? "running" : "idle"
+    document.body.dataset.busy = String(busy)
+    transcript.setAttribute("aria-busy", String(busy))
+    abortButton.hidden = !streaming
+    queueInstructionButton.hidden = !streaming
+    promptInput.placeholder = conversationText(streaming ? "promptRunning" : "promptIdle")
+    composerHint.textContent = conversationText(streaming ? "hintRunning" : "hintIdle")
+    const sendText = conversationText(streaming ? "addInstruction" : "send")
+    sendLabel.textContent = sendText
+    sendButton.ariaLabel = sendText
+    sendButton.title = sendText
   }
 
   function resizePromptInput(): void {
@@ -175,6 +194,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       voiceInput?.active === true
     voiceButton.disabled =
       voiceInput === undefined || activeSubmissionGuard !== undefined || voiceInputStarting
+    queueInstructionButton.disabled = sendButton.disabled
   }
 
   function releaseSubmissionGuard(guard: object): void {
@@ -194,10 +214,10 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       icon.textContent = "✦"
       icon.setAttribute("aria-hidden", "true")
       const title = document.createElement("strong")
-      title.textContent = "How can I help?"
+      title.textContent = conversationText("emptyTitle")
       const description = document.createElement("span")
       description.className = "empty-state-description"
-      description.textContent = "Ask a question, find a detail, or explore the page you're on."
+      description.textContent = conversationText("emptyDescription")
       emptyState.append(icon, title, description)
       transcript.append(emptyState)
     }
@@ -211,7 +231,10 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     for (const session of sessions) {
       const option = document.createElement("option")
       option.value = session.id
-      option.textContent = `${session.title}${session.status === "interrupted" ? " (interrupted)" : ""}`
+      const title = session.title === "New session" ? conversationText("newSession") : session.title
+      option.textContent = `${title}${
+        session.status === "interrupted" ? ` (${conversationText("interrupted")})` : ""
+      }`
       option.selected = session.id === runtime.activeSession.id
       sessionSelect.append(option)
     }
@@ -220,7 +243,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   function onAgentEvent(event: AgentEvent): void {
     switch (event.type) {
       case "agent_start":
-        setRunStatus("Working", true)
+        setRunStatus(conversationText("working"), { busy: true, streaming: true })
         setError()
         break
       case "message_update":
@@ -230,10 +253,10 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
         renderMessages()
         break
       case "tool_execution_start":
-        setRunStatus(`Using ${event.toolName}`, true)
+        setRunStatus(activityText(event.toolName, "active"), { busy: true, streaming: true })
         break
       case "agent_end":
-        setRunStatus("Ready", false)
+        setRunStatus(conversationText("ready"), { busy: false, streaming: false })
         renderMessages()
         if (runtime.agent.state.errorMessage) setError(runtime.agent.state.errorMessage)
         void refreshSessions()
@@ -265,7 +288,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       const remove = document.createElement("button")
       remove.type = "button"
       remove.className = "remove-pasted-image"
-      remove.ariaLabel = `Remove pasted image ${index + 1}`
+      remove.ariaLabel = `${conversationText("removePastedImage")} ${index + 1}`
       remove.title = remove.ariaLabel
       remove.textContent = "×"
       remove.addEventListener("click", () => {
@@ -411,7 +434,8 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
         )
         releaseSubmissionGuard(submissionGuard)
         const mode = await submission
-        if (mode !== "prompt") setRunStatus("Instruction queued", true)
+        if (mode !== "prompt")
+          setRunStatus(conversationText("instructionQueued"), { busy: true, streaming: true })
       } finally {
         releaseSubmissionGuard(submissionGuard)
       }
@@ -480,17 +504,20 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       resizePromptInput()
     },
     onListeningChange(listening) {
-      voiceButton.ariaLabel = listening ? "Stop voice input" : "Start voice input"
+      voiceButton.ariaLabel = conversationText(listening ? "stopVoiceInput" : "startVoiceInput")
       voiceButton.title = voiceButton.ariaLabel
       voiceButton.setAttribute("aria-pressed", String(listening))
-      voiceStatus.textContent = listening ? "Listening for voice input" : "Voice input stopped"
+      voiceStatus.textContent = conversationText(listening ? "listening" : "voiceInputStopped")
       updateSendButton()
       if (!listening) promptInput.focus()
     },
     onError: setError,
   })
   if (!voiceInput) {
-    voiceButton.title = "Voice input is not supported by this browser"
+    voiceButton.title = conversationText("voiceUnsupported")
+    voiceButton.ariaLabel = voiceButton.title
+  } else {
+    voiceButton.title = conversationText("startVoiceInput")
     voiceButton.ariaLabel = voiceButton.title
   }
   updateSendButton()
@@ -499,6 +526,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     void run(requestActiveSiteAccess, setError)
   })
   sendButton.addEventListener("click", () => submitPrompt())
+  queueInstructionButton.addEventListener("click", () => submitPrompt(true))
   voiceButton.addEventListener("click", () => {
     if (voiceInput?.active) {
       setError()
@@ -543,7 +571,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     transcript.scrollTo({ top: transcript.scrollHeight, behavior: "smooth" })
   })
   element<HTMLButtonElement>("open-settings").addEventListener("click", openSettingsTab)
-  element<HTMLButtonElement>("new-session").addEventListener("click", () => {
+  newSessionButton.addEventListener("click", () => {
     void run(async () => {
       await runtime.newSession()
       await refreshActiveSessionUi()
@@ -608,7 +636,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
           runtime.configuration.appSettings.fontSize,
         )
         await authentication?.refresh()
-        setRunStatus("Settings saved")
+        setRunStatus(conversationText("settingsSaved"))
       }, setError)
       return false
     }
@@ -616,11 +644,11 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     if (event.name === "operation.progress" && event.payload) {
       setRunStatus(
         event.payload.status === "started"
-          ? `Using ${String(event.payload.method)}`
+          ? activityText(String(event.payload.method), "active")
           : runtime.agent.state.isStreaming
-            ? "Working"
-            : "Ready",
-        event.payload.status === "started" || runtime.agent.state.isStreaming,
+            ? conversationText("working")
+            : conversationText("ready"),
+        { busy: event.payload.status === "started" || runtime.agent.state.isStreaming },
       )
     }
     const selectionWindowId = event.payload?.windowId
@@ -638,7 +666,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
         runtime.configuration.appSettings.fontFamily,
         runtime.configuration.appSettings.fontSize,
       )
-      setRunStatus("Settings saved")
+      setRunStatus(conversationText("settingsSaved"))
     }, setError)
   })
   window.addEventListener("pagehide", () => {
@@ -656,7 +684,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   )
   renderMessages()
   resizePromptInput()
-  setRunStatus("Ready", false)
+  setRunStatus(conversationText("ready"), { busy: false, streaming: false })
   await Promise.all([
     refreshSessions(),
     authentication.refresh(),

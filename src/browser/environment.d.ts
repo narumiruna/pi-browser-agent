@@ -1,0 +1,1 @@
+declare const __PI_BROWSER_AGENT_DEVELOPER_MODE__: boolean

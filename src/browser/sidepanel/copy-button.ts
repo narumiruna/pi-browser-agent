@@ -1,8 +1,10 @@
+import { conversationText } from "./conversation-copy.js"
+
 const feedbackIcons = {
-  "Copying…": "M7.5 1.5a6 6 0 1 0 0 12 6 6 0 0 0 0-12ZM7.5 4v3.5H10",
-  Copied: "m2.5 7.5 3.5 3.5 6.5-7",
-  "Copy failed": "M7.5 1.5a6 6 0 1 0 0 12 6 6 0 0 0 0-12ZM7.5 4v4M7.5 10.5h.01",
-}
+  copying: "M7.5 1.5a6 6 0 1 0 0 12 6 6 0 0 0 0-12ZM7.5 4v3.5H10",
+  copied: "m2.5 7.5 3.5 3.5 6.5-7",
+  copyFailed: "M7.5 1.5a6 6 0 1 0 0 12 6 6 0 0 0 0-12ZM7.5 4v4M7.5 10.5h.01",
+} as const
 
 const defaultIcons = {
   answer: "M5.5 3.5v-2h8v9h-2M1.5 5.5h8v8h-8Z",
@@ -56,27 +58,28 @@ export class CopyButton {
     }
     const report = (attempt: number, feedback: keyof typeof feedbackIcons): void => {
       if (attempt !== this.attempt) return
+      const message = conversationText(feedback)
       path.setAttribute("d", feedbackIcons[feedback])
-      visibleLabel.textContent = feedback
-      button.title = `${label}: ${feedback}`
+      visibleLabel.textContent = message
+      button.title = `${label}: ${message}`
       button.dataset.copyState = feedback
-      status.textContent = feedback
-      if (feedback === "Copying…") return
+      status.textContent = message
+      if (feedback === "copying") return
       this.resetTimer = setTimeout(() => showDefault(attempt), 2_000)
     }
 
     button.addEventListener("click", () => {
       const attempt = ++this.attempt
       if (this.resetTimer !== undefined) clearTimeout(this.resetTimer)
-      report(attempt, "Copying…")
+      report(attempt, "copying")
       // Capture current text synchronously in the user gesture; updates never copy automatically.
       try {
         void navigator.clipboard.writeText(this.text).then(
-          () => report(attempt, "Copied"),
-          () => report(attempt, "Copy failed"),
+          () => report(attempt, "copied"),
+          () => report(attempt, "copyFailed"),
         )
       } catch {
-        report(attempt, "Copy failed")
+        report(attempt, "copyFailed")
       }
     })
   }

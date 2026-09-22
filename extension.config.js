@@ -8,6 +8,7 @@ export default {
       new rspack.DefinePlugin({
         process: "undefined",
         "global.process": "undefined",
+        __PI_BROWSER_AGENT_DEVELOPER_MODE__: JSON.stringify(config.mode === "development"),
       }),
     )
     return config

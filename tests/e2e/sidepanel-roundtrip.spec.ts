@@ -1380,6 +1380,41 @@ test("loads the Side Panel without uncaught errors", async () => {
   await controller.setViewportSize(viewport)
 })
 
+test("keeps idle composer controls hidden during background operations", async () => {
+  const sendProgress = (status: "started" | "finished") =>
+    worker.evaluate(async (progressStatus) => {
+      await chrome.runtime.sendMessage({
+        kind: "event",
+        name: "operation.progress",
+        payload: {
+          method: "page.getVisibleText",
+          requestId: "idle-operation-test",
+          status: progressStatus,
+        },
+      })
+    }, status)
+
+  await sendProgress("started")
+  try {
+    await expect(controller.locator("#run-status")).toHaveText("Reading the page")
+    await expect(controller.locator("body")).toHaveAttribute("data-busy", "true")
+    await expect(controller.locator("body")).toHaveAttribute("data-state", "idle")
+    await expect(controller.locator("#transcript")).toHaveAttribute("aria-busy", "true")
+    await expect(controller.locator("#abort")).toBeHidden()
+    await expect(controller.locator("#queue-instruction")).toBeHidden()
+    await expect(controller.locator("#send-label")).toHaveText("Send")
+    await expect(controller.locator("#prompt")).toHaveAttribute(
+      "placeholder",
+      "Ask about the current page",
+    )
+  } finally {
+    await sendProgress("finished")
+  }
+  await expect(controller.locator("#run-status")).toHaveText("Ready")
+  await expect(controller.locator("body")).toHaveAttribute("data-busy", "false")
+  await expect(controller.locator("#transcript")).toHaveAttribute("aria-busy", "false")
+})
+
 test("grants microphone access from a full extension page", async () => {
   const microphonePage = await context.newPage()
   const pageErrors: string[] = []
@@ -2023,6 +2058,8 @@ test("keeps header and composer controls usable at normal and narrow widths", as
       status: status?.textContent ?? "Ready",
       statusTitle: status?.title ?? "",
       state: document.body.dataset.state ?? "idle",
+      sendLabel: document.querySelector<HTMLElement>("#send-label")?.textContent ?? "Send",
+      queueHidden: document.querySelector<HTMLButtonElement>("#queue-instruction")?.hidden ?? true,
       statusHidden: status?.closest<HTMLElement>(".status-pill")?.hidden ?? false,
     }
   })
@@ -2080,24 +2117,34 @@ test("keeps header and composer controls usable at normal and narrow widths", as
                 }
                 const abort = document.querySelector<HTMLButtonElement>("#abort")
                 if (abort) abort.hidden = !running
+                const queue = document.querySelector<HTMLButtonElement>("#queue-instruction")
+                if (queue) queue.hidden = !running
+                const sendLabel = document.querySelector<HTMLElement>("#send-label")
+                if (sendLabel) sendLabel.textContent = running ? "Add instruction" : "Send"
               },
               { fontSize, running },
             )
             const layout = await controller.evaluate(() => {
+              const narrowRunning =
+                document.body.dataset.state === "running" &&
+                document.documentElement.clientWidth <= 360
               const selectors = [
                 "#sessions",
                 "#new-session",
                 "#account-menu-trigger",
                 "#prompt",
-                "#voice-input",
+                ...(narrowRunning ? [] : ["#voice-input"]),
                 "#send",
-                ...(document.body.dataset.state === "running" ? ["#run-status", "#abort"] : []),
+                ...(document.body.dataset.state === "running"
+                  ? ["#run-status", "#abort", "#queue-instruction"]
+                  : []),
               ]
               const controls = selectors.map((selector) => {
                 const element = document.querySelector(selector)
                 if (!(element instanceof HTMLElement)) throw new Error(`Missing ${selector}`)
                 const rectangle = element.getBoundingClientRect()
                 return {
+                  selector,
                   left: rectangle.left,
                   right: rectangle.right,
                   bottom: rectangle.bottom,
@@ -2119,7 +2166,7 @@ test("keeps header and composer controls usable at normal and narrow widths", as
             expect(layout.pageWidth).toBeLessThanOrEqual(layout.viewportWidth)
             expect(layout.statusRight).toBeLessThanOrEqual(layout.actionsLeft)
             for (const control of layout.controls) {
-              expect(control.width).toBeGreaterThan(0)
+              expect(control.width, control.selector).toBeGreaterThan(0)
               expect(control.left).toBeGreaterThanOrEqual(0)
               expect(control.right).toBeLessThanOrEqual(layout.viewportWidth)
               expect(control.bottom).toBeLessThanOrEqual(layout.viewportHeight)
@@ -2179,6 +2226,10 @@ test("keeps header and composer controls usable at normal and narrow widths", as
       }
       const abort = document.querySelector<HTMLButtonElement>("#abort")
       if (abort) abort.hidden = original.state !== "running"
+      const queue = document.querySelector<HTMLButtonElement>("#queue-instruction")
+      if (queue) queue.hidden = original.queueHidden
+      const sendLabel = document.querySelector<HTMLElement>("#send-label")
+      if (sendLabel) sendLabel.textContent = original.sendLabel
     }, originalUi)
     await controller.emulateMedia({ colorScheme: null })
     await controller.setViewportSize(originalViewport)
@@ -2359,9 +2410,11 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
   await controller.locator("#prompt").fill("Start the submission guard test")
   await controller.locator("#send").click()
   await firstRequestStarted
+  await expect(controller.locator("#send-label")).toHaveText("Add instruction")
+  await expect(controller.locator("#queue-instruction")).toBeVisible()
   await gateNextSubmissionPreflight()
   await controller.locator("#prompt").fill("Queue while the current task finishes")
-  await controller.locator("#send").click()
+  await controller.locator("#queue-instruction").click()
   await waitForSubmissionPreflight()
   releaseFirstResponse()
   await expect(controller.locator("#transcript")).toContainText("Submission guard test complete.")
@@ -2437,10 +2490,10 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
   )
   await expect(controller.locator('#transcript img[alt="Image result"]')).toBeVisible()
   expect(await transcriptImageHandle?.evaluate((image) => image.isConnected)).toBe(true)
-  await expect(controller.locator("#transcript details.message").first()).toHaveJSProperty(
-    "open",
-    false,
-  )
+  await expect(
+    controller.locator("#transcript details.toolResult").filter({ has: controller.locator("img") }),
+  ).toHaveJSProperty("open", true)
+  await expect(controller.locator("#transcript")).not.toContainText("browser_read_page")
   expect(requestCount).toBe(responses.length)
   await expect(page).toHaveURL(`http://127.0.0.1:${fixture.port}/second`)
   await expect(page.locator("main")).toHaveText("Second page")
@@ -2636,6 +2689,9 @@ test("preserves streamed Markdown disclosures, focus, scroll, copying and safe r
     await controller.locator("#prompt").fill("Render the stream safely")
     await controller.locator("#send").click()
     await expect.poll(() => controller.evaluate(() => "featureStream" in window)).toBe(true)
+    await expect(controller.locator("#send-label")).toHaveText("Add instruction")
+    await expect(controller.locator("#queue-instruction")).toBeVisible()
+    await expect(controller.locator("#composer-hint")).not.toContainText("Alt+Enter")
     await sendEvents([
       {
         type: "response.output_item.added",
@@ -2746,6 +2802,8 @@ test("preserves streamed Markdown disclosures, focus, scroll, copying and safe r
       true,
     )
     await expect(controller.locator("#run-status")).toHaveText("Ready")
+    await expect(controller.locator("#send-label")).toHaveText("Send")
+    await expect(controller.locator("#queue-instruction")).toBeHidden()
     await expect(summary).toBeFocused()
     await expect(thinking).toHaveJSProperty("open", true)
     await expect(copyAll.locator(".copy-label")).toHaveText("Copied")
@@ -2975,8 +3033,9 @@ test("confirms and returns bounded bookmark data through a mocked model call", a
   await controller.locator('#confirm-dialog button[value="confirm"]').click()
 
   await expect(controller.locator("#transcript")).toContainText("Bookmark lookup complete.")
-  await expect(controller.locator("#transcript")).toContainText("Untrusted browser bookmark data")
-  await expect(controller.locator("#transcript")).toContainText(
+  await expect(controller.locator("#transcript")).toContainText("Searched bookmarks")
+  await expect(controller.locator("#transcript")).not.toContainText("browser_search_bookmarks")
+  await expect(controller.locator("#transcript")).not.toContainText(
     "Pi Browser Agent pibrowseragentbookmarkneedle",
   )
   await expect(controller.locator("#transcript")).not.toContainText("Private unrelated bookmark")
