@@ -19,7 +19,7 @@ Pi Chrome stores credentials supplied for user-selected AI providers. Depending 
 
 ### Prompts and conversations
 
-Pi Chrome handles prompts, editable voice transcripts, attached images, model responses, reasoning when supplied by the model, tool calls, tool results, and related error messages. Complete conversations are stored locally so users can resume sessions.
+Pi Chrome handles prompts, editable voice transcripts, attached images, model responses, reasoning when supplied by the model, tool calls, tool results, and related error messages. Conversation messages are stored locally so users can resume sessions, subject to the retention and per-session size limits described below.
 
 ### Current-page information
 
@@ -57,7 +57,7 @@ Pi Chrome can share information in these circumstances:
 - **Selected AI provider:** When the user sends a prompt or approves a tool operation, Pi Chrome sends the provider the information needed for the conversation. Depending on the request, this may include prompts, prior conversation content, the current page URL, visible or selected page content, element descriptions, attached images, approved screenshots, approved bookmark titles and URLs, and tool results. Provider credentials are sent only to the associated provider endpoint for authentication.
 - **OpenAI authentication:** If the user chooses OpenAI Codex account login, Pi Chrome communicates with OpenAI's authentication and ChatGPT services to complete and refresh the device authorization flow.
 - **Chrome speech provider:** If the user enables voice input, Chrome's speech service may process spoken audio and return transcript text.
-- **Current website:** A user-confirmed page or WebMCP action may provide parameters to, or receive results from, the active website as necessary to perform that action.
+- **Current website:** At the user's request, page actions may interact with the active website. Typing actions provide text to an editable field and trigger page input and change events that the website can observe. Page-defined WebMCP calls require separate confirmation and may send arguments to, or receive results from, the website.
 
 These services process information under their own terms and privacy policies. Users should review the policy of their selected provider before submitting content. Pi Chrome does not control an external provider's retention practices.
 
@@ -67,7 +67,7 @@ Pi Chrome does not sell user data, transfer it to data brokers or advertising pl
 
 - Provider credentials, settings, the active session identifier, and approved origins remain in `chrome.storage.local` until the user removes or changes them, clears extension data, or uninstalls Pi Chrome.
 - An undelivered context-menu selection remains in `chrome.storage.session` until it is consumed or the browser session ends.
-- Conversation records are stored in the extension's IndexedDB database. Pi Chrome retains at most 50 sessions and limits each serialized session record to 5 MB.
+- Conversation records are stored in the extension's IndexedDB database. Pi Chrome retains at most 50 sessions and limits each serialized session record to 5 MB. If a session exceeds that limit, Pi Chrome first replaces embedded images with omission placeholders and then, if necessary, removes the oldest messages until the record fits. The Side Panel reports this loss to the user.
 - Partial streaming output, unsent image previews, and live operation state are kept only in memory for the Side Panel's lifetime.
 
 Users can delete individual sessions, select **Clear all session data**, remove provider credentials, revoke Chrome permissions, or uninstall the extension. Removing local data does not delete information already processed by an external provider; requests concerning provider-held data must be directed to that provider.
