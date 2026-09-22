@@ -2880,12 +2880,29 @@ test("selects page elements without activating them and sends bounded structured
   // Simulate Chrome's site-access prompt invalidating the cached epoch without changing pages.
   await controller.evaluate(() => {
     const state = window as typeof window & {
-      restorePickerPermissionRequest?: () => void
+      pickerTabReadsBeforePermission?: number
+      restorePickerPermissionFlow?: () => void
     }
     const originalRequest = chrome.permissions.request
-    state.restorePickerPermissionRequest = () => {
+    const originalSendMessage = chrome.runtime.sendMessage
+    let tabContextReads = 0
+    state.restorePickerPermissionFlow = () => {
       chrome.permissions.request = originalRequest
+      chrome.runtime.sendMessage = originalSendMessage
     }
+    chrome.runtime.sendMessage = ((message: unknown) => {
+      if (
+        typeof message === "object" &&
+        message !== null &&
+        "kind" in message &&
+        message.kind === "request" &&
+        "method" in message &&
+        message.method === "app.getState"
+      ) {
+        tabContextReads += 1
+      }
+      return originalSendMessage(message)
+    }) as typeof chrome.runtime.sendMessage
     const readTabContext = async () => {
       const response = (await chrome.runtime.sendMessage({
         kind: "request",
@@ -2899,6 +2916,7 @@ test("selects page elements without activating them and sends bounded structured
       return response.ok ? response.result?.tabContext : undefined
     }
     chrome.permissions.request = (async () => {
+      state.pickerTabReadsBeforePermission = tabContextReads
       const before = await readTabContext()
       if (!before) return false
       await chrome.tabs.reload(before.tabId)
@@ -2919,16 +2937,28 @@ test("selects page elements without activating them and sends bounded structured
   })
   try {
     await startPicker()
+    expect(
+      await controller.evaluate(
+        () =>
+          (
+            window as typeof window & {
+              pickerTabReadsBeforePermission?: number
+            }
+          ).pickerTabReadsBeforePermission,
+      ),
+    ).toBeGreaterThan(0)
     await expect(controller.locator("#error")).toBeEmpty()
     await page.keyboard.press("Escape")
     await expect(pickerHost).toHaveCount(0)
   } finally {
     await controller.evaluate(() => {
       const state = window as typeof window & {
-        restorePickerPermissionRequest?: () => void
+        pickerTabReadsBeforePermission?: number
+        restorePickerPermissionFlow?: () => void
       }
-      state.restorePickerPermissionRequest?.()
-      delete state.restorePickerPermissionRequest
+      state.restorePickerPermissionFlow?.()
+      delete state.pickerTabReadsBeforePermission
+      delete state.restorePickerPermissionFlow
     })
   }
   tabContext = await waitForCurrentTab(page.url())
