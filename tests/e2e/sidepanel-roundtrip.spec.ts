@@ -2587,8 +2587,8 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
   tabContext = await waitForCurrentTab(`http://127.0.0.1:${fixture.port}/`)
 })
 
-async function prepareFeatureSession(): Promise<void> {
-  await controller.evaluate(async () => {
+async function prepareFeatureSession(modelId = "gpt-5.6-terra"): Promise<void> {
+  await controller.evaluate(async (modelId) => {
     const access = `e30.${btoa(JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "test-account" } }))}.signature`
     const stored = await chrome.storage.local.get("piBrowserAgentSettings")
     await chrome.storage.local.set({
@@ -2604,7 +2604,7 @@ async function prepareFeatureSession(): Promise<void> {
       piBrowserAgentSettings: {
         ...(stored.piBrowserAgentSettings as Record<string, unknown> | undefined),
         modelProvider: "openai-codex",
-        modelId: "gpt-5.6-terra",
+        modelId,
       },
       piBrowserAgentApprovedHostPermissions: [
         "http://127.0.0.1/*",
@@ -2612,7 +2612,7 @@ async function prepareFeatureSession(): Promise<void> {
         "https://chatgpt.com/*",
       ],
     })
-  })
+  }, modelId)
   await controller.reload()
   await expect(controller.locator("#auth-status")).toHaveText(
     "OpenAI Codex configured with an account",
@@ -2621,6 +2621,29 @@ async function prepareFeatureSession(): Promise<void> {
   await page.bringToFront()
   tabContext = await waitForCurrentTab(page.url())
 }
+
+test("streams a response with the upgraded GPT-6 Sol model", async () => {
+  await prepareFeatureSession("gpt-6-sol")
+  const codexUrl = "https://chatgpt.com/backend-api/codex/responses"
+  await context.route(codexUrl, async (route) => {
+    const body = route.request().postDataJSON() as { model?: string }
+    expect(body.model).toBe("gpt-6-sol")
+    await route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body: finalText(1, "Done."),
+    })
+  })
+  try {
+    await controller.locator("#prompt").fill("Check model")
+    await controller.locator("#send").click()
+    await expect(controller.locator("#transcript")).toContainText("Done.")
+    await expect(controller.locator("#run-status")).toHaveText("Ready")
+    await expect(controller.locator("#error")).toBeEmpty()
+  } finally {
+    await context.unroute(codexUrl)
+  }
+})
 
 test("annotates a captured screenshot locally and submits the rendered image", async () => {
   await prepareFeatureSession()
