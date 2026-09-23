@@ -1350,6 +1350,54 @@ textarea {
     0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
+.page-context {
+  padding: 3px 5px 6px;
+  color: var(--text-muted);
+  font-size: 0.74rem;
+}
+
+#page-status {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.page-actions button,
+.page-actions select {
+  min-height: 28px;
+  padding: 3px 6px;
+  font-size: 0.7rem;
+}
+
+#tab-options[hidden] {
+  display: none;
+}
+
+#no-page[aria-pressed="true"] {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+body[data-page="waiting"] .composer-shell {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+  box-shadow:
+    var(--shadow),
+    0 0 10px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+body[data-page="waiting"]:not([data-busy="true"]) .status-dot {
+  background: var(--accent);
+  animation: pulse 2.5s ease-in-out infinite;
+}
+
 .pasted-images {
   display: flex;
   gap: 8px;
@@ -1723,6 +1771,12 @@ dialog p {
   }
 }
 
+@media (max-height: 260px) {
+  .page-context {
+    display: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   #transcript {
     scroll-behavior: auto;
@@ -1734,6 +1788,7 @@ dialog p {
   }
 
   body[data-busy="true"] .status-dot,
+  body[data-page="waiting"]:not([data-busy="true"]) .status-dot,
   .voice-button[aria-pressed="true"] {
     animation: none;
   }

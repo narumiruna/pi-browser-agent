@@ -23,6 +23,7 @@ export interface ExtensionHarness {
   fixturePage: Page
   fixtureUrl: string
   pageErrors: string[]
+  restart: () => Promise<void>
   worker: Worker
 }
 
@@ -72,7 +73,9 @@ function hostPermissionPattern(url: string): string {
   return `${parsed.protocol}//${parsed.hostname}/*`
 }
 
-export async function launchExtensionHarness(): Promise<ExtensionHarness> {
+export async function launchExtensionHarness(
+  options: { bookmarks?: boolean } = {},
+): Promise<ExtensionHarness> {
   const fixtureServer = await startFixtureServer()
   const temporaryDirectory = await mkdtemp(join(tmpdir(), "pi-browser-agent-smoke-"))
   const profileDirectory = join(temporaryDirectory, "profile")
@@ -86,12 +89,20 @@ export async function launchExtensionHarness(): Promise<ExtensionHarness> {
     const copiedManifestPath = join(extensionDirectory, "manifest.json")
     const copiedManifest = JSON.parse(await readFile(copiedManifestPath, "utf8")) as {
       host_permissions?: string[]
+      permissions?: string[]
+      optional_permissions?: string[]
       side_panel?: { default_path?: string }
     }
     const fixturePattern = hostPermissionPattern(fixtureServer.origin)
     copiedManifest.host_permissions = [
       ...new Set([...(copiedManifest.host_permissions ?? []), fixturePattern, ...CODEX_ORIGINS]),
     ]
+    if (options.bookmarks) {
+      copiedManifest.permissions = [...(copiedManifest.permissions ?? []), "bookmarks"]
+      copiedManifest.optional_permissions = (copiedManifest.optional_permissions ?? []).filter(
+        (permission) => permission !== "bookmarks",
+      )
+    }
     await writeFile(copiedManifestPath, JSON.stringify(copiedManifest, null, 2))
     assert.equal(
       await readFile(sourceManifestPath, "utf8"),
@@ -122,7 +133,7 @@ export async function launchExtensionHarness(): Promise<ExtensionHarness> {
     await fixturePage.bringToFront()
 
     let closed = false
-    return {
+    const harness: ExtensionHarness = {
       context,
       controller,
       extensionId,
@@ -130,6 +141,30 @@ export async function launchExtensionHarness(): Promise<ExtensionHarness> {
       fixtureUrl,
       pageErrors,
       worker,
+      async restart() {
+        await context?.close()
+        context = await chromium.launchPersistentContext(profileDirectory, {
+          channel: "chromium",
+          headless: true,
+          args: [
+            `--disable-extensions-except=${extensionDirectory}`,
+            `--load-extension=${extensionDirectory}`,
+          ],
+        })
+        trackPageErrors(context, pageErrors)
+        harness.context = context
+        harness.worker =
+          context.serviceWorkers()[0] ??
+          (await context.waitForEvent("serviceworker", { timeout: 15_000 }))
+        assert.equal(new URL(harness.worker.url()).host, extensionId)
+        harness.controller = await context.newPage()
+        await harness.controller.goto(`chrome-extension://${extensionId}/${panelPath}`, {
+          waitUntil: "domcontentloaded",
+        })
+        harness.fixturePage = await context.newPage()
+        await harness.fixturePage.goto(fixtureUrl, { waitUntil: "domcontentloaded" })
+        await harness.fixturePage.bringToFront()
+      },
       async close() {
         if (closed) return
         closed = true
@@ -141,6 +176,7 @@ export async function launchExtensionHarness(): Promise<ExtensionHarness> {
         }
       },
     }
+    return harness
   } catch (error) {
     await context?.close().catch(() => undefined)
     await fixtureServer.close().catch(() => undefined)

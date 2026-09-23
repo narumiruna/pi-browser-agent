@@ -1,3 +1,4 @@
+import type { PageCapability } from "./page-capability.js"
 import {
   type ElementTarget,
   type JsonObject,
@@ -104,6 +105,19 @@ function isJsonValue(value: unknown, depth = 0): value is JsonValue {
     ([key, item]) =>
       !["__proto__", "constructor", "prototype"].includes(key) && isJsonValue(item, depth + 1),
   )
+}
+
+export function pageCapabilityFrom(value: unknown): PageCapability {
+  if (
+    isRecord(value) &&
+    hasOnlyKeys(value, ["kind", "title"]) &&
+    ["none", "web", "restricted", "file", "pdf"].includes(String(value.kind)) &&
+    typeof value.title === "string" &&
+    value.title.length <= 160
+  ) {
+    return value as unknown as PageCapability
+  }
+  return { kind: "none", title: "" }
 }
 
 function isTabContext(value: unknown): value is TabContext {

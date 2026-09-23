@@ -14,15 +14,16 @@ Credential removal first aborts the agent, waits for it to become idle, then rem
 
 ## Current-tab controls
 
-- Only the active HTTP(S) tab in the focused Chrome window is targeted.
-- Tab and window activation automatically update the target; unsupported pages clear it.
+- Chat, provider authentication, and individually confirmed bookmark reads work without a readable tab. Only the active, accessible HTTP(S) tab in the focused Chrome window is targeted by page tools. A no-page turn keeps those tools disabled even if the active tab changes; queued instructions cannot upgrade it.
+- The UI capability label is not authorization: known restricted origins, local files, and apparent PDFs are excluded before binding; Chrome-denied injection marks a web tab unavailable until reload/navigation. The worker still checks visibility, exact-origin approval, and epoch for every operation. File/PDF page reads and local import are not implemented.
+- Tab and window activation automatically update the target; unsupported pages clear it. UI-only page status (bounded title and kind) changes even between two unsupported tabs; protected URLs and file paths are not sent to the model by default.
 - Tab ID, URL, and context epoch identify the operation context.
 - Navigation or a visible-tab change after request creation causes `STALE_CONTEXT`.
 - Ordinary host access is approved from an explicit user gesture and scoped to selected exact origins in trusted extension storage. The worker requires both that app-level approval and Chrome host permission.
 - Screenshot capture separately requests optional `<all_urls>` from its confirmation gesture because Chrome requires it when `activeTab` is no longer live. Although Chrome treats that grant as satisfying narrower host checks, Pi Browser Agent does not add exact app approvals from it. The worker still captures only the active visible HTTP(S) viewport and rechecks the grant before each capture.
 - Password and file inputs are always denied.
 - Form submissions, downloads, cross-origin links, cross-origin navigation, and WebMCP calls require confirmation.
-- Cross-origin navigation additionally requires destination host permission.
+- Cross-origin navigation additionally requires destination host permission. User-confirmed opening of a new web tab is separate from agent navigation; entering a search query and accepting the displayed URL is required before it goes to the search provider. Page access after opening still requires exact-origin approval.
 - Tools accept fixed schemas; injected code cannot evaluate model-provided JavaScript.
 
 Mutation tools declare `replay: "never"` and execute sequentially. Interrupted sessions do not continue automatically.

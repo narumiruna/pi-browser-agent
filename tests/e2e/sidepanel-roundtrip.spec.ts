@@ -2000,7 +2000,7 @@ test("synchronizes provider controls when a new session restores the latest mode
   const providerSearch = settingsTab.locator("#provider-search")
   await providerSearch.fill("anthropic")
   await expect(settingsTab.locator("#provider-options [role='option']")).toHaveCount(1)
-  await providerSearch.press("Enter")
+  await settingsTab.locator("#provider-options [role='option']").click()
   await expect(settingsTab.locator("#provider")).toHaveValue("anthropic")
   const anthropicModelId = await settingsTab.locator("#model").inputValue()
   expect(anthropicModelId).not.toBe("")
@@ -2078,7 +2078,7 @@ test("keeps header and composer controls usable at normal and narrow widths", as
     await controller.setViewportSize({ width: 480, height: 720 })
     await expect(controller.locator(".brand, .brand-mark")).toHaveCount(0)
     await expect(controller.locator(".app-header")).not.toContainText("Pi Browser Agent")
-    await expect(controller.locator(".page-context, #tab-status")).toHaveCount(0)
+    await expect(controller.locator("#page-status")).toBeVisible()
 
     const sharesRow = await controller.locator(".header-row").evaluate((header) => {
       const selectors = [".session-picker", "#new-session", ".account-disclosure"]
@@ -2094,7 +2094,15 @@ test("keeps header and composer controls usable at normal and narrow widths", as
     })
     expect(sharesRow).toBe(true)
     await expect(controller.locator(".app-header #run-status")).toHaveCount(0)
-    await expect(controller.locator(".composer-toolbar .status-pill")).toBeHidden()
+    const pageLabel = await controller.locator("#page-status").textContent()
+    if (pageLabel?.includes("cannot read or operate")) {
+      await expect(controller.locator(".composer-toolbar .status-pill")).toBeVisible()
+      await expect(controller.locator("#run-status")).toHaveText("Waiting for a web page")
+    } else if (pageLabel?.includes("not used")) {
+      await expect(controller.locator("#run-status")).toHaveText("Ready — no page context")
+    } else {
+      await expect(controller.locator(".composer-toolbar .status-pill")).toBeHidden()
+    }
     await expect(controller.locator("#composer-hint")).toBeVisible()
     const transcriptTop = await controller
       .locator("#transcript")

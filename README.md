@@ -1,6 +1,6 @@
 # Pi Browser Agent
 
-Pi Browser Agent is a Chrome-native AI assistant. The Side Panel runs `pi-agent-core` and the browser-compatible built-in provider/model catalog from `pi-ai`, and exposes bounded tools for the active HTTP(S) tab in the focused Chrome window. With separate approval, it can also search or inspect recent Chrome bookmarks.
+Pi Browser Agent is a Chrome-native AI assistant. The Side Panel runs `pi-agent-core` and the browser-compatible built-in provider/model catalog from `pi-ai`. Chat works on any tab; bounded page tools work only on the active, accessible HTTP(S) tab in the focused Chrome window. With separate approval, Pi can also search or inspect recent Chrome bookmarks without a web page.
 
 No local agent process, native host, shell, filesystem access, pairing secret, or loopback connection is required.
 
@@ -29,8 +29,8 @@ Load the production artifact:
 
 1. Open **Settings** and choose the provider and model you want to use.
 2. Select **Add credential** from the top-right menu, or **Configure authentication** in Settings. Choose **Sign in with an account** or **Sign in with an API key**, then choose a provider from the filtered list. OpenAI Codex account login asks for access to `auth.openai.com` and `chatgpt.com` before starting its device flow; OpenAI API keys use the separate OpenAI provider.
-3. Open the HTTP or HTTPS page you want to use. Pi Browser Agent follows the visible tab automatically.
-4. Enter a prompt. Pi Browser Agent approves only the current page and selected provider endpoint for ordinary access when needed.
+3. Enter a prompt from any tab. Pi Browser Agent requests the selected provider endpoint; on an accessible HTTP(S) page it also asks for current-site access when needed. It follows the visible web tab automatically, but never reads a protected page.
+4. Check **Current page** above the prompt. On a restricted page, use **Open a website** (enter a URL or search query, then confirm the destination), **Choose a tab**, or send a context-free question. On a web page, select **Continue without page context** to keep page tools off for that turn. Opening a website creates a new tab only after your confirmation; a search query is sent to the search provider only if you confirm its URL.
 5. To include an image, paste it into the composer, review the preview, and send it with optional text. Choose a model marked **Image input**.
 6. To point out a page element, select the cursor-and-dashed-box button beside the microphone, hover the page highlight, and select the target. Review or remove the resulting chip before sending. Selection supports the top-frame DOM and does not activate the target.
 7. To let Pi inspect the visible page, ask it to capture the screen and confirm the first screenshot request. Chrome asks for optional all-sites access because its screenshot API requires `<all_urls>` after the temporary `activeTab` grant ends; Pi Browser Agent still captures only the current visible HTTP(S) viewport. A completed screenshot result has an **Annotate screenshot** action; draw locally, attach the rendered image, then select **Send**.
@@ -49,7 +49,8 @@ The agent can read visible text and selection, discover visible interactive elem
 
 - Password and file inputs are denied.
 - Form submissions, downloads, cross-origin links, cross-origin navigation, and all WebMCP calls require confirmation.
-- A request created before navigation or a visible-tab change is rejected as stale.
+- A request created before navigation or a visible-tab change is rejected as stale. Chat and individually confirmed bookmark reads do not require a supported page; a no-page turn cannot use page tools even after a tab switch.
+- Chrome internal pages, Chrome Web Store pages, local files, and PDF viewers cannot be read or operated by page tools. A site whose URL looks like HTTP(S) but denies script injection also becomes unavailable until navigation/reload. No file/PDF import is provided in this release; enabling Chrome's file-URL access does not change that boundary.
 - Visible text and selected text are capped at 50 KB; screenshots are capped at 3 MB.
 - The element picker accepts up to five chips and 16 KB of combined context. It includes bounded visible text, accessibility metadata, an allowlist of attributes, viewport geometry, and a best-effort CSS selector; it excludes field values, hidden text, full HTML, credential-bearing URLs, iframes, and Shadow DOM. Selectors are descriptive hints, not durable mutation authorization.
 - Picker mode uses a layout-neutral interaction shield so selecting a button, link, or submit control does not activate it. `Esc`, a repeated button click, selection, navigation, tab/focus change, timeout, or closing the Side Panel cancels the mode. A page-level listener installed before the picker may still observe an intercepted event.
@@ -103,7 +104,7 @@ Pushes to `main` create or update the **chore(release): version packages** pull 
 
 - **Provider host access was declined or revoked:** send again and approve the selected endpoint, or reconfigure the provider if its endpoint changed.
 - **OpenAI Codex host access was revoked:** select **Add credential** → **Sign in with an account** → **OpenAI Codex**, then approve both requested OpenAI origins.
-- **A page tool is denied:** make the intended HTTP(S) page visible and send the prompt again. If access was previously declined, use **Account and site access → Allow current site**. Chrome internal pages cannot be controlled.
+- **A page tool is denied:** choose an accessible HTTP(S) tab or explicitly open a website, then send the prompt again. If access was previously declined, use **Account and site access → Allow current site**. Protected pages, local files, and PDF viewers cannot be controlled. Ordinary questions can still be sent without a page.
 - **A screenshot is denied:** request it again, confirm Pi Browser Agent's explanation, and approve Chrome's optional all-sites prompt. If the grant was revoked, Chrome asks again; ordinary per-site access is not enough for `captureVisibleTab()`.
 - **An annotation will not attach:** choose an image-capable model, add at least one stroke, and remove composer images if the four-image or 3 MB total limit is reached. Editing itself requests no permission and sends nothing until **Send**.
 - **The element picker will not start:** make an HTTP(S) page visible and approve current-site access. Press `Esc` or select the active picker button to reset it; navigation and site-access revocation require a fresh selection.

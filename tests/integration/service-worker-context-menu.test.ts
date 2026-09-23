@@ -269,6 +269,23 @@ describe("service worker visible-tab targeting", () => {
       }),
     ).resolves.toMatchObject({ ok: false, error: { code: "STALE_CONTEXT" } })
     expect(executeScript).not.toHaveBeenCalled()
+    const beforeInjection = (await appState("before-injection-denial")) as {
+      result: { tabContext: { tabId: number; url: string; epoch: number } }
+    }
+    executeScript.mockRejectedValueOnce(new Error("Chrome denied injection"))
+    await expect(
+      request({
+        kind: "request",
+        requestId: "injection-denied",
+        method: "page.getVisibleText",
+        params: {},
+        tabContext: beforeInjection.result.tabContext,
+      }),
+    ).resolves.toMatchObject({ ok: false, error: { code: "PERMISSION_DENIED" } })
+    await expect(appState("inaccessible-web-page")).resolves.toMatchObject({
+      ok: true,
+      result: { page: { kind: "restricted" }, tabContext: null },
+    })
 
     activeTab = { id: 8, url: "chrome://settings", windowId: 3 }
     listeners.focusChanged?.(3)
@@ -279,7 +296,19 @@ describe("service worker visible-tab targeting", () => {
     )
     await expect(appState("unsupported-state")).resolves.toEqual({
       ok: true,
-      result: { tabContext: null },
+      result: { tabContext: null, page: { kind: "restricted", title: "" } },
+    })
+    sendMessage.mockClear()
+    activeTab = { id: 11, url: "chrome://newtab", windowId: 3 }
+    listeners.activated?.({ tabId: 11, windowId: 3 })
+    await vi.waitFor(() =>
+      expect(sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "tab.changed", tabContext: undefined }),
+      ),
+    )
+    await expect(appState("another-restricted-state")).resolves.toMatchObject({
+      ok: true,
+      result: { page: { kind: "restricted" }, tabContext: null },
     })
 
     activeTab = { id: 8, url: "https://recovered.test/page", windowId: 3 }
@@ -296,7 +325,7 @@ describe("service worker visible-tab targeting", () => {
     await vi.waitFor(async () => {
       await expect(appState("unsupported-update-state")).resolves.toEqual({
         ok: true,
-        result: { tabContext: null },
+        result: { tabContext: null, page: { kind: "restricted", title: "" } },
       })
     })
 
@@ -421,7 +450,7 @@ describe("service worker visible-tab targeting", () => {
     ])
     await expect(appState("focus-loss-before-commit")).resolves.toEqual({
       ok: true,
-      result: { tabContext: null },
+      result: { tabContext: null, page: { kind: "none", title: "" } },
     })
     expect(focusLossQueued).toBe(true)
 
@@ -432,7 +461,7 @@ describe("service worker visible-tab targeting", () => {
     await vi.waitFor(async () => {
       await expect(appState("unfocused-state")).resolves.toEqual({
         ok: true,
-        result: { tabContext: null },
+        result: { tabContext: null, page: { kind: "none", title: "" } },
       })
     })
     sendMessage.mockClear()

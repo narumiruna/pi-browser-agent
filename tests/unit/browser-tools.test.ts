@@ -279,6 +279,46 @@ describe("browser agent tools", () => {
     expect(content.text).toMatch(/\[truncated\]$/)
   })
 
+  test("blocks every page tool in a no-page turn even when a web tab is active", async () => {
+    let enabled = false
+    const sendMessage = vi.fn(async (message: { method: string }) =>
+      message.method === "app.getState"
+        ? { ok: true, result: { tabContext: { tabId: 1, url: "https://example.test", epoch: 0 } } }
+        : { ok: true, result: {} },
+    )
+    vi.stubGlobal("chrome", { runtime: { sendMessage } })
+    const tools = createBrowserTools(vi.fn(), () => enabled)
+    for (const [name, params] of [
+      ["browser_get_active_tab", {}],
+      ["browser_read_page", {}],
+      ["browser_capture_visible", {}],
+      ["browser_list_elements", {}],
+      ["browser_get_selection", {}],
+      ["browser_click", { selector: "#x" }],
+      ["browser_type", { selector: "#x", text: "x" }],
+      ["browser_navigate", { url: "https://example.test" }],
+      ["browser_webmcp", { action: "list" }],
+    ] as const) {
+      const tool = tools.find((candidate) => candidate.name === name)
+      if (!tool) throw new Error(name)
+      await expect(tool.execute("id", params, undefined)).rejects.toThrow(
+        "does not use page context",
+      )
+    }
+    expect(sendMessage).not.toHaveBeenCalled()
+    const bookmark = tools.find((candidate) => candidate.name === "browser_get_recent_bookmarks")
+    if (!bookmark) throw new Error("Missing bookmark tool")
+    await bookmark.execute("id", {}, undefined)
+    expect(sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ method: "bookmarks.getRecent" }),
+    )
+    enabled = true
+    await tools
+      .find((candidate) => candidate.name === "browser_get_active_tab")
+      ?.execute("id", {}, undefined)
+    expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({ method: "tabs.getActive" }))
+  })
+
   test("confirms bookmark reads without requesting active-tab state", async () => {
     const sendMessage = vi.fn(async (message: { confirmed?: boolean; method: string }) => {
       if (message.method === "app.getState") throw new Error("unexpected active-tab request")
