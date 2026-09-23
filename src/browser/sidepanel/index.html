@@ -140,6 +140,15 @@
           aria-live="polite"
           hidden
         ></div>
+        <div class="page-context" id="page-context" aria-live="polite">
+          <span id="page-status">Checking current page…</span>
+          <div class="page-actions">
+            <button type="button" id="open-website" class="subtle">Open a website</button>
+            <button type="button" id="choose-tab" class="subtle">Choose a tab</button>
+            <select id="tab-options" aria-label="Choose a web tab" hidden></select>
+            <button type="button" id="no-page" class="subtle" aria-pressed="false">Continue without page context</button>
+          </div>
+        </div>
         <textarea
           id="prompt"
           rows="2"

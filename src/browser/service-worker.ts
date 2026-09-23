@@ -15,6 +15,7 @@ import {
 } from "./permissions.js"
 import { ELEMENT_PICKER_LIMITS, parseSelectedElementContext } from "./runtime/element-context.js"
 import { parseRuntimeRequest, type RuntimeEvent, type RuntimeRequest } from "./runtime/messages.js"
+import { classifyPage, type PageCapability } from "./runtime/page-capability.js"
 import {
   ELEMENT_LIMITS,
   type ElementSnapshot,
@@ -35,6 +36,9 @@ const VISIBLE_TAB_FOCUS_RETRY_ATTEMPTS = 5
 const VISIBLE_TAB_FOCUS_RETRY_MS = 50
 const activeRequests = new Map<string, AbortController>()
 let boundContext: TabContext | undefined
+let visiblePage: PageCapability = { kind: "none", title: "" }
+let inaccessibleTab: { id: number; url: string } | undefined
+let observedTab: { id: number; url?: string } | undefined
 let elementSnapshot: ElementSnapshot | undefined
 let activeElementPicker:
   | { clientId: string; context: TabContext; expiresAt: number; token: string }
@@ -47,11 +51,18 @@ let pendingSelectionTake: Promise<JsonValue> = Promise.resolve(null)
 const initialization = initialize()
 
 function isSupportedPageUrl(value: string): boolean {
-  try {
-    return ["http:", "https:"].includes(new URL(value).protocol)
-  } catch {
-    return false
-  }
+  return classifyPage(value).kind === "web"
+}
+
+function setVisiblePage(page: PageCapability): void {
+  if (visiblePage.kind === page.kind && visiblePage.title === page.title) return
+  visiblePage = page
+  emitTabChanged()
+}
+
+function markTabInaccessible(context: TabContext): void {
+  inaccessibleTab = { id: context.tabId, url: context.url }
+  clearBoundTab({ kind: "restricted", title: visiblePage.title })
 }
 
 function emitEvent(event: RuntimeEvent): void {
@@ -95,22 +106,32 @@ async function stopActiveElementPicker(reason: string, emit = true): Promise<voi
   }
 }
 
-function clearBoundTab(): void {
+function clearBoundTab(page: PageCapability = { kind: "none", title: "" }): void {
   elementPickerOperationVersion += 1
   if (activeElementPicker) void stopActiveElementPicker("tab-context-cleared")
-  if (!boundContext) return
-  contextEpoch = Math.max(contextEpoch, boundContext.epoch) + 1
-  boundContext = undefined
-  elementSnapshot = undefined
-  emitTabChanged()
+  if (boundContext) {
+    contextEpoch = Math.max(contextEpoch, boundContext.epoch) + 1
+    boundContext = undefined
+    elementSnapshot = undefined
+    emitTabChanged()
+  }
+  setVisiblePage(page)
 }
 
 function setBoundTab(tab: chrome.tabs.Tab | undefined): TabContext | undefined {
-  if (tab?.id === undefined || !tab.url || !isSupportedPageUrl(tab.url)) {
-    clearBoundTab()
+  const observedChanged = observedTab?.id !== tab?.id || observedTab?.url !== tab?.url
+  observedTab = tab?.id === undefined ? undefined : { id: tab.id, url: tab.url }
+  if (inaccessibleTab && (inaccessibleTab.id !== tab?.id || inaccessibleTab.url !== tab.url)) {
+    inaccessibleTab = undefined
+  }
+  const page = classifyPage(tab?.url, tab?.title)
+  if (tab?.id === undefined || !tab.url || page.kind !== "web" || inaccessibleTab) {
+    clearBoundTab(inaccessibleTab ? { kind: "restricted", title: page.title } : page)
+    if (observedChanged) emitTabChanged()
     return undefined
   }
   if (boundContext?.tabId === tab.id && boundContext.url === tab.url) {
+    setVisiblePage(page)
     return { ...boundContext }
   }
   elementPickerOperationVersion += 1
@@ -118,6 +139,7 @@ function setBoundTab(tab: chrome.tabs.Tab | undefined): TabContext | undefined {
   if (boundContext) contextEpoch = Math.max(contextEpoch, boundContext.epoch) + 1
   elementSnapshot = undefined
   boundContext = { tabId: tab.id, url: tab.url, epoch: contextEpoch }
+  visiblePage = page
   emitTabChanged()
   return { ...boundContext }
 }
@@ -140,7 +162,7 @@ async function findFocusedVisibleTab(version: number): Promise<chrome.tabs.Tab |
   while (version === visibleTabSyncVersion) {
     const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
     if (version !== visibleTabSyncVersion) return null
-    if (tab?.id === undefined || !tab.url || !isSupportedPageUrl(tab.url)) return undefined
+    if (tab?.id === undefined) return undefined
 
     const window = await chrome.windows.get(tab.windowId)
     if (version !== visibleTabSyncVersion) return null
@@ -312,6 +334,54 @@ async function assertCurrentMutationTarget(
   }
 }
 
+function readDocumentContentType(): string {
+  return document.contentType
+}
+
+async function assertReadableDocument(context: TabContext): Promise<void> {
+  let contentType: string | undefined
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: context.tabId },
+      world: "ISOLATED",
+      func: readDocumentContentType,
+    })
+    contentType = results[0]?.result
+  } catch (error) {
+    const latest = await syncVisibleTab()
+    if (
+      !latest ||
+      latest.tabId !== context.tabId ||
+      latest.url !== context.url ||
+      latest.epoch !== context.epoch
+    ) {
+      throwStaleContext(context, latest)
+    }
+    markTabInaccessible(context)
+    throw new RuntimeError(
+      "PERMISSION_DENIED",
+      error instanceof Error ? error.message : "Chrome denied access to the current tab",
+    )
+  }
+  const latest = await syncVisibleTab()
+  if (
+    !latest ||
+    latest.tabId !== context.tabId ||
+    latest.url !== context.url ||
+    latest.epoch !== context.epoch
+  ) {
+    throwStaleContext(context, latest)
+  }
+  if (
+    typeof contentType !== "string" ||
+    !contentType ||
+    contentType.toLowerCase() === "application/pdf"
+  ) {
+    markTabInaccessible(context)
+    throw new RuntimeError("PERMISSION_DENIED", "This page cannot be read or operated")
+  }
+}
+
 async function runPageOperation(
   operation: PageOperation,
   request: RuntimeRequest<
@@ -329,6 +399,7 @@ async function runPageOperation(
   }
   if (activeRequests.get(request.requestId)?.signal.aborted)
     throw new RuntimeError("REQUEST_CANCELLED", "Browser request was cancelled")
+  await assertReadableDocument(context)
   let snapshot: ElementSnapshot | null = null
   if (operation === "listElements") {
     snapshot = {
@@ -369,6 +440,16 @@ async function runPageOperation(
       ],
     })
   } catch (error) {
+    const latest = await syncVisibleTab()
+    if (
+      !latest ||
+      latest.tabId !== context.tabId ||
+      latest.url !== context.url ||
+      latest.epoch !== context.epoch
+    ) {
+      throwStaleContext(context, latest)
+    }
+    markTabInaccessible(context)
     throw new RuntimeError(
       "PERMISSION_DENIED",
       error instanceof Error ? error.message : "Chrome denied access to the current tab",
@@ -458,6 +539,7 @@ async function runWebMcp(
       "Grant access to the current site before using WebMCP",
     )
   }
+  await assertReadableDocument(context)
   let results: chrome.scripting.InjectionResult<
     Awaited<ReturnType<typeof executeWebMcpOperation>>
   >[]
@@ -468,6 +550,16 @@ async function runWebMcp(
       args: [operation, request.params, request.confirmed ?? false, context],
     })
   } catch (error) {
+    const latest = await syncVisibleTab()
+    if (
+      !latest ||
+      latest.tabId !== context.tabId ||
+      latest.url !== context.url ||
+      latest.epoch !== context.epoch
+    ) {
+      throwStaleContext(context, latest)
+    }
+    markTabInaccessible(context)
     throw new RuntimeError(
       "PERMISSION_DENIED",
       error instanceof Error ? error.message : "Chrome denied WebMCP access",
@@ -488,6 +580,13 @@ async function runWebMcp(
 async function getActiveTab(request: RuntimeRequest<"tabs.getActive">): Promise<JsonValue> {
   const context = await refreshBoundContext()
   assertTabContext(request.tabContext, context)
+  if (!(await hasHostPermission(context.url))) {
+    throw new RuntimeError(
+      "PERMISSION_DENIED",
+      "Grant access to the current site before reading tab metadata",
+    )
+  }
+  await assertReadableDocument(context)
   const tab = await chrome.tabs.get(context.tabId)
   await revalidateRequestContext(request, context)
   return { ...context, active: tab.active, title: tab.title ?? "", windowId: tab.windowId }
@@ -511,6 +610,8 @@ async function captureVisible(request: RuntimeRequest<"page.captureVisible">): P
   if (!tab.active) {
     throw new RuntimeError("INVALID_REQUEST", "The current tab must remain active for a screenshot")
   }
+  await assertReadableDocument(context)
+  await revalidateRequestContext(request, context)
   let dataUrl: string
   try {
     dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" })
@@ -556,6 +657,13 @@ async function runBookmarkRead(
 async function navigate(request: RuntimeRequest<"tabs.navigate">): Promise<JsonValue> {
   const context = await refreshBoundContext()
   assertTabContext(request.tabContext, context)
+  if (!(await hasHostPermission(context.url))) {
+    throw new RuntimeError(
+      "PERMISSION_DENIED",
+      "Grant access to the current site before navigating",
+    )
+  }
+  await assertReadableDocument(context)
   const target = request.params.url
   if (!isSupportedPageUrl(target)) {
     throw new RuntimeError("INVALID_REQUEST", "Navigation requires an HTTP or HTTPS URL")
@@ -610,6 +718,8 @@ async function startElementPicker(
     )
   }
   if (operationVersion !== elementPickerOperationVersion) return { active: false }
+  await assertReadableDocument(context)
+  if (operationVersion !== elementPickerOperationVersion) return { active: false }
   if (activeElementPicker) await stopActiveElementPicker("replaced")
   if (operationVersion !== elementPickerOperationVersion) return { active: false }
   const token = crypto.randomUUID()
@@ -619,13 +729,34 @@ async function startElementPicker(
     token,
     expiresAt: Date.now() + ELEMENT_PICKER_LIMITS.lifetimeMs,
   }
+  let injectionFailed = false
   try {
-    const results = (await chrome.scripting.executeScript({
-      target: { tabId: context.tabId },
-      func: executeElementPicker,
-      world: "ISOLATED",
-      args: ["start", token, context, ELEMENT_PICKER_LIMITS],
-    })) as chrome.scripting.InjectionResult<ElementPickerOperationResult>[]
+    let results: chrome.scripting.InjectionResult<ElementPickerOperationResult>[]
+    try {
+      results = await chrome.scripting.executeScript({
+        target: { tabId: context.tabId },
+        func: executeElementPicker,
+        world: "ISOLATED",
+        args: ["start", token, context, ELEMENT_PICKER_LIMITS],
+      })
+    } catch (error) {
+      injectionFailed = true
+      if (activeElementPicker?.token === token) activeElementPicker = undefined
+      const latest = await syncVisibleTab()
+      if (
+        !latest ||
+        latest.tabId !== context.tabId ||
+        latest.url !== context.url ||
+        latest.epoch !== context.epoch
+      ) {
+        throwStaleContext(context, latest)
+      }
+      markTabInaccessible(context)
+      throw new RuntimeError(
+        "PERMISSION_DENIED",
+        error instanceof Error ? error.message : "Chrome denied access to the current tab",
+      )
+    }
     const outcome = results[0]?.result
     if (!outcome?.ok || outcome.result.started !== true) {
       throw new RuntimeError("STALE_CONTEXT", "The page changed before the element picker started")
@@ -643,7 +774,7 @@ async function startElementPicker(
     return { active, clientId: request.params.clientId }
   } catch (error) {
     if (activeElementPicker?.token === token) activeElementPicker = undefined
-    await stopInjectedElementPicker(context)
+    if (!injectionFailed) await stopInjectedElementPicker(context)
     if (error instanceof RuntimeError) throw error
     throw new RuntimeError(
       "PERMISSION_DENIED",
@@ -681,7 +812,7 @@ async function dispatch(request: RuntimeRequest, signal: AbortSignal): Promise<J
   let result: JsonValue
   switch (request.method) {
     case "app.getState":
-      result = { tabContext: (await syncVisibleTab()) ?? null }
+      result = { tabContext: (await syncVisibleTab()) ?? null, page: { ...visiblePage } }
       break
     case "tabs.getActive":
       result = await getActiveTab(request)
@@ -769,7 +900,15 @@ chrome.runtime.onInstalled.addListener(() => {
 })
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-  if (!changeInfo.url && changeInfo.status !== "loading") return
+  const navigation = Boolean(changeInfo.url) || changeInfo.status === "loading"
+  if (!navigation) {
+    if (changeInfo.title !== undefined) {
+      // A title-only update changes the UI label, not the page or its references.
+      void initialization.then(() => syncVisibleTab()).catch(() => undefined)
+    }
+    return
+  }
+  if (changeInfo.status === "loading" && inaccessibleTab?.id === tabId) inaccessibleTab = undefined
   elementPickerOperationVersion += 1
   if (activeElementPicker?.context.tabId === tabId) void stopActiveElementPicker("navigation")
   if (boundContext?.tabId === tabId) elementSnapshot = undefined
@@ -813,6 +952,8 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
     .then(() => bindSelectionTab(tab))
     .then(async (context) => {
       if (!info.selectionText || windowId === undefined) return
+      // The context menu provides selection text even when the URL masks an unreadable PDF.
+      await assertReadableDocument(context)
       const selection = truncateUtf8(info.selectionText)
       await savePendingSelection({
         windowId,

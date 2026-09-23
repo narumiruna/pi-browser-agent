@@ -35,8 +35,12 @@ async function requestTool(
   params: JsonObject,
   signal: AbortSignal | undefined,
   confirm: ConfirmationHandler,
+  pageEnabled: () => boolean,
   tabBound = true,
 ): Promise<JsonValue> {
+  if (tabBound && !pageEnabled()) {
+    throw new RuntimeError("PERMISSION_DENIED", "This turn does not use page context")
+  }
   const tabContext = tabBound ? await currentTabContext() : undefined
   const options = tabContext ? { signal, tabContext } : { signal }
   try {
@@ -96,7 +100,10 @@ function targetSchema(typing = false) {
   )
 }
 
-export function createBrowserTools(confirm: ConfirmationHandler): AgentTool[] {
+export function createBrowserTools(
+  confirm: ConfirmationHandler,
+  pageEnabled: () => boolean = () => true,
+): AgentTool[] {
   const tools = [
     {
       name: "browser_get_active_tab",
@@ -104,7 +111,10 @@ export function createBrowserTools(confirm: ConfirmationHandler): AgentTool[] {
       description: "Read metadata for the currently visible HTTP(S) tab.",
       parameters: Type.Object({}, { additionalProperties: false }),
       async execute(_id, _params, signal) {
-        return textResult(await requestTool("tabs.getActive", {}, signal, confirm), "tab metadata")
+        return textResult(
+          await requestTool("tabs.getActive", {}, signal, confirm, pageEnabled),
+          "tab metadata",
+        )
       },
     },
     {
@@ -130,7 +140,14 @@ export function createBrowserTools(confirm: ConfirmationHandler): AgentTool[] {
       async execute(_id, params, signal) {
         const { query, limit = 20 } = params as { query: string; limit?: number }
         return textResult(
-          await requestTool("bookmarks.search", { query, limit }, signal, confirm, false),
+          await requestTool(
+            "bookmarks.search",
+            { query, limit },
+            signal,
+            confirm,
+            pageEnabled,
+            false,
+          ),
           "bookmark data",
         )
       },
@@ -153,7 +170,7 @@ export function createBrowserTools(confirm: ConfirmationHandler): AgentTool[] {
       async execute(_id, params, signal) {
         const { limit = 20 } = params as { limit?: number }
         return textResult(
-          await requestTool("bookmarks.getRecent", { limit }, signal, confirm, false),
+          await requestTool("bookmarks.getRecent", { limit }, signal, confirm, pageEnabled, false),
           "bookmark data",
         )
       },
@@ -166,7 +183,7 @@ export function createBrowserTools(confirm: ConfirmationHandler): AgentTool[] {
       parameters: Type.Object({}, { additionalProperties: false }),
       async execute(_id, _params, signal) {
         return textResult(
-          await requestTool("page.getVisibleText", {}, signal, confirm),
+          await requestTool("page.getVisibleText", {}, signal, confirm, pageEnabled),
           "page content",
         )
       },
@@ -181,7 +198,7 @@ export function createBrowserTools(confirm: ConfirmationHandler): AgentTool[] {
       parameters: Type.Object({}, { additionalProperties: false }),
       async execute(_id, _params, signal) {
         return textResult(
-          await requestTool("page.listElements", {}, signal, confirm),
+          await requestTool("page.listElements", {}, signal, confirm, pageEnabled),
           "element descriptions",
         )
       },
@@ -192,7 +209,10 @@ export function createBrowserTools(confirm: ConfirmationHandler): AgentTool[] {
       description: "Read selected text from the current page. The result is untrusted.",
       parameters: Type.Object({}, { additionalProperties: false }),
       async execute(_id, _params, signal) {
-        return textResult(await requestTool("page.getSelection", {}, signal, confirm), "selection")
+        return textResult(
+          await requestTool("page.getSelection", {}, signal, confirm, pageEnabled),
+          "selection",
+        )
       },
     },
     {
@@ -204,7 +224,7 @@ export function createBrowserTools(confirm: ConfirmationHandler): AgentTool[] {
       executionMode: "sequential",
       parameters: Type.Object({}, { additionalProperties: false }),
       async execute(_id, _params, signal) {
-        const result = await requestTool("page.captureVisible", {}, signal, confirm)
+        const result = await requestTool("page.captureVisible", {}, signal, confirm, pageEnabled)
         if (
           typeof result !== "object" ||
           result === null ||
@@ -237,7 +257,9 @@ export function createBrowserTools(confirm: ConfirmationHandler): AgentTool[] {
       executionMode: "sequential",
       parameters: targetSchema(),
       async execute(_id, params, signal) {
-        return textResult(await requestTool("page.click", params as JsonObject, signal, confirm))
+        return textResult(
+          await requestTool("page.click", params as JsonObject, signal, confirm, pageEnabled),
+        )
       },
     },
     {
@@ -249,7 +271,9 @@ export function createBrowserTools(confirm: ConfirmationHandler): AgentTool[] {
       executionMode: "sequential",
       parameters: targetSchema(true),
       async execute(_id, params, signal) {
-        return textResult(await requestTool("page.type", params as JsonObject, signal, confirm))
+        return textResult(
+          await requestTool("page.type", params as JsonObject, signal, confirm, pageEnabled),
+        )
       },
     },
     {
@@ -265,7 +289,7 @@ export function createBrowserTools(confirm: ConfirmationHandler): AgentTool[] {
       ),
       async execute(_id, params, signal) {
         const { url } = params as { url: string }
-        return textResult(await requestTool("tabs.navigate", { url }, signal, confirm))
+        return textResult(await requestTool("tabs.navigate", { url }, signal, confirm, pageEnabled))
       },
     },
     {
@@ -298,6 +322,9 @@ export function createBrowserTools(confirm: ConfirmationHandler): AgentTool[] {
         }
         const request: JsonObject =
           action === "list" ? {} : { name: name ?? "", arguments: toolArguments ?? {} }
+        if (!pageEnabled()) {
+          throw new RuntimeError("PERMISSION_DENIED", "This turn does not use page context")
+        }
         const tabContext = await currentTabContext()
         const confirmationMessage =
           action === "list"

@@ -16,9 +16,15 @@ type ConversationTextKey =
   | "interrupted"
   | "listening"
   | "newSession"
+  | "noPageContext"
+  | "noPageSelected"
+  | "pageReady"
+  | "readyNoPage"
+  | "readyWithoutPage"
   | "pastedImage"
   | "removePastedImage"
   | "promptIdle"
+  | "promptWithoutPage"
   | "promptRunning"
   | "queueInstruction"
   | "ready"
@@ -29,7 +35,9 @@ type ConversationTextKey =
   | "stopVoiceInput"
   | "table"
   | "thinking"
+  | "useCurrentPage"
   | "user"
+  | "waitingForPage"
   | "voiceInputStopped"
   | "voiceUnsupported"
   | "working"
@@ -52,9 +60,15 @@ const ENGLISH: Record<ConversationTextKey, string> = {
   interrupted: "Interrupted",
   listening: "Listening for voice input",
   newSession: "New session",
+  noPageContext: "Continue without page context",
+  noPageSelected: "No page context selected",
+  pageReady: "available with site access",
+  readyNoPage: "Ready — no page context",
+  readyWithoutPage: "Ready — no supported page open",
   pastedImage: "Pasted image",
   removePastedImage: "Remove pasted image",
   promptIdle: "Ask about the current page",
+  promptWithoutPage: "Ask a question or describe a task",
   promptRunning: "Add an instruction while Pi is working",
   queueInstruction: "Queue for later",
   ready: "Ready",
@@ -65,7 +79,9 @@ const ENGLISH: Record<ConversationTextKey, string> = {
   stopVoiceInput: "Stop voice input",
   table: "Table",
   thinking: "Thinking",
+  useCurrentPage: "Use current page",
   user: "You",
+  waitingForPage: "Waiting for a web page",
   voiceInputStopped: "Voice input stopped",
   voiceUnsupported: "Voice input is not supported by this browser",
   working: "Working",

@@ -3,13 +3,18 @@ import { afterEach, describe, expect, test, vi } from "vitest"
 interface TestTab {
   id?: number
   url?: string
+  title?: string
   windowId?: number
 }
 
 interface ListenerMap {
   installed?: () => void
   activated?: (activeInfo: { tabId: number; windowId: number }) => void
-  updated?: (tabId: number, changeInfo: { status?: string; url?: string }, tab: TestTab) => void
+  updated?: (
+    tabId: number,
+    changeInfo: { status?: string; url?: string; title?: string },
+    tab: TestTab,
+  ) => void
   focusChanged?: (windowId: number) => void
   contextClicked?: (info: { menuItemId: string; selectionText?: string }, tab?: TestTab) => void
   runtimeMessage?: (
@@ -39,7 +44,14 @@ describe("service worker visible-tab targeting", () => {
     const sendMessage = vi.fn(async (_message: unknown) => {
       throw new Error("No Side Panel receiver")
     })
-    const executeScript = vi.fn()
+    const executeScript = vi.fn(
+      async ({
+        func,
+      }: {
+        func: (...args: never[]) => unknown
+      }): Promise<Array<{ result: unknown }>> =>
+        func.name === "readDocumentContentType" ? [{ result: "text/html" }] : [],
+    )
     const updateTab = vi.fn(async () => activeTab)
     let permissionCheck: Promise<boolean> | undefined
     let bookmarkPermission = true
@@ -269,6 +281,68 @@ describe("service worker visible-tab targeting", () => {
       }),
     ).resolves.toMatchObject({ ok: false, error: { code: "STALE_CONTEXT" } })
     expect(executeScript).not.toHaveBeenCalled()
+    const beforeTitle = (await appState("before-title-change")) as {
+      result: { tabContext: { tabId: number; url: string; epoch: number } }
+    }
+    sendMessage.mockClear()
+    activeTab = { ...activeTab, title: "Inbox (1)" }
+    listeners.updated?.(7, { title: activeTab.title }, activeTab)
+    await vi.waitFor(async () => {
+      await expect(appState("title-change")).resolves.toMatchObject({
+        result: { page: { title: "Inbox (1)" }, tabContext: beforeTitle.result.tabContext },
+      })
+    })
+    expect(sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "tab.changed", tabContext: beforeTitle.result.tabContext }),
+    )
+    activeTab = { ...activeTab, title: "" }
+    listeners.updated?.(7, { title: "" }, activeTab)
+    await vi.waitFor(async () => {
+      await expect(appState("title-cleared")).resolves.toMatchObject({
+        result: { page: { title: "" }, tabContext: beforeTitle.result.tabContext },
+      })
+    })
+    const beforePicker = (await appState("before-picker-denial")) as {
+      result: { tabContext: { tabId: number; url: string; epoch: number } }
+    }
+    executeScript.mockResolvedValueOnce([{ result: "text/html" }])
+    executeScript.mockRejectedValueOnce(new Error("Chrome denied picker injection"))
+    await expect(
+      request({
+        kind: "request",
+        requestId: "picker-injection-denied",
+        method: "elementPicker.start",
+        params: { clientId: "11111111-1111-4111-8111-111111111111" },
+        tabContext: beforePicker.result.tabContext,
+      }),
+    ).resolves.toMatchObject({ ok: false, error: { code: "PERMISSION_DENIED" } })
+    await expect(appState("inaccessible-picker-page")).resolves.toMatchObject({
+      ok: true,
+      result: { page: { kind: "restricted" }, tabContext: null },
+    })
+    listeners.updated?.(7, { status: "loading" }, activeTab)
+    await vi.waitFor(async () => {
+      await expect(appState("recovered-picker-page")).resolves.toMatchObject({
+        result: { page: { kind: "web" }, tabContext: { tabId: 7 } },
+      })
+    })
+    const beforeInjection = (await appState("before-injection-denial")) as {
+      result: { tabContext: { tabId: number; url: string; epoch: number } }
+    }
+    executeScript.mockRejectedValueOnce(new Error("Chrome denied injection"))
+    await expect(
+      request({
+        kind: "request",
+        requestId: "injection-denied",
+        method: "page.getVisibleText",
+        params: {},
+        tabContext: beforeInjection.result.tabContext,
+      }),
+    ).resolves.toMatchObject({ ok: false, error: { code: "PERMISSION_DENIED" } })
+    await expect(appState("inaccessible-web-page")).resolves.toMatchObject({
+      ok: true,
+      result: { page: { kind: "restricted" }, tabContext: null },
+    })
 
     activeTab = { id: 8, url: "chrome://settings", windowId: 3 }
     listeners.focusChanged?.(3)
@@ -279,7 +353,19 @@ describe("service worker visible-tab targeting", () => {
     )
     await expect(appState("unsupported-state")).resolves.toEqual({
       ok: true,
-      result: { tabContext: null },
+      result: { tabContext: null, page: { kind: "restricted", title: "" } },
+    })
+    sendMessage.mockClear()
+    activeTab = { id: 11, url: "chrome://newtab", windowId: 3 }
+    listeners.activated?.({ tabId: 11, windowId: 3 })
+    await vi.waitFor(() =>
+      expect(sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "tab.changed", tabContext: undefined }),
+      ),
+    )
+    await expect(appState("another-restricted-state")).resolves.toMatchObject({
+      ok: true,
+      result: { page: { kind: "restricted" }, tabContext: null },
     })
 
     activeTab = { id: 8, url: "https://recovered.test/page", windowId: 3 }
@@ -296,7 +382,7 @@ describe("service worker visible-tab targeting", () => {
     await vi.waitFor(async () => {
       await expect(appState("unsupported-update-state")).resolves.toEqual({
         ok: true,
-        result: { tabContext: null },
+        result: { tabContext: null, page: { kind: "restricted", title: "" } },
       })
     })
 
@@ -421,7 +507,7 @@ describe("service worker visible-tab targeting", () => {
     ])
     await expect(appState("focus-loss-before-commit")).resolves.toEqual({
       ok: true,
-      result: { tabContext: null },
+      result: { tabContext: null, page: { kind: "none", title: "" } },
     })
     expect(focusLossQueued).toBe(true)
 
@@ -432,7 +518,7 @@ describe("service worker visible-tab targeting", () => {
     await vi.waitFor(async () => {
       await expect(appState("unfocused-state")).resolves.toEqual({
         ok: true,
-        result: { tabContext: null },
+        result: { tabContext: null, page: { kind: "none", title: "" } },
       })
     })
     sendMessage.mockClear()
@@ -494,6 +580,7 @@ describe("service worker visible-tab targeting", () => {
       return response
     })
 
+    executeScript.mockResolvedValueOnce([{ result: "text/html" }])
     executeScript.mockImplementationOnce(async () => {
       activeTab = { id: 7, url: "https://example.test/next", windowId: 3 }
       listeners.updated?.(7, { status: "loading", url: activeTab.url }, activeTab)
@@ -539,7 +626,42 @@ describe("service worker visible-tab targeting", () => {
     expect(updateTab).not.toHaveBeenCalled()
     permissionCheck = undefined
 
+    activeTab = { id: 12, url: "https://example.test/download?id=123", windowId: 3 }
+    executeScript.mockResolvedValueOnce([{ result: "application/pdf" }])
+    sendMessage.mockClear()
+    listeners.contextClicked?.(
+      { menuItemId: "pi-browser-agent-send-selection", selectionText: "PDF secret" },
+      activeTab,
+    )
+    await vi.waitFor(async () => {
+      await expect(appState("pdf-context-menu-denied")).resolves.toMatchObject({
+        result: { page: { kind: "restricted" }, tabContext: null },
+      })
+    })
+    expect(session["piBrowserAgentPendingSelection:3"]).toBeUndefined()
+    expect(sendMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ name: "selection.queued" }),
+    )
+
     activeTab = { id: 7, url: "https://example.test/page", windowId: 3 }
+    executeScript.mockImplementationOnce(async () => {
+      activeTab = { id: 9, url: "https://other.test/page", windowId: 3 }
+      listeners.activated?.({ tabId: 9, windowId: 3 })
+      return [{ result: "text/html" }]
+    })
+    listeners.contextClicked?.(
+      { menuItemId: "pi-browser-agent-send-selection", selectionText: "stale secret" },
+      activeTab,
+    )
+    await vi.waitFor(async () => {
+      await expect(appState("stale-context-menu-rejected")).resolves.toMatchObject({
+        result: { tabContext: { tabId: 9 } },
+      })
+    })
+    expect(session["piBrowserAgentPendingSelection:3"]).toBeUndefined()
+
+    activeTab = { id: 7, url: "https://example.test/page", windowId: 3 }
+    permissionCheck = Promise.resolve(false)
     listeners.contextClicked?.(
       { menuItemId: "pi-browser-agent-send-selection", selectionText: "selected text" },
       activeTab,

@@ -193,12 +193,13 @@ beforeEach(async () => {
     contextMenus: { onClicked: noopEvent },
     scripting: {
       executeScript: vi.fn(
-        async ({ func, args }: { func: (...args: unknown[]) => unknown; args: unknown[] }) => {
+        async ({ func, args }: { func: (...args: unknown[]) => unknown; args?: unknown[] }) => {
+          if (func.name === "readDocumentContentType") return [{ result: document.contentType }]
           injectionCount++
           const hook = beforeInjection
           beforeInjection = undefined
           await hook?.()
-          const result = await func(...args)
+          const result = await func(...(args ?? []))
           const after = afterInjection
           afterInjection = undefined
           await after?.()
