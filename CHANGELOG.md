@@ -1,5 +1,11 @@
 # pi-browser-agent
 
+## 0.4.1
+
+### Patch Changes
+
+- addf047: Keep selected page elements attachable when their optional metadata exceeds the context limit, and show an error instead of silently dropping rejected selections.
+
 ## 0.4.0
 
 ### Minor Changes
