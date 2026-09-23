@@ -74,7 +74,7 @@ function hostPermissionPattern(url: string): string {
 }
 
 export async function launchExtensionHarness(
-  options: { bookmarks?: boolean } = {},
+  options: { bookmarks?: boolean; screenshots?: boolean } = {},
 ): Promise<ExtensionHarness> {
   const fixtureServer = await startFixtureServer()
   const temporaryDirectory = await mkdtemp(join(tmpdir(), "pi-browser-agent-smoke-"))
@@ -102,6 +102,9 @@ export async function launchExtensionHarness(
       copiedManifest.optional_permissions = (copiedManifest.optional_permissions ?? []).filter(
         (permission) => permission !== "bookmarks",
       )
+    }
+    if (options.screenshots) {
+      copiedManifest.host_permissions = [...copiedManifest.host_permissions, "<all_urls>"]
     }
     await writeFile(copiedManifestPath, JSON.stringify(copiedManifest, null, 2))
     assert.equal(

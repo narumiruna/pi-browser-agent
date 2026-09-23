@@ -334,6 +334,54 @@ async function assertCurrentMutationTarget(
   }
 }
 
+function readDocumentContentType(): string {
+  return document.contentType
+}
+
+async function assertReadableDocument(context: TabContext): Promise<void> {
+  let contentType: string | undefined
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: context.tabId },
+      world: "ISOLATED",
+      func: readDocumentContentType,
+    })
+    contentType = results[0]?.result
+  } catch (error) {
+    const latest = await syncVisibleTab()
+    if (
+      !latest ||
+      latest.tabId !== context.tabId ||
+      latest.url !== context.url ||
+      latest.epoch !== context.epoch
+    ) {
+      throwStaleContext(context, latest)
+    }
+    markTabInaccessible(context)
+    throw new RuntimeError(
+      "PERMISSION_DENIED",
+      error instanceof Error ? error.message : "Chrome denied access to the current tab",
+    )
+  }
+  const latest = await syncVisibleTab()
+  if (
+    !latest ||
+    latest.tabId !== context.tabId ||
+    latest.url !== context.url ||
+    latest.epoch !== context.epoch
+  ) {
+    throwStaleContext(context, latest)
+  }
+  if (
+    typeof contentType !== "string" ||
+    !contentType ||
+    contentType.toLowerCase() === "application/pdf"
+  ) {
+    markTabInaccessible(context)
+    throw new RuntimeError("PERMISSION_DENIED", "This page cannot be read or operated")
+  }
+}
+
 async function runPageOperation(
   operation: PageOperation,
   request: RuntimeRequest<
@@ -351,6 +399,7 @@ async function runPageOperation(
   }
   if (activeRequests.get(request.requestId)?.signal.aborted)
     throw new RuntimeError("REQUEST_CANCELLED", "Browser request was cancelled")
+  await assertReadableDocument(context)
   let snapshot: ElementSnapshot | null = null
   if (operation === "listElements") {
     snapshot = {
@@ -490,6 +539,7 @@ async function runWebMcp(
       "Grant access to the current site before using WebMCP",
     )
   }
+  await assertReadableDocument(context)
   let results: chrome.scripting.InjectionResult<
     Awaited<ReturnType<typeof executeWebMcpOperation>>
   >[]
@@ -553,6 +603,8 @@ async function captureVisible(request: RuntimeRequest<"page.captureVisible">): P
   if (!tab.active) {
     throw new RuntimeError("INVALID_REQUEST", "The current tab must remain active for a screenshot")
   }
+  await assertReadableDocument(context)
+  await revalidateRequestContext(request, context)
   let dataUrl: string
   try {
     dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" })
@@ -652,6 +704,8 @@ async function startElementPicker(
     )
   }
   if (operationVersion !== elementPickerOperationVersion) return { active: false }
+  await assertReadableDocument(context)
+  if (operationVersion !== elementPickerOperationVersion) return { active: false }
   if (activeElementPicker) await stopActiveElementPicker("replaced")
   if (operationVersion !== elementPickerOperationVersion) return { active: false }
   const token = crypto.randomUUID()
@@ -661,13 +715,34 @@ async function startElementPicker(
     token,
     expiresAt: Date.now() + ELEMENT_PICKER_LIMITS.lifetimeMs,
   }
+  let injectionFailed = false
   try {
-    const results = (await chrome.scripting.executeScript({
-      target: { tabId: context.tabId },
-      func: executeElementPicker,
-      world: "ISOLATED",
-      args: ["start", token, context, ELEMENT_PICKER_LIMITS],
-    })) as chrome.scripting.InjectionResult<ElementPickerOperationResult>[]
+    let results: chrome.scripting.InjectionResult<ElementPickerOperationResult>[]
+    try {
+      results = await chrome.scripting.executeScript({
+        target: { tabId: context.tabId },
+        func: executeElementPicker,
+        world: "ISOLATED",
+        args: ["start", token, context, ELEMENT_PICKER_LIMITS],
+      })
+    } catch (error) {
+      injectionFailed = true
+      if (activeElementPicker?.token === token) activeElementPicker = undefined
+      const latest = await syncVisibleTab()
+      if (
+        !latest ||
+        latest.tabId !== context.tabId ||
+        latest.url !== context.url ||
+        latest.epoch !== context.epoch
+      ) {
+        throwStaleContext(context, latest)
+      }
+      markTabInaccessible(context)
+      throw new RuntimeError(
+        "PERMISSION_DENIED",
+        error instanceof Error ? error.message : "Chrome denied access to the current tab",
+      )
+    }
     const outcome = results[0]?.result
     if (!outcome?.ok || outcome.result.started !== true) {
       throw new RuntimeError("STALE_CONTEXT", "The page changed before the element picker started")
@@ -685,7 +760,7 @@ async function startElementPicker(
     return { active, clientId: request.params.clientId }
   } catch (error) {
     if (activeElementPicker?.token === token) activeElementPicker = undefined
-    await stopInjectedElementPicker(context)
+    if (!injectionFailed) await stopInjectedElementPicker(context)
     if (error instanceof RuntimeError) throw error
     throw new RuntimeError(
       "PERMISSION_DENIED",

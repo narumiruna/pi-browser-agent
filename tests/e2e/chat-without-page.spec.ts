@@ -312,3 +312,90 @@ test("opens a website only after user confirmation, never on send", async () => 
     await harness.close()
   }
 })
+
+test("fails closed on an extensionless PDF before capturing or picking a page", async () => {
+  test.setTimeout(60_000)
+  const harness = await launchExtensionHarness({ screenshots: true })
+  try {
+    const pdfUrl = new URL("/download?id=123", harness.fixtureUrl).href
+    await harness.context.route(pdfUrl, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/pdf",
+        body: "%PDF-1.4\n%%EOF",
+      }),
+    )
+    const getState = () =>
+      harness.controller.evaluate(async () => {
+        const response = (await chrome.runtime.sendMessage({
+          kind: "request",
+          requestId: crypto.randomUUID(),
+          method: "app.getState",
+          params: {},
+        })) as {
+          result: {
+            page: { kind: string }
+            tabContext: { tabId: number; url: string; epoch: number } | null
+          }
+        }
+        return response.result
+      })
+    const send = (
+      method: "page.captureVisible" | "page.getVisibleText" | "elementPicker.start",
+      context: object,
+    ) =>
+      harness.controller.evaluate(
+        async ({ method, context }) =>
+          chrome.runtime.sendMessage({
+            kind: "request",
+            requestId: crypto.randomUUID(),
+            method,
+            params: method === "elementPicker.start" ? { clientId: crypto.randomUUID() } : {},
+            tabContext: context,
+            confirmed: true,
+          }),
+        { method, context },
+      ) as Promise<{ ok: boolean; error?: { code: string } }>
+
+    const readTab = await harness.context.newPage()
+    await readTab.goto(pdfUrl, { waitUntil: "commit" }).catch(() => undefined)
+    await readTab.bringToFront()
+    await expect.poll(async () => (await getState()).tabContext?.url).toBe(pdfUrl)
+    const readContext = (await getState()).tabContext
+    if (!readContext) throw new Error("Missing initial PDF read context")
+    expect(await send("page.getVisibleText", readContext)).toMatchObject({
+      ok: false,
+      error: { code: "PERMISSION_DENIED" },
+    })
+    await expect.poll(async () => (await getState()).page.kind).toBe("restricted")
+
+    const screenshotTab = await harness.context.newPage()
+    await screenshotTab.goto(pdfUrl, { waitUntil: "commit" }).catch(() => undefined)
+    await screenshotTab.bringToFront()
+    await expect.poll(async () => (await getState()).tabContext?.url).toBe(pdfUrl)
+    const screenshotContext = (await getState()).tabContext
+    if (!screenshotContext) throw new Error("Missing initial PDF tab context")
+    expect(await send("page.captureVisible", screenshotContext)).toMatchObject({
+      ok: false,
+      error: { code: "PERMISSION_DENIED" },
+    })
+    await expect.poll(async () => (await getState()).page.kind).toBe("restricted")
+    await expect(harness.controller.locator("#page-status")).toContainText("cannot read or operate")
+
+    const pickerTab = await harness.context.newPage()
+    await pickerTab.goto(pdfUrl, { waitUntil: "commit" }).catch(() => undefined)
+    await pickerTab.bringToFront()
+    await expect.poll(async () => (await getState()).tabContext?.url).toBe(pdfUrl)
+    const pickerContext = (await getState()).tabContext
+    if (!pickerContext) throw new Error("Missing initial picker tab context")
+    expect(await send("elementPicker.start", pickerContext)).toMatchObject({
+      ok: false,
+      error: { code: "PERMISSION_DENIED" },
+    })
+    await expect.poll(async () => (await getState()).page.kind).toBe("restricted")
+    await expect(harness.controller.locator("#element-picker")).toBeDisabled()
+    expect(harness.pageErrors).toEqual([])
+  } finally {
+    await harness.close()
+  }
+})

@@ -44,7 +44,14 @@ describe("service worker visible-tab targeting", () => {
     const sendMessage = vi.fn(async (_message: unknown) => {
       throw new Error("No Side Panel receiver")
     })
-    const executeScript = vi.fn()
+    const executeScript = vi.fn(
+      async ({
+        func,
+      }: {
+        func: (...args: never[]) => unknown
+      }): Promise<Array<{ result: unknown }>> =>
+        func.name === "readDocumentContentType" ? [{ result: "text/html" }] : [],
+    )
     const updateTab = vi.fn(async () => activeTab)
     let permissionCheck: Promise<boolean> | undefined
     let bookmarkPermission = true
@@ -293,6 +300,30 @@ describe("service worker visible-tab targeting", () => {
     await vi.waitFor(async () => {
       await expect(appState("title-cleared")).resolves.toMatchObject({
         result: { page: { title: "" }, tabContext: beforeTitle.result.tabContext },
+      })
+    })
+    const beforePicker = (await appState("before-picker-denial")) as {
+      result: { tabContext: { tabId: number; url: string; epoch: number } }
+    }
+    executeScript.mockResolvedValueOnce([{ result: "text/html" }])
+    executeScript.mockRejectedValueOnce(new Error("Chrome denied picker injection"))
+    await expect(
+      request({
+        kind: "request",
+        requestId: "picker-injection-denied",
+        method: "elementPicker.start",
+        params: { clientId: "11111111-1111-4111-8111-111111111111" },
+        tabContext: beforePicker.result.tabContext,
+      }),
+    ).resolves.toMatchObject({ ok: false, error: { code: "PERMISSION_DENIED" } })
+    await expect(appState("inaccessible-picker-page")).resolves.toMatchObject({
+      ok: true,
+      result: { page: { kind: "restricted" }, tabContext: null },
+    })
+    listeners.updated?.(7, { status: "loading" }, activeTab)
+    await vi.waitFor(async () => {
+      await expect(appState("recovered-picker-page")).resolves.toMatchObject({
+        result: { page: { kind: "web" }, tabContext: { tabId: 7 } },
       })
     })
     const beforeInjection = (await appState("before-injection-denial")) as {
@@ -549,6 +580,7 @@ describe("service worker visible-tab targeting", () => {
       return response
     })
 
+    executeScript.mockResolvedValueOnce([{ result: "text/html" }])
     executeScript.mockImplementationOnce(async () => {
       activeTab = { id: 7, url: "https://example.test/next", windowId: 3 }
       listeners.updated?.(7, { status: "loading", url: activeTab.url }, activeTab)
