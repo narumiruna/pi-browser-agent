@@ -100,12 +100,17 @@ export function compactSession(record: SessionRecord): {
   }
 
   let removedMessages = 0
-  while (sessionByteLength(compacted) > MAX_SESSION_BYTES && compacted.messages.length > 0) {
+  const firstTurnStart = compacted.messages[0]?.role === "system" ? 1 : 0
+  while (
+    sessionByteLength(compacted) > MAX_SESSION_BYTES &&
+    compacted.messages.length > firstTurnStart
+  ) {
     const nextTurn = compacted.messages.findIndex(
-      (message, index) => index > 0 && message.role === "user",
+      (message, index) => index > firstTurnStart && message.role === "user",
     )
-    const turnLength = nextTurn === -1 ? compacted.messages.length : nextTurn
-    compacted.messages.splice(0, turnLength)
+    const turnLength =
+      nextTurn === -1 ? compacted.messages.length - firstTurnStart : nextTurn - firstTurnStart
+    compacted.messages.splice(firstTurnStart, turnLength)
     removedMessages += turnLength
   }
   if (sessionByteLength(compacted) > MAX_SESSION_BYTES) throw new SessionSizeLimitError()

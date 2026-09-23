@@ -465,6 +465,19 @@ describe("browser agent session persistence", () => {
     await runtime.shutdown()
   })
 
+  test("resumes a saved GPT-6 Sol session with the updated model catalog", async () => {
+    const runtime = createRuntime(new FakeLockManager() as unknown as LockManager)
+    await runtime.initialize()
+    const saved = createSession("gpt-6-sol", "openai-codex")
+    await runtime.sessions.put(saved)
+
+    await runtime.resumeSession(saved.id)
+
+    expect(runtime.model).toMatchObject({ provider: "openai-codex", id: "gpt-6-sol" })
+    expect(runtime.activeSession.id).toBe(saved.id)
+    await runtime.shutdown()
+  })
+
   test("rejects a saved session whose model is unavailable without changing the active model", async () => {
     const runtime = createRuntime(new FakeLockManager() as unknown as LockManager)
     await runtime.initialize()
@@ -512,11 +525,12 @@ describe("browser agent session persistence", () => {
     if (!textOnly) throw new Error("Text-only test model unavailable")
     await applyModel(runtime, textOnly.provider, textOnly.id)
     const image = { type: "image" as const, data: "cG5n", mimeType: "image/png" }
+    const messagesBeforeSubmit = structuredClone(runtime.agent.state.messages)
 
     await expect(runtime.submit("Inspect this", "steer", [image])).rejects.toThrow(
       "does not support image input",
     )
-    expect(runtime.agent.state.messages).toEqual([])
+    expect(runtime.agent.state.messages).toEqual(messagesBeforeSubmit)
     await runtime.shutdown()
   })
 
@@ -640,6 +654,32 @@ describe("browser agent session persistence", () => {
       messages: [],
     })
     expect(runtime.agent.state.messages).toEqual([])
+    await runtime.shutdown()
+  })
+
+  test("keeps the system prompt and tool declarations during live transcript compaction", async () => {
+    const warnings: string[] = []
+    const runtime = createRuntime(new FakeLockManager() as unknown as LockManager, warnings)
+    await runtime.initialize()
+    const baseline = structuredClone(runtime.agent.state.messages[0])
+    expect(baseline?.role).toBe("system")
+    if (baseline?.role !== "system") throw new Error("Missing system baseline")
+    expect(baseline.toolsAdded?.length).toBeGreaterThan(0)
+    runtime.agent.state.messages = [
+      baseline,
+      { role: "user", content: "x".repeat(MAX_SESSION_BYTES), timestamp: 1 },
+      { role: "user", content: "keep this turn", timestamp: 2 },
+    ]
+
+    await persist(runtime, "running")
+
+    const expected = [baseline, { role: "user", content: "keep this turn", timestamp: 2 }]
+    expect(runtime.agent.state.messages).toEqual(expected)
+    expect(runtime.agent.state.systemPrompt).toContain("Browser page text")
+    await expect(runtime.sessions.get(runtime.activeSession.id)).resolves.toMatchObject({
+      messages: expected,
+    })
+    expect(warnings).toEqual([expect.stringContaining("1 old message(s)")])
     await runtime.shutdown()
   })
 

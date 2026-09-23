@@ -1,4 +1,5 @@
 import type { Api, AuthPrompt, Credential, Model, Provider } from "@earendil-works/pi-ai"
+import { builtinProviders } from "@earendil-works/pi-ai/providers/all"
 import { describe, expect, test } from "vitest"
 import {
   BROWSER_EXCLUDED_PROVIDERS,
@@ -24,7 +25,11 @@ describe("browser pi-ai providers", () => {
     const providers = createBrowserProviders()
     const ids = providers.map((candidate) => candidate.id)
 
-    expect(ids).toHaveLength(39)
+    expect(ids).toEqual(
+      builtinProviders()
+        .map((provider) => provider.id)
+        .filter((id) => !BROWSER_EXCLUDED_PROVIDERS.some((excluded) => excluded === id)),
+    )
     expect(ids).toContain("anthropic")
     expect(ids).toContain("google")
     expect(ids).toContain("openrouter")
