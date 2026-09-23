@@ -655,13 +655,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       throw new Error("Required model-provider or current-site access was not granted")
     }
     const current = await refreshTabContext()
-    if (
-      usePage &&
-      (!current ||
-        current.tabId !== initial.tabId ||
-        current.url !== initial.url ||
-        current.epoch !== initial.epoch)
-    ) {
+    if (usePage && (!current || current.tabId !== initial.tabId || current.url !== initial.url)) {
       throw new Error(
         hasSelectedElements
           ? "The page changed before selected elements could be sent. Select them again."

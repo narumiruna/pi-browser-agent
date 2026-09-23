@@ -225,6 +225,106 @@ test("keeps a no-page turn isolated after its visible tab changes", async () => 
   }
 })
 
+test("accepts a refreshed page epoch after permission preflight without selected elements", async () => {
+  test.setTimeout(60_000)
+  const harness = await launchExtensionHarness()
+  try {
+    await configureMockCodex(harness)
+    await harness.fixturePage.bringToFront()
+    await expect(harness.controller.locator("#page-status")).toContainText(
+      "available with site access",
+    )
+    await harness.controller.evaluate(() => {
+      const originalRequest = chrome.permissions.request.bind(chrome.permissions)
+      let markEntered: () => void = () => undefined
+      let release: () => void = () => undefined
+      const entered = new Promise<void>((resolve) => {
+        markEntered = resolve
+      })
+      const gate = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      chrome.permissions.request = (async (permissions) => {
+        markEntered()
+        await gate
+        return originalRequest(permissions)
+      }) as typeof chrome.permissions.request
+      ;(
+        window as typeof window & {
+          preflightGate?: { entered: Promise<void>; release: () => void; restore: () => void }
+        }
+      ).preflightGate = {
+        entered,
+        release,
+        restore: () => {
+          chrome.permissions.request = originalRequest
+        },
+      }
+    })
+    const requests: unknown[] = []
+    let index = 0
+    await harness.context.route(CODEX_RESPONSES_URL, async (route) => {
+      requests.push(route.request().postDataJSON())
+      await route.fulfill({
+        status: 200,
+        contentType: "text/event-stream",
+        body:
+          index++ === 0
+            ? toolCallResponse(41, "browser_read_page")
+            : finalTextResponse(42, "The refreshed web page is readable."),
+      })
+    })
+    const getContext = () =>
+      harness.controller.evaluate(async () => {
+        const state = (await chrome.runtime.sendMessage({
+          kind: "request",
+          requestId: crypto.randomUUID(),
+          method: "app.getState",
+          params: {},
+        })) as { result: { tabContext: { epoch: number; url: string } | null } }
+        return state.result.tabContext
+      })
+    await harness.controller.locator("#prompt").fill("Read the current page")
+    await harness.controller.locator("#send").click()
+    await harness.controller.evaluate(async () => {
+      const gate = (window as typeof window & { preflightGate?: { entered: Promise<void> } })
+        .preflightGate
+      if (!gate) throw new Error("Missing permission preflight gate")
+      await gate.entered
+    })
+    const beforeReload = await getContext()
+    if (!beforeReload) throw new Error("Missing preflight tab context")
+    await harness.fixturePage.reload()
+    await harness.fixturePage.bringToFront()
+    await expect.poll(async () => (await getContext())?.epoch).toBeGreaterThan(beforeReload.epoch)
+    expect((await getContext())?.url).toBe(beforeReload.url)
+    await harness.controller.evaluate(() => {
+      ;(
+        window as typeof window & { preflightGate?: { release: () => void } }
+      ).preflightGate?.release()
+    })
+    await expect(harness.controller.locator("#transcript")).toContainText(
+      "The refreshed web page is readable.",
+    )
+    expect(requests).toHaveLength(2)
+    expect(JSON.stringify(requests[1])).toContain("meadow-42")
+    await expect(harness.controller.locator("#error")).toBeEmpty()
+  } finally {
+    await harness.controller
+      .evaluate(() => {
+        const gate = (
+          window as typeof window & {
+            preflightGate?: { release: () => void; restore: () => void }
+          }
+        ).preflightGate
+        gate?.release()
+        gate?.restore()
+      })
+      .catch(() => undefined)
+    await harness.close()
+  }
+})
+
 test("confirms a bookmark read on a protected page without a page permission", async () => {
   test.setTimeout(60_000)
   const harness = await launchExtensionHarness({ bookmarks: true })
