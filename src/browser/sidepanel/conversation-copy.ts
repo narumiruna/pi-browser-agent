@@ -49,7 +49,7 @@ const ENGLISH: Record<ConversationTextKey, string> = {
   hintRunning: "Enter to add an instruction · Shift+Enter for a new line",
   imageResult: "Image result",
   instructionQueued: "Instruction queued",
-  interrupted: "interrupted",
+  interrupted: "Interrupted",
   listening: "Listening for voice input",
   newSession: "New session",
   pastedImage: "Pasted image",

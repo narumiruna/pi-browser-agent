@@ -2013,7 +2013,9 @@ test("synchronizes provider controls when a new session restores the latest mode
   await configuredSettingsTab.locator("#cancel-settings").click()
   await configuredSettingsTabClosed
 
-  await sessionSelect.selectOption(initialSessionId)
+  await controller.locator("#session-trigger").click()
+  await controller.locator(`.session-option[data-value="${initialSessionId}"]`).click()
+  await expect(sessionSelect).toHaveValue(initialSessionId)
   await expect(controller.locator("#auth-status")).toHaveText("OpenAI Codex not configured")
   const restoredSessionSettingsTab = await openSettingsTab()
   await expect(restoredSessionSettingsTab.locator("#provider")).toHaveValue("openai-codex")
@@ -2059,6 +2061,8 @@ test("keeps header and composer controls usable at normal and narrow widths", as
       statusTitle: status?.title ?? "",
       state: document.body.dataset.state ?? "idle",
       sendLabel: document.querySelector<HTMLElement>("#send-label")?.textContent ?? "Send",
+      sessionTitle:
+        document.querySelector<HTMLElement>("#session-trigger-label")?.textContent ?? "New session",
       queueHidden: document.querySelector<HTMLButtonElement>("#queue-instruction")?.hidden ?? true,
       statusHidden: status?.closest<HTMLElement>(".status-pill")?.hidden ?? false,
     }
@@ -2090,6 +2094,72 @@ test("keeps header and composer controls usable at normal and narrow widths", as
       .locator("#transcript")
       .evaluate((element) => element.getBoundingClientRect().top)
     expect(transcriptTop).toBeLessThan(70)
+
+    const sessionTrigger = controller.locator("#session-trigger")
+    const sessionMenu = controller.locator("#session-menu")
+    const accountTrigger = controller.locator("#account-menu-trigger")
+    const accountDisclosure = controller.locator(".account-disclosure")
+    await sessionTrigger.click()
+    await expect(sessionMenu).toBeVisible()
+    const sessionMenuLayout = await controller.evaluate(() => {
+      const trigger = document.querySelector<HTMLElement>("#session-trigger")
+      const menu = document.querySelector<HTMLElement>("#session-menu")
+      const option = document.querySelector<HTMLElement>('.session-option[aria-selected="true"]')
+      const label = document.querySelector<HTMLElement>("#session-trigger-label")
+      if (!trigger || !menu || !option || !label) throw new Error("Missing session menu")
+      const triggerBounds = trigger.getBoundingClientRect()
+      const menuBounds = menu.getBoundingClientRect()
+      const optionBounds = option.getBoundingClientRect()
+      const menuStyle = getComputedStyle(menu)
+      const optionStyle = getComputedStyle(option)
+      const labelStyle = getComputedStyle(label)
+      return {
+        triggerLeft: triggerBounds.left,
+        triggerWidth: triggerBounds.width,
+        menuLeft: menuBounds.left,
+        menuWidth: menuBounds.width,
+        optionHeight: optionBounds.height,
+        menuRadius: menuStyle.borderRadius,
+        menuShadow: menuStyle.boxShadow,
+        optionBackground: optionStyle.backgroundColor,
+        optionColor: optionStyle.color,
+        labelOverflow: labelStyle.overflow,
+        labelTextOverflow: labelStyle.textOverflow,
+        optionTitle: option.title,
+      }
+    })
+    expect(sessionMenuLayout.menuLeft).toBeCloseTo(sessionMenuLayout.triggerLeft, 1)
+    expect(sessionMenuLayout.menuWidth).toBeCloseTo(sessionMenuLayout.triggerWidth, 1)
+    expect(sessionMenuLayout.optionHeight).toBeGreaterThanOrEqual(40)
+    expect(sessionMenuLayout.optionHeight).toBeLessThanOrEqual(44)
+    expect(sessionMenuLayout.menuRadius).toBe("8px")
+    expect(sessionMenuLayout.menuShadow).not.toBe("none")
+    expect(sessionMenuLayout.optionBackground).not.toBe("rgb(0, 0, 255)")
+    expect(sessionMenuLayout.optionColor).not.toBe("rgb(255, 255, 255)")
+    expect(sessionMenuLayout.labelOverflow).toBe("hidden")
+    expect(sessionMenuLayout.labelTextOverflow).toBe("ellipsis")
+    expect(sessionMenuLayout.optionTitle).not.toBe("")
+    const sessionMenuPath = testInfo.outputPath("session-menu.png")
+    await controller.screenshot({ path: sessionMenuPath })
+    await testInfo.attach("session-menu", {
+      path: sessionMenuPath,
+      contentType: "image/png",
+    })
+    await sessionTrigger.click()
+    await expect(sessionMenu).toBeHidden()
+
+    await accountTrigger.click()
+    await expect(accountDisclosure).toHaveJSProperty("open", true)
+    await sessionTrigger.focus()
+    await sessionTrigger.press("ArrowDown")
+    await expect(accountDisclosure).toHaveJSProperty("open", false)
+    await expect(sessionMenu).toBeVisible()
+    await controller.keyboard.press("Escape")
+    await expect(sessionMenu).toBeHidden()
+
+    await controller.locator("#session-trigger-label").evaluate((label) => {
+      label.textContent = "A long session title that must not widen the Side Panel"
+    })
 
     const headerColors = []
     for (const colorScheme of ["light", "dark"] as const) {
@@ -2129,7 +2199,7 @@ test("keeps header and composer controls usable at normal and narrow widths", as
                 document.body.dataset.state === "running" &&
                 document.documentElement.clientWidth <= 360
               const selectors = [
-                "#sessions",
+                "#session-trigger",
                 "#new-session",
                 "#account-menu-trigger",
                 "#prompt",
@@ -2194,7 +2264,6 @@ test("keeps header and composer controls usable at normal and narrow widths", as
     expect(headerColors[0]).not.toBe(headerColors[1])
 
     await controller.setViewportSize({ width: 320, height: 720 })
-    const accountTrigger = controller.locator("#account-menu-trigger")
     await controller.locator("#new-session").focus()
     await controller.keyboard.press("Tab")
     await expect(accountTrigger).toBeFocused()
@@ -2234,6 +2303,8 @@ test("keeps header and composer controls usable at normal and narrow widths", as
       if (queue) queue.hidden = original.queueHidden
       const sendLabel = document.querySelector<HTMLElement>("#send-label")
       if (sendLabel) sendLabel.textContent = original.sendLabel
+      const sessionTitle = document.querySelector<HTMLElement>("#session-trigger-label")
+      if (sessionTitle) sessionTitle.textContent = original.sessionTitle
     }, originalUi)
     await controller.emulateMedia({ colorScheme: null })
     await controller.setViewportSize(originalViewport)
