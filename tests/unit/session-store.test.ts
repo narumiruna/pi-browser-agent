@@ -139,6 +139,35 @@ describe("session storage", () => {
     expect(sessionByteLength(compacted.record)).toBeLessThanOrEqual(MAX_SESSION_BYTES)
   })
 
+  test("preserves the leading system message when removing an oversized turn", () => {
+    const session = createSession("gpt-5.4")
+    const baseline = {
+      role: "system" as const,
+      content: "Follow browser safety rules",
+      timestamp: 0,
+    }
+    session.messages = [
+      baseline,
+      { role: "user", content: "x".repeat(MAX_SESSION_BYTES), timestamp: 1 },
+    ]
+
+    const compacted = compactSession(session)
+
+    expect(compacted.removedMessages).toBe(1)
+    expect(compacted.record.messages).toEqual([baseline])
+    expect(sessionByteLength(compacted.record)).toBeLessThanOrEqual(MAX_SESSION_BYTES)
+  })
+
+  test("rejects compaction if the system baseline alone exceeds the limit", () => {
+    const session = createSession("gpt-5.4")
+    session.messages = [
+      { role: "system", content: "x".repeat(MAX_SESSION_BYTES), timestamp: 0 },
+      { role: "user", content: "recent turn", timestamp: 1 },
+    ]
+
+    expect(() => compactSession(session)).toThrow("storage limit")
+  })
+
   test("compacts complete turns without orphaning tool calls or results", () => {
     const session = createSession("gpt-5.4")
     session.messages = [
