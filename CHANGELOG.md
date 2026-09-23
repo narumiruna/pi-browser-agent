@@ -1,5 +1,11 @@
 # pi-browser-agent
 
+## 0.3.0
+
+### Minor Changes
+
+- e54cb51: Add a Thinking level setting that persists across restarts and applies to the active conversation and new sessions.
+
 ## 0.2.1
 
 ### Patch Changes
