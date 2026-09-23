@@ -1,5 +1,12 @@
 # pi-browser-agent
 
+## 0.4.0
+
+### Minor Changes
+
+- f210f71: Replace manual page-context choices with agent-driven tab selection and confirmed website opening, while keeping context-free replies available.
+- 190befc: Allow context-free chat on protected pages, add explicit web-tab choices, and keep page tools disabled for no-page turns.
+
 ## 0.3.0
 
 ### Minor Changes
