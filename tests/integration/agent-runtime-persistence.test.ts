@@ -433,11 +433,12 @@ describe("browser agent session persistence", () => {
     if (!textOnly) throw new Error("Text-only test model unavailable")
     await applyModel(runtime, textOnly.provider, textOnly.id)
     const image = { type: "image" as const, data: "cG5n", mimeType: "image/png" }
+    const messagesBeforeSubmit = structuredClone(runtime.agent.state.messages)
 
     await expect(runtime.submit("Inspect this", "steer", [image])).rejects.toThrow(
       "does not support image input",
     )
-    expect(runtime.agent.state.messages).toEqual([])
+    expect(runtime.agent.state.messages).toEqual(messagesBeforeSubmit)
     await runtime.shutdown()
   })
 
