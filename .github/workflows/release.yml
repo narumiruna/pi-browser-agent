@@ -34,13 +34,33 @@ jobs:
           publish-script: npm run release
           commit-message: "chore(release): version packages"
           pr-title: "chore(release): version packages"
-      - name: Build extension archive
-        if: steps.changesets.outputs.published == 'true'
-        run: npm run pack
-      - name: Upload extension archive
-        if: steps.changesets.outputs.published == 'true'
+      # This package is private, so Changesets tags it without reporting an npm publish.
+      - name: Check extension release
+        if: steps.changesets.outputs.hasChangesets == 'false'
+        id: extension_release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          version="$(node -p "require('./package.json').version")"
-          gh release upload "v${version}" dist/chrome/pi-browser-agent.zip --clobber
+          tag="v$(node -p "require('./package.json').version")"
+          if gh release view "$tag" --json assets --jq '.assets[].name' 2>/dev/null | grep -Fxq 'pi-browser-agent.zip'; then
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          elif git rev-parse -q --verify "refs/tags/${tag}^{commit}" >/dev/null && [ "$(git rev-list -n 1 "$tag")" != "$GITHUB_SHA" ]; then
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Build extension archive
+        if: steps.extension_release.outputs.needed == 'true'
+        run: npm run pack
+      - name: Create release or upload extension archive
+        if: steps.extension_release.outputs.needed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="v$(node -p "require('./package.json').version")"
+          archive=dist/chrome/pi-browser-agent.zip
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "$archive"
+          else
+            gh release create "$tag" "$archive" --target "$GITHUB_SHA" --title "$tag" --generate-notes
+          fi
