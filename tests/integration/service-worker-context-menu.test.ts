@@ -3,13 +3,18 @@ import { afterEach, describe, expect, test, vi } from "vitest"
 interface TestTab {
   id?: number
   url?: string
+  title?: string
   windowId?: number
 }
 
 interface ListenerMap {
   installed?: () => void
   activated?: (activeInfo: { tabId: number; windowId: number }) => void
-  updated?: (tabId: number, changeInfo: { status?: string; url?: string }, tab: TestTab) => void
+  updated?: (
+    tabId: number,
+    changeInfo: { status?: string; url?: string; title?: string },
+    tab: TestTab,
+  ) => void
   focusChanged?: (windowId: number) => void
   contextClicked?: (info: { menuItemId: string; selectionText?: string }, tab?: TestTab) => void
   runtimeMessage?: (
@@ -269,6 +274,27 @@ describe("service worker visible-tab targeting", () => {
       }),
     ).resolves.toMatchObject({ ok: false, error: { code: "STALE_CONTEXT" } })
     expect(executeScript).not.toHaveBeenCalled()
+    const beforeTitle = (await appState("before-title-change")) as {
+      result: { tabContext: { tabId: number; url: string; epoch: number } }
+    }
+    sendMessage.mockClear()
+    activeTab = { ...activeTab, title: "Inbox (1)" }
+    listeners.updated?.(7, { title: activeTab.title }, activeTab)
+    await vi.waitFor(async () => {
+      await expect(appState("title-change")).resolves.toMatchObject({
+        result: { page: { title: "Inbox (1)" }, tabContext: beforeTitle.result.tabContext },
+      })
+    })
+    expect(sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "tab.changed", tabContext: beforeTitle.result.tabContext }),
+    )
+    activeTab = { ...activeTab, title: "" }
+    listeners.updated?.(7, { title: "" }, activeTab)
+    await vi.waitFor(async () => {
+      await expect(appState("title-cleared")).resolves.toMatchObject({
+        result: { page: { title: "" }, tabContext: beforeTitle.result.tabContext },
+      })
+    })
     const beforeInjection = (await appState("before-injection-denial")) as {
       result: { tabContext: { tabId: number; url: string; epoch: number } }
     }

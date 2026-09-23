@@ -320,6 +320,63 @@ test("discovers isolated node references and fails closed across replacement and
   ).rejects.toMatchObject({ code: "STALE_CONTEXT" })
 })
 
+test("updates a live page title without invalidating the picker, chips or element references", async () => {
+  await page.reload()
+  await page.bringToFront()
+  tabContext = await waitForCurrentTab(page.url())
+  const originalTitle = await page.title()
+  const initial = { tabId: tabContext.tabId, url: tabContext.url, epoch: tabContext.epoch }
+  const snapshot = (await request("page.listElements", {}, { tabContext })) as unknown as {
+    snapshotId: string
+    elements: Array<{ ref: string; name: string }>
+  }
+  const ordinary = snapshot.elements.find((element) => element.name === "Click")
+  if (!ordinary) throw new Error("Missing clickable fixture control")
+
+  const picker = controller.locator("#element-picker")
+  try {
+    await picker.click()
+    await expect(picker).toHaveAttribute("aria-pressed", "true")
+    await expect(page.locator("[data-pi-browser-agent-element-picker]")).toHaveCount(1)
+    await page.evaluate(() => {
+      document.title = "Inbox (1)"
+    })
+    await expect(controller.locator("#page-status")).toContainText("Inbox (1)")
+    expect(await waitForCurrentTab(page.url())).toMatchObject(initial)
+    await expect(picker).toHaveAttribute("aria-pressed", "true")
+    await expect(page.locator("[data-pi-browser-agent-element-picker]")).toHaveCount(1)
+
+    const bounds = await page.locator("#ordinary").boundingBox()
+    if (!bounds) throw new Error("Missing clickable fixture bounds")
+    await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
+    await expect(controller.locator("#selected-elements")).toBeVisible()
+    await page.evaluate(() => {
+      document.title = "Inbox (2)"
+    })
+    await expect(controller.locator("#page-status")).toContainText("Inbox (2)")
+    expect(await waitForCurrentTab(page.url())).toMatchObject(initial)
+    await expect(controller.locator("#selected-elements")).toBeVisible()
+    await request(
+      "page.click",
+      { snapshotId: snapshot.snapshotId, ref: ordinary.ref },
+      { tabContext: initial },
+    )
+  } finally {
+    if ((await picker.getAttribute("aria-pressed").catch(() => null)) === "true") {
+      await picker.click({ timeout: 1000 }).catch(() => undefined)
+    }
+    const remove = controller.locator(".remove-selected-element").first()
+    if (await remove.isVisible().catch(() => false)) {
+      await remove.click({ timeout: 1000 }).catch(() => undefined)
+    }
+    await page
+      .evaluate((title) => {
+        document.title = title
+      }, originalTitle)
+      .catch(() => undefined)
+  }
+})
+
 test("excludes ancestor-clipped controls and rejects references clipped after discovery", async () => {
   await page.evaluate(() => {
     const fixture = document.createElement("div")

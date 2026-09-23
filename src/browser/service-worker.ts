@@ -811,7 +811,14 @@ chrome.runtime.onInstalled.addListener(() => {
 })
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-  if (!changeInfo.url && changeInfo.status !== "loading" && !changeInfo.title) return
+  const navigation = Boolean(changeInfo.url) || changeInfo.status === "loading"
+  if (!navigation) {
+    if (changeInfo.title !== undefined) {
+      // A title-only update changes the UI label, not the page or its references.
+      void initialization.then(() => syncVisibleTab()).catch(() => undefined)
+    }
+    return
+  }
   if (changeInfo.status === "loading" && inaccessibleTab?.id === tabId) inaccessibleTab = undefined
   elementPickerOperationVersion += 1
   if (activeElementPicker?.context.tabId === tabId) void stopActiveElementPicker("navigation")
