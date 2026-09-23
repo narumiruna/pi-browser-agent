@@ -94,6 +94,7 @@ export class BrowserAgentRuntime {
   private session!: SessionRecord
   private pendingSettingsModel = false
   private pendingSettingsThinking = false
+  private finishingRun?: Promise<void>
   private closing = false
   private persistChain: Promise<void> = Promise.resolve()
 
@@ -117,16 +118,23 @@ export class BrowserAgentRuntime {
       toolExecution: "parallel",
     })
     this.agent.subscribe(async (event) => {
-      this.callbacks.onAgentEvent(event)
-      if (event.type === "agent_start") await this.persist("running")
-      if (event.type === "message_end") await this.persist("running")
       if (event.type === "agent_end") {
+        const idle = this.agent.waitForIdle()
+        this.finishingRun = idle
+        void idle.then(() => {
+          if (this.finishingRun === idle) this.finishingRun = undefined
+        })
         await this.persist(this.closing ? "interrupted" : "idle")
         if (!this.closing && (this.pendingSettingsModel || this.pendingSettingsThinking)) {
           await this.configuration.syncSettings()
           await this.applyPendingSettings()
         }
+        this.callbacks.onAgentEvent(event)
+        return
       }
+      this.callbacks.onAgentEvent(event)
+      if (event.type === "agent_start") await this.persist("running")
+      if (event.type === "message_end") await this.persist("running")
     })
   }
 
@@ -212,6 +220,9 @@ export class BrowserAgentRuntime {
     images: ImageContent[] = [],
     elements: SelectedElementContext[] = [],
   ): Promise<SubmissionMode> {
+    if (this.configuration.isChangingAuth)
+      throw new Error("Wait for the authentication change to finish")
+    if (this.finishingRun) await this.finishingRun
     if (this.configuration.isChangingAuth)
       throw new Error("Wait for the authentication change to finish")
     this.assertImageInput(images)

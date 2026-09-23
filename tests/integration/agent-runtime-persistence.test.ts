@@ -58,12 +58,13 @@ function createRuntime(
   locks: LockManager,
   warnings: string[] = [],
   onSettingsModelChanged = vi.fn(),
+  onAgentEvent = vi.fn(),
 ): BrowserAgentRuntime {
   return new BrowserAgentRuntime(
     {
       confirm: vi.fn(async () => false),
       onAuthEvent: vi.fn(),
-      onAgentEvent: vi.fn(),
+      onAgentEvent,
       onSettingsModelChanged,
       onPersistenceError: (warning) => warnings.push(warning),
     },
@@ -314,8 +315,14 @@ describe("browser agent session persistence", () => {
     await other.shutdown()
   })
 
-  test("defers thinking changes until an active run finishes", async () => {
-    const runtime = createRuntime(new FakeLockManager() as unknown as LockManager)
+  test("finishes applying deferred thinking before reporting ready or starting the next submission", async () => {
+    const onAgentEvent = vi.fn()
+    const runtime = createRuntime(
+      new FakeLockManager() as unknown as LockManager,
+      [],
+      vi.fn(),
+      onAgentEvent,
+    )
     await runtime.initialize()
     const { started, finish } = controlledStream(runtime)
     const prompt = runtime.submit("Hello")
@@ -326,9 +333,31 @@ describe("browser agent session persistence", () => {
     })
     await runtime.syncSettings({ applyThinkingToActiveSession: true })
     expect(runtime.agent.state.thinkingLevel).toBe("medium")
+
+    const entered = deferred()
+    const release = deferred()
+    const put = runtime.sessions.put.bind(runtime.sessions)
+    vi.spyOn(runtime.sessions, "put").mockImplementation(async (record, protectedIds) => {
+      if (record.status === "idle" && record.model.thinkingLevel === "medium") {
+        entered.resolve()
+        await release.promise
+      }
+      return put(record, protectedIds)
+    })
     finish()
+    await entered.promise
+    expect(onAgentEvent).not.toHaveBeenCalledWith(expect.objectContaining({ type: "agent_end" }))
+
+    const nextStream = controlledStream(runtime)
+    const nextPrompt = runtime.submit("Next")
+    release.resolve()
     await prompt
-    await vi.waitFor(() => expect(runtime.activeSession.model.thinkingLevel).toBe("low"))
+    await nextStream.started
+    expect(runtime.agent.state.thinkingLevel).toBe("low")
+    expect(runtime.activeSession.model.thinkingLevel).toBe("low")
+    expect(onAgentEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "agent_end" }))
+    nextStream.finish()
+    await nextPrompt
     await runtime.shutdown()
   })
 
