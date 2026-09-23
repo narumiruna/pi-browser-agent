@@ -1344,6 +1344,8 @@ test("invalidates references on a real MV3 worker restart", async () => {
 })
 
 test("loads the Side Panel without uncaught errors", async () => {
+  await expect(controller.locator("#transcript .empty-state")).toBeVisible()
+  await expect(controller.locator("#transcript .message")).toHaveCount(0)
   await controller.waitForTimeout(100)
   expect(controllerErrors).toEqual([])
   await expect(controller.locator("#send")).toBeVisible()
@@ -2493,6 +2495,8 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
   await waitForSubmissionPreflight()
   releaseFirstResponse()
   await expect(controller.locator("#transcript")).toContainText("Submission guard test complete.")
+  await expect(controller.locator("#transcript .message.system")).toHaveCount(0)
+  await expect(controller.locator("#transcript .empty-state")).toHaveCount(0)
   await expect(controller.locator("#run-status")).toHaveText("Ready")
   await controller.evaluate(() => new Promise((resolve) => setTimeout(resolve)))
   await expect(controller.locator("#send")).toBeDisabled()
@@ -2576,6 +2580,7 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
   await controller.reload()
   await expect(controller.locator('#transcript img[alt="Pasted image"]')).toBeVisible()
   await expect(controller.locator('#transcript img[alt="Image result"]')).toBeVisible()
+  await expect(controller.locator("#transcript .message.system")).toHaveCount(0)
 
   await page.goto(`http://127.0.0.1:${fixture.port}/`)
   await page.bringToFront()

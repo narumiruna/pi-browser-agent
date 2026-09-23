@@ -386,6 +386,19 @@ describe("browser agent session persistence", () => {
     await runtime.shutdown()
   })
 
+  test("resumes a saved GPT-6 Sol session with the updated model catalog", async () => {
+    const runtime = createRuntime(new FakeLockManager() as unknown as LockManager)
+    await runtime.initialize()
+    const saved = createSession("gpt-6-sol", "openai-codex")
+    await runtime.sessions.put(saved)
+
+    await runtime.resumeSession(saved.id)
+
+    expect(runtime.model).toMatchObject({ provider: "openai-codex", id: "gpt-6-sol" })
+    expect(runtime.activeSession.id).toBe(saved.id)
+    await runtime.shutdown()
+  })
+
   test("rejects a saved session whose model is unavailable without changing the active model", async () => {
     const runtime = createRuntime(new FakeLockManager() as unknown as LockManager)
     await runtime.initialize()
