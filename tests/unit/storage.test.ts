@@ -14,7 +14,7 @@ afterEach(() => {
 })
 
 describe("browser storage", () => {
-  test("persists validated appearance preferences and migrates older settings", async () => {
+  test("persists validated appearance and thinking preferences and migrates older settings", async () => {
     const values: Record<string, unknown> = {}
     vi.stubGlobal("chrome", {
       storage: {
@@ -26,8 +26,17 @@ describe("browser storage", () => {
     })
 
     await expect(getSettings()).resolves.toEqual(DEFAULT_SETTINGS)
-    await saveSettings({ ...DEFAULT_SETTINGS, fontFamily: "serif", fontSize: 19 })
-    await expect(getSettings()).resolves.toMatchObject({ fontFamily: "serif", fontSize: 19 })
+    await saveSettings({
+      ...DEFAULT_SETTINGS,
+      fontFamily: "serif",
+      fontSize: 19,
+      thinkingLevel: "high",
+    })
+    await expect(getSettings()).resolves.toMatchObject({
+      fontFamily: "serif",
+      fontSize: 19,
+      thinkingLevel: "high",
+    })
 
     values.piBrowserAgentSettings = {
       systemPrompt: "Older prompt",
@@ -40,9 +49,15 @@ describe("browser storage", () => {
       fontSize: 16,
       modelProvider: "openai-codex",
       modelId: "gpt-5.6-terra",
+      thinkingLevel: "medium",
     })
 
-    values.piBrowserAgentSettings = { ...DEFAULT_SETTINGS, fontFamily: "invalid", fontSize: 25 }
+    values.piBrowserAgentSettings = {
+      ...DEFAULT_SETTINGS,
+      fontFamily: "invalid",
+      fontSize: 25,
+      thinkingLevel: "invalid",
+    }
     await expect(getSettings()).resolves.toEqual(DEFAULT_SETTINGS)
   })
 

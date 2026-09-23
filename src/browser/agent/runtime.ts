@@ -1,4 +1,9 @@
-import { Agent, type AgentEvent, type AgentMessage } from "@earendil-works/pi-agent-core"
+import {
+  Agent,
+  type AgentEvent,
+  type AgentMessage,
+  type ThinkingLevel,
+} from "@earendil-works/pi-agent-core"
 import {
   type Api,
   type AuthEvent,
@@ -100,6 +105,8 @@ export class BrowserAgentRuntime {
   private currentModel: Model<Api>
   private session!: SessionRecord
   private pendingSettingsModel = false
+  private pendingThinkingLevel?: ThinkingLevel
+  private finishingRun?: Promise<void>
   private closing = false
   private persistChain: Promise<void> = Promise.resolve()
 
@@ -123,14 +130,26 @@ export class BrowserAgentRuntime {
       toolExecution: "parallel",
     })
     this.agent.subscribe(async (event) => {
+      if (event.type === "agent_end") {
+        const idle = this.agent.waitForIdle()
+        this.finishingRun = idle
+        void idle.then(() => {
+          if (this.finishingRun === idle) this.finishingRun = undefined
+        })
+        await this.persist(this.closing ? "interrupted" : "idle")
+        if (
+          !this.closing &&
+          (this.pendingSettingsModel || this.pendingThinkingLevel !== undefined)
+        ) {
+          await this.configuration.syncSettings()
+          await this.applyPendingSettings()
+        }
+        this.callbacks.onAgentEvent(event)
+        return
+      }
       this.callbacks.onAgentEvent(event)
       if (event.type === "agent_start") await this.persist("running")
       if (event.type === "message_end") await this.persist("running")
-      if (event.type === "agent_end") {
-        await this.persist(this.closing ? "interrupted" : "idle")
-        if (!this.closing && this.pendingSettingsModel)
-          await this.syncSettings({ applyModelToActiveSession: true })
-      }
     })
   }
 
@@ -154,7 +173,11 @@ export class BrowserAgentRuntime {
       restored = await this.normalizeClaimedSession(restored)
       this.session = restored
     } else {
-      this.session = createSession(this.currentModel.id, this.currentModel.provider)
+      this.session = createSession(
+        this.currentModel.id,
+        this.currentModel.provider,
+        this.configuration.appSettings.thinkingLevel,
+      )
       if (!(await this.sessionLease.claim(this.session.id))) {
         throw new Error("Unable to claim a new browser session")
       }
@@ -172,30 +195,39 @@ export class BrowserAgentRuntime {
     return this.currentModel
   }
 
-  async syncSettings(options: { applyModelToActiveSession?: boolean } = {}): Promise<void> {
+  async syncSettings(
+    options: { applyModelToActiveSession?: boolean; applyThinkingToActiveSession?: boolean } = {},
+  ): Promise<void> {
     await this.configuration.syncSettings()
-    if (!options.applyModelToActiveSession) return
-    if (this.agent.state.isStreaming) {
-      this.pendingSettingsModel = true
-      return
-    }
+    if (!options.applyModelToActiveSession && !options.applyThinkingToActiveSession) return
+    this.pendingSettingsModel ||= options.applyModelToActiveSession === true
+    if (options.applyThinkingToActiveSession)
+      this.pendingThinkingLevel = this.configuration.appSettings.thinkingLevel
+    if (this.agent.state.isStreaming) return
+    await this.applyPendingSettings()
+  }
+
+  private async applyPendingSettings(): Promise<void> {
+    const applyModelToActiveSession = this.pendingSettingsModel
+    const thinkingLevel = this.pendingThinkingLevel
     this.pendingSettingsModel = false
+    this.pendingThinkingLevel = undefined
     const settings = this.configuration.appSettings
-    const model = this.configuration.models.getModel(settings.modelProvider, settings.modelId)
-    if (
-      !model ||
-      (model.provider === this.currentModel.provider && model.id === this.currentModel.id)
-    )
-      return
-    this.currentModel = model
-    this.agent.state.model = model
-    this.session.model = {
-      provider: model.provider,
-      id: model.id,
-      thinkingLevel: this.agent.state.thinkingLevel,
+    const model = applyModelToActiveSession
+      ? this.configuration.models.getModel(settings.modelProvider, settings.modelId)
+      : undefined
+    const modelChanged =
+      model && (model.provider !== this.currentModel.provider || model.id !== this.currentModel.id)
+    const thinkingChanged =
+      thinkingLevel !== undefined && thinkingLevel !== this.agent.state.thinkingLevel
+    if (!modelChanged && !thinkingChanged) return
+    if (modelChanged) {
+      this.currentModel = model
+      this.agent.state.model = model
     }
+    if (thinkingChanged) this.agent.state.thinkingLevel = thinkingLevel
     await this.persist("idle")
-    this.callbacks.onSettingsModelChanged?.()
+    if (modelChanged) this.callbacks.onSettingsModelChanged?.()
   }
 
   async submit(
@@ -204,6 +236,9 @@ export class BrowserAgentRuntime {
     images: ImageContent[] = [],
     elements: SelectedElementContext[] = [],
   ): Promise<SubmissionMode> {
+    if (this.configuration.isChangingAuth)
+      throw new Error("Wait for the authentication change to finish")
+    if (this.finishingRun) await this.finishingRun
     if (this.configuration.isChangingAuth)
       throw new Error("Wait for the authentication change to finish")
     this.assertImageInput(images)
@@ -306,7 +341,11 @@ export class BrowserAgentRuntime {
   }
 
   private async activateNewSession(model: Model<Api>, claimError: string): Promise<void> {
-    const record = createSession(model.id, model.provider)
+    const record = createSession(
+      model.id,
+      model.provider,
+      this.configuration.appSettings.thinkingLevel,
+    )
     if (!(await this.sessionLease.claim(record.id))) throw new Error(claimError)
     this.session = record
     this.applySession(record)

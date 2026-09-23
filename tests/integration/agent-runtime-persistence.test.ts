@@ -58,12 +58,13 @@ function createRuntime(
   locks: LockManager,
   warnings: string[] = [],
   onSettingsModelChanged = vi.fn(),
+  onAgentEvent = vi.fn(),
 ): BrowserAgentRuntime {
   return new BrowserAgentRuntime(
     {
       confirm: vi.fn(async () => false),
       onAuthEvent: vi.fn(),
-      onAgentEvent: vi.fn(),
+      onAgentEvent,
       onSettingsModelChanged,
       onPersistenceError: (warning) => warnings.push(warning),
     },
@@ -283,6 +284,84 @@ describe("browser agent session persistence", () => {
       model: { provider: "anthropic", id: anthropic.id },
     })
     expect(onSettingsModelChanged).toHaveBeenCalledOnce()
+    await runtime.shutdown()
+  })
+
+  test("applies an explicit thinking choice to the opener and future sessions, not other conversations", async () => {
+    const locks = new FakeLockManager() as unknown as LockManager
+    const opener = createRuntime(locks)
+    await opener.initialize()
+    const other = createRuntime(locks)
+    await other.initialize()
+    const settingsRuntime = new BrowserConfiguration(vi.fn())
+    await settingsRuntime.initialize()
+
+    await settingsRuntime.updateSettings({ ...settingsRuntime.appSettings, thinkingLevel: "high" })
+    await opener.syncSettings({ applyThinkingToActiveSession: true })
+    await other.syncSettings()
+
+    expect(opener.agent.state.thinkingLevel).toBe("high")
+    expect(opener.activeSession.model.thinkingLevel).toBe("high")
+    await expect(opener.sessions.get(opener.activeSession.id)).resolves.toMatchObject({
+      model: { thinkingLevel: "high" },
+    })
+    expect(other.agent.state.thinkingLevel).toBe("medium")
+    const previousSessionId = other.activeSession.id
+    await other.newSession()
+    expect(other.activeSession.model.thinkingLevel).toBe("high")
+    await other.resumeSession(previousSessionId)
+    expect(other.agent.state.thinkingLevel).toBe("medium")
+    await opener.shutdown()
+    await other.shutdown()
+  })
+
+  test("applies the opener's deferred thinking before the next submission despite another settings save", async () => {
+    const onAgentEvent = vi.fn()
+    const runtime = createRuntime(
+      new FakeLockManager() as unknown as LockManager,
+      [],
+      vi.fn(),
+      onAgentEvent,
+    )
+    await runtime.initialize()
+    const { started, finish } = controlledStream(runtime)
+    const prompt = runtime.submit("Hello")
+    await started
+    await runtime.configuration.updateSettings({
+      ...runtime.configuration.appSettings,
+      thinkingLevel: "low",
+    })
+    await runtime.syncSettings({ applyThinkingToActiveSession: true })
+    expect(runtime.agent.state.thinkingLevel).toBe("medium")
+    const otherSettings = new BrowserConfiguration(vi.fn())
+    await otherSettings.initialize()
+    await otherSettings.updateSettings({ ...otherSettings.appSettings, thinkingLevel: "max" })
+
+    const entered = deferred()
+    const release = deferred()
+    const put = runtime.sessions.put.bind(runtime.sessions)
+    vi.spyOn(runtime.sessions, "put").mockImplementation(async (record, protectedIds) => {
+      if (record.status === "idle" && record.model.thinkingLevel === "medium") {
+        entered.resolve()
+        await release.promise
+      }
+      return put(record, protectedIds)
+    })
+    finish()
+    await entered.promise
+    expect(onAgentEvent).not.toHaveBeenCalledWith(expect.objectContaining({ type: "agent_end" }))
+
+    const nextStream = controlledStream(runtime)
+    const nextPrompt = runtime.submit("Next")
+    release.resolve()
+    await prompt
+    await nextStream.started
+    expect(runtime.agent.state.thinkingLevel).toBe("low")
+    expect(runtime.activeSession.model.thinkingLevel).toBe("low")
+    expect(runtime.configuration.appSettings.thinkingLevel).toBe("max")
+    expect(onAgentEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "agent_end" }))
+    nextStream.finish()
+    await nextPrompt
     await runtime.shutdown()
   })
 

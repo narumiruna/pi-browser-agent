@@ -268,6 +268,16 @@
             ></div>
           </div>
           <p id="model-capabilities" class="field-hint"></p>
+          <label for="thinking-level">Thinking level</label>
+          <select id="thinking-level">
+            <option value="minimal">Minimal</option>
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+            <option value="xhigh">Extra high</option>
+            <option value="max">Maximum</option>
+          </select>
+          <p class="field-hint">Higher levels may use more tokens; model support varies.</p>
           <button type="button" id="configure-provider" class="subtle">
             Configure authentication
           </button>
