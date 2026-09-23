@@ -1,5 +1,15 @@
 # pi-browser-agent
 
+## 0.2.1
+
+### Patch Changes
+
+- a99d5de: Redesign the Side Panel session picker with an aligned custom menu, softer selection states, clearer session hierarchy, and truncated titles with tooltips.
+- 9790c25: Start page-element selection with a fresh tab context after Chrome's site-access prompt changes browser focus.
+- 270fb7c: Reject selected-element context after the active page changes, and accept valid HTML tag names containing punctuation.
+- 485ff2b: Stabilize active-page detection during Chrome window switches and stop retrying other browser tools after no HTTP(S) tab is available.
+- 196f56f: Keep the primary composer action right-aligned when switching between Send and Add instruction.
+
 ## 0.2.0
 
 ### Minor Changes
