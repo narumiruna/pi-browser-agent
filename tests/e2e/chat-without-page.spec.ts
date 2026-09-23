@@ -225,6 +225,97 @@ test("keeps a no-page turn isolated after its visible tab changes", async () => 
   }
 })
 
+test("keeps a protected-page turn context-free when a web tab appears before a queued instruction", async () => {
+  test.setTimeout(60_000)
+  const harness = await launchExtensionHarness()
+  let releaseFirst: () => void = () => undefined
+  try {
+    await configureMockCodex(harness)
+    const protectedPage = await harness.context.newPage()
+    await protectedPage.goto("chrome://settings/")
+    await protectedPage.bringToFront()
+    await expect(harness.controller.locator("#page-status")).toContainText("cannot read or operate")
+    await harness.controller.evaluate(() => {
+      const originalRequest = chrome.permissions.request.bind(chrome.permissions)
+      const state = window as typeof window & {
+        requestedOrigins?: Array<string[] | undefined>
+        restorePermissionRequests?: () => void
+      }
+      state.requestedOrigins = []
+      chrome.permissions.request = (async (permissions) => {
+        state.requestedOrigins?.push(permissions.origins)
+        return originalRequest(permissions)
+      }) as typeof chrome.permissions.request
+      state.restorePermissionRequests = () => {
+        chrome.permissions.request = originalRequest
+      }
+    })
+    let markFirstStarted: () => void = () => undefined
+    const firstStarted = new Promise<void>((resolve) => {
+      markFirstStarted = resolve
+    })
+    const firstResponse = new Promise<void>((resolve) => {
+      releaseFirst = resolve
+    })
+    const requests: unknown[] = []
+    let index = 0
+    await harness.context.route(CODEX_RESPONSES_URL, async (route) => {
+      requests.push(route.request().postDataJSON())
+      const current = index++
+      if (current === 0) {
+        markFirstStarted()
+        await firstResponse
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "text/event-stream",
+        body:
+          current === 0
+            ? toolCallResponse(51, "browser_read_page")
+            : finalTextResponse(
+                52 + current,
+                current === 1 ? "First response finished." : "Queued without page context.",
+              ),
+      })
+    })
+    await harness.controller.locator("#prompt").fill("Start a protected-page chat")
+    await harness.controller.locator("#send").click()
+    await firstStarted
+    await expect(harness.controller.locator("#run-status")).toHaveText("Working")
+    await harness.fixturePage.bringToFront()
+    await expect(harness.controller.locator("#page-status")).toContainText("not used")
+    await expect(harness.controller.locator("#element-picker")).toBeDisabled()
+    await expect(harness.controller.locator("#grant-site")).toBeDisabled()
+    await harness.controller.locator("#prompt").fill("Continue without page context")
+    await harness.controller.locator("#queue-instruction").click()
+    releaseFirst()
+    await expect(harness.controller.locator("#transcript")).toContainText(
+      "Queued without page context.",
+    )
+    expect(JSON.stringify(requests)).toContain("does not use page context")
+    expect(requests.length).toBeGreaterThanOrEqual(3)
+    expect(JSON.stringify(requests.slice(2))).toContain("Continue without page context")
+    expect(JSON.stringify(requests)).not.toContain("meadow-42")
+    const requestedOrigins = await harness.controller.evaluate(
+      () =>
+        (window as typeof window & { requestedOrigins?: Array<string[] | undefined> })
+          .requestedOrigins,
+    )
+    expect(JSON.stringify(requestedOrigins)).not.toContain("127.0.0.1")
+    expect(harness.pageErrors).toEqual([])
+  } finally {
+    releaseFirst()
+    await harness.controller
+      .evaluate(() => {
+        ;(
+          window as typeof window & { restorePermissionRequests?: () => void }
+        ).restorePermissionRequests?.()
+      })
+      .catch(() => undefined)
+    await harness.close()
+  }
+})
+
 test("accepts a refreshed page epoch after permission preflight without selected elements", async () => {
   test.setTimeout(60_000)
   const harness = await launchExtensionHarness()
@@ -413,6 +504,48 @@ test("opens a website only after user confirmation, never on send", async () => 
   }
 })
 
+test("does not mark an ordinary ungranted site as restricted when tab metadata is requested", async () => {
+  const harness = await launchExtensionHarness()
+  try {
+    const ungrantedUrl = harness.fixtureUrl.replace("127.0.0.1", "localhost")
+    const tab = await harness.context.newPage()
+    await tab.goto(ungrantedUrl)
+    await tab.bringToFront()
+    const getState = () =>
+      harness.controller.evaluate(async () => {
+        const response = (await chrome.runtime.sendMessage({
+          kind: "request",
+          requestId: crypto.randomUUID(),
+          method: "app.getState",
+          params: {},
+        })) as {
+          result: {
+            page: { kind: string }
+            tabContext: { tabId: number; url: string; epoch: number } | null
+          }
+        }
+        return response.result
+      })
+    await expect.poll(async () => (await getState()).tabContext?.url).toBe(ungrantedUrl)
+    const context = (await getState()).tabContext
+    if (!context) throw new Error("Missing ungranted tab context")
+    const response = await harness.controller.evaluate(async (tabContext) => {
+      return chrome.runtime.sendMessage({
+        kind: "request",
+        requestId: crypto.randomUUID(),
+        method: "tabs.getActive",
+        params: {},
+        tabContext,
+      })
+    }, context)
+    expect(response).toMatchObject({ ok: false, error: { code: "PERMISSION_DENIED" } })
+    expect((await getState()).page.kind).toBe("web")
+    expect(harness.pageErrors).toEqual([])
+  } finally {
+    await harness.close()
+  }
+})
+
 test("fails closed on an extensionless PDF before capturing or picking a page", async () => {
   test.setTimeout(60_000)
   const harness = await launchExtensionHarness({ screenshots: true })
@@ -441,21 +574,56 @@ test("fails closed on an extensionless PDF before capturing or picking a page", 
         return response.result
       })
     const send = (
-      method: "page.captureVisible" | "page.getVisibleText" | "elementPicker.start",
+      method:
+        | "tabs.getActive"
+        | "tabs.navigate"
+        | "page.captureVisible"
+        | "page.getVisibleText"
+        | "elementPicker.start",
       context: object,
     ) =>
       harness.controller.evaluate(
-        async ({ method, context }) =>
+        async ({ method, context, destination }) =>
           chrome.runtime.sendMessage({
             kind: "request",
             requestId: crypto.randomUUID(),
             method,
-            params: method === "elementPicker.start" ? { clientId: crypto.randomUUID() } : {},
+            params:
+              method === "elementPicker.start"
+                ? { clientId: crypto.randomUUID() }
+                : method === "tabs.navigate"
+                  ? { url: destination }
+                  : {},
             tabContext: context,
             confirmed: true,
           }),
-        { method, context },
+        { method, context, destination: harness.fixtureUrl },
       ) as Promise<{ ok: boolean; error?: { code: string } }>
+
+    const metadataTab = await harness.context.newPage()
+    await metadataTab.goto(pdfUrl, { waitUntil: "commit" }).catch(() => undefined)
+    await metadataTab.bringToFront()
+    await expect.poll(async () => (await getState()).tabContext?.url).toBe(pdfUrl)
+    const metadataContext = (await getState()).tabContext
+    if (!metadataContext) throw new Error("Missing initial PDF metadata context")
+    expect(await send("tabs.getActive", metadataContext)).toMatchObject({
+      ok: false,
+      error: { code: "PERMISSION_DENIED" },
+    })
+    await expect.poll(async () => (await getState()).page.kind).toBe("restricted")
+
+    const navigationTab = await harness.context.newPage()
+    await navigationTab.goto(pdfUrl, { waitUntil: "commit" }).catch(() => undefined)
+    await navigationTab.bringToFront()
+    await expect.poll(async () => (await getState()).tabContext?.url).toBe(pdfUrl)
+    const navigationContext = (await getState()).tabContext
+    if (!navigationContext) throw new Error("Missing initial PDF navigation context")
+    expect(await send("tabs.navigate", navigationContext)).toMatchObject({
+      ok: false,
+      error: { code: "PERMISSION_DENIED" },
+    })
+    await expect(navigationTab).toHaveURL(pdfUrl)
+    await expect.poll(async () => (await getState()).page.kind).toBe("restricted")
 
     const readTab = await harness.context.newPage()
     await readTab.goto(pdfUrl, { waitUntil: "commit" }).catch(() => undefined)

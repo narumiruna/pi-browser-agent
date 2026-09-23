@@ -580,6 +580,13 @@ async function runWebMcp(
 async function getActiveTab(request: RuntimeRequest<"tabs.getActive">): Promise<JsonValue> {
   const context = await refreshBoundContext()
   assertTabContext(request.tabContext, context)
+  if (!(await hasHostPermission(context.url))) {
+    throw new RuntimeError(
+      "PERMISSION_DENIED",
+      "Grant access to the current site before reading tab metadata",
+    )
+  }
+  await assertReadableDocument(context)
   const tab = await chrome.tabs.get(context.tabId)
   await revalidateRequestContext(request, context)
   return { ...context, active: tab.active, title: tab.title ?? "", windowId: tab.windowId }
@@ -650,6 +657,13 @@ async function runBookmarkRead(
 async function navigate(request: RuntimeRequest<"tabs.navigate">): Promise<JsonValue> {
   const context = await refreshBoundContext()
   assertTabContext(request.tabContext, context)
+  if (!(await hasHostPermission(context.url))) {
+    throw new RuntimeError(
+      "PERMISSION_DENIED",
+      "Grant access to the current site before navigating",
+    )
+  }
+  await assertReadableDocument(context)
   const target = request.params.url
   if (!isSupportedPageUrl(target)) {
     throw new RuntimeError("INVALID_REQUEST", "Navigation requires an HTTP or HTTPS URL")

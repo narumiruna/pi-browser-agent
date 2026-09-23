@@ -294,13 +294,16 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     openWebsiteButton.disabled = activeSubmissionGuard !== undefined
     chooseTabButton.disabled = activeSubmissionGuard !== undefined
     tabOptions.disabled = activeSubmissionGuard !== undefined
-    grantSiteButton.disabled = currentTabContext === undefined
+    const pageToolsUnavailable = runtime.agent.state.isStreaming && !runtime.usesPageContext
+    grantSiteButton.disabled =
+      currentTabContext === undefined || noPageContext || pageToolsUnavailable
     elementPickerButton.disabled =
       activeSubmissionGuard !== undefined ||
       pickerStarting ||
       voiceInputStarting ||
       voiceInput?.active === true ||
-      (!pickerActive && (currentTabContext === undefined || noPageContext)) ||
+      (!pickerActive &&
+        (currentTabContext === undefined || noPageContext || pageToolsUnavailable)) ||
       (!pickerActive && selectedElements.length >= ELEMENT_PICKER_LIMITS.elements)
   }
 
@@ -350,6 +353,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     switch (event.type) {
       case "agent_start":
         setRunStatus(conversationText("working"), { busy: true, streaming: true })
+        renderPageCapability()
         setError()
         break
       case "message_update":
@@ -363,6 +367,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
         break
       case "agent_end":
         setRunStatus(conversationText("ready"), { busy: false, streaming: false })
+        renderPageCapability()
         renderMessages()
         if (runtime.agent.state.errorMessage) setError(runtime.agent.state.errorMessage)
         void refreshSessions()
@@ -530,6 +535,8 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
 
   function renderPageCapability(): void {
     const eligible = visiblePage.kind === "web" && currentTabContext !== undefined
+    const withoutPage =
+      noPageContext || (runtime.agent.state.isStreaming && !runtime.usesPageContext)
     const label =
       visiblePage.title ||
       (eligible
@@ -541,12 +548,12 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
             pdf: "PDF",
             web: "Web page",
           }[visiblePage.kind])
-    pageStatus.textContent = `Current page: ${label} — ${eligible ? (noPageContext ? "not used" : conversationText("pageReady")) : "cannot read or operate"}`
+    pageStatus.textContent = `Current page: ${label} — ${eligible ? (withoutPage ? "not used" : conversationText("pageReady")) : "cannot read or operate"}`
     noPageButton.textContent = noPageContext
       ? conversationText(eligible ? "useCurrentPage" : "noPageSelected")
       : conversationText("noPageContext")
     noPageButton.setAttribute("aria-pressed", String(noPageContext))
-    document.body.dataset.page = eligible && !noPageContext ? "web" : "waiting"
+    document.body.dataset.page = eligible && !withoutPage ? "web" : "waiting"
     if (!runtime.agent.state.isStreaming) {
       promptInput.placeholder = conversationText(
         document.body.dataset.page === "waiting" ? "promptWithoutPage" : "promptIdle",
@@ -589,6 +596,9 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   }
 
   async function toggleElementPicker(): Promise<void> {
+    if (runtime.agent.state.isStreaming && !runtime.usesPageContext) {
+      throw new Error("This turn does not use page context")
+    }
     if (pickerActive) {
       await stopElementPicker()
       return
@@ -600,12 +610,18 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       if (!permissionContext) {
         throw new Error("Open an HTTP or HTTPS page before selecting an element")
       }
+      if (runtime.agent.state.isStreaming && !runtime.usesPageContext) {
+        throw new Error("This turn does not use page context")
+      }
       if (!(await requestSiteAccess(permissionContext.url))) {
         throw new Error("Site access is required to select an element")
       }
       // Chrome's permission prompt temporarily changes browser focus and invalidates the old epoch.
       const context = await refreshTabContext()
       if (!context) throw new Error("Open an HTTP or HTTPS page before selecting an element")
+      if (runtime.agent.state.isStreaming && !runtime.usesPageContext) {
+        throw new Error("This turn does not use page context")
+      }
       if (context.tabId !== permissionContext.tabId || context.url !== permissionContext.url) {
         throw new Error("The page changed while site access was being granted. Select it again.")
       }
@@ -635,8 +651,14 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   }
 
   async function requestActiveSiteAccess(): Promise<void> {
+    if (runtime.agent.state.isStreaming && !runtime.usesPageContext) {
+      throw new Error("This turn does not use page context")
+    }
     const currentTabUrl = await refreshTab()
     if (!currentTabUrl) throw new Error("Open an HTTP or HTTPS page before granting site access")
+    if (runtime.agent.state.isStreaming && !runtime.usesPageContext) {
+      throw new Error("This turn does not use page context")
+    }
     if (!(await requestSiteAccess(currentTabUrl))) {
       throw new Error("Site access is required to work with the current page")
     }
@@ -647,7 +669,10 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     usePage: boolean
   }> {
     const initial = await refreshTabContext()
-    const usePage = initial !== undefined && !noPageContext
+    const usePage =
+      initial !== undefined &&
+      !noPageContext &&
+      (!runtime.agent.state.isStreaming || runtime.usesPageContext)
     const modelEndpoints = await runtime.configuration.requiredModelEndpointUrls(
       () => runtime.model,
     )
