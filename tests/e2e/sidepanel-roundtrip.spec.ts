@@ -3927,20 +3927,29 @@ test("preserves streamed Markdown disclosures, focus, scroll, copying and safe r
     const transcriptElement = controller.locator("#transcript")
     await transcriptElement.evaluate((element) => {
       element.style.overflowAnchor = "none"
+      element.style.scrollBehavior = "auto"
       element.scrollTop = element.scrollHeight - element.clientHeight - 20
     })
     await expect(scrollToBottom).toBeHidden()
-    const lastMessage = controller.locator("#transcript > .message").last()
-    await lastMessage.evaluate((element) => {
+    const lastTurn = controller.locator("#transcript > .assistant-turn").last()
+    await lastTurn.evaluate((element) => {
       element.style.paddingBottom = "240px"
     })
+    await expect
+      .poll(() =>
+        transcriptElement.evaluate(
+          (element) => element.scrollHeight - element.scrollTop - element.clientHeight,
+        ),
+      )
+      .toBeGreaterThan(48)
     await expect(scrollToBottom).toBeVisible()
-    await lastMessage.evaluate((element) => {
+    await lastTurn.evaluate((element) => {
       element.style.removeProperty("padding-bottom")
     })
     await transcriptElement.evaluate((element) => {
-      element.style.removeProperty("overflow-anchor")
       element.scrollTop = element.scrollHeight
+      element.style.removeProperty("overflow-anchor")
+      element.style.removeProperty("scroll-behavior")
     })
     await expect(scrollToBottom).toBeHidden()
 
@@ -4092,6 +4101,7 @@ test("preserves streamed Markdown disclosures, focus, scroll, copying and safe r
 })
 
 test("confirms and returns bounded bookmark data through a mocked model call", async () => {
+  await prepareFeatureSession()
   const codexUrl = "https://chatgpt.com/backend-api/codex/responses"
   const responses = [
     toolCall(20, "browser_search_bookmarks", {
@@ -4154,6 +4164,7 @@ test("confirms and returns bounded bookmark data through a mocked model call", a
 })
 
 test("shows permission denial inside the open confirmation dialog", async () => {
+  await prepareFeatureSession()
   const codexUrl = "https://chatgpt.com/backend-api/codex/responses"
   const responses = [
     toolCall(22, "browser_navigate", { url: "https://denied.example.test/" }),
@@ -4206,6 +4217,7 @@ test("shows permission denial inside the open confirmation dialog", async () => 
 })
 
 test("shows optional screenshot permission denial inside the confirmation dialog", async () => {
+  await prepareFeatureSession()
   const codexUrl = "https://chatgpt.com/backend-api/codex/responses"
   const responses = [
     toolCall(24, "browser_capture_visible", {}),

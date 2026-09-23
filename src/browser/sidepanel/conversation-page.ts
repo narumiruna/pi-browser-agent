@@ -263,7 +263,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     }
     for (const current of currentElements) {
       if (observedTranscriptElements.has(current)) continue
-      transcriptResizeObserver.observe(current)
+      transcriptResizeObserver.observe(current, { box: "border-box" })
       observedTranscriptElements.add(current)
     }
   }
