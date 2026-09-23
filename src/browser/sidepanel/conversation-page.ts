@@ -279,7 +279,9 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   }
 
   function renderMessages(streaming?: AgentMessage): void {
-    const messages = [...runtime.agent.state.messages, ...(streaming ? [streaming] : [])]
+    const messages = [...runtime.agent.state.messages, ...(streaming ? [streaming] : [])].filter(
+      (message) => message.role !== "system",
+    )
     transcriptRenderer.render(messages, runtime.activeSession.id)
     if (messages.length === 0) {
       const emptyState = document.createElement("div")

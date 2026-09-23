@@ -1,5 +1,12 @@
 import { Agent, type AgentEvent, type AgentMessage } from "@earendil-works/pi-agent-core"
-import type { Api, AuthEvent, ImageContent, Model } from "@earendil-works/pi-ai"
+import {
+  type Api,
+  type AuthEvent,
+  createInitialSystemMessage,
+  type ImageContent,
+  type Model,
+  toToolDeclaration,
+} from "@earendil-works/pi-ai"
 import { safeErrorMessage } from "../auth/redaction.js"
 import { BrowserConfiguration } from "../configuration.js"
 import {
@@ -202,7 +209,7 @@ export class BrowserAgentRuntime {
     this.assertImageInput(images)
     const content = composeElementContext(text, elements)
     if (!this.agent.state.isStreaming) {
-      this.agent.state.systemPrompt = composeSystemPrompt(this.configuration.appSettings)
+      this.updateSystemPrompt()
       if (images.length > 0) await this.agent.prompt(multimodalUserMessage(content, images))
       else await this.agent.prompt(content)
       return "prompt"
@@ -349,7 +356,22 @@ export class BrowserAgentRuntime {
     this.agent.state.tools = createBrowserTools(this.callbacks.confirm)
     this.agent.state.messages = structuredClone(record.messages)
     this.agent.state.thinkingLevel = record.model.thinkingLevel
-    this.agent.state.systemPrompt = composeSystemPrompt(this.configuration.appSettings)
+    this.updateSystemPrompt()
+  }
+
+  private updateSystemPrompt(): void {
+    const messages = this.agent.state.messages
+    const prompt = composeSystemPrompt(this.configuration.appSettings)
+    const first = messages[0]
+    const baseline = createInitialSystemMessage(
+      prompt,
+      this.agent.state.tools.map(toToolDeclaration),
+    )
+    if (!baseline) throw new Error("Missing system prompt and tools")
+    this.agent.state.messages = [
+      first?.role === "system" ? { ...first, content: prompt } : baseline,
+      ...(first?.role === "system" ? messages.slice(1) : messages),
+    ]
   }
 
   private persist(status: SessionRecord["status"]): Promise<void> {

@@ -386,6 +386,19 @@ describe("browser agent session persistence", () => {
     await runtime.shutdown()
   })
 
+  test("resumes a saved GPT-6 Sol session with the updated model catalog", async () => {
+    const runtime = createRuntime(new FakeLockManager() as unknown as LockManager)
+    await runtime.initialize()
+    const saved = createSession("gpt-6-sol", "openai-codex")
+    await runtime.sessions.put(saved)
+
+    await runtime.resumeSession(saved.id)
+
+    expect(runtime.model).toMatchObject({ provider: "openai-codex", id: "gpt-6-sol" })
+    expect(runtime.activeSession.id).toBe(saved.id)
+    await runtime.shutdown()
+  })
+
   test("rejects a saved session whose model is unavailable without changing the active model", async () => {
     const runtime = createRuntime(new FakeLockManager() as unknown as LockManager)
     await runtime.initialize()
@@ -433,11 +446,12 @@ describe("browser agent session persistence", () => {
     if (!textOnly) throw new Error("Text-only test model unavailable")
     await applyModel(runtime, textOnly.provider, textOnly.id)
     const image = { type: "image" as const, data: "cG5n", mimeType: "image/png" }
+    const messagesBeforeSubmit = structuredClone(runtime.agent.state.messages)
 
     await expect(runtime.submit("Inspect this", "steer", [image])).rejects.toThrow(
       "does not support image input",
     )
-    expect(runtime.agent.state.messages).toEqual([])
+    expect(runtime.agent.state.messages).toEqual(messagesBeforeSubmit)
     await runtime.shutdown()
   })
 
