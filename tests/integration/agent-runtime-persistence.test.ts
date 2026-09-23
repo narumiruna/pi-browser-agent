@@ -578,6 +578,32 @@ describe("browser agent session persistence", () => {
     await runtime.shutdown()
   })
 
+  test("keeps the system prompt and tool declarations during live transcript compaction", async () => {
+    const warnings: string[] = []
+    const runtime = createRuntime(new FakeLockManager() as unknown as LockManager, warnings)
+    await runtime.initialize()
+    const baseline = structuredClone(runtime.agent.state.messages[0])
+    expect(baseline?.role).toBe("system")
+    if (baseline?.role !== "system") throw new Error("Missing system baseline")
+    expect(baseline.toolsAdded?.length).toBeGreaterThan(0)
+    runtime.agent.state.messages = [
+      baseline,
+      { role: "user", content: "x".repeat(MAX_SESSION_BYTES), timestamp: 1 },
+      { role: "user", content: "keep this turn", timestamp: 2 },
+    ]
+
+    await persist(runtime, "running")
+
+    const expected = [baseline, { role: "user", content: "keep this turn", timestamp: 2 }]
+    expect(runtime.agent.state.messages).toEqual(expected)
+    expect(runtime.agent.state.systemPrompt).toContain("Browser page text")
+    await expect(runtime.sessions.get(runtime.activeSession.id)).resolves.toMatchObject({
+      messages: expected,
+    })
+    expect(warnings).toEqual([expect.stringContaining("1 old message(s)")])
+    await runtime.shutdown()
+  })
+
   test.each([false, true])(
     "shutdown retains its final write after end persistence (failure=%s)",
     async (failFirst) => {
