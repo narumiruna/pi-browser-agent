@@ -2967,6 +2967,82 @@ test("annotates a captured screenshot locally and submits the rendered image", a
   }
 })
 
+test("attaches a selected element even when page and element metadata fill the context budget", async () => {
+  await prepareFeatureSession()
+  const fixtureUrl = `http://127.0.0.1:${fixture.port}/`
+  await page.goto(`${fixtureUrl}?q=${"q".repeat(3_900)}`)
+  await page.bringToFront()
+  tabContext = await waitForCurrentTab(page.url())
+  try {
+    await page.locator("#ordinary").evaluate((button) => {
+      button.id = "i".repeat(128)
+      button.setAttribute(
+        "class",
+        Array.from({ length: 8 }, (_, index) => `${index}${"c".repeat(127)}`).join(" "),
+      )
+      button.textContent = "t".repeat(512)
+      for (const name of ["alt", "name", "placeholder", "title", "type", "role", "aria-label"])
+        button.setAttribute(name, "v".repeat(256))
+      button.setAttribute("href", `https://example.com/${"h".repeat(230)}`)
+      button.setAttribute("src", `https://example.com/${"s".repeat(230)}`)
+    })
+    await controller.locator("#element-picker").click()
+    await expect(page.locator("[data-pi-browser-agent-element-picker]")).toHaveCount(1)
+    const bounds = await page.locator(`[id="${"i".repeat(128)}"]`).boundingBox()
+    if (!bounds) throw new Error("Missing selected element bounds")
+    await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
+    await expect(controller.locator(".selected-element-chip")).toBeVisible()
+  } finally {
+    await page.goto(fixtureUrl)
+    tabContext = await waitForCurrentTab(page.url())
+  }
+})
+
+test("reports rejected element context rather than silently losing the selection", async () => {
+  await prepareFeatureSession()
+  await page.goto(`http://127.0.0.1:${fixture.port}/`)
+  await page.bringToFront()
+  tabContext = await waitForCurrentTab(page.url())
+  await controller.locator("#element-picker").click()
+  await expect(page.locator("[data-pi-browser-agent-element-picker]")).toHaveCount(1)
+  try {
+    await controller.evaluate(
+      async (target) => {
+        const [injection] = await chrome.scripting.executeScript({
+          target: { tabId: target.tabId },
+          world: "ISOLATED",
+          func: async (tabContext) => {
+            const picker = (
+              globalThis as typeof globalThis & {
+                __piBrowserAgentElementPicker?: { token: string }
+              }
+            ).__piBrowserAgentElementPicker
+            if (!picker) throw new Error("Missing active picker")
+            return chrome.runtime.sendMessage({
+              kind: "element-picker-result",
+              status: "selected",
+              token: picker.token,
+              tabContext,
+              element: { invalid: true },
+            })
+          },
+          args: [target],
+        })
+        if (injection?.result?.error?.message !== "Error: Invalid element context") {
+          throw new Error(`Unexpected context response: ${JSON.stringify(injection?.result)}`)
+        }
+      },
+      { tabId: tabContext.tabId, url: tabContext.url, epoch: tabContext.epoch },
+    )
+    await expect(controller.locator("#error")).toContainText(
+      "Could not attach the selected element",
+    )
+    await expect(controller.locator("#element-picker")).toHaveAttribute("aria-pressed", "false")
+  } finally {
+    await request("elementPicker.stop", {}, { tabContext })
+  }
+})
+
 test("selects page elements without activating them and sends bounded structured context", async () => {
   await prepareFeatureSession()
   await page.goto(`http://127.0.0.1:${fixture.port}/`)

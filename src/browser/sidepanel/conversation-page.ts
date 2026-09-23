@@ -1031,7 +1031,15 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     if (event.name === "elementPicker.started" && currentPickerEvent) {
       setPickerActive(true, eventPickerClientId)
     }
-    if (event.name === "elementPicker.cancelled" && currentPickerEvent) setPickerActive(false)
+    if (event.name === "elementPicker.cancelled" && currentPickerEvent) {
+      setPickerActive(false)
+      if (
+        event.payload?.reason === "invalid-result" ||
+        event.payload?.reason === "capture-failed"
+      ) {
+        setError(new Error("Could not attach the selected element. Try another element."))
+      }
+    }
     if (event.name === "elementPicker.selected" && currentPickerEvent) {
       setPickerActive(false)
       void run(async () => addSelectedElement(event.payload?.element, event.tabContext), setError)

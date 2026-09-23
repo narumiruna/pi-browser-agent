@@ -30,6 +30,7 @@ export function executeElementPicker(
     attributes: number
     className: number
     classes: number
+    contextBytes: number
     id: number
     lifetimeMs: number
     pageUrl: number
@@ -79,7 +80,7 @@ export function executeElementPicker(
       if (!["http:", "https:"].includes(url.protocol)) return ""
       url.username = ""
       url.password = ""
-      return bounded(url.href, limits.attributes)
+      return url.href.length <= limits.attributes ? url.href : ""
     } catch {
       return ""
     }
@@ -250,7 +251,7 @@ export function executeElementPicker(
     const selector = selectorFor(element)
     const attribute = (name: string): string =>
       bounded(element.getAttribute(name), limits.attributes)
-    return {
+    const context: SelectedElementContext = {
       version: 1,
       pageUrl: safePageUrl(),
       tagName: element.tagName.toLowerCase().slice(0, 64),
@@ -291,6 +292,24 @@ export function executeElementPicker(
       selectorUnique: selector.unique,
       capturedAt: Date.now(),
     }
+    // A valid selection should not disappear just because its optional metadata exceeds the
+    // worker's context budget. Keep the page identity and geometry while dropping hints.
+    const withinBudget = (): boolean =>
+      new TextEncoder().encode(JSON.stringify(context)).byteLength <= limits.contextBytes
+    for (const name of ["src", "href", "title", "placeholder", "name", "type", "alt"] as const) {
+      if (withinBudget()) break
+      context.attributes[name] = ""
+    }
+    while (!withinBudget() && context.classNames.length > 0) context.classNames.pop()
+    if (!withinBudget()) {
+      context.cssSelector = ""
+      context.selectorUnique = false
+    }
+    if (!withinBudget()) context.text = ""
+    if (!withinBudget()) context.ariaLabel = ""
+    if (!withinBudget()) context.role = ""
+    if (!withinBudget()) context.id = ""
+    return context
   }
 
   const host = document.createElement("div")
@@ -490,7 +509,13 @@ export function executeElementPicker(
         ? event.target
         : null
     const selected = hitTest(event.clientX, event.clientY) ?? eventTarget ?? current
-    if (selected) notify("selected", contextFor(selected))
+    if (selected) {
+      try {
+        notify("selected", contextFor(selected))
+      } catch {
+        notify("cancelled", undefined, "capture-failed")
+      }
+    }
   }
   const blockPointer = (event: PointerEvent): void => {
     if (event.pointerType === "touch") event.stopImmediatePropagation()
