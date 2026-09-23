@@ -254,6 +254,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       pickerStarting ||
       voiceInputStarting ||
       voiceInput?.active === true ||
+      (!pickerActive && currentTabContext === undefined) ||
       (!pickerActive && selectedElements.length >= ELEMENT_PICKER_LIMITS.elements)
   }
 
@@ -487,6 +488,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     const context =
       typeof state === "object" && state !== null && !Array.isArray(state) ? state.tabContext : null
     currentTabContext = tabContextFrom(context)
+    updateSendButton()
     return currentTabContext
   }
 
@@ -506,15 +508,23 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       return
     }
     pickerStarting = true
-    const clientId = crypto.randomUUID()
-    pickerClientId = clientId
     updateSendButton()
     try {
-      const context = await refreshTabContext()
-      if (!context) throw new Error("Open an HTTP or HTTPS page before selecting an element")
-      if (!(await requestSiteAccess(context.url))) {
+      const permissionContext = await refreshTabContext()
+      if (!permissionContext) {
+        throw new Error("Open an HTTP or HTTPS page before selecting an element")
+      }
+      if (!(await requestSiteAccess(permissionContext.url))) {
         throw new Error("Site access is required to select an element")
       }
+      // Chrome's permission prompt temporarily changes browser focus and invalidates the old epoch.
+      const context = await refreshTabContext()
+      if (!context) throw new Error("Open an HTTP or HTTPS page before selecting an element")
+      if (context.tabId !== permissionContext.tabId || context.url !== permissionContext.url) {
+        throw new Error("The page changed while site access was being granted. Select it again.")
+      }
+      const clientId = crypto.randomUUID()
+      pickerClientId = clientId
       const result = await sendRuntimeRequest(
         "elementPicker.start",
         { clientId },

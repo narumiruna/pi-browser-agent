@@ -2806,7 +2806,6 @@ test("selects page elements without activating them and sends bounded structured
   await page.locator("#result").evaluate((element) => {
     element.textContent = "idle"
   })
-  await page.locator("#password").fill("picker-secret-value")
 
   const pickerButton = controller.locator("#element-picker")
   await expect(pickerButton).toHaveAttribute("title", "選取網頁元素")
@@ -2830,6 +2829,140 @@ test("selects page elements without activating them and sends bounded structured
     await controller.locator(".remove-selected-element").click()
     await expect(controller.locator("#selected-elements")).toBeHidden()
   }
+
+  await controller.evaluate(() => {
+    const state = window as typeof window & {
+      pickerDisabledObserver?: MutationObserver
+      pickerWasDisabled?: boolean
+    }
+    const button = document.querySelector<HTMLButtonElement>("#element-picker")
+    if (!button) throw new Error("Missing element picker button")
+    state.pickerWasDisabled = false
+    state.pickerDisabledObserver = new MutationObserver(() => {
+      if (button.disabled) state.pickerWasDisabled = true
+    })
+    state.pickerDisabledObserver.observe(button, {
+      attributeFilter: ["disabled"],
+      attributes: true,
+    })
+  })
+  try {
+    await worker.evaluate(async () => {
+      await chrome.runtime
+        .sendMessage({ kind: "event", name: "tab.changed", payload: {} })
+        .catch(() => undefined)
+    })
+    await expect
+      .poll(() =>
+        controller.evaluate(
+          () =>
+            (
+              window as typeof window & {
+                pickerWasDisabled?: boolean
+              }
+            ).pickerWasDisabled,
+        ),
+      )
+      .toBe(true)
+    await expect(pickerButton).toBeEnabled()
+  } finally {
+    await controller.evaluate(() => {
+      const state = window as typeof window & {
+        pickerDisabledObserver?: MutationObserver
+        pickerWasDisabled?: boolean
+      }
+      state.pickerDisabledObserver?.disconnect()
+      delete state.pickerDisabledObserver
+      delete state.pickerWasDisabled
+    })
+  }
+
+  // Simulate Chrome's site-access prompt invalidating the cached epoch without changing pages.
+  await controller.evaluate(() => {
+    const state = window as typeof window & {
+      pickerTabReadsBeforePermission?: number
+      restorePickerPermissionFlow?: () => void
+    }
+    const originalRequest = chrome.permissions.request
+    const originalSendMessage = chrome.runtime.sendMessage
+    let tabContextReads = 0
+    state.restorePickerPermissionFlow = () => {
+      chrome.permissions.request = originalRequest
+      chrome.runtime.sendMessage = originalSendMessage
+    }
+    chrome.runtime.sendMessage = ((message: unknown) => {
+      if (
+        typeof message === "object" &&
+        message !== null &&
+        "kind" in message &&
+        message.kind === "request" &&
+        "method" in message &&
+        message.method === "app.getState"
+      ) {
+        tabContextReads += 1
+      }
+      return originalSendMessage(message)
+    }) as typeof chrome.runtime.sendMessage
+    const readTabContext = async () => {
+      const response = (await chrome.runtime.sendMessage({
+        kind: "request",
+        requestId: crypto.randomUUID(),
+        method: "app.getState",
+        params: {},
+      })) as {
+        ok?: boolean
+        result?: { tabContext?: { epoch: number; tabId: number; url: string } }
+      }
+      return response.ok ? response.result?.tabContext : undefined
+    }
+    chrome.permissions.request = (async () => {
+      state.pickerTabReadsBeforePermission = tabContextReads
+      const before = await readTabContext()
+      if (!before) return false
+      await chrome.tabs.reload(before.tabId)
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, 250))
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        const current = await readTabContext()
+        if (
+          current?.tabId === before.tabId &&
+          current.url === before.url &&
+          current.epoch !== before.epoch
+        ) {
+          return true
+        }
+        await new Promise((resolvePromise) => setTimeout(resolvePromise, 10))
+      }
+      return false
+    }) as typeof chrome.permissions.request
+  })
+  try {
+    await startPicker()
+    expect(
+      await controller.evaluate(
+        () =>
+          (
+            window as typeof window & {
+              pickerTabReadsBeforePermission?: number
+            }
+          ).pickerTabReadsBeforePermission,
+      ),
+    ).toBeGreaterThan(0)
+    await expect(controller.locator("#error")).toBeEmpty()
+    await page.keyboard.press("Escape")
+    await expect(pickerHost).toHaveCount(0)
+  } finally {
+    await controller.evaluate(() => {
+      const state = window as typeof window & {
+        pickerTabReadsBeforePermission?: number
+        restorePickerPermissionFlow?: () => void
+      }
+      state.restorePickerPermissionFlow?.()
+      delete state.pickerTabReadsBeforePermission
+      delete state.restorePickerPermissionFlow
+    })
+  }
+  tabContext = await waitForCurrentTab(page.url())
+  await page.locator("#password").fill("picker-secret-value")
 
   await controller.locator("#prompt").fill("Wait for element selection")
   await startPicker()
