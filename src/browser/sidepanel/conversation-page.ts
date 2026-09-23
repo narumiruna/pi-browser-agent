@@ -714,6 +714,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     url.searchParams.set("source", settingsContextId)
     url.searchParams.set("modelProvider", runtime.model.provider)
     url.searchParams.set("modelId", runtime.model.id)
+    url.searchParams.set("thinkingLevel", runtime.agent.state.thinkingLevel)
     url.hash = ""
     void run(async () => {
       const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true })
@@ -908,6 +909,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       void run(async () => {
         await runtime.syncSettings({
           applyModelToActiveSession: event.payload?.applyModelToActiveSession === true,
+          applyThinkingToActiveSession: event.payload?.applyThinkingToActiveSession === true,
         })
         applyAppearance(
           runtime.configuration.appSettings.fontFamily,

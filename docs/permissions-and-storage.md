@@ -41,7 +41,7 @@ Microphone access is a Chrome content permission for the extension origin, not a
 
 | Store | Data | Lifetime |
 | --- | --- | --- |
-| `chrome.storage.local` | Provider-scoped API keys or Codex OAuth credential, selected provider/model, interface font and text-size preferences, system prompt, AGENTS-style instructions, active session ID, app-approved exact host patterns | Until credential removal, settings or host approval change, session selection, or extension data removal |
+| `chrome.storage.local` | Provider-scoped API keys or Codex OAuth credential, selected provider/model/thinking level, interface font and text-size preferences, system prompt, AGENTS-style instructions, active session ID, app-approved exact host patterns | Until credential removal, settings or host approval change, session selection, or extension data removal |
 | `chrome.storage.session` | An undelivered context-menu selection | Browser session |
 | IndexedDB `pi-browser-agent-sessions` | Versioned complete messages and tool results, including confirmed bookmark titles and URLs, sent selected-element JSON, model state, names, timestamps, embedded original screenshots and sent pasted/annotated image content | Until retention deletion or user clear |
 | Memory | Live agent, partial stream, confirmations, login cancellation, picker token/overlay state, unsent selected-element chips, unsent pasted/annotated image previews, and editable annotation strokes | Side Panel, page, or worker lifetime as applicable |

@@ -1,3 +1,4 @@
+import type { ThinkingLevel } from "@earendil-works/pi-agent-core"
 import { DEFAULT_MODEL_SELECTION } from "./defaults.js"
 import type { JsonObject, TabContext } from "./runtime/types.js"
 
@@ -5,6 +6,14 @@ export const SETTINGS_KEY = "piBrowserAgentSettings"
 const ACTIVE_SESSION_KEY = "piBrowserAgentActiveSessionId"
 const PENDING_SELECTION_KEY = "piBrowserAgentPendingSelection"
 
+export const THINKING_LEVELS = [
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+] as const satisfies readonly ThinkingLevel[]
 export const FONT_FAMILIES = ["system", "sans", "serif", "monospace"] as const
 export type FontFamily = (typeof FONT_FAMILIES)[number]
 export const MIN_FONT_SIZE = 12
@@ -17,6 +26,7 @@ export interface AppSettings {
   fontSize: number
   modelProvider: string
   modelId: string
+  thinkingLevel: ThinkingLevel
 }
 
 export interface PendingSelection {
@@ -33,6 +43,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   fontSize: 16,
   modelProvider: DEFAULT_MODEL_SELECTION.provider,
   modelId: DEFAULT_MODEL_SELECTION.id,
+  thinkingLevel: "medium",
+}
+
+export function isThinkingLevel(value: unknown): value is ThinkingLevel {
+  return THINKING_LEVELS.some((level) => level === value)
 }
 
 function isFontFamily(value: unknown): value is FontFamily {
@@ -72,6 +87,9 @@ export async function getSettings(): Promise<AppSettings> {
       typeof value?.modelId === "string" && value.modelId
         ? value.modelId
         : DEFAULT_SETTINGS.modelId,
+    thinkingLevel: isThinkingLevel(value?.thinkingLevel)
+      ? value.thinkingLevel
+      : DEFAULT_SETTINGS.thinkingLevel,
   }
 }
 

@@ -93,6 +93,7 @@ export class BrowserAgentRuntime {
   private currentModel: Model<Api>
   private session!: SessionRecord
   private pendingSettingsModel = false
+  private pendingSettingsThinking = false
   private closing = false
   private persistChain: Promise<void> = Promise.resolve()
 
@@ -121,8 +122,10 @@ export class BrowserAgentRuntime {
       if (event.type === "message_end") await this.persist("running")
       if (event.type === "agent_end") {
         await this.persist(this.closing ? "interrupted" : "idle")
-        if (!this.closing && this.pendingSettingsModel)
-          await this.syncSettings({ applyModelToActiveSession: true })
+        if (!this.closing && (this.pendingSettingsModel || this.pendingSettingsThinking)) {
+          await this.configuration.syncSettings()
+          await this.applyPendingSettings()
+        }
       }
     })
   }
@@ -147,7 +150,11 @@ export class BrowserAgentRuntime {
       restored = await this.normalizeClaimedSession(restored)
       this.session = restored
     } else {
-      this.session = createSession(this.currentModel.id, this.currentModel.provider)
+      this.session = createSession(
+        this.currentModel.id,
+        this.currentModel.provider,
+        this.configuration.appSettings.thinkingLevel,
+      )
       if (!(await this.sessionLease.claim(this.session.id))) {
         throw new Error("Unable to claim a new browser session")
       }
@@ -165,30 +172,38 @@ export class BrowserAgentRuntime {
     return this.currentModel
   }
 
-  async syncSettings(options: { applyModelToActiveSession?: boolean } = {}): Promise<void> {
+  async syncSettings(
+    options: { applyModelToActiveSession?: boolean; applyThinkingToActiveSession?: boolean } = {},
+  ): Promise<void> {
     await this.configuration.syncSettings()
-    if (!options.applyModelToActiveSession) return
-    if (this.agent.state.isStreaming) {
-      this.pendingSettingsModel = true
-      return
-    }
+    if (!options.applyModelToActiveSession && !options.applyThinkingToActiveSession) return
+    this.pendingSettingsModel ||= options.applyModelToActiveSession === true
+    this.pendingSettingsThinking ||= options.applyThinkingToActiveSession === true
+    if (this.agent.state.isStreaming) return
+    await this.applyPendingSettings()
+  }
+
+  private async applyPendingSettings(): Promise<void> {
+    const applyModelToActiveSession = this.pendingSettingsModel
+    const applyThinkingToActiveSession = this.pendingSettingsThinking
     this.pendingSettingsModel = false
+    this.pendingSettingsThinking = false
     const settings = this.configuration.appSettings
-    const model = this.configuration.models.getModel(settings.modelProvider, settings.modelId)
-    if (
-      !model ||
-      (model.provider === this.currentModel.provider && model.id === this.currentModel.id)
-    )
-      return
-    this.currentModel = model
-    this.agent.state.model = model
-    this.session.model = {
-      provider: model.provider,
-      id: model.id,
-      thinkingLevel: this.agent.state.thinkingLevel,
+    const model = applyModelToActiveSession
+      ? this.configuration.models.getModel(settings.modelProvider, settings.modelId)
+      : undefined
+    const modelChanged =
+      model && (model.provider !== this.currentModel.provider || model.id !== this.currentModel.id)
+    const thinkingChanged =
+      applyThinkingToActiveSession && settings.thinkingLevel !== this.agent.state.thinkingLevel
+    if (!modelChanged && !thinkingChanged) return
+    if (modelChanged) {
+      this.currentModel = model
+      this.agent.state.model = model
     }
+    if (thinkingChanged) this.agent.state.thinkingLevel = settings.thinkingLevel
     await this.persist("idle")
-    this.callbacks.onSettingsModelChanged?.()
+    if (modelChanged) this.callbacks.onSettingsModelChanged?.()
   }
 
   async submit(
@@ -299,7 +314,11 @@ export class BrowserAgentRuntime {
   }
 
   private async activateNewSession(model: Model<Api>, claimError: string): Promise<void> {
-    const record = createSession(model.id, model.provider)
+    const record = createSession(
+      model.id,
+      model.provider,
+      this.configuration.appSettings.thinkingLevel,
+    )
     if (!(await this.sessionLease.claim(record.id))) throw new Error(claimError)
     this.session = record
     this.applySession(record)

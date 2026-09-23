@@ -286,6 +286,52 @@ describe("browser agent session persistence", () => {
     await runtime.shutdown()
   })
 
+  test("applies an explicit thinking choice to the opener and future sessions, not other conversations", async () => {
+    const locks = new FakeLockManager() as unknown as LockManager
+    const opener = createRuntime(locks)
+    await opener.initialize()
+    const other = createRuntime(locks)
+    await other.initialize()
+    const settingsRuntime = new BrowserConfiguration(vi.fn())
+    await settingsRuntime.initialize()
+
+    await settingsRuntime.updateSettings({ ...settingsRuntime.appSettings, thinkingLevel: "high" })
+    await opener.syncSettings({ applyThinkingToActiveSession: true })
+    await other.syncSettings()
+
+    expect(opener.agent.state.thinkingLevel).toBe("high")
+    expect(opener.activeSession.model.thinkingLevel).toBe("high")
+    await expect(opener.sessions.get(opener.activeSession.id)).resolves.toMatchObject({
+      model: { thinkingLevel: "high" },
+    })
+    expect(other.agent.state.thinkingLevel).toBe("medium")
+    const previousSessionId = other.activeSession.id
+    await other.newSession()
+    expect(other.activeSession.model.thinkingLevel).toBe("high")
+    await other.resumeSession(previousSessionId)
+    expect(other.agent.state.thinkingLevel).toBe("medium")
+    await opener.shutdown()
+    await other.shutdown()
+  })
+
+  test("defers thinking changes until an active run finishes", async () => {
+    const runtime = createRuntime(new FakeLockManager() as unknown as LockManager)
+    await runtime.initialize()
+    const { started, finish } = controlledStream(runtime)
+    const prompt = runtime.submit("Hello")
+    await started
+    await runtime.configuration.updateSettings({
+      ...runtime.configuration.appSettings,
+      thinkingLevel: "low",
+    })
+    await runtime.syncSettings({ applyThinkingToActiveSession: true })
+    expect(runtime.agent.state.thinkingLevel).toBe("medium")
+    finish()
+    await prompt
+    await vi.waitFor(() => expect(runtime.activeSession.model.thinkingLevel).toBe("low"))
+    await runtime.shutdown()
+  })
+
   test("keeps synchronized model changes scoped to the Settings opener", async () => {
     const locks = new FakeLockManager() as unknown as LockManager
     const opener = createRuntime(locks)

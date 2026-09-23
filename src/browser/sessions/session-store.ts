@@ -221,7 +221,11 @@ export class SessionStore {
   }
 }
 
-export function createSession(modelId: string, provider: string): SessionRecord {
+export function createSession(
+  modelId: string,
+  provider: string,
+  thinkingLevel: ThinkingLevel = "medium",
+): SessionRecord {
   const now = Date.now()
   return {
     schemaVersion: 1,
@@ -230,7 +234,7 @@ export function createSession(modelId: string, provider: string): SessionRecord 
     createdAt: now,
     updatedAt: now,
     status: "idle",
-    model: { provider, id: modelId, thinkingLevel: "medium" },
+    model: { provider, id: modelId, thinkingLevel },
     messages: [],
   }
 }

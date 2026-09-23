@@ -1765,6 +1765,8 @@ test("opens Settings in a full browser tab and persists the selected interface f
   ).toBe(1)
   await expect(controller.locator("#transcript")).toBeVisible()
   await expect(controller.locator("#sessions option")).toHaveCount(sessionCount)
+  await expect(settingsTab.locator("#thinking-level")).toHaveValue("medium")
+  await settingsTab.locator("#thinking-level").selectOption("high")
   await settingsTab.locator("#font-family").selectOption("serif")
   const fontSizeSlider = settingsTab.locator("#font-size")
   await expect(fontSizeSlider).toHaveAttribute("min", "12")
@@ -1840,6 +1842,7 @@ test("opens Settings in a full browser tab and persists the selected interface f
   await controller.locator("#open-settings").click()
   const reopenedSettingsTab = await reopenedSettingsTabPromise
   await expect(reopenedSettingsTab.locator("#font-family")).toHaveValue("serif")
+  await expect(reopenedSettingsTab.locator("#thinking-level")).toHaveValue("high")
   const reopenedFontSizeSlider = reopenedSettingsTab.locator("#font-size")
   await expect(reopenedFontSizeSlider).toHaveValue("19")
   await expect
@@ -1849,6 +1852,7 @@ test("opens Settings in a full browser tab and persists the selected interface f
     .poll(() => controller.evaluate(() => document.documentElement.dataset.fontSize))
     .toBe("19")
 
+  await reopenedSettingsTab.locator("#thinking-level").selectOption("medium")
   await reopenedSettingsTab.locator("#font-family").selectOption("system")
   await reopenedFontSizeSlider.focus()
   await reopenedFontSizeSlider.press("Home")

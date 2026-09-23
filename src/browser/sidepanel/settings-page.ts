@@ -1,9 +1,11 @@
+import type { ThinkingLevel } from "@earendil-works/pi-agent-core"
 import { BrowserConfiguration } from "../configuration.js"
 import type { RuntimeEvent } from "../runtime/messages.js"
 import {
   DEFAULT_SETTINGS,
   FONT_FAMILIES,
   type FontFamily,
+  isThinkingLevel,
   MAX_FONT_SIZE,
   MIN_FONT_SIZE,
 } from "../storage.js"
@@ -15,6 +17,7 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
   const settingsContextId = params.get("source") ?? crypto.randomUUID()
   const initialModelProvider = params.get("modelProvider")
   const initialModelId = params.get("modelId")
+  const initialThinkingLevel = params.get("thinkingLevel")
   const initialModel =
     initialModelProvider && initialModelId
       ? { provider: initialModelProvider, id: initialModelId }
@@ -26,6 +29,7 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
   const providerSelect = element<HTMLSelectElement>("provider")
   const modelSelect = element<HTMLSelectElement>("model")
   const modelCapabilities = element<HTMLElement>("model-capabilities")
+  const thinkingLevelSelect = element<HTMLSelectElement>("thinking-level")
   const fontFamilySelect = element<HTMLSelectElement>("font-family")
   const fontSizeInput = element<HTMLInputElement>("font-size")
   const fontSizeOutput = element<HTMLOutputElement>("font-size-value")
@@ -47,6 +51,7 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
   })
   const setError = (error?: unknown): void => setErrorOutput(errorOutput, error)
   let settingsModelChanged = false
+  let settingsThinkingChanged = false
   let authentication: AuthenticationController | undefined
   const configuration = new BrowserConfiguration((event) => authentication?.onAuthEvent(event))
   let initialSelection = configuration.defaultModel
@@ -90,6 +95,12 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
     renderModelOptions(providerId, modelId)
   }
 
+  function selectedThinkingLevel(): ThinkingLevel {
+    if (!isThinkingLevel(thinkingLevelSelect.value))
+      throw new Error("Choose a valid thinking level")
+    return thinkingLevelSelect.value
+  }
+
   function selectedFontFamily(): FontFamily {
     return FONT_FAMILIES.find((fontFamily) => fontFamily === fontFamilySelect.value) ?? "system"
   }
@@ -108,12 +119,17 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
 
   function populateSettings(): void {
     renderModelControls(initialSelection.provider, initialSelection.id)
+    thinkingLevelSelect.value =
+      initialThinkingLevel && isThinkingLevel(initialThinkingLevel)
+        ? initialThinkingLevel
+        : configuration.appSettings.thinkingLevel
     fontFamilySelect.value = configuration.appSettings.fontFamily
     fontSizeInput.value = String(configuration.appSettings.fontSize)
     fontSizeOutput.value = `${configuration.appSettings.fontSize} px`
     systemPrompt.value = configuration.appSettings.systemPrompt
     agentInstructions.value = configuration.appSettings.agentInstructions
     settingsModelChanged = false
+    settingsThinkingChanged = false
   }
 
   function closeSettingsPage(): void {
@@ -155,20 +171,25 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
     settingsModelChanged = true
     updateModelCapabilities()
   })
+  thinkingLevelSelect.addEventListener("change", () => {
+    settingsThinkingChanged = true
+  })
   fontSizeInput.addEventListener("input", () => applyFontSize(selectedFontSize()))
   closeButton.addEventListener("click", discardSettingsChanges)
   element<HTMLButtonElement>("cancel-settings").addEventListener("click", discardSettingsChanges)
   element<HTMLButtonElement>("save-settings").addEventListener("click", () => {
     void run(async () => {
       const applyModelToActiveSession = settingsModelChanged
+      const applyThinkingToActiveSession = settingsThinkingChanged
       let providerId = providerSelect.value
       let modelId = modelSelect.value
+      await configuration.syncSettings()
       if (!applyModelToActiveSession) {
-        await configuration.syncSettings()
         providerId = configuration.appSettings.modelProvider
         modelId = configuration.appSettings.modelId
       }
       if (!modelId) throw new Error("Configure the selected provider and choose a model")
+
       const fontFamily = selectedFontFamily()
       const fontSize = selectedFontSize()
       await configuration.updateSettings({
@@ -178,12 +199,15 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
         fontSize,
         modelProvider: providerId,
         modelId,
+        thinkingLevel: applyThinkingToActiveSession
+          ? selectedThinkingLevel()
+          : configuration.appSettings.thinkingLevel,
       })
       await chrome.runtime
         .sendMessage({
           kind: "event",
           name: "settings.saved",
-          payload: { settingsContextId, applyModelToActiveSession },
+          payload: { settingsContextId, applyModelToActiveSession, applyThinkingToActiveSession },
         } satisfies RuntimeEvent)
         .catch(() => undefined)
       applyAppearance(fontFamily, fontSize)
