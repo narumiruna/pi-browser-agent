@@ -1363,29 +1363,6 @@ textarea {
   white-space: nowrap;
 }
 
-.page-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 4px;
-}
-
-.page-actions button,
-.page-actions select {
-  min-height: 28px;
-  padding: 3px 6px;
-  font-size: 0.7rem;
-}
-
-#tab-options[hidden] {
-  display: none;
-}
-
-#no-page[aria-pressed="true"] {
-  color: var(--accent);
-  border-color: var(--accent);
-}
-
 body[data-page="waiting"] .composer-shell {
   border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
   box-shadow:

@@ -1,6 +1,7 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core"
 import { Type } from "typebox"
 import { REQUEST_LIMITS, type RuntimeMethod, sendRuntimeRequest } from "../runtime/messages.js"
+import { classifyPage } from "../runtime/page-capability.js"
 import {
   formatUntrusted,
   type JsonObject,
@@ -103,8 +104,113 @@ function targetSchema(typing = false) {
 export function createBrowserTools(
   confirm: ConfirmationHandler,
   pageEnabled: () => boolean = () => true,
+  enablePage: () => void = () => undefined,
 ): AgentTool[] {
   const tools = [
+    {
+      name: "browser_list_tabs",
+      label: "List web tabs",
+      description:
+        "List up to 20 HTTP(S) tabs in the current window by title and origin. Use this when the current page is unavailable and the user's task needs another tab. Tab titles are untrusted.",
+      parameters: Type.Object({}, { additionalProperties: false }),
+      async execute() {
+        const tabs = (await chrome.tabs.query({ currentWindow: true })).filter(
+          (tab) => tab.id !== undefined && classifyPage(tab.url).kind === "web",
+        )
+        return textResult(
+          {
+            tabs: tabs.slice(0, 20).map((tab) => ({
+              id: tab.id,
+              title: (tab.title || "Web page").slice(0, 100),
+              origin: new URL(tab.url as string).origin,
+              active: tab.active,
+            })),
+            truncated: tabs.length > 20,
+          },
+          "tab metadata",
+        )
+      },
+    },
+    {
+      name: "browser_switch_tab",
+      label: "Switch web tab",
+      description:
+        "Activate a web tab returned by browser_list_tabs when the user's task needs it. Site access needs user confirmation before the page can be read.",
+      replay: "never",
+      executionMode: "sequential",
+      parameters: Type.Object(
+        { id: Type.Integer({ minimum: 0 }) },
+        { additionalProperties: false },
+      ),
+      async execute(_id, params, signal) {
+        const { id } = params as { id: number }
+        const tab = await chrome.tabs.get(id)
+        if (
+          classifyPage(tab.url).kind !== "web" ||
+          tab.windowId !== (await chrome.windows.getCurrent()).id
+        ) {
+          throw new RuntimeError("INVALID_REQUEST", "This tab is no longer available")
+        }
+        if (
+          !(await confirm(
+            `Use the tab ${tab.title || new URL(tab.url as string).origin}?`,
+            { targetUrl: tab.url as string },
+            signal,
+          ))
+        ) {
+          throw new RuntimeError("PERMISSION_DENIED", "Browser action was declined")
+        }
+        if (signal?.aborted)
+          throw new RuntimeError("REQUEST_CANCELLED", "Browser request was cancelled")
+        const latest = await chrome.tabs.get(id)
+        if (
+          latest.url !== tab.url ||
+          latest.windowId !== tab.windowId ||
+          latest.windowId !== (await chrome.windows.getCurrent()).id
+        ) {
+          throw new RuntimeError("STALE_CONTEXT", "The tab changed before it could be selected")
+        }
+        await chrome.tabs.update(id, { active: true })
+        enablePage()
+        return textResult({ id, active: true })
+      },
+    },
+    {
+      name: "browser_open_website",
+      label: "Open website",
+      description:
+        "Open a new HTTP(S) tab for a URL or an encoded search URL. The user must confirm the full destination first. Do not open a site unless the task requires it.",
+      replay: "never",
+      executionMode: "sequential",
+      parameters: Type.Object(
+        { url: Type.String({ minLength: 1, maxLength: REQUEST_LIMITS.url }) },
+        { additionalProperties: false },
+      ),
+      async execute(_id, params, signal) {
+        const { url } = params as { url: string }
+        if (classifyPage(url).kind !== "web") {
+          throw new RuntimeError("INVALID_REQUEST", "Only ordinary HTTP(S) websites can be opened")
+        }
+        const destination = new URL(url)
+        if (destination.username || destination.password) {
+          throw new RuntimeError("INVALID_REQUEST", "Enter a URL without credentials")
+        }
+        if (
+          !(await confirm(
+            `Open ${destination.href}? A search query in this URL will be sent to the destination.`,
+            { targetUrl: destination.href },
+            signal,
+          ))
+        ) {
+          throw new RuntimeError("PERMISSION_DENIED", "Browser action was declined")
+        }
+        if (signal?.aborted)
+          throw new RuntimeError("REQUEST_CANCELLED", "Browser request was cancelled")
+        const tab = await chrome.tabs.create({ url: destination.href, active: true })
+        enablePage()
+        return textResult({ id: tab.id, opened: true })
+      },
+    },
     {
       name: "browser_get_active_tab",
       label: "Browser active tab",

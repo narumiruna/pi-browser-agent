@@ -79,7 +79,7 @@ test("classifies Chrome, local files, PDF and restricted web origins without pag
   }
 })
 
-test("keeps waiting actions accessible at narrow width, dark theme and reduced motion", async () => {
+test("keeps the context-free composer accessible at narrow width, dark theme and reduced motion", async () => {
   const harness = await launchExtensionHarness()
   try {
     const protectedPage = await harness.context.newPage()
@@ -92,13 +92,8 @@ test("keeps waiting actions accessible at narrow width, dark theme and reduced m
       "placeholder",
       "Ask a question or describe a task",
     )
-    await expect(harness.controller.getByRole("button", { name: "Choose a tab" })).toBeVisible()
-    await expect(harness.controller.getByRole("button", { name: "Open a website" })).toBeVisible()
-    await expect(harness.controller.locator("#no-page")).toHaveAttribute("aria-pressed", "false")
-    await harness.controller.locator("#no-page").focus()
-    await expect(harness.controller.locator("#no-page")).toBeFocused()
-    await harness.controller.keyboard.press("Enter")
-    await expect(harness.controller.locator("#no-page")).toHaveText("No page context selected")
+    await expect(harness.controller.locator("#send")).toBeEnabled()
+    await expect(harness.controller.locator(".page-actions")).toHaveCount(0)
     expect(
       await harness.controller.evaluate(() => ({
         overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
@@ -111,7 +106,7 @@ test("keeps waiting actions accessible at narrow width, dark theme and reduced m
   }
 })
 
-test("chats on a protected page, denies page tools, then explicitly chooses a web tab", async () => {
+test("chats on a protected page without exposing page tools", async () => {
   test.setTimeout(60_000)
   const harness = await launchExtensionHarness()
   try {
@@ -159,29 +154,13 @@ test("chats on a protected page, denies page tools, then explicitly chooses a we
     expect(JSON.stringify(requests)).not.toContain("chrome://settings")
     await expect(harness.controller.locator("#error")).toBeEmpty()
 
-    await harness.controller.locator("#choose-tab").click()
-    await expect(harness.controller.locator("#tab-options")).toBeVisible()
-    const tabId = await harness.controller.evaluate(
-      async (url) => (await chrome.tabs.query({})).find((tab) => tab.url === url)?.id,
-      harness.fixtureUrl,
-    )
-    if (tabId === undefined) throw new Error("Fixture tab missing")
-    await harness.controller.locator("#tab-options").selectOption(String(tabId))
-    await expect(harness.controller.locator("#page-status")).toContainText(
-      "available with site access",
-    )
-    await harness.controller.locator("#no-page").click()
-    await expect(harness.controller.locator("#page-status")).toContainText("not used")
-    await expect(harness.controller.locator("#element-picker")).toBeDisabled()
-    await harness.controller.locator("#no-page").click()
-    await expect(harness.controller.locator("#element-picker")).toBeEnabled()
     expect(harness.pageErrors).toEqual([])
   } finally {
     await harness.close()
   }
 })
 
-test("keeps a no-page turn isolated after its visible tab changes", async () => {
+test("keeps a protected-page turn isolated after its visible tab changes", async () => {
   test.setTimeout(60_000)
   const harness = await launchExtensionHarness()
   let releaseFirst: () => void = () => undefined
@@ -191,7 +170,9 @@ test("keeps a no-page turn isolated after its visible tab changes", async () => 
     await expect(harness.controller.locator("#page-status")).toContainText(
       "available with site access",
     )
-    await harness.controller.locator("#no-page").click()
+    const protectedPage = await harness.context.newPage()
+    await protectedPage.goto("chrome://settings/")
+    await protectedPage.bringToFront()
     const gate = new Promise<void>((resolve) => {
       releaseFirst = resolve
     })
@@ -212,9 +193,7 @@ test("keeps a no-page turn isolated after its visible tab changes", async () => 
     await harness.controller.locator("#prompt").fill("Answer without this page")
     await harness.controller.locator("#send").click()
     await expect(harness.controller.locator("#run-status")).toHaveText("Working")
-    const protectedPage = await harness.context.newPage()
-    await protectedPage.goto("chrome://settings/")
-    await protectedPage.bringToFront()
+    await harness.fixturePage.bringToFront()
     releaseFirst()
     await expect(harness.controller.locator("#transcript")).toContainText("No page content used.")
     expect(JSON.stringify(requests[1])).toContain("does not use page context")
@@ -462,42 +441,87 @@ test("confirms a bookmark read on a protected page without a page permission", a
   }
 })
 
-test("opens a website only after user confirmation, never on send", async () => {
+test("lets the agent choose a tab only after user confirmation", async () => {
   const harness = await launchExtensionHarness()
   try {
+    await configureMockCodex(harness)
     const protectedPage = await harness.context.newPage()
     await protectedPage.goto("chrome://settings/")
     await protectedPage.bringToFront()
+    const tabId = await harness.controller.evaluate(
+      async (url) => (await chrome.tabs.query({})).find((tab) => tab.url === url)?.id,
+      harness.fixtureUrl,
+    )
+    if (tabId === undefined) throw new Error("Fixture tab missing")
+    let index = 0
+    const requests: unknown[] = []
+    await harness.context.route(CODEX_RESPONSES_URL, async (route) => {
+      requests.push(route.request().postDataJSON())
+      const response = [
+        toolCallResponse(1, "browser_list_tabs"),
+        toolCallResponse(2, "browser_switch_tab", { id: tabId }),
+        toolCallResponse(3, "browser_read_page"),
+        finalTextResponse(4, "Found the page."),
+      ][index++]
+      await route.fulfill({ status: 200, contentType: "text/event-stream", body: response })
+    })
+    await harness.controller.locator("#prompt").fill("Read the existing web tab")
+    await harness.controller.locator("#send").click()
+    await expect(harness.controller.locator("#confirm-dialog")).toBeVisible()
+    await expect(harness.controller.locator("#confirm-message")).toContainText("Use the tab")
     await expect(harness.controller.locator("#page-status")).toContainText("cannot read or operate")
-    const before = harness.context.pages().length
-    harness.controller.once("dialog", (dialog) => void dialog.accept(harness.fixtureUrl))
-    await harness.controller.locator("#open-website").click()
-    await expect(harness.controller.locator("#page-status")).toContainText("cannot read or operate")
-    expect(harness.context.pages()).toHaveLength(before)
-    const onDialog = (dialog: import("@playwright/test").Dialog) => {
-      void dialog.accept(dialog.type() === "prompt" ? harness.fixtureUrl : undefined)
-    }
-    harness.controller.on("dialog", onDialog)
-    await harness.controller.locator("#open-website").click()
-    harness.controller.off("dialog", onDialog)
-    await expect
-      .poll(
-        async () =>
-          await harness.controller.evaluate(async () => {
-            const response = (await chrome.runtime.sendMessage({
-              kind: "request",
-              requestId: crypto.randomUUID(),
-              method: "app.getState",
-              params: {},
-            })) as { result: { page: { kind: string } } }
-            return response.result.page.kind
-          }),
-      )
-      .toBe("web")
-    expect(harness.context.pages()).toHaveLength(before + 1)
+    await harness.controller.locator("#confirm-action").click()
+    await expect(harness.controller.locator("#transcript")).toContainText("Found the page.")
+    expect(JSON.stringify(requests[3])).toContain("meadow-42")
     await expect(harness.controller.locator("#page-status")).toContainText(
       "available with site access",
     )
+    expect(harness.pageErrors).toEqual([])
+  } finally {
+    await harness.close()
+  }
+})
+
+test("opens a website only after the agent's destination is confirmed", async () => {
+  const harness = await launchExtensionHarness()
+  try {
+    await configureMockCodex(harness)
+    const protectedPage = await harness.context.newPage()
+    await protectedPage.goto("chrome://settings/")
+    await protectedPage.bringToFront()
+    const before = harness.context.pages().length
+    let index = 0
+    const requests: unknown[] = []
+    await harness.context.route(CODEX_RESPONSES_URL, async (route) => {
+      requests.push(route.request().postDataJSON())
+      const response = [
+        toolCallResponse(1, "browser_open_website", { url: harness.fixtureUrl }),
+        finalTextResponse(2, "Cancelled."),
+        toolCallResponse(3, "browser_open_website", { url: harness.fixtureUrl }),
+        toolCallResponse(4, "browser_read_page"),
+        finalTextResponse(5, "Opened and read the page."),
+      ][index++]
+      await route.fulfill({ status: 200, contentType: "text/event-stream", body: response })
+    })
+    await harness.controller.locator("#prompt").fill("Open this website")
+    await harness.controller.locator("#send").click()
+    await expect(harness.controller.locator("#confirm-dialog")).toBeVisible()
+    await expect(harness.controller.locator("#confirm-message")).toContainText(harness.fixtureUrl)
+    await harness.controller
+      .locator("#confirm-dialog")
+      .getByRole("button", { name: "Cancel" })
+      .click()
+    await expect(harness.controller.locator("#transcript")).toContainText("Cancelled.")
+    expect(harness.context.pages()).toHaveLength(before)
+    await harness.controller.locator("#prompt").fill("Try opening the website again")
+    await harness.controller.locator("#send").click()
+    await expect(harness.controller.locator("#confirm-dialog")).toBeVisible()
+    await harness.controller.locator("#confirm-action").click()
+    await expect(harness.controller.locator("#transcript")).toContainText(
+      "Opened and read the page.",
+    )
+    expect(harness.context.pages()).toHaveLength(before + 1)
+    expect(JSON.stringify(requests[4])).toContain("meadow-42")
     expect(harness.pageErrors).toEqual([])
   } finally {
     await harness.close()

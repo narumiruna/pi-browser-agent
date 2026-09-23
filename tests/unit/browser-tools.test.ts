@@ -14,6 +14,12 @@ describe("browser agent tools", () => {
     const click = tools.find((tool) => tool.name === "browser_click")
     const type = tools.find((tool) => tool.name === "browser_type")
     const navigate = tools.find((tool) => tool.name === "browser_navigate")
+    const open = tools.find((tool) => tool.name === "browser_open_website")
+    const switchTab = tools.find((tool) => tool.name === "browser_switch_tab")
+    expect(open && Value.Check(open.parameters, { url: "chrome://settings/" })).toBe(true)
+    expect(open && Value.Check(open.parameters, { url: "" })).toBe(false)
+    expect(switchTab && Value.Check(switchTab.parameters, { id: 1 })).toBe(true)
+    expect(switchTab && Value.Check(switchTab.parameters, { id: -1 })).toBe(false)
     const bookmarkSearch = tools.find((tool) => tool.name === "browser_search_bookmarks")
     const recentBookmarks = tools.find((tool) => tool.name === "browser_get_recent_bookmarks")
     expect(click && Value.Check(click.parameters, { selector: 42 })).toBe(false)
@@ -35,6 +41,7 @@ describe("browser agent tools", () => {
     ["browser_type", "selector", 2048, { text: "" }],
     ["browser_type", "text", 50_000, { selector: "#x" }],
     ["browser_navigate", "url", 16_384, {}],
+    ["browser_open_website", "url", 16_384, {}],
     ["browser_search_bookmarks", "query", 500, {}],
     ["browser_webmcp", "name", 256, { action: "call" }],
   ] as const)("preserves %s schema bounds for %s", (name, key, limit, rest) => {
@@ -108,6 +115,8 @@ describe("browser agent tools", () => {
   test("marks mutating and confirmation-gated tools as never replayable and sequential", () => {
     const tools = createBrowserTools(vi.fn().mockResolvedValue(false))
     for (const name of [
+      "browser_switch_tab",
+      "browser_open_website",
       "browser_click",
       "browser_type",
       "browser_navigate",
@@ -124,6 +133,68 @@ describe("browser agent tools", () => {
       replay: "safe",
       executionMode: "sequential",
     })
+  })
+
+  test("lists only bounded web tab metadata and switches only after confirmation", async () => {
+    const web = {
+      id: 2,
+      url: "https://example.test/private?q=secret",
+      title: "Example",
+      windowId: 1,
+      active: false,
+    }
+    const restricted = { id: 3, url: "chrome://settings/", title: "Settings", windowId: 1 }
+    const update = vi.fn(async () => ({ ...web, active: true }))
+    vi.stubGlobal("chrome", {
+      tabs: { query: vi.fn(async () => [web, restricted]), get: vi.fn(async () => web), update },
+      windows: { getCurrent: vi.fn(async () => ({ id: 1 })) },
+    })
+    const confirm = vi.fn().mockResolvedValue(false)
+    const enablePage = vi.fn()
+    const tools = createBrowserTools(confirm, () => false, enablePage)
+    const list = tools.find((tool) => tool.name === "browser_list_tabs")
+    const switchTab = tools.find((tool) => tool.name === "browser_switch_tab")
+    if (!list || !switchTab) throw new Error("Missing tab tools")
+    const metadata = await list.execute("id", {}, undefined)
+    expect(metadata.details).toEqual({
+      tabs: [{ id: 2, title: "Example", origin: "https://example.test", active: false }],
+      truncated: false,
+    })
+    await expect(switchTab.execute("id", { id: 2 }, undefined)).rejects.toThrow("declined")
+    expect(update).not.toHaveBeenCalled()
+    expect(enablePage).not.toHaveBeenCalled()
+    confirm.mockResolvedValue(true)
+    await switchTab.execute("id", { id: 2 }, undefined)
+    expect(confirm).toHaveBeenCalledWith(expect.any(String), { targetUrl: web.url }, undefined)
+    expect(update).toHaveBeenCalledWith(2, { active: true })
+    expect(enablePage).toHaveBeenCalledOnce()
+  })
+
+  test("requires confirmation and a safe URL before opening a website", async () => {
+    const create = vi.fn(async () => ({ id: 4 }))
+    vi.stubGlobal("chrome", { tabs: { create } })
+    const confirm = vi.fn().mockResolvedValue(false)
+    const enablePage = vi.fn()
+    const tool = createBrowserTools(confirm, () => false, enablePage).find(
+      (item) => item.name === "browser_open_website",
+    )
+    if (!tool) throw new Error("Missing website tool")
+    for (const url of [
+      "chrome://settings/",
+      "file:///private",
+      "https://user:pass@example.test/",
+    ]) {
+      await expect(tool.execute("id", { url }, undefined)).rejects.toThrow()
+    }
+    expect(confirm).not.toHaveBeenCalled()
+    await expect(tool.execute("id", { url: "https://example.test/" }, undefined)).rejects.toThrow(
+      "declined",
+    )
+    expect(create).not.toHaveBeenCalled()
+    confirm.mockResolvedValue(true)
+    await tool.execute("id", { url: "https://example.test/" }, undefined)
+    expect(create).toHaveBeenCalledWith({ url: "https://example.test/", active: true })
+    expect(enablePage).toHaveBeenCalledOnce()
   })
 
   test("confirms optional screenshot access and returns PNG content", async () => {

@@ -16,10 +16,7 @@ type ConversationTextKey =
   | "interrupted"
   | "listening"
   | "newSession"
-  | "noPageContext"
-  | "noPageSelected"
   | "pageReady"
-  | "readyNoPage"
   | "readyWithoutPage"
   | "pastedImage"
   | "removePastedImage"
@@ -35,7 +32,6 @@ type ConversationTextKey =
   | "stopVoiceInput"
   | "table"
   | "thinking"
-  | "useCurrentPage"
   | "user"
   | "waitingForPage"
   | "voiceInputStopped"
@@ -60,10 +56,7 @@ const ENGLISH: Record<ConversationTextKey, string> = {
   interrupted: "Interrupted",
   listening: "Listening for voice input",
   newSession: "New session",
-  noPageContext: "Continue without page context",
-  noPageSelected: "No page context selected",
   pageReady: "available with site access",
-  readyNoPage: "Ready — no page context",
   readyWithoutPage: "Ready — no supported page open",
   pastedImage: "Pasted image",
   removePastedImage: "Remove pasted image",
@@ -79,7 +72,6 @@ const ENGLISH: Record<ConversationTextKey, string> = {
   stopVoiceInput: "Stop voice input",
   table: "Table",
   thinking: "Thinking",
-  useCurrentPage: "Use current page",
   user: "You",
   waitingForPage: "Waiting for a web page",
   voiceInputStopped: "Voice input stopped",
