@@ -2135,7 +2135,8 @@ test("keeps header and composer controls usable at normal and narrow widths", as
     await controller.setViewportSize({ width: 480, height: 720 })
     await expect(controller.locator(".brand, .brand-mark")).toHaveCount(0)
     await expect(controller.locator(".app-header")).not.toContainText("Pi Browser Agent")
-    await expect(controller.locator("#page-status")).toBeVisible()
+    await expect(controller.locator(".composer > .page-context #page-status")).toBeVisible()
+    await expect(controller.locator(".composer-shell #page-status")).toHaveCount(0)
 
     const sharesRow = await controller.locator(".header-row").evaluate((header) => {
       const selectors = [".session-picker", "#new-session", ".account-disclosure"]

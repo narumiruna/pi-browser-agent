@@ -127,6 +127,9 @@
 
     <footer class="composer">
       <label for="prompt" class="visually-hidden">Message</label>
+      <div class="page-context" id="page-context" aria-live="polite">
+        <span id="page-status">Checking current page…</span>
+      </div>
       <div class="composer-shell">
         <div
           id="pasted-images"
@@ -140,9 +143,6 @@
           aria-live="polite"
           hidden
         ></div>
-        <div class="page-context" id="page-context" aria-live="polite">
-          <span id="page-status">Checking current page…</span>
-        </div>
         <textarea
           id="prompt"
           rows="2"
