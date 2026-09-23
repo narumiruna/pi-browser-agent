@@ -315,7 +315,7 @@ describe("browser agent session persistence", () => {
     await other.shutdown()
   })
 
-  test("finishes applying deferred thinking before reporting ready or starting the next submission", async () => {
+  test("applies the opener's deferred thinking before the next submission despite another settings save", async () => {
     const onAgentEvent = vi.fn()
     const runtime = createRuntime(
       new FakeLockManager() as unknown as LockManager,
@@ -333,6 +333,9 @@ describe("browser agent session persistence", () => {
     })
     await runtime.syncSettings({ applyThinkingToActiveSession: true })
     expect(runtime.agent.state.thinkingLevel).toBe("medium")
+    const otherSettings = new BrowserConfiguration(vi.fn())
+    await otherSettings.initialize()
+    await otherSettings.updateSettings({ ...otherSettings.appSettings, thinkingLevel: "max" })
 
     const entered = deferred()
     const release = deferred()
@@ -355,6 +358,7 @@ describe("browser agent session persistence", () => {
     await nextStream.started
     expect(runtime.agent.state.thinkingLevel).toBe("low")
     expect(runtime.activeSession.model.thinkingLevel).toBe("low")
+    expect(runtime.configuration.appSettings.thinkingLevel).toBe("max")
     expect(onAgentEvent).toHaveBeenCalledWith(expect.objectContaining({ type: "agent_end" }))
     nextStream.finish()
     await nextPrompt

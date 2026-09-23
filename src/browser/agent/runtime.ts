@@ -1,4 +1,9 @@
-import { Agent, type AgentEvent, type AgentMessage } from "@earendil-works/pi-agent-core"
+import {
+  Agent,
+  type AgentEvent,
+  type AgentMessage,
+  type ThinkingLevel,
+} from "@earendil-works/pi-agent-core"
 import type { Api, AuthEvent, ImageContent, Model } from "@earendil-works/pi-ai"
 import { safeErrorMessage } from "../auth/redaction.js"
 import { BrowserConfiguration } from "../configuration.js"
@@ -93,7 +98,7 @@ export class BrowserAgentRuntime {
   private currentModel: Model<Api>
   private session!: SessionRecord
   private pendingSettingsModel = false
-  private pendingSettingsThinking = false
+  private pendingThinkingLevel?: ThinkingLevel
   private finishingRun?: Promise<void>
   private closing = false
   private persistChain: Promise<void> = Promise.resolve()
@@ -125,7 +130,10 @@ export class BrowserAgentRuntime {
           if (this.finishingRun === idle) this.finishingRun = undefined
         })
         await this.persist(this.closing ? "interrupted" : "idle")
-        if (!this.closing && (this.pendingSettingsModel || this.pendingSettingsThinking)) {
+        if (
+          !this.closing &&
+          (this.pendingSettingsModel || this.pendingThinkingLevel !== undefined)
+        ) {
           await this.configuration.syncSettings()
           await this.applyPendingSettings()
         }
@@ -186,16 +194,17 @@ export class BrowserAgentRuntime {
     await this.configuration.syncSettings()
     if (!options.applyModelToActiveSession && !options.applyThinkingToActiveSession) return
     this.pendingSettingsModel ||= options.applyModelToActiveSession === true
-    this.pendingSettingsThinking ||= options.applyThinkingToActiveSession === true
+    if (options.applyThinkingToActiveSession)
+      this.pendingThinkingLevel = this.configuration.appSettings.thinkingLevel
     if (this.agent.state.isStreaming) return
     await this.applyPendingSettings()
   }
 
   private async applyPendingSettings(): Promise<void> {
     const applyModelToActiveSession = this.pendingSettingsModel
-    const applyThinkingToActiveSession = this.pendingSettingsThinking
+    const thinkingLevel = this.pendingThinkingLevel
     this.pendingSettingsModel = false
-    this.pendingSettingsThinking = false
+    this.pendingThinkingLevel = undefined
     const settings = this.configuration.appSettings
     const model = applyModelToActiveSession
       ? this.configuration.models.getModel(settings.modelProvider, settings.modelId)
@@ -203,13 +212,13 @@ export class BrowserAgentRuntime {
     const modelChanged =
       model && (model.provider !== this.currentModel.provider || model.id !== this.currentModel.id)
     const thinkingChanged =
-      applyThinkingToActiveSession && settings.thinkingLevel !== this.agent.state.thinkingLevel
+      thinkingLevel !== undefined && thinkingLevel !== this.agent.state.thinkingLevel
     if (!modelChanged && !thinkingChanged) return
     if (modelChanged) {
       this.currentModel = model
       this.agent.state.model = model
     }
-    if (thinkingChanged) this.agent.state.thinkingLevel = settings.thinkingLevel
+    if (thinkingChanged) this.agent.state.thinkingLevel = thinkingLevel
     await this.persist("idle")
     if (modelChanged) this.callbacks.onSettingsModelChanged?.()
   }
