@@ -952,6 +952,8 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
     .then(() => bindSelectionTab(tab))
     .then(async (context) => {
       if (!info.selectionText || windowId === undefined) return
+      // The context menu provides selection text even when the URL masks an unreadable PDF.
+      await assertReadableDocument(context)
       const selection = truncateUtf8(info.selectionText)
       await savePendingSelection({
         windowId,

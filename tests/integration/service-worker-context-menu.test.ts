@@ -626,7 +626,42 @@ describe("service worker visible-tab targeting", () => {
     expect(updateTab).not.toHaveBeenCalled()
     permissionCheck = undefined
 
+    activeTab = { id: 12, url: "https://example.test/download?id=123", windowId: 3 }
+    executeScript.mockResolvedValueOnce([{ result: "application/pdf" }])
+    sendMessage.mockClear()
+    listeners.contextClicked?.(
+      { menuItemId: "pi-browser-agent-send-selection", selectionText: "PDF secret" },
+      activeTab,
+    )
+    await vi.waitFor(async () => {
+      await expect(appState("pdf-context-menu-denied")).resolves.toMatchObject({
+        result: { page: { kind: "restricted" }, tabContext: null },
+      })
+    })
+    expect(session["piBrowserAgentPendingSelection:3"]).toBeUndefined()
+    expect(sendMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ name: "selection.queued" }),
+    )
+
     activeTab = { id: 7, url: "https://example.test/page", windowId: 3 }
+    executeScript.mockImplementationOnce(async () => {
+      activeTab = { id: 9, url: "https://other.test/page", windowId: 3 }
+      listeners.activated?.({ tabId: 9, windowId: 3 })
+      return [{ result: "text/html" }]
+    })
+    listeners.contextClicked?.(
+      { menuItemId: "pi-browser-agent-send-selection", selectionText: "stale secret" },
+      activeTab,
+    )
+    await vi.waitFor(async () => {
+      await expect(appState("stale-context-menu-rejected")).resolves.toMatchObject({
+        result: { tabContext: { tabId: 9 } },
+      })
+    })
+    expect(session["piBrowserAgentPendingSelection:3"]).toBeUndefined()
+
+    activeTab = { id: 7, url: "https://example.test/page", windowId: 3 }
+    permissionCheck = Promise.resolve(false)
     listeners.contextClicked?.(
       { menuItemId: "pi-browser-agent-send-selection", selectionText: "selected text" },
       activeTab,
