@@ -16,7 +16,7 @@ import {
   selectedElementContextBytes,
 } from "../runtime/element-context.js"
 import { pageCapabilityFrom, type RuntimeEvent, sendRuntimeRequest } from "../runtime/messages.js"
-import { classifyPage, type PageCapability } from "../runtime/page-capability.js"
+import type { PageCapability } from "../runtime/page-capability.js"
 import type { JsonObject, TabContext } from "../runtime/types.js"
 import { SETTINGS_KEY } from "../storage.js"
 import { AuthenticationController } from "./authentication.js"
@@ -98,11 +98,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   const queueInstructionButton = element<HTMLButtonElement>("queue-instruction")
   const composerHint = element<HTMLElement>("composer-hint")
   const pageStatus = element<HTMLElement>("page-status")
-  const noPageButton = element<HTMLButtonElement>("no-page")
-  const openWebsiteButton = element<HTMLButtonElement>("open-website")
-  const chooseTabButton = element<HTMLButtonElement>("choose-tab")
   const grantSiteButton = element<HTMLButtonElement>("grant-site")
-  const tabOptions = element<HTMLSelectElement>("tab-options")
   const pastedImages = element<HTMLElement>("pasted-images")
   const selectedElementsOutput = element<HTMLElement>("selected-elements")
   const elementPickerButton = element<HTMLButtonElement>("element-picker")
@@ -126,7 +122,6 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   }> = []
   let currentTabContext: TabContext | undefined
   let visiblePage: PageCapability = { kind: "none", title: "" }
-  let noPageContext = false
   let tabRefreshVersion = 0
   let pickerActive = false
   let pickerStarting = false
@@ -216,9 +211,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     const status =
       !busy && text === conversationText("ready")
         ? visiblePage.kind === "web"
-          ? noPageContext
-            ? conversationText("readyNoPage")
-            : text
+          ? text
           : visiblePage.kind === "none"
             ? conversationText("readyWithoutPage")
             : conversationText("waitingForPage")
@@ -290,20 +283,14 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       pickerStarting ||
       voiceInputStarting
     queueInstructionButton.disabled = sendButton.disabled
-    noPageButton.disabled = activeSubmissionGuard !== undefined || runtime.agent.state.isStreaming
-    openWebsiteButton.disabled = activeSubmissionGuard !== undefined
-    chooseTabButton.disabled = activeSubmissionGuard !== undefined
-    tabOptions.disabled = activeSubmissionGuard !== undefined
     const pageToolsUnavailable = runtime.agent.state.isStreaming && !runtime.usesPageContext
-    grantSiteButton.disabled =
-      currentTabContext === undefined || noPageContext || pageToolsUnavailable
+    grantSiteButton.disabled = currentTabContext === undefined || pageToolsUnavailable
     elementPickerButton.disabled =
       activeSubmissionGuard !== undefined ||
       pickerStarting ||
       voiceInputStarting ||
       voiceInput?.active === true ||
-      (!pickerActive &&
-        (currentTabContext === undefined || noPageContext || pageToolsUnavailable)) ||
+      (!pickerActive && (currentTabContext === undefined || pageToolsUnavailable)) ||
       (!pickerActive && selectedElements.length >= ELEMENT_PICKER_LIMITS.elements)
   }
 
@@ -535,8 +522,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
 
   function renderPageCapability(): void {
     const eligible = visiblePage.kind === "web" && currentTabContext !== undefined
-    const withoutPage =
-      noPageContext || (runtime.agent.state.isStreaming && !runtime.usesPageContext)
+    const withoutPage = runtime.agent.state.isStreaming && !runtime.usesPageContext
     const label =
       visiblePage.title ||
       (eligible
@@ -549,10 +535,6 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
             web: "Web page",
           }[visiblePage.kind])
     pageStatus.textContent = `Current page: ${label} — ${eligible ? (withoutPage ? "not used" : conversationText("pageReady")) : "cannot read or operate"}`
-    noPageButton.textContent = noPageContext
-      ? conversationText(eligible ? "useCurrentPage" : "noPageSelected")
-      : conversationText("noPageContext")
-    noPageButton.setAttribute("aria-pressed", String(noPageContext))
     document.body.dataset.page = eligible && !withoutPage ? "web" : "waiting"
     if (!runtime.agent.state.isStreaming) {
       promptInput.placeholder = conversationText(
@@ -567,7 +549,6 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
         conversationText("ready"),
         conversationText("waitingForPage"),
         conversationText("readyWithoutPage"),
-        conversationText("readyNoPage"),
       ].includes(runStatus.textContent ?? "")
     ) {
       setRunStatus(conversationText("ready"), { busy: false, streaming: false })
@@ -670,9 +651,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   }> {
     const initial = await refreshTabContext()
     const usePage =
-      initial !== undefined &&
-      !noPageContext &&
-      (!runtime.agent.state.isStreaming || runtime.usesPageContext)
+      initial !== undefined && (!runtime.agent.state.isStreaming || runtime.usesPageContext)
     const modelEndpoints = await runtime.configuration.requiredModelEndpointUrls(
       () => runtime.model,
     )
@@ -688,53 +667,6 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       )
     }
     return { context: usePage ? current : undefined, usePage }
-  }
-
-  async function openWebsite(): Promise<void> {
-    const input = globalThis.prompt("Enter an HTTP(S) URL or a search query")?.trim()
-    if (!input) return
-    let destination: URL
-    if (/^https?:\/\//i.test(input)) {
-      destination = new URL(input)
-      if (destination.username || destination.password || input.length > 16_384) {
-        throw new Error("Enter a URL without credentials (up to 16 KB)")
-      }
-    } else {
-      if (input.length > 500 || /^[a-z][\w+.-]*:/i.test(input)) {
-        throw new Error("Enter an HTTP(S) URL or a search query of up to 500 characters")
-      }
-      destination = new URL("https://www.google.com/search")
-      destination.searchParams.set("q", input)
-    }
-    if (
-      !["http:", "https:"].includes(destination.protocol) ||
-      classifyPage(destination.href).kind !== "web"
-    ) {
-      throw new Error("Only ordinary HTTP(S) websites can be opened")
-    }
-    if (
-      !globalThis.confirm(
-        `Open ${destination.href}? A search query in this URL will be sent to the destination.`,
-      )
-    )
-      return
-    await chrome.tabs.create({ url: destination.href, active: true })
-    noPageContext = false
-    await refreshTabContext()
-  }
-
-  async function chooseTab(): Promise<void> {
-    const tabs = await chrome.tabs.query({ currentWindow: true })
-    tabOptions.replaceChildren(new Option("Select a web tab", ""))
-    for (const tab of tabs) {
-      if (tab.id === undefined || classifyPage(tab.url).kind !== "web") continue
-      tabOptions.add(new Option((tab.title || "Web page").slice(0, 100), String(tab.id)))
-    }
-    if (tabOptions.length === 1) {
-      throw new Error("No other web tab is available. Open a website instead.")
-    }
-    tabOptions.hidden = false
-    tabOptions.focus()
   }
 
   function microphoneAccessUrl(): string {
@@ -944,31 +876,6 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   }
   updateSendButton()
 
-  noPageButton.addEventListener("click", () => {
-    noPageContext = currentTabContext ? !noPageContext : true
-    if (noPageContext) clearSelectedElements()
-    renderPageCapability()
-  })
-  openWebsiteButton.addEventListener("click", () => void run(openWebsite, setError))
-  chooseTabButton.addEventListener("click", () => void run(chooseTab, setError))
-  tabOptions.addEventListener("change", () => {
-    const id = Number(tabOptions.value)
-    if (!Number.isSafeInteger(id) || id < 0) return
-    tabOptions.hidden = true
-    void run(async () => {
-      // The worker still checks the newly visible tab and its origin before any page operation.
-      const tab = await chrome.tabs.get(id)
-      if (
-        classifyPage(tab.url).kind !== "web" ||
-        tab.windowId !== (await chrome.windows.getCurrent()).id
-      ) {
-        throw new Error("This tab is no longer available")
-      }
-      await chrome.tabs.update(id, { active: true })
-      noPageContext = false
-      await refreshTabContext()
-    }, setError)
-  })
   grantSiteButton.addEventListener("click", () => {
     void run(requestActiveSiteAccess, setError)
   })
