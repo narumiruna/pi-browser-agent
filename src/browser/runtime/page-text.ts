@@ -13,12 +13,7 @@ export function boundPageTextResult(value: PageTextResult) {
   const budget = MAX_TEXT_RESULT_BYTES - 256
   const fits = (result: object): boolean =>
     encoder.encode(JSON.stringify(result, null, 2)).byteLength <= budget
-  // Page-controlled metadata must not prevent even a short page read.
   const metadata = { ...value }
-  if (!fits({ ...metadata, text: TRUNCATION_SUFFIX, truncated: true, nextOffset: value.offset })) {
-    metadata.title = truncateUtf8(value.title, 512).text
-    metadata.url = truncateUtf8(value.url, 4096).text
-  }
   const candidate = (length: number) => {
     let prefix = value.text.slice(0, length)
     const last = prefix.charCodeAt(prefix.length - 1)
@@ -33,6 +28,19 @@ export function boundPageTextResult(value: PageTextResult) {
       truncated,
       ...(truncated ? { nextOffset: value.offset + prefix.length } : {}),
     }
+  }
+  // Page-controlled metadata must leave room for at least one complete source character.
+  const first = value.text.charCodeAt(0)
+  const second = value.text.charCodeAt(1)
+  const firstLength =
+    value.text.length === 0
+      ? 0
+      : first >= 0xd800 && first <= 0xdbff && second >= 0xdc00 && second <= 0xdfff
+        ? 2
+        : 1
+  if (!fits(candidate(firstLength))) {
+    metadata.title = truncateUtf8(value.title, 512).text
+    metadata.url = truncateUtf8(value.url, 4096).text
   }
   const full = candidate(value.text.length)
   if (fits(full)) return full

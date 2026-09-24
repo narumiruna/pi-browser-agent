@@ -36,6 +36,32 @@ describe("bounded page text", () => {
     expect(result.title).toMatch(/\[truncated\]$/)
   })
 
+  test.each(['"', "😀"])(
+    "reserves one complete source character when metadata nearly fills the budget (%s)",
+    (firstCharacter) => {
+      const budget = MAX_TEXT_RESULT_BYTES - 256
+      const probe = {
+        text: TRUNCATION_SUFFIX,
+        offset: 0,
+        title: "",
+        url,
+        truncated: true,
+        nextOffset: 0,
+      }
+      const titleLength =
+        budget - new TextEncoder().encode(JSON.stringify(probe, null, 2)).byteLength
+      const result = boundPageTextResult({
+        text: `${firstCharacter}${"a".repeat(60 * 1024)}`,
+        offset: 0,
+        title: "t".repeat(titleLength),
+        url,
+      })
+      expect(result.text).toContain(firstCharacter)
+      expect(result.nextOffset).toBeGreaterThan(0)
+      expect(result.title).toMatch(/\[truncated\]$/)
+    },
+  )
+
   test("keeps normal metadata intact when it already fits", () => {
     const longUrl = `${url}?q=${"a".repeat(5000)}`
     const result = boundPageTextResult({
