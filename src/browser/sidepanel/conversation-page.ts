@@ -1,4 +1,5 @@
 import type { AgentEvent, AgentMessage } from "@earendil-works/pi-agent-core"
+import { type ApprovalScope, ConfirmationPolicy } from "../agent/confirmation-policy.js"
 import { BrowserAgentRuntime } from "../agent/runtime.js"
 import { safeErrorMessage } from "../auth/redaction.js"
 import {
@@ -141,13 +142,14 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   composerHint.textContent = conversationText("hintIdle")
   runStatus.textContent = conversationText("ready")
 
-  function confirmation(
+  function showConfirmation(
     message: string,
     details?: JsonObject,
     signal?: AbortSignal,
   ): Promise<boolean> {
-    confirmMessage.textContent = details
-      ? `${message}\n${JSON.stringify(details, null, 2)}`
+    const detailText = details ? JSON.stringify(details, null, 2) : ""
+    confirmMessage.textContent = detailText
+      ? `${message}\n${detailText.length > 4_096 ? `${detailText.slice(0, 4_096)}… [details truncated]` : detailText}`
       : message
     confirmError.textContent = ""
     confirmDialog.showModal()
@@ -203,6 +205,19 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       signal?.addEventListener("abort", cancel, { once: true })
       if (signal?.aborted) cancel()
     })
+  }
+
+  const confirmationPolicy = new ConfirmationPolicy(
+    () => runtime.configuration.appSettings.confirmationMode,
+    showConfirmation,
+  )
+  function confirmation(
+    message: string,
+    details?: JsonObject,
+    signal?: AbortSignal,
+    scope?: ApprovalScope,
+  ): Promise<boolean> {
+    return confirmationPolicy.confirm(message, details, signal, scope)
   }
 
   function setRunStatus(text: string, options: { busy?: boolean; streaming?: boolean } = {}): void {

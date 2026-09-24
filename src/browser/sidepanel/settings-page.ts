@@ -1,10 +1,13 @@
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core"
+import { clearConfirmationApprovals } from "../agent/confirmation-policy.js"
 import { BrowserConfiguration } from "../configuration.js"
 import type { RuntimeEvent } from "../runtime/messages.js"
 import {
+  type ConfirmationMode,
   DEFAULT_SETTINGS,
   FONT_FAMILIES,
   type FontFamily,
+  isConfirmationMode,
   isThinkingLevel,
   MAX_FONT_SIZE,
   MIN_FONT_SIZE,
@@ -30,6 +33,8 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
   const modelSelect = element<HTMLSelectElement>("model")
   const modelCapabilities = element<HTMLElement>("model-capabilities")
   const thinkingLevelSelect = element<HTMLSelectElement>("thinking-level")
+  const confirmationModeSelect = element<HTMLSelectElement>("confirmation-mode")
+  const confirmationStatus = element<HTMLElement>("confirmation-approvals-status")
   const fontFamilySelect = element<HTMLSelectElement>("font-family")
   const fontSizeInput = element<HTMLInputElement>("font-size")
   const fontSizeOutput = element<HTMLOutputElement>("font-size-value")
@@ -101,6 +106,12 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
     return thinkingLevelSelect.value
   }
 
+  function selectedConfirmationMode(): ConfirmationMode {
+    if (!isConfirmationMode(confirmationModeSelect.value))
+      throw new Error("Choose a valid confirmation mode")
+    return confirmationModeSelect.value
+  }
+
   function selectedFontFamily(): FontFamily {
     return FONT_FAMILIES.find((fontFamily) => fontFamily === fontFamilySelect.value) ?? "system"
   }
@@ -123,6 +134,7 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
       initialThinkingLevel && isThinkingLevel(initialThinkingLevel)
         ? initialThinkingLevel
         : configuration.appSettings.thinkingLevel
+    confirmationModeSelect.value = configuration.appSettings.confirmationMode
     fontFamilySelect.value = configuration.appSettings.fontFamily
     fontSizeInput.value = String(configuration.appSettings.fontSize)
     fontSizeOutput.value = `${configuration.appSettings.fontSize} px`
@@ -175,6 +187,12 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
     settingsThinkingChanged = true
   })
   fontSizeInput.addEventListener("input", () => applyFontSize(selectedFontSize()))
+  element<HTMLButtonElement>("clear-confirmation-approvals").addEventListener("click", () => {
+    void run(async () => {
+      await clearConfirmationApprovals()
+      confirmationStatus.textContent = "Remembered approvals cleared"
+    }, setError)
+  })
   closeButton.addEventListener("click", discardSettingsChanges)
   element<HTMLButtonElement>("cancel-settings").addEventListener("click", discardSettingsChanges)
   element<HTMLButtonElement>("save-settings").addEventListener("click", () => {
@@ -192,7 +210,12 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
 
       const fontFamily = selectedFontFamily()
       const fontSize = selectedFontSize()
+      const confirmationMode = selectedConfirmationMode()
+      if (confirmationMode !== configuration.appSettings.confirmationMode) {
+        await clearConfirmationApprovals()
+      }
       await configuration.updateSettings({
+        confirmationMode,
         systemPrompt: systemPrompt.value,
         agentInstructions: agentInstructions.value,
         fontFamily,

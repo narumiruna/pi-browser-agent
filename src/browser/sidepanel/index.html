@@ -285,6 +285,18 @@
             Configure authentication
           </button>
         </section>
+        <section class="settings-section" aria-labelledby="confirmation-title">
+          <h2 id="confirmation-title">Browser action confirmations</h2>
+          <label for="confirmation-mode">Confirmation mode</label>
+          <select id="confirmation-mode">
+            <option value="strict">Strict — confirm every action</option>
+            <option value="balanced">Balanced — remember until Chrome restarts</option>
+            <option value="convenient">Convenient — remember across restarts</option>
+          </select>
+          <p class="field-hint">Approvals apply only to the same action and target. Changed WebMCP arguments, bookmark queries, or destinations ask again. Submits and downloads always ask. Chrome permission prompts are separate.</p>
+          <button type="button" id="clear-confirmation-approvals" class="subtle">Clear remembered approvals</button>
+          <p id="confirmation-approvals-status" role="status" aria-live="polite"></p>
+        </section>
         <section class="settings-section" aria-labelledby="appearance-title">
           <h2 id="appearance-title">Appearance</h2>
           <p>Choose the font and text size used throughout the interface.</p>

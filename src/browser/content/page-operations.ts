@@ -507,6 +507,9 @@ export async function executePageOperation(
             {
               action: "click",
               ...targetResult(),
+              submit: submitControl,
+              download,
+              crossOrigin,
               ...(anchor instanceof HTMLAnchorElement ? { targetUrl: anchor.href } : {}),
             },
           )
