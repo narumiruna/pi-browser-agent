@@ -31,11 +31,13 @@ describe("browser storage", () => {
       fontFamily: "serif",
       fontSize: 19,
       thinkingLevel: "high",
+      confirmationMode: "convenient",
     })
     await expect(getSettings()).resolves.toMatchObject({
       fontFamily: "serif",
       fontSize: 19,
       thinkingLevel: "high",
+      confirmationMode: "convenient",
     })
 
     values.piBrowserAgentSettings = {
@@ -50,6 +52,7 @@ describe("browser storage", () => {
       modelProvider: "openai-codex",
       modelId: "gpt-5.6-terra",
       thinkingLevel: "medium",
+      confirmationMode: "strict",
     })
 
     values.piBrowserAgentSettings = {
@@ -57,8 +60,12 @@ describe("browser storage", () => {
       fontFamily: "invalid",
       fontSize: 25,
       thinkingLevel: "invalid",
+      confirmationMode: "invalid",
     }
-    await expect(getSettings()).resolves.toEqual(DEFAULT_SETTINGS)
+    await expect(getSettings()).resolves.toEqual({
+      ...DEFAULT_SETTINGS,
+      confirmationMode: "strict",
+    })
   })
 
   test("persists the active session ID in local extension storage", async () => {

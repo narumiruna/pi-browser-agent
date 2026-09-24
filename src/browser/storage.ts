@@ -16,6 +16,8 @@ export const THINKING_LEVELS = [
 ] as const satisfies readonly ThinkingLevel[]
 export const FONT_FAMILIES = ["system", "sans", "serif", "monospace"] as const
 export type FontFamily = (typeof FONT_FAMILIES)[number]
+export const CONFIRMATION_MODES = ["strict", "balanced", "convenient"] as const
+export type ConfirmationMode = (typeof CONFIRMATION_MODES)[number]
 export const MIN_FONT_SIZE = 12
 export const MAX_FONT_SIZE = 24
 
@@ -27,6 +29,7 @@ export interface AppSettings {
   modelProvider: string
   modelId: string
   thinkingLevel: ThinkingLevel
+  confirmationMode: ConfirmationMode
 }
 
 export interface PendingSelection {
@@ -44,10 +47,15 @@ export const DEFAULT_SETTINGS: AppSettings = {
   modelProvider: DEFAULT_MODEL_SELECTION.provider,
   modelId: DEFAULT_MODEL_SELECTION.id,
   thinkingLevel: "medium",
+  confirmationMode: "balanced",
 }
 
 export function isThinkingLevel(value: unknown): value is ThinkingLevel {
   return THINKING_LEVELS.some((level) => level === value)
+}
+
+export function isConfirmationMode(value: unknown): value is ConfirmationMode {
+  return CONFIRMATION_MODES.some((mode) => mode === value)
 }
 
 function isFontFamily(value: unknown): value is FontFamily {
@@ -90,6 +98,11 @@ export async function getSettings(): Promise<AppSettings> {
     thinkingLevel: isThinkingLevel(value?.thinkingLevel)
       ? value.thinkingLevel
       : DEFAULT_SETTINGS.thinkingLevel,
+    confirmationMode: isConfirmationMode(value?.confirmationMode)
+      ? value.confirmationMode
+      : value === undefined
+        ? DEFAULT_SETTINGS.confirmationMode
+        : "strict",
   }
 }
 

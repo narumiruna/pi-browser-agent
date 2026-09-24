@@ -112,6 +112,44 @@ describe("browser agent tools", () => {
     },
   )
 
+  test.each([
+    [
+      { submit: false, download: false, crossOrigin: true, targetUrl: "https://other.test/next" },
+      true,
+    ],
+    [{ submit: true, download: false, crossOrigin: false }, false],
+    [
+      { submit: false, download: true, crossOrigin: true, targetUrl: "https://other.test/file" },
+      false,
+    ],
+    [{ submit: false, download: false, crossOrigin: false }, false],
+  ] as const)("only reuses cross-origin link confirmation for %j", async (details, reusable) => {
+    const tabContext = { tabId: 1, url: "https://example.test/", epoch: 1 }
+    const sendMessage = vi.fn(async (message: { method: string; confirmed?: boolean }) => {
+      if (message.method === "app.getState") return { ok: true, result: { tabContext } }
+      if (!message.confirmed)
+        return { ok: false, error: { code: "CONFIRMATION_REQUIRED", message: "Click?", details } }
+      return { ok: true, result: { clicked: true } }
+    })
+    vi.stubGlobal("chrome", { runtime: { sendMessage } })
+    const confirm = vi.fn().mockResolvedValue(true)
+    const click = createBrowserTools(confirm).find((tool) => tool.name === "browser_click")
+    if (!click) throw new Error("Missing click tool")
+    await click.execute("id", { selector: "a" }, undefined)
+    const args = confirm.mock.calls[0]
+    if (!args) throw new Error("Missing confirmation")
+    expect(args).toHaveLength(reusable ? 4 : 3)
+    if (reusable)
+      expect(args[3]).toEqual({
+        operation: "page.click.link",
+        identity: ["https://example.test", "https://other.test/next"],
+        permissionUrl: "https://other.test/next",
+      })
+    expect(sendMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ confirmed: true, tabContext }),
+    )
+  })
+
   test("marks mutating and confirmation-gated tools as never replayable and sequential", () => {
     const tools = createBrowserTools(vi.fn().mockResolvedValue(false))
     for (const name of [
@@ -165,7 +203,11 @@ describe("browser agent tools", () => {
     expect(enablePage).not.toHaveBeenCalled()
     confirm.mockResolvedValue(true)
     await switchTab.execute("id", { id: 2 }, undefined)
-    expect(confirm).toHaveBeenCalledWith(expect.any(String), { targetUrl: web.url }, undefined)
+    expect(confirm).toHaveBeenCalledWith(expect.any(String), { targetUrl: web.url }, undefined, {
+      operation: "tabs.switch",
+      identity: ["2", web.url],
+      permissionUrl: web.url,
+    })
     expect(update).toHaveBeenCalledWith(2, { active: true })
     expect(enablePage).toHaveBeenCalledOnce()
   })
@@ -289,9 +331,16 @@ describe("browser agent tools", () => {
       expect(confirm).toHaveBeenCalledExactlyOnceWith(
         action === "list"
           ? "List the tools provided by this page through WebMCP?"
-          : "Call this page-provided WebMCP tool?",
-        { action, name: action === "list" ? "" : "lookup" },
+          : "Call this page-provided WebMCP tool? It may have side effects, even when called again with identical arguments.",
+        action === "list"
+          ? { action, name: "", pageUrl: tabContext.url }
+          : { action, name: "lookup", pageUrl: tabContext.url, arguments: { id: 1 } },
         controller.signal,
+        {
+          operation: action === "list" ? "webmcp.listTools" : "webmcp.callTool",
+          identity: action === "list" ? [tabContext.url] : [tabContext.url, "lookup", '{"id":1}'],
+          permissionUrl: tabContext.url,
+        },
       )
       expect(sendMessage).toHaveBeenLastCalledWith(
         expect.objectContaining({
@@ -426,6 +475,11 @@ describe("browser agent tools", () => {
       "Confirm bookmark read",
       { requiredPermission: "bookmarks" },
       undefined,
+      {
+        operation: "bookmarks.search",
+        identity: ['{"limit":20,"query":"docs"}'],
+        bookmarkPermission: true,
+      },
     )
     expect(sendMessage).toHaveBeenCalledTimes(2)
     expect(sendMessage).not.toHaveBeenCalledWith(

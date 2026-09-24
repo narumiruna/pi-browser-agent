@@ -22,8 +22,8 @@ Credential removal first aborts the agent, waits for it to become idle, then rem
 - Ordinary host access is approved from an explicit user gesture and scoped to selected exact origins in trusted extension storage. The worker requires both that app-level approval and Chrome host permission.
 - Screenshot capture separately requests optional `<all_urls>` from its confirmation gesture because Chrome requires it when `activeTab` is no longer live. Although Chrome treats that grant as satisfying narrower host checks, Pi Browser Agent does not add exact app approvals from it. The worker still captures only the active visible HTTP(S) viewport and rechecks the grant before each capture.
 - Password and file inputs are always denied.
-- Form submissions, downloads, cross-origin links, cross-origin navigation, and WebMCP calls require confirmation.
-- Cross-origin navigation additionally requires destination host permission. User-confirmed opening of a new web tab is separate from agent navigation; entering a search query and accepting the displayed URL is required before it goes to the search provider. Page access after opening still requires exact-origin approval.
+- Form submissions and downloads always prompt. Cross-origin links/navigation, bookmark reads, tab switching/opening, and WebMCP calls require a confirmation or a matching, mode-scoped prior approval. Strict asks every time; Balanced remembers until Chrome restarts; Convenient keeps the approval until cleared. Only the same operation and exact target/arguments match. Changing modes clears previous approvals; no approval overrides Chrome's native permissions or runtime checks.
+- Cross-origin navigation additionally requires destination host permission. User-confirmed opening of a new web tab is separate from agent navigation; the exact search destination URL must be approved before it goes to the search provider (a previously approved exact URL may match in Balanced or Convenient). Page access after opening still requires exact-origin approval.
 - Tools accept fixed schemas; injected code cannot evaluate model-provided JavaScript.
 
 Mutation tools declare `replay: "never"` and execute sequentially. Interrupted sessions do not continue automatically.
@@ -37,13 +37,13 @@ Element discovery uses the same approved-origin and visible-tab checks as ordina
 ## Bookmark controls
 
 - Bookmark access is an optional permission and is never requested at install, login, startup, or ordinary prompt submission.
-- Every bookmark search or recent-item read requires a fresh operation-specific confirmation. If permission is missing, only that Confirm-button gesture can request it.
+- Every bookmark search or recent-item read requires an operation-specific confirmation or a previously approved exact operation, query, and limit. If Chrome permission is missing, only a fresh Confirm-button gesture can request it. The approval cache never substitutes for the optional Chrome grant.
 - The worker rejects bookmark requests carrying a page `TabContext`, rechecks permission before each read, and does not retry after revocation.
 - Production code calls only `chrome.bookmarks.search()` and `chrome.bookmarks.getRecent()`; runtime validation exposes no write or whole-tree method, and the artifact audit rejects bookmark mutation calls.
-- Confirmation explains that returned bookmark titles and URLs are sent to the selected model provider and saved in the session. This limits prompt-injection-driven disclosure to a user-approved query and bounded result.
+- Confirmation explains that returned bookmark titles and URLs are sent to the selected model provider and saved in the session. An approved matching query may run later without a new dialog in Balanced or Convenient; changing the query or limit asks again. Page-provided content and model output can trigger another matching read, so a reusable approval is not a guarantee of one-time disclosure.
 - The permission can be revoked from Chrome's extension settings. Chrome's permission itself covers the broader bookmarks API even though Pi Browser Agent implements reads only.
 
-Bookmark tools declare `replay: "never"` and execute sequentially so a resumed or parallel run cannot silently reuse one confirmation.
+Bookmark tools declare `replay: "never"` and execute sequentially. A fresh agent request may use a matching approval, but an interrupted tool call is never replayed automatically.
 
 ## Untrusted content and limits
 

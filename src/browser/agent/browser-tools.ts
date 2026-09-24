@@ -9,11 +9,13 @@ import {
   RuntimeError,
   type TabContext,
 } from "../runtime/types.js"
+import { type ApprovalScope, stableJson } from "./confirmation-policy.js"
 
 export type ConfirmationHandler = (
   message: string,
   details?: JsonObject,
   signal?: AbortSignal,
+  scope?: ApprovalScope,
 ) => Promise<boolean>
 
 async function currentTabContext(): Promise<TabContext> {
@@ -29,6 +31,41 @@ async function currentTabContext(): Promise<TabContext> {
     throw new RuntimeError("TAB_NOT_BOUND", "Open an HTTP or HTTPS page before using browser tools")
   }
   return state.tabContext as unknown as TabContext
+}
+
+function approvalScope(
+  method: RuntimeMethod,
+  params: JsonObject,
+  context: TabContext | undefined,
+  details: JsonObject | undefined,
+): ApprovalScope | undefined {
+  switch (method) {
+    case "bookmarks.search":
+    case "bookmarks.getRecent":
+      return { operation: method, identity: [stableJson(params)], bookmarkPermission: true }
+    case "tabs.navigate":
+      return context && typeof params.url === "string"
+        ? {
+            operation: method,
+            identity: [new URL(context.url).origin, params.url],
+            permissionUrl: params.url,
+          }
+        : undefined
+    case "page.click":
+      return context &&
+        details?.submit === false &&
+        details.download === false &&
+        details.crossOrigin === true &&
+        typeof details.targetUrl === "string"
+        ? {
+            operation: "page.click.link",
+            identity: [new URL(context.url).origin, details.targetUrl],
+            permissionUrl: details.targetUrl,
+          }
+        : undefined
+    default:
+      return undefined
+  }
 }
 
 async function requestTool(
@@ -48,7 +85,12 @@ async function requestTool(
     return await sendRuntimeRequest(method, params, options)
   } catch (error) {
     if (!(error instanceof RuntimeError) || error.code !== "CONFIRMATION_REQUIRED") throw error
-    if (!(await confirm(error.message, error.details, signal))) {
+    const scope = approvalScope(method, params, tabContext, error.details)
+    if (
+      !(await (scope
+        ? confirm(error.message, error.details, signal, scope)
+        : confirm(error.message, error.details, signal)))
+    ) {
       throw new RuntimeError("PERMISSION_DENIED", "Browser action was declined")
     }
     const confirmedOptions = tabContext
@@ -156,6 +198,11 @@ export function createBrowserTools(
             `Use the tab ${tab.title || new URL(tab.url as string).origin}?`,
             { targetUrl: tab.url as string },
             signal,
+            {
+              operation: "tabs.switch",
+              identity: [String(id), tab.url as string],
+              permissionUrl: tab.url as string,
+            },
           ))
         ) {
           throw new RuntimeError("PERMISSION_DENIED", "Browser action was declined")
@@ -200,6 +247,11 @@ export function createBrowserTools(
             `Open ${destination.href}? A search query in this URL will be sent to the destination.`,
             { targetUrl: destination.href },
             signal,
+            {
+              operation: "tabs.open",
+              identity: [destination.href],
+              permissionUrl: destination.href,
+            },
           ))
         ) {
           throw new RuntimeError("PERMISSION_DENIED", "Browser action was declined")
@@ -435,8 +487,28 @@ export function createBrowserTools(
         const confirmationMessage =
           action === "list"
             ? "List the tools provided by this page through WebMCP?"
-            : "Call this page-provided WebMCP tool?"
-        if (!(await confirm(confirmationMessage, { action, name: name ?? "" }, signal))) {
+            : "Call this page-provided WebMCP tool? It may have side effects, even when called again with identical arguments."
+        const scope: ApprovalScope = {
+          operation: method,
+          identity: [
+            tabContext.url,
+            ...(action === "call" ? [name ?? "", stableJson(request.arguments)] : []),
+          ],
+          permissionUrl: tabContext.url,
+        }
+        if (
+          !(await confirm(
+            confirmationMessage,
+            {
+              action,
+              name: name ?? "",
+              pageUrl: tabContext.url,
+              ...(action === "call" ? { arguments: request.arguments } : {}),
+            },
+            signal,
+            scope,
+          ))
+        ) {
           throw new RuntimeError("PERMISSION_DENIED", "WebMCP access was declined")
         }
         const result = await sendRuntimeRequest(method, request, {
