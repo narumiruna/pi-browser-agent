@@ -16,6 +16,7 @@ import {
 import { ELEMENT_PICKER_LIMITS, parseSelectedElementContext } from "./runtime/element-context.js"
 import { parseRuntimeRequest, type RuntimeEvent, type RuntimeRequest } from "./runtime/messages.js"
 import { classifyPage, type PageCapability } from "./runtime/page-capability.js"
+import { boundPageTextResult, type PageTextResult } from "./runtime/page-text.js"
 import {
   ELEMENT_LIMITS,
   type ElementSnapshot,
@@ -843,9 +844,10 @@ async function dispatch(request: RuntimeRequest, signal: AbortSignal): Promise<J
         typeof value === "object" &&
         value !== null &&
         !Array.isArray(value) &&
-        typeof value.text === "string"
+        typeof value.text === "string" &&
+        typeof value.offset === "number"
       ) {
-        result = { ...value, ...truncateUtf8(value.text) }
+        result = boundPageTextResult(value as unknown as PageTextResult)
       } else result = value
       break
     }

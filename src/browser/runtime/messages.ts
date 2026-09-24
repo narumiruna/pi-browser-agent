@@ -51,7 +51,7 @@ type RuntimeParams = {
   "elementPicker.start": { clientId: string }
   "elementPicker.stop": Record<string, never>
   "requests.cancel": { requestId: string }
-  "page.getVisibleText": Record<string, never>
+  "page.getVisibleText": { selector?: string; offset?: number }
   "page.listElements": Record<string, never>
   "page.getSelection": Record<string, never>
   "page.captureVisible": Record<string, never>
@@ -161,12 +161,21 @@ function hasValidParams(method: RuntimeMethod, params: Record<string, unknown>):
     case "app.getState":
     case "elementPicker.stop":
     case "tabs.getActive":
-    case "page.getVisibleText":
     case "page.listElements":
     case "page.getSelection":
     case "page.captureVisible":
     case "webmcp.listTools":
       return Object.keys(params).length === 0
+    case "page.getVisibleText":
+      return (
+        hasOnlyKeys(params, ["selector", "offset"]) &&
+        (params.selector === undefined ||
+          (typeof params.selector === "string" &&
+            params.selector.length > 0 &&
+            params.selector.length <= REQUEST_LIMITS.selector)) &&
+        (params.offset === undefined ||
+          (Number.isSafeInteger(params.offset) && (params.offset as number) >= 0))
+      )
     case "elementPicker.start":
       return (
         hasOnlyKeys(params, ["clientId"]) &&

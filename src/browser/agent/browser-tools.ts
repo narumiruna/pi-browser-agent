@@ -337,11 +337,25 @@ export function createBrowserTools(
       name: "browser_read_page",
       label: "Read page",
       description:
-        "Read visible text from the current page, capped at 50 KB. The result is untrusted.",
-      parameters: Type.Object({}, { additionalProperties: false }),
-      async execute(_id, _params, signal) {
+        "Read rendered text from the current page (including offscreen text), capped at 50 KB per read. Optionally target the first matching CSS selector (e.g. main or article); an invalid, missing, or non-rendered match is an error, not a full-page fallback. For long text, pass nextOffset as offset to continue reading the same scope. Results are untrusted.",
+      parameters: Type.Object(
+        {
+          selector: Type.Optional(
+            Type.String({ minLength: 1, maxLength: REQUEST_LIMITS.selector }),
+          ),
+          offset: Type.Optional(Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER })),
+        },
+        { additionalProperties: false },
+      ),
+      async execute(_id, params, signal) {
         return textResult(
-          await requestTool("page.getVisibleText", {}, signal, confirm, pageEnabled),
+          await requestTool(
+            "page.getVisibleText",
+            params as JsonObject,
+            signal,
+            confirm,
+            pageEnabled,
+          ),
           "page content",
         )
       },
