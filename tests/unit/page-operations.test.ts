@@ -51,6 +51,58 @@ describe("page operations", () => {
     expect(JSON.stringify(result)).not.toContain("private value")
   })
 
+  test("reads one rendered CSS scope with an offset and preserves page metadata", async () => {
+    document.body.innerHTML =
+      '<main><article id="story">First page 😀 next</article><aside>Other text</aside></main>'
+    const article = document.querySelector<HTMLElement>("#story") as HTMLElement
+    makeVisible(article)
+    vi.spyOn(article, "getClientRects").mockReturnValue([
+      article.getBoundingClientRect(),
+    ] as unknown as DOMRectList)
+    Object.defineProperty(article, "innerText", {
+      configurable: true,
+      value: "First page 😀 next",
+    })
+
+    const result = await executePageOperation(
+      "getVisibleText",
+      { selector: "#story", offset: 12 },
+      false,
+    )
+    expect(result).toMatchObject({
+      ok: true,
+      result: { text: "😀 next", offset: 11, url: location.href, title: document.title },
+    })
+    expect(JSON.stringify(result)).not.toContain("Other text")
+  })
+
+  test("does not fall back to the full page for invalid, missing, or non-rendered scopes", async () => {
+    document.body.innerHTML =
+      '<main>Public<aside hidden>Private</aside><textarea id="draft">Secret draft</textarea></main>'
+    const main = document.querySelector<HTMLElement>("main") as HTMLElement
+    makeVisible(main)
+    Object.defineProperty(document.body, "innerText", { configurable: true, value: "Public" })
+    for (const [selector, message] of [
+      ["[", "Invalid CSS selector"],
+      ["#absent", "No element matches"],
+      ["[hidden]", "not rendered"],
+      ["script", "No element matches"],
+    ] as const) {
+      await expect(
+        executePageOperation("getVisibleText", { selector }, false),
+      ).resolves.toMatchObject({
+        ok: false,
+        error: { code: "INVALID_REQUEST", message: expect.stringContaining(message) },
+      })
+    }
+    await expect(
+      executePageOperation("getVisibleText", { selector: "#draft" }, false),
+    ).resolves.toMatchObject({ ok: false, error: { code: "PERMISSION_DENIED" } })
+    await expect(
+      executePageOperation("getVisibleText", { selector: "main", offset: 100 }, false),
+    ).resolves.toMatchObject({ ok: false, error: { code: "INVALID_REQUEST" } })
+  })
+
   test("rejects mutations when the injected page is no longer visible", async () => {
     document.body.innerHTML = '<button id="target" type="button">Click</button>'
     const button = document.querySelector<HTMLButtonElement>("#target") as HTMLButtonElement

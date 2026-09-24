@@ -65,6 +65,7 @@ export class RuntimeError extends Error {
 }
 
 export const MAX_TEXT_RESULT_BYTES = 50 * 1024
+export const TRUNCATION_SUFFIX = "\n[truncated]"
 
 export function truncateUtf8(
   text: string,
@@ -73,7 +74,7 @@ export function truncateUtf8(
   const encoder = new TextEncoder()
   if (encoder.encode(text).byteLength <= maxBytes) return { text, truncated: false }
 
-  const suffix = "\n[truncated]"
+  const suffix = TRUNCATION_SUFFIX
   const suffixBytes = encoder.encode(suffix)
   if (suffixBytes.byteLength >= maxBytes) {
     return {

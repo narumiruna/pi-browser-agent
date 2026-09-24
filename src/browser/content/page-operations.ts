@@ -457,9 +457,42 @@ export async function executePageOperation(
         return success(result)
       }
       case "getVisibleText": {
-        const text = document.body?.innerText ?? ""
+        let root: HTMLElement | null = document.body
+        if (typeof params.selector === "string") {
+          try {
+            const match = document.querySelector(params.selector)
+            if (!match) return failure("INVALID_REQUEST", "No element matches the page selector")
+            if (!(match instanceof HTMLElement))
+              return failure("INVALID_REQUEST", "The page selector must match an HTML element")
+            if (match.matches("input, textarea, select, option"))
+              return failure("PERMISSION_DENIED", "Form field contents cannot be read")
+            if (
+              match.getClientRects().length === 0 ||
+              ["hidden", "collapse"].includes(getComputedStyle(match).visibility)
+            )
+              return failure("INVALID_REQUEST", "The selected page element is not rendered")
+            root = match
+          } catch (error) {
+            if (error instanceof DOMException && error.name === "SyntaxError")
+              return failure("INVALID_REQUEST", "Invalid CSS selector for page text")
+            throw error
+          }
+        }
+        const text = (root?.innerText ?? "").replace(/\n{3,}/g, "\n\n").trim()
+        let offset = typeof params.offset === "number" ? params.offset : 0
+        if (offset > text.length)
+          return failure("INVALID_REQUEST", "Page text offset exceeds the available text")
+        // If a caller supplies an offset inside a surrogate pair, start at its first code unit.
+        if (
+          offset > 0 &&
+          offset < text.length &&
+          /[\uD800-\uDBFF]/.test(text[offset - 1] ?? "") &&
+          /[\uDC00-\uDFFF]/.test(text[offset] ?? "")
+        )
+          offset -= 1
         return success({
-          text: text.replace(/\n{3,}/g, "\n\n").trim(),
+          text: text.slice(offset),
+          offset,
           title: document.title,
           url: location.href,
         })

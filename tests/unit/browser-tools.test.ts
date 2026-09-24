@@ -11,6 +11,17 @@ afterEach(() => {
 describe("browser agent tools", () => {
   test("schemas reject malformed arguments before execution", () => {
     const tools = createBrowserTools(vi.fn().mockResolvedValue(false))
+    const read = tools.find((tool) => tool.name === "browser_read_page")
+    expect(read && Value.Check(read.parameters, {})).toBe(true)
+    expect(read && Value.Check(read.parameters, { selector: "main", offset: 42 })).toBe(true)
+    for (const params of [
+      { selector: "" },
+      { offset: -1 },
+      { offset: 1.5 },
+      { offset: "1" },
+      { extra: true },
+    ])
+      expect(read && Value.Check(read.parameters, params)).toBe(false)
     const click = tools.find((tool) => tool.name === "browser_click")
     const type = tools.find((tool) => tool.name === "browser_type")
     const navigate = tools.find((tool) => tool.name === "browser_navigate")
@@ -37,6 +48,7 @@ describe("browser agent tools", () => {
   })
 
   test.each([
+    ["browser_read_page", "selector", 2048, {}],
     ["browser_click", "selector", 2048, {}],
     ["browser_type", "selector", 2048, { text: "" }],
     ["browser_type", "text", 50_000, { selector: "#x" }],
@@ -397,6 +409,29 @@ describe("browser agent tools", () => {
       MAX_TEXT_RESULT_BYTES,
     )
     expect(content.text).toMatch(/\[truncated\]$/)
+  })
+
+  test("forwards scoped page reads using the current bound tab", async () => {
+    const tabContext = { tabId: 1, url: "https://example.test/", epoch: 0 }
+    const sendMessage = vi.fn(async (message: { method: string }) =>
+      message.method === "app.getState"
+        ? { ok: true, result: { tabContext } }
+        : { ok: true, result: { text: "Article text", offset: 10, truncated: false } },
+    )
+    vi.stubGlobal("chrome", { runtime: { sendMessage } })
+    const tool = createBrowserTools(vi.fn()).find((item) => item.name === "browser_read_page")
+    if (!tool) throw new Error("Missing page read tool")
+    const result = await tool.execute("id", { selector: "article", offset: 10 }, undefined)
+    expect(sendMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        method: "page.getVisibleText",
+        params: { selector: "article", offset: 10 },
+        tabContext,
+      }),
+    )
+    expect(result.content[0]).toMatchObject({
+      text: expect.stringContaining("Untrusted browser page content"),
+    })
   })
 
   test("blocks every page tool in a no-page turn even when a web tab is active", async () => {

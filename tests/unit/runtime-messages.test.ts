@@ -132,6 +132,7 @@ describe("internal runtime messages", () => {
   })
 
   test.each([
+    ["page.getVisibleText", "selector", 2048, {}],
     ["page.click", "selector", 2048, {}],
     ["page.type", "selector", 2048, { text: "" }],
     ["page.type", "text", 50_000, { selector: "#x" }],
@@ -153,6 +154,26 @@ describe("internal runtime messages", () => {
     expect(() =>
       parseRuntimeRequest({ ...request(1), params: { ...request(1).params, extra: true } }),
     ).toThrow("Malformed or unknown")
+  })
+
+  test("accepts only bounded CSS selectors and non-negative safe offsets for page reads", () => {
+    const request = (params: unknown) => ({
+      kind: "request",
+      requestId: "1",
+      method: "page.getVisibleText",
+      params,
+    })
+    for (const params of [{}, { selector: "article" }, { offset: 0 }, { offset: 42 }])
+      expect(() => parseRuntimeRequest(request(params))).not.toThrow()
+    for (const params of [
+      { selector: "" },
+      { offset: -1 },
+      { offset: 0.5 },
+      { offset: Number.MAX_SAFE_INTEGER + 1 },
+      { offset: "0" },
+      { extra: true },
+    ])
+      expect(() => parseRuntimeRequest(request(params))).toThrow("Malformed or unknown")
   })
 
   test.each(["bookmarks.search", "bookmarks.getRecent"])(
