@@ -28,13 +28,13 @@ export async function executeWebMcpOperation(
   })
   const modelContext = (): {
     getTools?: () => Promise<Record<string, unknown>[]>
-    executeTool?: (tool: Record<string, unknown>, args: JsonObject) => Promise<unknown>
+    executeTool?: (tool: Record<string, unknown>, args: string) => Promise<unknown>
   } | null => {
     const documentContext = (
       document as Document & {
         modelContext?: {
           getTools?: () => Promise<Record<string, unknown>[]>
-          executeTool?: (tool: Record<string, unknown>, args: JsonObject) => Promise<unknown>
+          executeTool?: (tool: Record<string, unknown>, args: string) => Promise<unknown>
         }
       }
     ).modelContext
@@ -44,7 +44,7 @@ export async function executeWebMcpOperation(
         navigator as Navigator & {
           modelContext?: {
             getTools?: () => Promise<Record<string, unknown>[]>
-            executeTool?: (tool: Record<string, unknown>, args: JsonObject) => Promise<unknown>
+            executeTool?: (tool: Record<string, unknown>, args: string) => Promise<unknown>
           }
         }
       ).modelContext ?? null
@@ -120,7 +120,8 @@ export async function executeWebMcpOperation(
         )
       }
     }
-    const result = await context.executeTool(tool, args as JsonObject)
+    // Chrome 153's native executeTool parses arguments as JSON text, not an object.
+    const result = await context.executeTool(tool, JSON.stringify(args))
     return success(jsonSafe(result))
   } catch (error) {
     return failure(

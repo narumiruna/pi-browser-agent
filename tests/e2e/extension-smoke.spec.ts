@@ -2,6 +2,58 @@ import { expect, test } from "@playwright/test"
 import { configureMockCodex, launchExtensionHarness } from "./support/extension-harness.js"
 import { CODEX_RESPONSES_URL, finalTextResponse, toolCallResponse } from "./support/mock-codex.js"
 
+test("discovers and calls a native WebMCP tool in Chrome's isolated extension world", async () => {
+  const harness = await launchExtensionHarness({ webMcp: true })
+  try {
+    await configureMockCodex(harness)
+    await expect
+      .poll(() =>
+        harness.fixturePage.evaluate(async () => {
+          const page = document as Document & {
+            modelContext?: { getTools: () => Promise<{ name: string }[]> }
+          }
+          return (await page.modelContext?.getTools())?.map((tool) => tool.name) ?? []
+        }),
+      )
+      .toContain("read_fixture_marker")
+
+    const state = (await harness.controller.evaluate(async () =>
+      chrome.runtime.sendMessage({
+        kind: "request",
+        requestId: crypto.randomUUID(),
+        method: "app.getState",
+        params: {},
+      }),
+    )) as { ok: boolean; result?: { tabContext?: { tabId: number; url: string; epoch: number } } }
+    expect(state).toMatchObject({ ok: true, result: { tabContext: { url: harness.fixtureUrl } } })
+    const tabContext = state.result?.tabContext
+    if (!tabContext) throw new Error("Missing bound fixture tab")
+
+    const request = (method: string, params: Record<string, unknown>) =>
+      harness.controller.evaluate(
+        async ({ method, params, tabContext }) =>
+          chrome.runtime.sendMessage({
+            kind: "request",
+            requestId: crypto.randomUUID(),
+            method,
+            params,
+            confirmed: true,
+            tabContext,
+          }),
+        { method, params, tabContext },
+      )
+    await expect(request("webmcp.listTools", {})).resolves.toMatchObject({
+      ok: true,
+      result: [{ name: "read_fixture_marker" }],
+    })
+    await expect(
+      request("webmcp.callTool", { name: "read_fixture_marker", arguments: {} }),
+    ).resolves.toMatchObject({ ok: true, result: expect.stringContaining("meadow-42") })
+  } finally {
+    await harness.close()
+  }
+})
+
 test("runs the production Side Panel from settings through a mocked browser-tool response", async () => {
   test.setTimeout(60_000)
   const testInfo = test.info()

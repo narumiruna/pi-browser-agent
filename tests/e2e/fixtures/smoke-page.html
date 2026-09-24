@@ -18,6 +18,14 @@
       document.querySelector("#complete").addEventListener("click", () => {
         document.querySelector("#result").textContent = "complete"
       })
+      if (document.modelContext) {
+        document.modelContext.registerTool({
+          name: "read_fixture_marker",
+          description: "Read the deterministic fixture marker",
+          inputSchema: { type: "object", properties: {}, additionalProperties: false },
+          execute: async () => document.querySelector("#marker").textContent,
+        })
+      }
     </script>
   </body>
 </html>
