@@ -19,6 +19,23 @@ describe("bounded page text", () => {
     expect(new TextEncoder().encode(wrapped).byteLength).toBeLessThanOrEqual(MAX_TEXT_RESULT_BYTES)
   })
 
+  test("reserves the truncation suffix when metadata is exactly at the budget", () => {
+    const budget = MAX_TEXT_RESULT_BYTES - 256
+    const metadata = { text: "", offset: 0, title: "", url, truncated: true, nextOffset: 0 }
+    const titleLength =
+      budget - new TextEncoder().encode(JSON.stringify(metadata, null, 2)).byteLength
+    const result = boundPageTextResult({
+      text: "Article content ".repeat(5_000),
+      offset: 0,
+      title: "t".repeat(titleLength),
+      url,
+    })
+    expect(result.text).toContain("Article content")
+    expect(result.truncated).toBe(true)
+    expect(result.nextOffset).toBeGreaterThan(0)
+    expect(result.title).toMatch(/\[truncated\]$/)
+  })
+
   test("keeps normal metadata intact when it already fits", () => {
     const longUrl = `${url}?q=${"a".repeat(5000)}`
     const result = boundPageTextResult({

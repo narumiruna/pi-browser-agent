@@ -4414,6 +4414,24 @@ test("reads a selected page section in bounded chunks without a full-page fallba
   await expect(
     request("page.getVisibleText", { selector: "#boxless-read" }, { tabContext }),
   ).resolves.toMatchObject({ text: "Rendered boxless article" })
+  await page.locator("#boxless-read").evaluate((element) => {
+    element.innerHTML =
+      'Shown<span hidden>Secret</span><span style="display:none">CSS secret</span><script>Script secret</script><span>More</span>'
+  })
+  const boxlessDom = await page.locator("#boxless-read").evaluate((element) => ({
+    innerText: (element as HTMLElement).innerText,
+    textContent: element.textContent,
+  }))
+  expect(boxlessDom.textContent).toContain("Secret")
+  expect(boxlessDom.innerText).not.toContain("Secret")
+  const boxlessText = await request(
+    "page.getVisibleText",
+    { selector: "#boxless-read" },
+    { tabContext },
+  )
+  expect(boxlessText.text).toContain("Shown")
+  expect(boxlessText.text).toContain("More")
+  expect(boxlessText.text).not.toContain("Secret")
   await expect(
     request("page.getVisibleText", { selector: "#hidden-boxless-read" }, { tabContext }),
   ).rejects.toMatchObject({ code: "INVALID_REQUEST" })
@@ -4426,7 +4444,7 @@ test("reads a selected page section in bounded chunks without a full-page fallba
     await expect(
       request("page.getVisibleText", { selector: "#boxless-read" }, { tabContext }),
     ).resolves.toMatchObject({
-      text: "Rendered boxless article",
+      text: expect.stringContaining("Shown"),
       title: expect.stringContaining("[truncated]"),
     })
   } finally {

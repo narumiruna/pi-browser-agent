@@ -15,7 +15,7 @@ export function boundPageTextResult(value: PageTextResult) {
     encoder.encode(JSON.stringify(result, null, 2)).byteLength <= budget
   // Page-controlled metadata must not prevent even a short page read.
   const metadata = { ...value }
-  if (!fits({ ...metadata, text: "", truncated: true, nextOffset: value.offset })) {
+  if (!fits({ ...metadata, text: TRUNCATION_SUFFIX, truncated: true, nextOffset: value.offset })) {
     metadata.title = truncateUtf8(value.title, 512).text
     metadata.url = truncateUtf8(value.url, 4096).text
   }
