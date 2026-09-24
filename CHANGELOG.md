@@ -1,5 +1,11 @@
 # pi-browser-agent
 
+## 0.5.0
+
+### Minor Changes
+
+- b1cc8a6: Allow the browser agent to read a page section by CSS selector and continue long reads with an offset, while keeping tool output within the existing size limit.
+
 ## 0.4.1
 
 ### Patch Changes
