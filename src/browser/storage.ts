@@ -1,4 +1,5 @@
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core"
+import { BROWSER_TOOL_OPTIONS } from "./agent/browser-tools.js"
 import { DEFAULT_MODEL_SELECTION } from "./defaults.js"
 import type { JsonObject, TabContext } from "./runtime/types.js"
 
@@ -30,6 +31,7 @@ export interface AppSettings {
   modelId: string
   thinkingLevel: ThinkingLevel
   confirmationMode: ConfirmationMode
+  enabledTools: string[]
 }
 
 export interface PendingSelection {
@@ -48,6 +50,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   modelId: DEFAULT_MODEL_SELECTION.id,
   thinkingLevel: "medium",
   confirmationMode: "balanced",
+  enabledTools: BROWSER_TOOL_OPTIONS.map((tool) => tool.name),
 }
 
 export function isThinkingLevel(value: unknown): value is ThinkingLevel {
@@ -73,6 +76,12 @@ function isFontSize(value: unknown): value is number {
 
 export async function restrictLocalStorageToTrustedContexts(): Promise<void> {
   await chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" })
+}
+
+function validEnabledTools(value: unknown): string[] {
+  if (!Array.isArray(value)) return [...DEFAULT_SETTINGS.enabledTools]
+  const selected = new Set(value)
+  return DEFAULT_SETTINGS.enabledTools.filter((name) => selected.has(name))
 }
 
 export async function getSettings(): Promise<AppSettings> {
@@ -103,6 +112,7 @@ export async function getSettings(): Promise<AppSettings> {
       : value === undefined
         ? DEFAULT_SETTINGS.confirmationMode
         : "strict",
+    enabledTools: validEnabledTools(value?.enabledTools),
   }
 }
 

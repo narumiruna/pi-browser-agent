@@ -1,4 +1,5 @@
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core"
+import { BROWSER_TOOL_OPTIONS } from "../agent/browser-tools.js"
 import { clearConfirmationApprovals } from "../agent/confirmation-policy.js"
 import { BrowserConfiguration } from "../configuration.js"
 import type { RuntimeEvent } from "../runtime/messages.js"
@@ -34,6 +35,23 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
   const modelCapabilities = element<HTMLElement>("model-capabilities")
   const thinkingLevelSelect = element<HTMLSelectElement>("thinking-level")
   const confirmationModeSelect = element<HTMLSelectElement>("confirmation-mode")
+  const toolsContainer = element<HTMLElement>("available-tools")
+  const toolCheckboxes = BROWSER_TOOL_OPTIONS.map((tool) => {
+    const label = document.createElement("label")
+    label.className = "tool-option"
+    const checkbox = document.createElement("input")
+    checkbox.type = "checkbox"
+    checkbox.value = tool.name
+    const text = document.createElement("span")
+    text.textContent = tool.label
+    const name = document.createElement("small")
+    name.textContent = tool.name
+    text.append(name)
+    label.append(checkbox, text)
+    label.title = tool.description
+    toolsContainer.append(label)
+    return checkbox
+  })
   const confirmationStatus = element<HTMLElement>("confirmation-approvals-status")
   const fontFamilySelect = element<HTMLSelectElement>("font-family")
   const fontSizeInput = element<HTMLInputElement>("font-size")
@@ -135,6 +153,8 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
         ? initialThinkingLevel
         : configuration.appSettings.thinkingLevel
     confirmationModeSelect.value = configuration.appSettings.confirmationMode
+    const enabledTools = new Set(configuration.appSettings.enabledTools)
+    for (const checkbox of toolCheckboxes) checkbox.checked = enabledTools.has(checkbox.value)
     fontFamilySelect.value = configuration.appSettings.fontFamily
     fontSizeInput.value = String(configuration.appSettings.fontSize)
     fontSizeOutput.value = `${configuration.appSettings.fontSize} px`
@@ -216,6 +236,9 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
       }
       await configuration.updateSettings({
         confirmationMode,
+        enabledTools: toolCheckboxes
+          .filter((checkbox) => checkbox.checked)
+          .map((checkbox) => checkbox.value),
         systemPrompt: systemPrompt.value,
         agentInstructions: agentInstructions.value,
         fontFamily,

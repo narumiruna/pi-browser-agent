@@ -287,6 +287,56 @@ describe("browser agent session persistence", () => {
     await runtime.shutdown()
   })
 
+  test("uses saved tool choices on the next run and after resuming a session", async () => {
+    const runtime = createRuntime(new FakeLockManager() as unknown as LockManager)
+    await runtime.initialize()
+    const settingsPage = new BrowserConfiguration(vi.fn())
+    await settingsPage.initialize()
+    await settingsPage.updateSettings({
+      ...settingsPage.appSettings,
+      enabledTools: ["browser_read_page"],
+    })
+    await runtime.syncSettings()
+    const prompt = vi.spyOn(runtime.agent, "prompt").mockResolvedValue()
+
+    await runtime.submit("Read the page")
+    expect(runtime.agent.state.tools.map((tool) => tool.name)).toEqual(["browser_read_page"])
+    const sessionId = runtime.activeSession.id
+    await runtime.newSession()
+    expect(runtime.agent.state.tools.map((tool) => tool.name)).toEqual(["browser_read_page"])
+    await runtime.resumeSession(sessionId)
+    expect(runtime.agent.state.tools.map((tool) => tool.name)).toEqual(["browser_read_page"])
+
+    await settingsPage.updateSettings({ ...settingsPage.appSettings, enabledTools: [] })
+    await runtime.syncSettings()
+    await runtime.submit("Answer without tools")
+    expect(runtime.agent.state.tools).toEqual([])
+    expect(prompt).toHaveBeenCalledTimes(2)
+    await runtime.shutdown()
+  })
+
+  test("does not change tools during a running turn after settings synchronization", async () => {
+    const runtime = createRuntime(new FakeLockManager() as unknown as LockManager)
+    await runtime.initialize()
+    const { started, finish } = controlledStream(runtime)
+    const submission = runtime.submit("Inspect")
+    await started
+    const availableDuringRun = runtime.agent.state.tools.map((tool) => tool.name)
+    const settingsPage = new BrowserConfiguration(vi.fn())
+    await settingsPage.initialize()
+    await settingsPage.updateSettings({ ...settingsPage.appSettings, enabledTools: [] })
+    await runtime.syncSettings()
+    expect(runtime.agent.state.tools.map((tool) => tool.name)).toEqual(availableDuringRun)
+    finish()
+    await submission
+
+    const prompt = vi.spyOn(runtime.agent, "prompt").mockResolvedValue()
+    await runtime.submit("Next")
+    expect(runtime.agent.state.tools).toEqual([])
+    expect(prompt).toHaveBeenCalledOnce()
+    await runtime.shutdown()
+  })
+
   test("applies an explicit thinking choice to the opener and future sessions, not other conversations", async () => {
     const locks = new FakeLockManager() as unknown as LockManager
     const opener = createRuntime(locks)
