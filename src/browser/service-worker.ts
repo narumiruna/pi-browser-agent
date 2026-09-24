@@ -16,14 +16,13 @@ import {
 import { ELEMENT_PICKER_LIMITS, parseSelectedElementContext } from "./runtime/element-context.js"
 import { parseRuntimeRequest, type RuntimeEvent, type RuntimeRequest } from "./runtime/messages.js"
 import { classifyPage, type PageCapability } from "./runtime/page-capability.js"
+import { boundPageTextResult, type PageTextResult } from "./runtime/page-text.js"
 import {
   ELEMENT_LIMITS,
   type ElementSnapshot,
   type JsonValue,
-  MAX_TEXT_RESULT_BYTES,
   RuntimeError,
   type TabContext,
-  TRUNCATION_SUFFIX,
   truncateUtf8,
 } from "./runtime/types.js"
 import {
@@ -529,46 +528,6 @@ function truncateStructuredResult(value: JsonValue): JsonValue {
   return truncated.truncated ? { text: truncated.text, truncated: true } : value
 }
 
-function boundPageTextResult(value: {
-  text: string
-  offset: number
-  [key: string]: JsonValue
-}): JsonValue {
-  const encoder = new TextEncoder()
-  // Leave room for the untrusted wrapper added to the pretty-printed JSON by the agent tool.
-  const budget = MAX_TEXT_RESULT_BYTES - 256
-  const candidate = (length: number) => {
-    let prefix = value.text.slice(0, length)
-    const last = prefix.charCodeAt(prefix.length - 1)
-    if (last >= 0xd800 && last <= 0xdbff) prefix = prefix.slice(0, -1)
-    const truncated = prefix.length < value.text.length
-    return {
-      ...value,
-      text: truncated ? `${prefix}${TRUNCATION_SUFFIX}` : prefix,
-      truncated,
-      ...(truncated ? { nextOffset: value.offset + prefix.length } : {}),
-    }
-  }
-  const full = candidate(value.text.length)
-  if (!full.truncated && encoder.encode(JSON.stringify(full, null, 2)).byteLength <= budget)
-    return full
-  let low = 0
-  let high = value.text.length - 1
-  while (low < high) {
-    const middle = Math.ceil((low + high) / 2)
-    if (encoder.encode(JSON.stringify(candidate(middle), null, 2)).byteLength <= budget)
-      low = middle
-    else high = middle - 1
-  }
-  const result = candidate(low)
-  if (
-    encoder.encode(JSON.stringify(result, null, 2)).byteLength > budget ||
-    (result.truncated && result.nextOffset === value.offset)
-  )
-    throw new RuntimeError("INTERNAL_ERROR", "Page metadata exceeds the text result limit")
-  return result
-}
-
 async function runWebMcp(
   operation: WebMcpOperation,
   request: RuntimeRequest<"webmcp.listTools" | "webmcp.callTool">,
@@ -888,7 +847,7 @@ async function dispatch(request: RuntimeRequest, signal: AbortSignal): Promise<J
         typeof value.text === "string" &&
         typeof value.offset === "number"
       ) {
-        result = boundPageTextResult(value as { text: string; offset: number })
+        result = boundPageTextResult(value as unknown as PageTextResult)
       } else result = value
       break
     }

@@ -4394,6 +4394,46 @@ test("reads a selected page section in bounded chunks without a full-page fallba
     }
     expect(assembled).toBe(pageText)
   }
+
+  await page.evaluate(() => {
+    const boxless = document.createElement("article")
+    boxless.id = "boxless-read"
+    boxless.style.display = "contents"
+    boxless.textContent = "Rendered boxless article"
+    document.body.append(boxless)
+
+    const hiddenParent = document.createElement("div")
+    hiddenParent.style.display = "none"
+    const hiddenChild = document.createElement("article")
+    hiddenChild.id = "hidden-boxless-read"
+    hiddenChild.style.display = "contents"
+    hiddenChild.textContent = "Hidden article"
+    hiddenParent.append(hiddenChild)
+    document.body.append(hiddenParent)
+  })
+  await expect(
+    request("page.getVisibleText", { selector: "#boxless-read" }, { tabContext }),
+  ).resolves.toMatchObject({ text: "Rendered boxless article" })
+  await expect(
+    request("page.getVisibleText", { selector: "#hidden-boxless-read" }, { tabContext }),
+  ).rejects.toMatchObject({ code: "INVALID_REQUEST" })
+
+  const originalTitle = await page.title()
+  try {
+    await page.evaluate(() => {
+      document.title = "t".repeat(80 * 1024)
+    })
+    await expect(
+      request("page.getVisibleText", { selector: "#boxless-read" }, { tabContext }),
+    ).resolves.toMatchObject({
+      text: "Rendered boxless article",
+      title: expect.stringContaining("[truncated]"),
+    })
+  } finally {
+    await page.evaluate((title) => {
+      document.title = title
+    }, originalTitle)
+  }
   for (const selector of ["[", "#missing-read", "#hidden-read"]) {
     await expect(
       request("page.getVisibleText", { selector }, { tabContext }),

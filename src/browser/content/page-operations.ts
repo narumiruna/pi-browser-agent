@@ -466,11 +466,17 @@ export async function executePageOperation(
               return failure("INVALID_REQUEST", "The page selector must match an HTML element")
             if (match.matches("input, textarea, select, option"))
               return failure("PERMISSION_DENIED", "Form field contents cannot be read")
-            if (
-              match.getClientRects().length === 0 ||
-              ["hidden", "collapse"].includes(getComputedStyle(match).visibility)
-            )
+            const style = getComputedStyle(match)
+            if (["hidden", "collapse"].includes(style.visibility))
               return failure("INVALID_REQUEST", "The selected page element is not rendered")
+            if (match.getClientRects().length === 0) {
+              if (style.display !== "contents")
+                return failure("INVALID_REQUEST", "The selected page element is not rendered")
+              const range = document.createRange()
+              range.selectNodeContents(match)
+              if (range.getClientRects().length === 0)
+                return failure("INVALID_REQUEST", "The selected page element is not rendered")
+            }
             root = match
           } catch (error) {
             if (error instanceof DOMException && error.name === "SyntaxError")
