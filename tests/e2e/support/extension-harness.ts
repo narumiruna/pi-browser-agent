@@ -74,7 +74,7 @@ function hostPermissionPattern(url: string): string {
 }
 
 export async function launchExtensionHarness(
-  options: { bookmarks?: boolean; screenshots?: boolean } = {},
+  options: { bookmarks?: boolean; screenshots?: boolean; webMcp?: boolean } = {},
 ): Promise<ExtensionHarness> {
   const fixtureServer = await startFixtureServer()
   const temporaryDirectory = await mkdtemp(join(tmpdir(), "pi-browser-agent-smoke-"))
@@ -119,6 +119,7 @@ export async function launchExtensionHarness(
       args: [
         `--disable-extensions-except=${extensionDirectory}`,
         `--load-extension=${extensionDirectory}`,
+        ...(options.webMcp ? ["--enable-features=WebMCP"] : []),
       ],
     })
     const pageErrors: string[] = []
@@ -152,6 +153,7 @@ export async function launchExtensionHarness(
           args: [
             `--disable-extensions-except=${extensionDirectory}`,
             `--load-extension=${extensionDirectory}`,
+            ...(options.webMcp ? ["--enable-features=WebMCP"] : []),
           ],
         })
         trackPageErrors(context, pageErrors)

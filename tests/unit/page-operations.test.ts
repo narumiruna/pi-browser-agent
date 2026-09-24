@@ -375,7 +375,10 @@ describe("page operations", () => {
         true,
       ),
     ).resolves.toMatchObject({ ok: true })
-    expect(executeTool).toHaveBeenCalledOnce()
+    expect(executeTool).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "add-todo" }),
+      '{"text":"Ship extension"}',
+    )
   })
 
   test("rechecks the focused mutation target immediately before calling a WebMCP tool", async () => {
