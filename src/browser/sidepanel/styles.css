@@ -717,8 +717,46 @@ body[data-view="microphone"] {
 }
 
 .settings-content select,
-.settings-content input {
+.settings-content input:not([type="checkbox"]) {
   width: 100%;
+}
+
+.tool-options {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 4px 12px;
+}
+
+.settings-content .tool-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 6px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.tool-option:hover {
+  background: var(--surface-hover);
+}
+
+.tool-option input {
+  flex: 0 0 auto;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.tool-option small {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 400;
+  overflow-wrap: anywhere;
 }
 
 .searchable-select {

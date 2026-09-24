@@ -72,6 +72,9 @@ test("runs the production Side Panel from settings through a mocked browser-tool
     await harness.controller.locator("#open-settings").click()
     const settingsTab = await settingsTabPromise
     await expect(settingsTab).toHaveTitle("Settings · Pi Browser Agent")
+    const clickTool = settingsTab.locator('#available-tools input[value="browser_click"]')
+    await expect(clickTool).toBeChecked()
+    await clickTool.uncheck()
     await settingsTab.locator("#font-family").selectOption("monospace")
     await settingsTab.locator("#font-size").fill("18")
     await expect(settingsTab.locator("#font-size-value")).toHaveText("18 px")
@@ -126,6 +129,7 @@ test("runs the production Side Panel from settings through a mocked browser-tool
     await expect(harness.controller.locator("#error")).toBeEmpty()
     expect(requestBodies).toHaveLength(2)
     expect(JSON.stringify(requestBodies[0])).toContain("browser_read_page")
+    expect(JSON.stringify(requestBodies[0])).not.toContain("browser_click")
     expect(JSON.stringify(requestBodies[1])).toContain("meadow-42")
     await expect(harness.fixturePage.locator("#result")).toHaveText("idle")
 
@@ -145,6 +149,15 @@ test("runs the production Side Panel from settings through a mocked browser-tool
     await harness.controller.reload({ waitUntil: "domcontentloaded" })
     await expect(harness.controller.locator("#transcript")).toContainText(finalAnswer)
     await expect(harness.controller.locator("#sessions option")).toHaveCount(1)
+    const savedSettingsTab = await harness.context.newPage()
+    await savedSettingsTab.goto(`${harness.controller.url()}?view=settings`)
+    await expect(
+      savedSettingsTab.locator('#available-tools input[value="browser_click"]'),
+    ).not.toBeChecked()
+    await expect(
+      savedSettingsTab.locator('#available-tools input[value="browser_read_page"]'),
+    ).toBeChecked()
+    await savedSettingsTab.close()
     await expect
       .poll(() =>
         harness.controller.evaluate(() => ({

@@ -53,6 +53,7 @@ describe("browser storage", () => {
       modelId: "gpt-5.6-terra",
       thinkingLevel: "medium",
       confirmationMode: "strict",
+      enabledTools: DEFAULT_SETTINGS.enabledTools,
     })
 
     values.piBrowserAgentSettings = {
@@ -65,6 +66,18 @@ describe("browser storage", () => {
     await expect(getSettings()).resolves.toEqual({
       ...DEFAULT_SETTINGS,
       confirmationMode: "strict",
+    })
+
+    values.piBrowserAgentSettings = {
+      ...DEFAULT_SETTINGS,
+      enabledTools: ["browser_read_page", "browser_read_page", "unknown_tool", 42],
+    }
+    await expect(getSettings()).resolves.toMatchObject({ enabledTools: ["browser_read_page"] })
+    values.piBrowserAgentSettings = { ...DEFAULT_SETTINGS, enabledTools: [] }
+    await expect(getSettings()).resolves.toMatchObject({ enabledTools: [] })
+    values.piBrowserAgentSettings = { ...DEFAULT_SETTINGS, enabledTools: "browser_read_page" }
+    await expect(getSettings()).resolves.toMatchObject({
+      enabledTools: DEFAULT_SETTINGS.enabledTools,
     })
   })
 

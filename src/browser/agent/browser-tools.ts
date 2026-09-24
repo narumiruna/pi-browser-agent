@@ -522,3 +522,8 @@ export function createBrowserTools(
   ] satisfies AgentTool[]
   return tools
 }
+
+// Derive the settings catalog from the actual tool declarations so names cannot drift.
+export const BROWSER_TOOL_OPTIONS = createBrowserTools(async () => false).map(
+  ({ name, label, description }) => ({ name, label, description }),
+)
