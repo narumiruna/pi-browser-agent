@@ -44,7 +44,7 @@
     "@playwright/test": "^1.63.0",
     "@types/chrome": "^0.3.0",
     "@types/jsdom": "^30.0.0",
-    "@types/node": "^26.6.2",
+    "@types/node": "^26.6.3",
     "acorn": "^8.18.0",
     "esbuild": "^0.28.2",
     "extension": "^4.1.27",
