@@ -38,7 +38,7 @@ Use a production build from `npm run build`. Do not test login with development 
    - Restart the entire stable Chrome browser without clearing extension data. Balanced must ask again on the first matching request and then remember it for the new browser session. Convenient must not ask again for the same request; after **Clear remembered approvals** it must. Check that closing only the Side Panel or restarting the extension service worker does not clear Balanced. Revoke the Chrome bookmark/site permission and verify a cached match cannot silently regrant it. Record Chrome version, prompts, and results here before release. **Pending manual acceptance:** stable Chrome and browser-owned prompts have not yet been verified for this change.
 2. **Authentication method and API-key provider**
    - Select **Configure authentication** in Settings. Expected: **Sign in with an account** and **Sign in with an API key** appear before any provider choice.
-   - Choose **Sign in with an API key**. Expected: the searchable provider list includes **OpenAI** and excludes **OpenAI Codex**. Choose **Back**, then cancel; no credential or model changes.
+   - Choose **Sign in with an API key**. Expected: the searchable provider list includes **OpenAI** and excludes **OpenAI Codex (legacy)**. Choose **Back**, then cancel; no credential or model changes.
    - Repeat from **Add credential** in the Side Panel menu, choose the API-key method and a non-Codex provider, and enter a dedicated test API key.
    - Expected: secret prompts mask and clear input, status names the provider and API-key method without showing the key, and Chrome does not request provider endpoint access during static credential entry. The active and pending model selections remain unchanged.
    - Repeat setup, cancel at the secret prompt, and verify the existing key remains usable. Complete setup with a replacement test key and verify only that provider's credential changes.
@@ -46,10 +46,10 @@ Use a production build from `npm run build`. Do not test login with development 
    - Close and reopen the Side Panel, switch sessions, and create a new session. Expected: each existing session restores its own model and a new session uses the latest selection.
    - Remove the credential and retry. Expected: the request is blocked until that provider is configured again.
 3. **Device login**
-   - Select **Add credential** → **Sign in with an account**. Expected: only browser-safe account providers appear; the current build lists **OpenAI Codex**, not **OpenAI** or Node-only OAuth methods.
-   - Select **OpenAI Codex** and verify Chrome asks only for `auth.openai.com` and `chatgpt.com`. Deny once; expected: setup fails closed, any prior Codex credential remains unchanged, and no device request starts.
+   - Select **Add credential** → **Sign in with an account**. Expected: only browser-safe account providers appear; the current build lists **OpenAI Codex (legacy)**, not **OpenAI** or Node-only OAuth methods.
+   - Select **OpenAI Codex (legacy)** and verify Chrome asks only for `auth.openai.com` and `chatgpt.com`. Deny once; expected: setup fails closed, any prior Codex credential remains unchanged, and no device request starts.
    - Retry, approve access, open the displayed verification URL, enter the code, and finish login.
-   - Expected: the panel reports **OpenAI Codex configured with an account** without showing an access or refresh token.
+   - Expected: the panel reports **OpenAI Codex (legacy) configured with an account** without showing an access or refresh token.
 4. **Text SSE response**
    - Make a harmless HTTP(S) page visible and ask for a one-sentence summary without using a bind command.
    - Expected: the Side Panel shows the page automatically, text appears incrementally, and DevTools shows an HTTPS request to `chatgpt.com/backend-api`, with no browser WebSocket or loopback request.
@@ -82,7 +82,7 @@ Use a production build from `npm run build`. Do not test login with development 
    - Expected: one refresh request succeeds, the session continues, and no credential appears in logs or storage outside trusted local storage.
 10. **Permission revocation**
    - Revoke either OpenAI origin in Chrome extension settings, then send a prompt.
-   - Expected: the active run aborts, the panel changes to **OpenAI Codex not configured**, and the next request is blocked until login. No fallback host is contacted.
+   - Expected: the active run aborts, the panel changes to **OpenAI Codex (legacy) not configured**, and the next request is blocked until login. No fallback host is contacted.
 11. **Interruption and restart**
    - Start a response, close the Side Panel, reopen it, then restart Chrome.
    - Expected: the last complete transcript returns, the session is marked interrupted when applicable, and no click, type, navigation, or WebMCP call repeats automatically.

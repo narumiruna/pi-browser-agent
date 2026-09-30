@@ -2024,7 +2024,9 @@ test("stores API keys through the method-first account flow without changing mod
             .authSetupPermissionRequests,
       ),
     ).toBe(0)
-    await expect(controller.locator("#auth-status")).toHaveText("OpenAI Codex not configured")
+    await expect(controller.locator("#auth-status")).toHaveText(
+      "OpenAI Codex (legacy) not configured",
+    )
     await expect(controller.locator("body")).not.toContainText("replacement-anthropic-test-key")
   } finally {
     await controller.evaluate(() => {
@@ -2079,7 +2081,9 @@ test("synchronizes provider controls when a new session restores the latest mode
   await controller.locator("#session-trigger").click()
   await controller.locator(`.session-option[data-value="${initialSessionId}"]`).click()
   await expect(sessionSelect).toHaveValue(initialSessionId)
-  await expect(controller.locator("#auth-status")).toHaveText("OpenAI Codex not configured")
+  await expect(controller.locator("#auth-status")).toHaveText(
+    "OpenAI Codex (legacy) not configured",
+  )
   const restoredSessionSettingsTab = await openSettingsTab()
   await expect(restoredSessionSettingsTab.locator("#provider")).toHaveValue("openai-codex")
   await expect(restoredSessionSettingsTab.locator("#model")).toHaveValue("gpt-5.6-terra")
@@ -2441,7 +2445,7 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
   }, credential)
   await controller.reload()
   await expect(controller.locator("#auth-status")).toHaveText(
-    "OpenAI Codex configured with an account",
+    "OpenAI Codex (legacy) configured with an account",
   )
 
   await controller.locator("#account-menu-trigger").click()
@@ -2498,7 +2502,9 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
 
   await settingsTab.evaluate(async () => chrome.storage.local.remove("piBrowserAgentCredentialsV1"))
   await expect(configureProvider).toHaveText("Configure authentication")
-  await expect(controller.locator("#auth-status")).toHaveText("OpenAI Codex not configured")
+  await expect(controller.locator("#auth-status")).toHaveText(
+    "OpenAI Codex (legacy) not configured",
+  )
   await controller.evaluate(() => {
     const state = window as typeof window & {
       authStatusGate?: { release: () => void }
@@ -2506,7 +2512,9 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
     state.authStatusGate?.release()
   })
   await controller.waitForTimeout(50)
-  await expect(controller.locator("#auth-status")).toHaveText("OpenAI Codex not configured")
+  await expect(controller.locator("#auth-status")).toHaveText(
+    "OpenAI Codex (legacy) not configured",
+  )
   expect(
     await controller.evaluate(() =>
       (
@@ -2527,7 +2535,7 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
   }, credential)
   await expect(configureProvider).toHaveText("Configure authentication")
   await expect(controller.locator("#auth-status")).toHaveText(
-    "OpenAI Codex configured with an account",
+    "OpenAI Codex (legacy) configured with an account",
   )
 
   const settingsTabClosed = settingsTab.waitForEvent("close")
@@ -2685,7 +2693,7 @@ async function prepareFeatureSession(modelId = "gpt-5.6-terra"): Promise<void> {
   }, modelId)
   await controller.reload()
   await expect(controller.locator("#auth-status")).toHaveText(
-    "OpenAI Codex configured with an account",
+    "OpenAI Codex (legacy) configured with an account",
   )
   await controller.locator("#new-session").click()
   await page.bringToFront()
@@ -3368,7 +3376,7 @@ test("selects page elements without activating them and sends bounded structured
   await controller.reload()
   await expect(pickerHost).toHaveCount(0)
   await expect(controller.locator("#auth-status")).toHaveText(
-    "OpenAI Codex configured with an account",
+    "OpenAI Codex (legacy) configured with an account",
   )
 
   await startPicker()

@@ -41,7 +41,7 @@ Load the production artifact:
 
 Voice input uses Chrome's Web Speech service in the browser language. Spoken audio may be processed by the browser's speech provider; only the resulting editable transcript is submitted to Pi when you select **Send**. The model transport is always SSE. Closing the Side Panel aborts the active run and marks the session interrupted; reopening never automatically repeats a browser mutation.
 
-Pi Browser Agent registers 39 built-in `pi-ai` chat providers and their tool-capable model catalogs. Credential setup first selects an authentication method and then shows only providers that support that method in Chrome. API-key authentication is available for browser-compatible providers; OpenAI Codex is currently the only account-login choice and uses the browser device flow. Adding a credential does not change the selected model. Radius models load after configuration. Amazon Bedrock is excluded because its `pi-ai` adapter intentionally loads a Node-only AWS SDK module. Other provider OAuth implementations are Node-only, so Pi Browser Agent exposes only their API-key path. Image-generation providers are separate from chat agents and are not exposed.
+Pi Browser Agent registers the browser-compatible built-in `pi-ai` providers and their tool-capable chat model catalogs. Credential setup first selects an authentication method and then shows only providers that support that method in Chrome. API-key authentication is available for browser-compatible providers; OpenAI Codex is currently the only account-login choice and uses the browser device flow. Adding a credential does not change the selected model. Radius models load after configuration. Amazon Bedrock is excluded because its `pi-ai` adapter intentionally loads a Node-only AWS SDK module. Other provider OAuth implementations are Node-only, so Pi Browser Agent exposes only their API-key path. Image-generation providers are separate from chat agents and are not exposed.
 
 ## Browser safety
 
@@ -105,7 +105,7 @@ Pushes to `main` create or update the **chore(release): version packages** pull 
 ## Troubleshooting
 
 - **Provider host access was declined or revoked:** send again and approve the selected endpoint, or reconfigure the provider if its endpoint changed.
-- **OpenAI Codex host access was revoked:** select **Add credential** → **Sign in with an account** → **OpenAI Codex**, then approve both requested OpenAI origins.
+- **OpenAI Codex host access was revoked:** select **Add credential** → **Sign in with an account** → **OpenAI Codex (legacy)**, then approve both requested OpenAI origins.
 - **A page tool is denied:** ask the agent to use an accessible HTTP(S) tab or open a website, then approve its confirmation. If access was previously declined, use **Account and site access → Allow current site**. Protected pages, local files, and PDF viewers cannot be controlled. Ordinary questions can still be sent without a page.
 - **A screenshot is denied:** request it again, confirm Pi Browser Agent's explanation, and approve Chrome's optional all-sites prompt. If the grant was revoked, Chrome asks again; ordinary per-site access is not enough for `captureVisibleTab()`.
 - **An annotation will not attach:** choose an image-capable model, add at least one stroke, and remove composer images if the four-image or 3 MB total limit is reached. Editing itself requests no permission and sends nothing until **Send**.

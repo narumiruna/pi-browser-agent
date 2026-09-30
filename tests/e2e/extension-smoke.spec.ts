@@ -64,7 +64,7 @@ test("runs the production Side Panel from settings through a mocked browser-tool
   try {
     await configureMockCodex(harness)
     await expect(harness.controller.locator("#auth-status")).toHaveText(
-      "OpenAI Codex configured with an account",
+      "OpenAI Codex (legacy) configured with an account",
     )
 
     await harness.controller.locator("#account-menu-trigger").click()
