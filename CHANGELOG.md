@@ -1,5 +1,15 @@
 # pi-browser-agent
 
+## 0.5.0
+
+### Minor Changes
+
+- b1cc8a6: Allow the browser agent to read a page section by CSS selector and continue long reads with an offset, while keeping tool output within the existing size limit.
+
+### Patch Changes
+
+- 4aec0a9: Upgrade the Pi SDK to 0.99.1 and refresh development dependencies. Keep authentication tests and UI documentation aligned with the SDK's OpenAI Codex (legacy) label.
+
 ## 0.4.1
 
 ### Patch Changes
