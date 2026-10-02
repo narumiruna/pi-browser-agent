@@ -1,5 +1,11 @@
 # pi-browser-agent
 
+## 0.5.1
+
+### Patch Changes
+
+- 6aca1d6: Upgrade the Pi SDK to 1.0.0 and refresh development dependencies.
+
 ## 0.5.0
 
 ### Minor Changes
