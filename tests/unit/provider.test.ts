@@ -37,6 +37,7 @@ describe("browser pi-ai providers", () => {
     expect(ids).not.toContain(BROWSER_EXCLUDED_PROVIDERS[0])
     const codex = providers.find((candidate) => candidate.id === "openai-codex")
     const openai = providers.find((candidate) => candidate.id === "openai")
+    expect(codex?.name).toBe("OpenAI Codex (legacy)")
     expect(codex?.auth.oauth).toBeDefined()
     expect(codex?.auth.apiKey).toBeUndefined()
     expect(openai?.auth.apiKey?.login).toBeDefined()
