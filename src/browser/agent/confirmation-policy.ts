@@ -45,6 +45,12 @@ function storage(mode: ConfirmationMode): chrome.storage.StorageArea {
   return mode === "balanced" ? chrome.storage.session : chrome.storage.local
 }
 
+async function hasScopePermission(scope: ApprovalScope): Promise<boolean> {
+  if (scope.bookmarkPermission) return hasBookmarkPermission().catch(() => false)
+  if (scope.permissionUrl) return hasHostPermission(scope.permissionUrl).catch(() => false)
+  return true
+}
+
 export function stableJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`
   if (value !== null && typeof value === "object") {
@@ -76,12 +82,7 @@ export class ConfirmationPolicy {
     if (!key) return this.show(message, details, signal)
     const area = storage(mode)
     // Cached consent never substitutes for a revoked Chrome or app-level permission.
-    const access = scope.bookmarkPermission
-      ? await hasBookmarkPermission().catch(() => false)
-      : scope.permissionUrl
-        ? await hasHostPermission(scope.permissionUrl).catch(() => false)
-        : true
-    if (access) {
+    if (await hasScopePermission(scope)) {
       try {
         const stored = await area.get(KEY)
         if (readKeys(stored[KEY]).includes(key) && this.mode() === mode) {
@@ -100,12 +101,7 @@ export class ConfirmationPolicy {
     if (this.mode() !== mode) return true
     // The confirmation button may have requested optional access; do not remember an
     // approval if Chrome denied it or the site grant was revoked while the dialog was open.
-    const granted = scope.bookmarkPermission
-      ? await hasBookmarkPermission().catch(() => false)
-      : scope.permissionUrl
-        ? await hasHostPermission(scope.permissionUrl).catch(() => false)
-        : true
-    if (!granted) return true
+    if (!(await hasScopePermission(scope))) return true
     await withExclusiveStorageWrite(LOCK, async () => {
       const stored = await area.get(KEY)
       const keys = readKeys(stored[KEY]).filter((item) => item !== key)

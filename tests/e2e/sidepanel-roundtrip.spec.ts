@@ -10,6 +10,11 @@ import {
   test,
   type Worker,
 } from "@playwright/test"
+import {
+  CODEX_RESPONSES_URL as codexUrl,
+  finalTextResponse as finalText,
+  toolCallResponse as toolCall,
+} from "./support/mock-codex.js"
 
 function startFixture(): Promise<{ port: number; server: Server }> {
   const server = createServer((request, response) => {
@@ -59,48 +64,6 @@ let savedSessionId: string
 let controllerErrors: string[]
 let testBookmarkIds: string[]
 let tabContext: { tabId: number; url: string; epoch: number }
-
-function sseResponse(item: Record<string, unknown>, index: number): string {
-  const response = {
-    id: `response-${index}`,
-    status: "completed",
-    output: [item],
-    usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
-  }
-  return [
-    { type: "response.output_item.added", output_index: 0, item },
-    { type: "response.output_item.done", output_index: 0, item },
-    { type: "response.completed", response },
-  ]
-    .map((event) => `data: ${JSON.stringify(event)}\n\n`)
-    .join("")
-}
-
-function toolCall(index: number, name: string, args: Record<string, unknown>): string {
-  return sseResponse(
-    {
-      type: "function_call",
-      id: `fc_${index}`,
-      call_id: `call_${index}`,
-      name,
-      arguments: JSON.stringify(args),
-    },
-    index,
-  )
-}
-
-function finalText(index: number, text: string): string {
-  return sseResponse(
-    {
-      type: "message",
-      id: `message_${index}`,
-      role: "assistant",
-      phase: "final_answer",
-      content: [{ type: "output_text", text, annotations: [] }],
-    },
-    index,
-  )
-}
 
 async function request(
   method: string,
@@ -2542,7 +2505,6 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
   await settingsTab.locator("#cancel-settings").click()
   await settingsTabClosed
 
-  const codexUrl = "https://chatgpt.com/backend-api/codex/responses"
   let markFirstRequestStarted: () => void = () => undefined
   let releaseFirstResponse: () => void = () => undefined
   const firstRequestStarted = new Promise<void>((resolve) => {
@@ -2702,7 +2664,6 @@ async function prepareFeatureSession(modelId = "gpt-5.6-terra"): Promise<void> {
 
 test("streams a response with the upgraded GPT-6 Sol model", async () => {
   await prepareFeatureSession("gpt-6-sol")
-  const codexUrl = "https://chatgpt.com/backend-api/codex/responses"
   await context.route(codexUrl, async (route) => {
     const body = route.request().postDataJSON() as { model?: string }
     expect(body.model).toBe("gpt-6-sol")
@@ -2728,7 +2689,6 @@ test("annotates a captured screenshot locally and submits the rendered image", a
   await page.goto(`http://127.0.0.1:${fixture.port}/`)
   await page.bringToFront()
   tabContext = await waitForCurrentTab(page.url())
-  const codexUrl = "https://chatgpt.com/backend-api/codex/responses"
   let turn = 0
   await context.route(codexUrl, async (route) => {
     const body =
@@ -3524,7 +3484,6 @@ test("selects page elements without activating them and sends bounded structured
     controller.locator(".selected-element-chip").filter({ hasText: "button#picker-dynamic" }),
   ).toBeVisible()
 
-  const codexUrl = "https://chatgpt.com/backend-api/codex/responses"
   let providerBody = ""
   await context.route(codexUrl, async (route) => {
     providerBody = JSON.stringify(route.request().postDataJSON())
@@ -3639,7 +3598,6 @@ test("selects page elements without activating them and sends bounded structured
 
 test("feeds actual discovered references back through mocked model tools and confirmations", async () => {
   await prepareFeatureSession()
-  const url = "https://chatgpt.com/backend-api/codex/responses"
   let turn = 0
   let snapshot: { snapshotId: string; elements: Array<{ name: string; ref: string }> } | undefined
   function findSnapshot(value: unknown): typeof snapshot {
@@ -3657,7 +3615,7 @@ test("feeds actual discovered references back through mocked model tools and con
     if (!snapshot || !element) throw new Error(`Missing discovered ${name}`)
     return { snapshotId: snapshot.snapshotId, ref: element.ref }
   }
-  await context.route(url, async (route) => {
+  await context.route(codexUrl, async (route) => {
     const input = route.request().postDataJSON()
     snapshot ??= findSnapshot(input)
     const index = turn++
@@ -3689,7 +3647,7 @@ test("feeds actual discovered references back through mocked model tools and con
     await expect(page.locator("#result")).toHaveText("submitted")
     expect(turn).toBe(6)
   } finally {
-    await context.unroute(url)
+    await context.unroute(codexUrl)
   }
 })
 
@@ -4110,7 +4068,6 @@ test("preserves streamed Markdown disclosures, focus, scroll, copying and safe r
 
 test("confirms and returns bounded bookmark data through a mocked model call", async () => {
   await prepareFeatureSession()
-  const codexUrl = "https://chatgpt.com/backend-api/codex/responses"
   const responses = [
     toolCall(20, "browser_search_bookmarks", {
       query: "pibrowseragentbookmarkneedle",
@@ -4173,7 +4130,6 @@ test("confirms and returns bounded bookmark data through a mocked model call", a
 
 test("shows permission denial inside the open confirmation dialog", async () => {
   await prepareFeatureSession()
-  const codexUrl = "https://chatgpt.com/backend-api/codex/responses"
   const responses = [
     toolCall(22, "browser_navigate", { url: "https://denied.example.test/" }),
     finalText(23, "Denied navigation handled."),
@@ -4226,7 +4182,6 @@ test("shows permission denial inside the open confirmation dialog", async () => 
 
 test("shows optional screenshot permission denial inside the confirmation dialog", async () => {
   await prepareFeatureSession()
-  const codexUrl = "https://chatgpt.com/backend-api/codex/responses"
   const responses = [
     toolCall(24, "browser_capture_visible", {}),
     finalText(25, "Denied screenshot handled."),

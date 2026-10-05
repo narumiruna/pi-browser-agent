@@ -375,22 +375,21 @@ export class TranscriptRenderer {
       const signature = JSON.stringify(message)
       if (view.signature !== signature) {
         view.content.replaceChildren()
-        const renderTarget =
+        const rendered =
           message.role === "toolResult" && !expandableToolResult
-            ? document.createElement("div")
-            : view.content
-        const rendered = renderMessageContent(renderTarget, message, this.images, view.state, {
-          ...this.options,
-          developerDetails: this.developerDetails,
-        })
+            ? undefined
+            : renderMessageContent(view.content, message, this.images, view.state, {
+                ...this.options,
+                developerDetails: this.developerDetails,
+              })
         const heading = view.node.firstElementChild as HTMLElement
         if (message.role === "toolResult") {
           heading.textContent = activityText(message.toolName, "complete", message.isError)
           if (!view.initialized && expandableToolResult) {
             const details = view.node as HTMLDetailsElement
-            details.open = message.isError || rendered.hasImage
+            details.open = message.isError || rendered?.hasImage === true
           }
-        } else {
+        } else if (rendered) {
           heading.textContent = message.role === "assistant" ? "Pi" : rendered.roleLabel
         }
         view.signature = signature

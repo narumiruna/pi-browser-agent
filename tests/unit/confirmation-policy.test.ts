@@ -35,6 +35,9 @@ function stubChrome() {
     revoke: () => {
       permission = false
     },
+    grant: () => {
+      permission = true
+    },
   }
 }
 
@@ -125,6 +128,99 @@ describe("confirmation policy", () => {
     revoke()
     expect(await policy.confirm("Call?", {}, undefined, protectedScope)).toBe(false)
     expect(show).toHaveBeenCalledTimes(2)
+  })
+
+  const permissionScopes = [
+    { ...scope, permissionUrl: "https://example.test/" },
+    { ...scope, bookmarkPermission: true },
+  ]
+
+  test.each(permissionScopes)(
+    "remembers access granted during confirmation for %j",
+    async (protectedScope) => {
+      const { local, session, revoke, grant } = stubChrome()
+      local.piBrowserAgentApprovedHostPermissions = ["https://example.test/*"]
+      revoke()
+      const show = vi.fn(async () => {
+        grant()
+        return true
+      })
+      const policy = new ConfirmationPolicy(() => "balanced", show)
+
+      expect(await policy.confirm("Call?", {}, undefined, protectedScope)).toBe(true)
+      expect(session.piBrowserAgentConfirmationApprovalsV1).toMatchObject({
+        version: 1,
+        keys: [expect.any(String)],
+      })
+      expect(await policy.confirm("Call?", {}, undefined, protectedScope)).toBe(true)
+      expect(show).toHaveBeenCalledOnce()
+      expect(chrome.permissions.contains).toHaveBeenCalledTimes(3)
+    },
+  )
+
+  test.each(permissionScopes)(
+    "does not remember access revoked during confirmation for %j",
+    async (protectedScope) => {
+      const { local, session, revoke } = stubChrome()
+      local.piBrowserAgentApprovedHostPermissions = ["https://example.test/*"]
+      const show = vi.fn(async () => {
+        revoke()
+        return true
+      })
+      const policy = new ConfirmationPolicy(() => "balanced", show)
+
+      expect(await policy.confirm("Call?", {}, undefined, protectedScope)).toBe(true)
+      expect(session.piBrowserAgentConfirmationApprovalsV1).toBeUndefined()
+      expect(await policy.confirm("Call?", {}, undefined, protectedScope)).toBe(true)
+      expect(show).toHaveBeenCalledTimes(2)
+      expect(chrome.permissions.contains).toHaveBeenCalledTimes(4)
+    },
+  )
+
+  test.each(permissionScopes)(
+    "requires a fresh dialog when the cached permission check fails for %j",
+    async (protectedScope) => {
+      const { local } = stubChrome()
+      local.piBrowserAgentApprovedHostPermissions = ["https://example.test/*"]
+      const show = vi.fn().mockResolvedValueOnce(true).mockResolvedValueOnce(false)
+      const policy = new ConfirmationPolicy(() => "balanced", show)
+      await policy.confirm("Call?", {}, undefined, protectedScope)
+      vi.mocked(chrome.permissions.contains).mockRejectedValueOnce(new Error("Permission failure"))
+
+      expect(await policy.confirm("Call?", {}, undefined, protectedScope)).toBe(false)
+      expect(show).toHaveBeenCalledTimes(2)
+    },
+  )
+
+  test.each(permissionScopes)(
+    "does not remember an approval when its post-dialog permission check fails for %j",
+    async (protectedScope) => {
+      const { local, session } = stubChrome()
+      local.piBrowserAgentApprovedHostPermissions = ["https://example.test/*"]
+      vi.mocked(chrome.permissions.contains)
+        .mockImplementationOnce(async () => true)
+        .mockRejectedValueOnce(new Error("Permission failure"))
+      const show = vi.fn().mockResolvedValue(true)
+      const policy = new ConfirmationPolicy(() => "balanced", show)
+
+      expect(await policy.confirm("Call?", {}, undefined, protectedScope)).toBe(true)
+      expect(session.piBrowserAgentConfirmationApprovalsV1).toBeUndefined()
+      expect(show).toHaveBeenCalledOnce()
+    },
+  )
+
+  test("prefers bookmark permission when a scope also names a host", async () => {
+    stubChrome()
+    const show = vi.fn().mockResolvedValue(true)
+    const policy = new ConfirmationPolicy(() => "balanced", show)
+    await policy.confirm("Call?", {}, undefined, {
+      ...scope,
+      bookmarkPermission: true,
+      permissionUrl: "https://example.test/",
+    })
+    expect(chrome.permissions.contains).toHaveBeenCalledTimes(2)
+    for (const [request] of vi.mocked(chrome.permissions.contains).mock.calls)
+      expect(request).toEqual({ permissions: ["bookmarks"] })
   })
 
   test("mode changes stop reuse and erase cached grants when Settings clears them", async () => {
