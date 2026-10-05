@@ -335,6 +335,27 @@ async function assertCurrentMutationTarget(
   }
 }
 
+async function injectionFailure(
+  context: TabContext,
+  error: unknown,
+  fallbackMessage = "Chrome denied access to the current tab",
+): Promise<RuntimeError> {
+  const latest = await syncVisibleTab()
+  if (
+    !latest ||
+    latest.tabId !== context.tabId ||
+    latest.url !== context.url ||
+    latest.epoch !== context.epoch
+  ) {
+    throwStaleContext(context, latest)
+  }
+  markTabInaccessible(context)
+  return new RuntimeError(
+    "PERMISSION_DENIED",
+    error instanceof Error ? error.message : fallbackMessage,
+  )
+}
+
 function readDocumentContentType(): string {
   return document.contentType
 }
@@ -349,20 +370,7 @@ async function assertReadableDocument(context: TabContext): Promise<void> {
     })
     contentType = results[0]?.result
   } catch (error) {
-    const latest = await syncVisibleTab()
-    if (
-      !latest ||
-      latest.tabId !== context.tabId ||
-      latest.url !== context.url ||
-      latest.epoch !== context.epoch
-    ) {
-      throwStaleContext(context, latest)
-    }
-    markTabInaccessible(context)
-    throw new RuntimeError(
-      "PERMISSION_DENIED",
-      error instanceof Error ? error.message : "Chrome denied access to the current tab",
-    )
+    throw await injectionFailure(context, error)
   }
   const latest = await syncVisibleTab()
   if (
@@ -441,20 +449,7 @@ async function runPageOperation(
       ],
     })
   } catch (error) {
-    const latest = await syncVisibleTab()
-    if (
-      !latest ||
-      latest.tabId !== context.tabId ||
-      latest.url !== context.url ||
-      latest.epoch !== context.epoch
-    ) {
-      throwStaleContext(context, latest)
-    }
-    markTabInaccessible(context)
-    throw new RuntimeError(
-      "PERMISSION_DENIED",
-      error instanceof Error ? error.message : "Chrome denied access to the current tab",
-    )
+    throw await injectionFailure(context, error)
   }
   const outcome = results[0]?.result
   if (!outcome) throw new RuntimeError("INTERNAL_ERROR", "The page operation returned no result")
@@ -551,20 +546,7 @@ async function runWebMcp(
       args: [operation, request.params, request.confirmed ?? false, context],
     })
   } catch (error) {
-    const latest = await syncVisibleTab()
-    if (
-      !latest ||
-      latest.tabId !== context.tabId ||
-      latest.url !== context.url ||
-      latest.epoch !== context.epoch
-    ) {
-      throwStaleContext(context, latest)
-    }
-    markTabInaccessible(context)
-    throw new RuntimeError(
-      "PERMISSION_DENIED",
-      error instanceof Error ? error.message : "Chrome denied WebMCP access",
-    )
+    throw await injectionFailure(context, error, "Chrome denied WebMCP access")
   }
   const outcome = results[0]?.result
   if (!outcome) throw new RuntimeError("INTERNAL_ERROR", "WebMCP returned no result")
@@ -743,20 +725,7 @@ async function startElementPicker(
     } catch (error) {
       injectionFailed = true
       if (activeElementPicker?.token === token) activeElementPicker = undefined
-      const latest = await syncVisibleTab()
-      if (
-        !latest ||
-        latest.tabId !== context.tabId ||
-        latest.url !== context.url ||
-        latest.epoch !== context.epoch
-      ) {
-        throwStaleContext(context, latest)
-      }
-      markTabInaccessible(context)
-      throw new RuntimeError(
-        "PERMISSION_DENIED",
-        error instanceof Error ? error.message : "Chrome denied access to the current tab",
-      )
+      throw await injectionFailure(context, error)
     }
     const outcome = results[0]?.result
     if (!outcome?.ok || outcome.result.started !== true) {

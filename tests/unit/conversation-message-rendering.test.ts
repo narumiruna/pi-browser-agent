@@ -150,6 +150,77 @@ describe("conversation message rendering", () => {
     expect(developerTranscript.querySelector(".toolResult")?.localName).toBe("details")
   })
 
+  test.each(["error", "image"] as const)(
+    "preserves activity-only updates and transitions to an %s disclosure",
+    (kind) => {
+      const document = installDocument()
+      const transcript = document.createElement("div")
+      document.body.append(transcript)
+      Object.defineProperty(transcript, "scrollHeight", { value: 1000 })
+      Object.defineProperty(transcript, "clientHeight", { value: 200 })
+      const renderer = new TranscriptRenderer(transcript)
+      const createElement = vi.spyOn(document, "createElement")
+      const result: AgentMessage = {
+        role: "toolResult",
+        toolCallId: "call",
+        toolName: "browser_read_page",
+        timestamp: 2,
+        isError: false,
+        content: [{ type: "text", text: "Private page payload" }],
+      }
+      renderer.render([result], "one")
+      const article = transcript.querySelector("article.toolResult")
+      const turn = transcript.querySelector(".assistant-turn")
+      expect(article?.querySelector(".content")?.childNodes).toHaveLength(0)
+
+      transcript.scrollTop = 100
+      renderer.render(
+        [{ ...result, content: [{ type: "text", text: "Updated private payload" }] }],
+        "one",
+      )
+      expect(transcript.querySelector("article.toolResult")).toBe(article)
+      expect(transcript.querySelector(".assistant-turn")).toBe(turn)
+      expect(transcript.textContent).toContain("Read the page")
+      expect(transcript.textContent).not.toContain("private payload")
+      expect(transcript.scrollTop).toBe(100)
+      expect(
+        createElement.mock.results.map(({ value }) => (value as HTMLElement).className),
+      ).not.toContain("content-text")
+      createElement.mockRestore()
+
+      const expanded: AgentMessage = {
+        ...result,
+        isError: kind === "error",
+        content:
+          kind === "error"
+            ? [{ type: "text", text: "Could not read payload" }]
+            : [{ type: "image", data: "cG5n", mimeType: "image/png" }],
+      }
+      renderer.render([expanded], "one")
+      const details = transcript.querySelector<HTMLDetailsElement>("details.toolResult")
+      expect(details).not.toBeNull()
+      expect(details?.open).toBe(true)
+      expect(article?.isConnected).toBe(false)
+      expect(transcript.querySelector(".assistant-turn")).toBe(turn)
+      expect(transcript.scrollTop).toBe(100)
+      if (kind === "error") expect(details?.textContent).toContain("Could not read payload")
+      else
+        expect(details?.querySelector("img")?.getAttribute("src")).toBe(
+          "data:image/png;base64,cG5n",
+        )
+
+      if (details) details.open = false
+      renderer.render([structuredClone(expanded)], "one")
+      expect(transcript.querySelector("details.toolResult")).toBe(details)
+      expect(details?.open).toBe(false)
+      renderer.render([result], "one")
+      expect(transcript.querySelector("details.toolResult")).toBeNull()
+      expect(transcript.querySelector("article.toolResult")).not.toBe(article)
+      expect(transcript.textContent).not.toContain("Private page payload")
+      expect(transcript.scrollTop).toBe(100)
+    },
+  )
+
   test("renders copy controls with distinct scope, placement, labels, and live status", () => {
     const document = installDocument()
     const transcript = document.createElement("div")

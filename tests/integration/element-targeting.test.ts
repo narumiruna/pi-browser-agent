@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, type Mock, test, vi } from "vitest"
 import {
   ELEMENT_PICKER_LIMITS,
   type SelectedElementContext,
@@ -13,6 +13,12 @@ type Listener = (
   respond: (value: RuntimeResponse) => void,
 ) => boolean
 let listener: Listener
+let executeScript: Mock<
+  (injection: {
+    func: (...args: unknown[]) => unknown
+    args?: unknown[]
+  }) => Promise<Array<{ result: unknown }>>
+>
 let updated: (id: number, change: object) => void
 let activated: () => void
 let focusChanged: (windowId: number) => void
@@ -121,6 +127,18 @@ beforeEach(async () => {
     return range
   })
   const noopEvent = { addListener: vi.fn() }
+  executeScript = vi.fn(async ({ func, args }) => {
+    if (func.name === "readDocumentContentType") return [{ result: document.contentType }]
+    injectionCount++
+    const hook = beforeInjection
+    beforeInjection = undefined
+    await hook?.()
+    const result = await func(...(args ?? []))
+    const after = afterInjection
+    afterInjection = undefined
+    await after?.()
+    return [{ result }]
+  })
   vi.stubGlobal("chrome", {
     storage: {
       local: {
@@ -191,22 +209,7 @@ beforeEach(async () => {
       },
     },
     contextMenus: { onClicked: noopEvent },
-    scripting: {
-      executeScript: vi.fn(
-        async ({ func, args }: { func: (...args: unknown[]) => unknown; args?: unknown[] }) => {
-          if (func.name === "readDocumentContentType") return [{ result: document.contentType }]
-          injectionCount++
-          const hook = beforeInjection
-          beforeInjection = undefined
-          await hook?.()
-          const result = await func(...(args ?? []))
-          const after = afterInjection
-          afterInjection = undefined
-          await after?.()
-          return [{ result }]
-        },
-      ),
-    },
+    scripting: { executeScript },
   })
   await import("../../src/browser/service-worker.js")
   await state()
@@ -215,6 +218,114 @@ afterEach(() => {
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
   vi.resetModules()
+})
+
+describe("worker injection failures", () => {
+  const paths = [
+    ["document probe", "page.getVisibleText", {}],
+    ["DOM operation", "page.getVisibleText", {}],
+    ["WebMCP", "webmcp.listTools", {}],
+    ["picker", "elementPicker.start", { clientId: "11111111-1111-4111-8111-111111111111" }],
+  ] as const
+
+  for (const error of [new Error("Chrome denied injection"), undefined]) {
+    test.each(paths)(
+      `marks the unchanged tab inaccessible after %s failure (${error ? "Error" : "no Error"})`,
+      async (path, method, params) => {
+        if (path !== "document probe")
+          executeScript.mockResolvedValueOnce([{ result: "text/html" }])
+        executeScript.mockRejectedValueOnce(error)
+
+        expect(await send(method, params, { confirmed: true })).toEqual({
+          ok: false,
+          error: {
+            code: "PERMISSION_DENIED",
+            message:
+              error?.message ??
+              (path === "WebMCP"
+                ? "Chrome denied WebMCP access"
+                : "Chrome denied access to the current tab"),
+          },
+        })
+        expect(await send("app.getState", {}, { tabContext: undefined })).toMatchObject({
+          ok: true,
+          result: { page: { kind: "restricted" }, tabContext: null },
+        })
+        expect(executeScript).toHaveBeenCalledTimes(path === "document probe" ? 1 : 2)
+        expect(emittedEvents.some((event) => event.name === "elementPicker.started")).toBe(false)
+
+        updated(tab.id, { status: "loading" })
+        await vi.waitFor(async () => {
+          expect(await send("app.getState", {}, { tabContext: undefined })).toMatchObject({
+            ok: true,
+            result: { page: { kind: "web" }, tabContext: { tabId: tab.id, url: tab.url } },
+          })
+        })
+        if (path === "picker") {
+          const token = executeScript.mock.calls[1]?.[0].args?.[1]
+          expect(token).toBeTypeOf("string")
+          const response = await new Promise<RuntimeResponse>((resolve) =>
+            listener(
+              {
+                kind: "element-picker-result",
+                token,
+                status: "cancelled",
+                tabContext: context,
+              },
+              { id: "extension", tab, frameId: 0 } as chrome.runtime.MessageSender,
+              resolve,
+            ),
+          )
+          expect(response).toMatchObject({ ok: false, error: { code: "PERMISSION_DENIED" } })
+        }
+      },
+    )
+  }
+
+  for (const change of ["tab", "URL", "epoch", "unsupported page"] as const) {
+    test.each(paths)(
+      `rejects a stale %s failure after a ${change} change without marking the new context inaccessible`,
+      async (path, method, params) => {
+        const expected = { ...context }
+        if (path !== "document probe")
+          executeScript.mockResolvedValueOnce([{ result: "text/html" }])
+        executeScript.mockImplementationOnce(async () => {
+          if (change === "tab") tab = { ...tab, id: tab.id + 1 }
+          else if (change === "URL") tab = { ...tab, url: `${tab.url}next` }
+          else if (change === "unsupported page") tab = { ...tab, url: "chrome://settings/" }
+          else focusChanged(-1)
+          const current = await send("app.getState", {}, { tabContext: undefined })
+          expect(current).toMatchObject({ ok: true })
+          throw new Error("Chrome denied injection")
+        })
+
+        const response = await send(method, params, { confirmed: true })
+        const current = await send("app.getState", {}, { tabContext: undefined })
+        if (!current.ok) throw new Error(current.error.message)
+        const actual = (current.result as { tabContext: TabContext | null }).tabContext
+        expect(response).toEqual({
+          ok: false,
+          error: {
+            code: "STALE_CONTEXT",
+            message: "The visible tab changed or navigated while the browser operation was running",
+            details: { expected, ...(actual ? { actual } : {}) },
+          },
+        })
+        expect(current).toMatchObject({
+          result:
+            change === "unsupported page"
+              ? { page: { kind: "restricted" }, tabContext: null }
+              : { page: { kind: "web" }, tabContext: { tabId: tab.id, url: tab.url } },
+        })
+        if (change === "epoch") expect(actual?.epoch).toBeGreaterThan(expected.epoch)
+        expect(executeScript).toHaveBeenCalledTimes(
+          path === "document probe" ? 1 : path === "picker" ? 3 : 2,
+        )
+        if (path === "picker")
+          expect(executeScript.mock.calls.at(-1)?.[0].func.name).toBe("stopElementPickerInjection")
+      },
+    )
+  }
 })
 
 describe("worker element reference lifecycle", () => {
