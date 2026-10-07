@@ -1,5 +1,12 @@
 # pi-browser-agent
 
+## 0.5.2
+
+### Patch Changes
+
+- 4848afc: Update the pi SDK and adapt browser Azure configuration to the renamed provider. Migrate saved Azure credentials, model settings, and session selections so existing users retain authentication and can restore conversations after upgrading.
+- dcfa381: Simplify browser injection failure handling, confirmation permission checks, and activity-only transcript rendering without changing authorization or visible behavior. Reuse the shared Codex response fixtures and expand regression coverage.
+
 ## 0.5.1
 
 ### Patch Changes
