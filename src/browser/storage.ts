@@ -87,6 +87,10 @@ function validEnabledTools(value: unknown): string[] {
 export async function getSettings(): Promise<AppSettings> {
   const stored = await chrome.storage.local.get(SETTINGS_KEY)
   const value = stored[SETTINGS_KEY] as Partial<AppSettings> | undefined
+  if (value?.modelProvider === "azure-openai-responses") {
+    value.modelProvider = "azure"
+    await chrome.storage.local.set({ [SETTINGS_KEY]: value })
+  }
   return {
     systemPrompt:
       typeof value?.systemPrompt === "string" ? value.systemPrompt : DEFAULT_SETTINGS.systemPrompt,

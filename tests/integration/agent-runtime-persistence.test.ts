@@ -142,6 +142,61 @@ afterEach(() => {
 })
 
 describe("browser agent session persistence", () => {
+  test("migrates legacy Azure credentials, settings, and active and inactive sessions", async () => {
+    const locks = new FakeLockManager() as unknown as LockManager
+    const runtime = createRuntime(locks)
+    const azureModel = runtime.configuration.models
+      .getModels("azure")
+      .find((model) => model.api === "azure-openai-responses")
+    if (!azureModel) throw new Error("Missing Azure responses model")
+    const credential = {
+      type: "api_key",
+      key: "azure-secret",
+      env: { AZURE_OPENAI_BASE_URL: "https://demo.openai.azure.com/openai/v1" },
+    }
+    await chrome.storage.local.set({
+      piBrowserAgentCredentialsV1: { "azure-openai-responses": credential },
+      piBrowserAgentSettings: { modelProvider: "azure-openai-responses", modelId: azureModel.id },
+    })
+    const active = createSession(azureModel.id, "azure-openai-responses", "high")
+    active.messages = [{ role: "user", content: "Preserve this conversation", timestamp: 1 }]
+    const inactive = createSession(azureModel.id, "azure-openai-responses")
+    await runtime.sessions.put(active)
+    await runtime.sessions.put(inactive)
+    await chrome.storage.local.set({ piBrowserAgentActiveSessionId: active.id })
+
+    await runtime.initialize()
+    expect(runtime.model.provider).toBe("azure")
+    expect(runtime.activeSession).toMatchObject({
+      id: active.id,
+      model: { provider: "azure", id: azureModel.id, thinkingLevel: "high" },
+    })
+    expect(runtime.activeSession.messages).toEqual(expect.arrayContaining(active.messages))
+    await expect(runtime.configuration.credentials.read("azure")).resolves.toEqual(credential)
+    await expect(runtime.configuration.authStatus("azure")).resolves.toEqual({
+      loggedIn: true,
+      type: "api_key",
+    })
+    await expect(
+      runtime.configuration.requiredModelEndpointUrls(() => runtime.model),
+    ).resolves.toEqual(["https://demo.openai.azure.com/openai/v1"])
+    await expect(chrome.storage.local.get("piBrowserAgentSettings")).resolves.toMatchObject({
+      piBrowserAgentSettings: { modelProvider: "azure", modelId: azureModel.id },
+    })
+    await runtime.shutdown()
+
+    const reopened = createRuntime(locks)
+    await reopened.initialize(inactive.id)
+    expect(reopened.activeSession.model.provider).toBe("azure")
+    await expect(reopened.sessions.get(active.id)).resolves.toMatchObject({
+      model: { provider: "azure" },
+    })
+    await expect(reopened.sessions.get(inactive.id)).resolves.toMatchObject({
+      model: { provider: "azure" },
+    })
+    await reopened.shutdown()
+  })
+
   test("automatically routes submissions based on the current run state", async () => {
     const runtime = createRuntime(new FakeLockManager() as unknown as LockManager)
     await runtime.initialize()
@@ -873,7 +928,7 @@ describe("browser agent session persistence", () => {
     await expect(
       configuration.requiredModelEndpointUrls(() => ({
         ...model,
-        provider: "azure-openai-responses",
+        provider: "azure",
       })),
     ).rejects.toThrow("No browser endpoint is configured")
   })

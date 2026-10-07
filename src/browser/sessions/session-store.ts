@@ -139,10 +139,24 @@ export class SessionStore {
 
   async get(id: string): Promise<SessionRecord | undefined> {
     const database = await this.open()
-    const transaction = database.transaction(STORE_NAME, "readonly")
-    const value: unknown = await requestResult(transaction.objectStore(STORE_NAME).get(id))
-    await transactionDone(transaction)
-    return isSessionRecord(value) ? value : undefined
+    const transaction = database.transaction(STORE_NAME, "readwrite")
+    const done = transactionDone(transaction)
+    const store = transaction.objectStore(STORE_NAME)
+    const request = store.get(id)
+    const value = new Promise<SessionRecord | undefined>((resolve, reject) => {
+      request.onerror = () => reject(request.error ?? new Error("IndexedDB request failed"))
+      request.onsuccess = () => {
+        const record: unknown = request.result
+        if (!isSessionRecord(record)) return resolve(undefined)
+        if (record.model.provider === "azure-openai-responses") {
+          record.model.provider = "azure"
+          store.put(record)
+        }
+        resolve(record)
+      }
+    })
+    const [record] = await Promise.all([value, done])
+    return record
   }
 
   async list(): Promise<SessionSummary[]> {

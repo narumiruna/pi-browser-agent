@@ -13,6 +13,50 @@ function createSession(modelId: string) {
 }
 
 describe("session storage", () => {
+  test("persists legacy Azure model migration without rewriting message metadata", async () => {
+    const indexedDb = new IDBFactory()
+    const store = new SessionStore(indexedDb)
+    const session = createSessionRecord("gpt-5", "azure-openai-responses", "high")
+    session.messages = [
+      {
+        role: "assistant",
+        api: "azure-openai-responses",
+        provider: "azure-openai-responses",
+        model: "gpt-5",
+        timestamp: 1,
+        stopReason: "stop",
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
+        content: [{ type: "text", text: "Saved answer" }],
+      },
+    ]
+    await store.put(session)
+    const migrated = { ...session, model: { ...session.model, provider: "azure" } }
+    await expect(store.get(session.id)).resolves.toEqual(migrated)
+    await expect(store.get(session.id)).resolves.toEqual(migrated)
+    const request = indexedDb.open("pi-browser-agent-sessions")
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+    const read = database
+      .transaction("sessions", "readonly")
+      .objectStore("sessions")
+      .get(session.id)
+    const persisted = await new Promise<unknown>((resolve, reject) => {
+      read.onsuccess = () => resolve(read.result)
+      read.onerror = () => reject(read.error)
+    })
+    expect(persisted).toEqual(migrated)
+    database.close()
+  })
+
   test("round-trips complete text, reasoning, tool, and image messages", async () => {
     const store = new SessionStore(new IDBFactory())
     const session = createSession("gpt-5.4")
