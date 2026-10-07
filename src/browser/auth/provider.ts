@@ -94,7 +94,9 @@ function browserProvider(provider: Provider): Provider {
     ...provider,
     auth: provider.auth.apiKey ? { apiKey: provider.auth.apiKey } : {},
   }
-  if (provider.id === "azure-openai-responses") return browserAzureProvider(withoutNodeOAuth)
+  if (provider.id === "azure" || provider.id === "azure-openai-responses") {
+    return browserAzureProvider(withoutNodeOAuth)
+  }
   if (provider.id === "google-vertex") return browserVertexProvider(withoutNodeOAuth)
   return withoutNodeOAuth
 }
@@ -146,7 +148,7 @@ export function modelEndpointUrls(
   model: Model<Api>,
   credential?: Credential,
 ): string[] {
-  if (provider.id === "azure-openai-responses") {
+  if (provider.id === "azure" || provider.id === "azure-openai-responses") {
     const configured =
       credential?.type === "api_key" ? credential.env?.AZURE_OPENAI_BASE_URL : undefined
     return configured ? [configured] : []

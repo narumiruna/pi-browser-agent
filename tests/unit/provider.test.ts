@@ -8,6 +8,11 @@ import {
   RADIUS_CONFIG_URL,
 } from "../../src/browser/auth/provider.js"
 
+// pi-ai 1.0.4 renamed the Azure provider while retaining its Responses API name.
+const azureProviderId = builtinProviders().some((provider) => provider.id === "azure")
+  ? "azure"
+  : "azure-openai-responses"
+
 function provider(id: string): Provider {
   const result = createBrowserProviders().find((candidate) => candidate.id === id)
   if (!result) throw new Error(`Missing provider: ${id}`)
@@ -48,7 +53,7 @@ describe("browser pi-ai providers", () => {
   })
 
   test("collects Azure browser configuration in its stored credential", async () => {
-    const azure = provider("azure-openai-responses")
+    const azure = provider(azureProviderId)
     const answers = [
       "azure-key",
       "https://demo.openai.azure.com",
@@ -98,12 +103,15 @@ describe("browser pi-ai providers", () => {
     }
 
     expect(
-      modelEndpointUrls(
-        provider("azure-openai-responses"),
-        model("azure-openai-responses"),
-        azureCredential,
-      ),
+      modelEndpointUrls(provider(azureProviderId), model(azureProviderId), azureCredential),
     ).toEqual(["https://demo.openai.azure.com/openai/v1"])
+    for (const id of ["azure", "azure-openai-responses"]) {
+      const azure = { ...provider(azureProviderId), id }
+      expect(modelEndpointUrls(azure, model(azureProviderId), azureCredential)).toEqual([
+        "https://demo.openai.azure.com/openai/v1",
+      ])
+      expect(modelEndpointUrls(azure, model(azureProviderId))).toEqual([])
+    }
     expect(modelEndpointUrls(provider("google-vertex"), model("google-vertex"))).toEqual([
       "https://aiplatform.googleapis.com",
     ])
