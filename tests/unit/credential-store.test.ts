@@ -1,6 +1,6 @@
 import { createModels, createProvider, type OAuthCredential } from "@earendil-works/pi-ai"
 import { describe, expect, test, vi } from "vitest"
-import { ChromeCredentialStore } from "../../src/browser/auth/credential-store.js"
+import { ChromeCredentialStore, CREDENTIALS_KEY } from "../../src/browser/auth/credential-store.js"
 
 class MemoryStorage {
   values: Record<string, unknown> = {}
@@ -45,6 +45,44 @@ class SerialLockManager {
 }
 
 describe("Chrome credential store", () => {
+  test.each([false, true])(
+    "migrates Azure credentials without overwriting a current key (%s)",
+    async (hasCurrent) => {
+      const area = new MemoryStorage()
+      const legacy = {
+        type: "api_key",
+        key: "legacy",
+        env: { AZURE_OPENAI_BASE_URL: "https://demo.openai.azure.com" },
+      }
+      const current = { type: "api_key", key: "current" }
+      area.values[CREDENTIALS_KEY] = {
+        "azure-openai-responses": legacy,
+        ...(hasCurrent ? { azure: current } : {}),
+        other: { type: "api_key", key: "other" },
+      }
+      const store = new ChromeCredentialStore(area as unknown as chrome.storage.StorageArea)
+      await Promise.all([store.migrateAzureProvider(), store.migrateAzureProvider()])
+      await expect(store.read("azure")).resolves.toEqual(hasCurrent ? current : legacy)
+      await expect(store.read("azure-openai-responses")).resolves.toBeUndefined()
+      await expect(store.read("other")).resolves.toEqual({ type: "api_key", key: "other" })
+      const set = vi.spyOn(area, "set")
+      await store.migrateAzureProvider()
+      expect(set).not.toHaveBeenCalled()
+    },
+  )
+
+  test("retains the legacy credential when migration fails and retries safely", async () => {
+    const area = new MemoryStorage()
+    const credential = { type: "api_key", key: "legacy" }
+    area.values[CREDENTIALS_KEY] = { "azure-openai-responses": credential }
+    const store = new ChromeCredentialStore(area as unknown as chrome.storage.StorageArea)
+    vi.spyOn(area, "set").mockRejectedValueOnce(new Error("Storage unavailable"))
+    await expect(store.migrateAzureProvider()).rejects.toThrow("Storage unavailable")
+    await expect(store.read("azure-openai-responses")).resolves.toEqual(credential)
+    await store.migrateAzureProvider()
+    await expect(store.read("azure")).resolves.toEqual(credential)
+  })
+
   test("serializes mutations and does not expose secrets from list", async () => {
     const area = new MemoryStorage()
     const store = new ChromeCredentialStore(area as unknown as chrome.storage.StorageArea)

@@ -52,6 +52,17 @@ export class ChromeCredentialStore implements CredentialStore {
     return withExclusiveStorageWrite(CREDENTIALS_WRITE_LOCK, operation, this.locks)
   }
 
+  async migrateAzureProvider(): Promise<void> {
+    await this.enqueue(async () => {
+      const all = await this.readAll()
+      const legacy = all["azure-openai-responses"]
+      if (!legacy) return
+      all.azure ??= legacy
+      delete all["azure-openai-responses"]
+      await this.area.set({ [CREDENTIALS_KEY]: all })
+    })
+  }
+
   async read(providerId: string, options?: AuthOperationOptions): Promise<Credential | undefined> {
     throwIfAborted(options)
     const credential = (await this.readAll())[providerId]

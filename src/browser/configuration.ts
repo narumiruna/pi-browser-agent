@@ -49,6 +49,7 @@ export class BrowserConfiguration {
 
   async initialize(modelSelection?: { provider: string; id: string }): Promise<Model<Api>> {
     await restrictLocalStorageToTrustedContexts()
+    await this.credentials.migrateAzureProvider()
     this.settings = await getSettings()
     await this.models.refresh({ providers: ["radius"] })
     const configured =
