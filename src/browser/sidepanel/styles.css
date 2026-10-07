@@ -898,7 +898,8 @@ textarea {
   min-height: 0;
   overflow-y: auto;
   padding: 12px 12px 6px;
-  scroll-behavior: smooth;
+  /* Streaming updates must reach the bottom before the next render checks its position. */
+  scroll-behavior: auto;
   scrollbar-color: color-mix(in srgb, var(--text-muted) 40%, transparent) transparent;
   scrollbar-width: thin;
 }
