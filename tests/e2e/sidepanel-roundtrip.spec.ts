@@ -3796,7 +3796,6 @@ test("preserves streamed Markdown disclosures, focus, scroll, copying and safe r
     await controller.locator("#transcript").evaluate((element, top) => {
       element.scrollTop = top
     }, scrollTop)
-    // CSS smooth scrolling must settle before capturing the reader's position.
     await expect
       .poll(() => controller.locator("#transcript").evaluate((element) => element.scrollTop))
       .toBe(scrollTop)
