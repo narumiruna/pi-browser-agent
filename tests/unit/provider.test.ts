@@ -30,6 +30,8 @@ describe("browser pi-ai providers", () => {
         .map((provider) => provider.id)
         .filter((id) => !BROWSER_EXCLUDED_PROVIDERS.some((excluded) => excluded === id)),
     )
+    expect(ids).toContain("azure")
+    expect(ids).not.toContain("azure-openai-responses")
     expect(ids).toContain("anthropic")
     expect(ids).toContain("google")
     expect(ids).toContain("openrouter")
@@ -48,7 +50,7 @@ describe("browser pi-ai providers", () => {
   })
 
   test("collects Azure browser configuration in its stored credential", async () => {
-    const azure = provider("azure-openai-responses")
+    const azure = provider("azure")
     const answers = [
       "azure-key",
       "https://demo.openai.azure.com",
@@ -97,13 +99,20 @@ describe("browser pi-ai providers", () => {
       env: { AZURE_OPENAI_BASE_URL: "https://demo.openai.azure.com/openai/v1" },
     }
 
-    expect(
-      modelEndpointUrls(
-        provider("azure-openai-responses"),
-        model("azure-openai-responses"),
-        azureCredential,
-      ),
-    ).toEqual(["https://demo.openai.azure.com/openai/v1"])
+    expect(modelEndpointUrls(provider("azure"), model("azure"), azureCredential)).toEqual([
+      "https://demo.openai.azure.com/openai/v1",
+    ])
+    const azure = provider("azure")
+    const azureModels = azure.getModels()
+    expect(new Set(azureModels.map((model) => model.api))).toEqual(
+      new Set(["azure-openai-responses", "openai-completions"]),
+    )
+    for (const azureModel of azureModels) {
+      expect(modelEndpointUrls(azure, azureModel, azureCredential)).toEqual([
+        "https://demo.openai.azure.com/openai/v1",
+      ])
+      expect(modelEndpointUrls(azure, azureModel)).toEqual([])
+    }
     expect(modelEndpointUrls(provider("google-vertex"), model("google-vertex"))).toEqual([
       "https://aiplatform.googleapis.com",
     ])

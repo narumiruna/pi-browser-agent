@@ -873,7 +873,7 @@ describe("browser agent session persistence", () => {
     await expect(
       configuration.requiredModelEndpointUrls(() => ({
         ...model,
-        provider: "azure-openai-responses",
+        provider: "azure",
       })),
     ).rejects.toThrow("No browser endpoint is configured")
   })
