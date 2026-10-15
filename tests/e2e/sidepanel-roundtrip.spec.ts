@@ -175,6 +175,23 @@ test.beforeAll(async () => {
     (manifest.optional_permissions as string[] | undefined) ?? []
   ).filter((permission) => permission !== "bookmarks")
   await writeFile(manifestPath, JSON.stringify(manifest))
+  // Test-only command dispatch seam. The production bundle has no synthetic command entry.
+  const workerPath = join(
+    extensionPath,
+    (manifest.background as { service_worker: string }).service_worker,
+  )
+  const workerSource = await readFile(workerPath, "utf8")
+  await writeFile(
+    workerPath,
+    `
+    const registerCommand = chrome.commands.onCommand.addListener.bind(chrome.commands.onCommand);
+    chrome.commands.onCommand.addListener = (listener) => {
+      globalThis.__piTestCommand = listener;
+      registerCommand(listener);
+    };
+    ${workerSource}
+  `,
+  )
 
   context = await chromium.launchPersistentContext(profileDirectory, {
     channel: "chromium",
@@ -2628,6 +2645,8 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
 })
 
 async function prepareFeatureSession(modelId = "gpt-5.6-terra"): Promise<void> {
+  // Do not replace credentials while a preceding reload is still initializing its store.
+  await expect(controller.locator("#auth-status")).toHaveAttribute("data-logged-in", /true|false/)
   await controller.evaluate(async (modelId) => {
     const access = `e30.${btoa(JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "test-account" } }))}.signature`
     const stored = await chrome.storage.local.get("piBrowserAgentSettings")
@@ -2935,6 +2954,172 @@ test("annotates a captured screenshot locally and submits the rendered image", a
   }
 })
 
+async function dispatchPickerCommand(): Promise<number> {
+  // This checks command-to-panel integration, not a physical key or native panel opening.
+  return worker.evaluate(async () => {
+    const state = globalThis as typeof globalThis & {
+      __piTestCommand?: (command: string, tab: chrome.tabs.Tab) => void
+    }
+    const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
+    if (!tab || !state.__piTestCommand) throw new Error("Missing test command or active tab")
+    const originalOpen = chrome.sidePanel.open
+    let opens = 0
+    chrome.sidePanel.open = async () => {
+      opens += 1
+    }
+    try {
+      state.__piTestCommand("toggle-element-picker", tab)
+    } finally {
+      chrome.sidePanel.open = originalOpen
+    }
+    return opens
+  })
+}
+
+test("hands a command to the panel, cancels, and attaches without activating or submitting", async () => {
+  await prepareFeatureSession()
+  await page.goto(`http://127.0.0.1:${fixture.port}/`)
+  await page.bringToFront()
+  tabContext = await waitForCurrentTab(page.url())
+  const assigned = await controller.evaluate(() => chrome.commands.getAll())
+  const command = assigned.find((candidate) => candidate.name === "toggle-element-picker")
+  expect(command).toBeDefined()
+  const host = page.locator("[data-pi-browser-agent-element-picker]")
+  const picker = controller.locator("#element-picker")
+  await expect(picker).toHaveAttribute(
+    "title",
+    command?.shortcut ? `Select page element (${command.shortcut})` : "Select page element",
+  )
+  expect(await dispatchPickerCommand()).toBe(1)
+  await expect(host).toHaveCount(1)
+  await expect(picker).toHaveAttribute("aria-pressed", "true")
+  await dispatchPickerCommand()
+  await expect(host).toHaveCount(0)
+  await dispatchPickerCommand()
+  await expect(host).toHaveCount(1)
+  await page.keyboard.press("Escape")
+  await expect(host).toHaveCount(0)
+  await dispatchPickerCommand()
+  await expect(host).toHaveCount(1)
+  const bounds = await page.locator("#ordinary").boundingBox()
+  if (!bounds) throw new Error("Missing target bounds")
+  await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
+  await expect(controller.locator(".selected-element-chip")).toHaveCount(1)
+  await expect(page.locator("#result")).toHaveText("idle")
+  await expect(controller.locator("#transcript .message.user")).toHaveCount(0)
+  await expect(controller.locator("#prompt")).toHaveValue("")
+  await controller.locator(".remove-selected-element").click()
+})
+
+test("command missing site access requires an explicit picker click", async () => {
+  await prepareFeatureSession()
+  await page.bringToFront()
+  tabContext = await waitForCurrentTab(page.url())
+  await controller.evaluate(async () => {
+    await chrome.storage.local.set({
+      piBrowserAgentApprovedHostPermissions: ["https://auth.openai.com/*", "https://chatgpt.com/*"],
+    })
+    const original = chrome.permissions.request.bind(chrome.permissions)
+    const state = window as typeof window & {
+      shortcutPermissionRequests?: number
+      shortcutDenyPermission?: boolean
+    }
+    state.shortcutPermissionRequests = 0
+    state.shortcutDenyPermission = true
+    chrome.permissions.request = (async (permissions) => {
+      state.shortcutPermissionRequests = (state.shortcutPermissionRequests ?? 0) + 1
+      if (state.shortcutDenyPermission) return false
+      return original(permissions)
+    }) as typeof chrome.permissions.request
+  })
+  await dispatchPickerCommand()
+  await expect(controller.locator("#error")).toContainText("Click Select page element")
+  await expect(page.locator("[data-pi-browser-agent-element-picker]")).toHaveCount(0)
+  expect(
+    await controller.evaluate(
+      () =>
+        (window as typeof window & { shortcutPermissionRequests?: number })
+          .shortcutPermissionRequests,
+    ),
+  ).toBe(0)
+  await controller.locator("#element-picker").click()
+  await expect(controller.locator("#error")).toContainText("Site access is required")
+  await expect(page.locator("[data-pi-browser-agent-element-picker]")).toHaveCount(0)
+  await controller.evaluate(() => {
+    ;(window as typeof window & { shortcutDenyPermission?: boolean }).shortcutDenyPermission = false
+  })
+  await controller.locator("#element-picker").click()
+  await expect(page.locator("[data-pi-browser-agent-element-picker]")).toHaveCount(1)
+  await page.keyboard.press("Escape")
+  await expect(page.locator("[data-pi-browser-agent-element-picker]")).toHaveCount(0)
+  await controller.reload()
+  await expect(controller.locator("#auth-status")).toHaveAttribute("data-logged-in", /true|false/)
+})
+
+test("a repeated command cancels a start waiting for its permission check", async () => {
+  await prepareFeatureSession()
+  await page.bringToFront()
+  tabContext = await waitForCurrentTab(page.url())
+  await controller.evaluate(() => {
+    const original = chrome.permissions.contains.bind(chrome.permissions)
+    let release: () => void = () => undefined
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const state = window as typeof window & {
+      shortcutGate?: { entered: boolean; release: () => void }
+    }
+    state.shortcutGate = {
+      entered: false,
+      release: () => {
+        chrome.permissions.contains = original
+        release()
+      },
+    }
+    chrome.permissions.contains = (async (permissions) => {
+      if (permissions.origins?.some((origin) => origin.includes("127.0.0.1"))) {
+        if (state.shortcutGate) state.shortcutGate.entered = true
+        await gate
+      }
+      return original(permissions)
+    }) as typeof chrome.permissions.contains
+  })
+  try {
+    await dispatchPickerCommand()
+    await expect
+      .poll(() =>
+        controller.evaluate(
+          () =>
+            (window as typeof window & { shortcutGate?: { entered: boolean } }).shortcutGate
+              ?.entered,
+        ),
+      )
+      .toBe(true)
+    await expect(controller.locator("#send")).toBeDisabled()
+    await dispatchPickerCommand()
+    await expect(controller.locator("#send")).toBeEnabled()
+  } finally {
+    await controller.evaluate(() =>
+      (
+        window as typeof window & { shortcutGate?: { release: () => void } }
+      ).shortcutGate?.release(),
+    )
+  }
+  await expect(page.locator("[data-pi-browser-agent-element-picker]")).toHaveCount(0)
+})
+
+test("retains a command while the conversation initializes", async () => {
+  await prepareFeatureSession()
+  await page.bringToFront()
+  tabContext = await waitForCurrentTab(page.url())
+  await controller.goto("about:blank")
+  await dispatchPickerCommand()
+  await controller.goto(`chrome-extension://${extensionId}/${panelPath}`)
+  await expect(page.locator("[data-pi-browser-agent-element-picker]")).toHaveCount(1)
+  await controller.locator("#element-picker").click()
+  await expect(page.locator("[data-pi-browser-agent-element-picker]")).toHaveCount(0)
+})
+
 test("attaches a selected element even when page and element metadata fill the context budget", async () => {
   await prepareFeatureSession()
   const fixtureUrl = `http://127.0.0.1:${fixture.port}/`
@@ -3021,7 +3206,7 @@ test("selects page elements without activating them and sends bounded structured
   })
 
   const pickerButton = controller.locator("#element-picker")
-  await expect(pickerButton).toHaveAttribute("title", "選取網頁元素")
+  await expect(pickerButton).toHaveAttribute("title", /^Select page element(?: \(.+\))?$/)
   expect(await pickerButton.evaluate((button) => button.nextElementSibling?.id)).toBe("voice-input")
 
   const pickerHost = page.locator("[data-pi-browser-agent-element-picker]")

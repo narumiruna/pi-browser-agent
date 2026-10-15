@@ -6,6 +6,7 @@ import {
 } from "./content/element-picker.js"
 import { executePageOperation, type PageOperation } from "./content/page-operations.js"
 import { assertTabContext } from "./content/tab-context.js"
+import { installElementPickerShortcut } from "./element-picker-shortcut.js"
 import {
   BOOKMARKS_PERMISSION,
   hasBookmarkPermission,
@@ -50,6 +51,30 @@ let visibleTabSyncVersion = 0
 let latestVisibleTabSync: { version: number; promise: Promise<TabContext | undefined> } | undefined
 let pendingSelectionTake: Promise<JsonValue> = Promise.resolve(null)
 const initialization = initialize()
+const pickerShortcut = installElementPickerShortcut({
+  async validate(tab) {
+    await initialization
+    const context = await syncVisibleTab()
+    if (!context) return undefined
+    const current = await chrome.tabs.get(context.tabId)
+    if (context.tabId !== tab.id || context.url !== tab.url || current.windowId !== tab.windowId) {
+      throw new RuntimeError("STALE_CONTEXT", "The shortcut target changed")
+    }
+    return context
+  },
+  stop(windowId) {
+    const picker = activeElementPicker
+    if (!picker) return
+    void chrome.tabs
+      .get(picker.context.tabId)
+      .then((tab) => {
+        if (tab.windowId !== windowId || activeElementPicker !== picker) return
+        elementPickerOperationVersion += 1
+        void stopActiveElementPicker("panel-disconnected")
+      })
+      .catch(() => undefined)
+  },
+})
 
 function isSupportedPageUrl(value: string): boolean {
   return classifyPage(value).kind === "web"
@@ -872,6 +897,7 @@ chrome.runtime.onInstalled.addListener(() => {
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   const navigation = Boolean(changeInfo.url) || changeInfo.status === "loading"
+  if (navigation) pickerShortcut.invalidate(tabId)
   if (!navigation) {
     if (changeInfo.title !== undefined) {
       // A title-only update changes the UI label, not the page or its references.
@@ -887,6 +913,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
 })
 
 chrome.tabs.onActivated.addListener(() => {
+  pickerShortcut.invalidate()
   elementPickerOperationVersion += 1
   if (activeElementPicker) void stopActiveElementPicker("tab-activated")
   elementSnapshot = undefined
@@ -894,6 +921,7 @@ chrome.tabs.onActivated.addListener(() => {
 })
 
 chrome.tabs.onRemoved.addListener((tabId) => {
+  pickerShortcut.invalidate(tabId)
   if (boundContext?.tabId === tabId) {
     clearBoundTab()
     void initialization.then(() => syncVisibleTab()).catch(() => undefined)
@@ -901,6 +929,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 })
 
 chrome.windows.onFocusChanged.addListener((windowId) => {
+  pickerShortcut.invalidate()
   elementPickerOperationVersion += 1
   if (activeElementPicker) void stopActiveElementPicker("window-focus-changed")
   elementSnapshot = undefined

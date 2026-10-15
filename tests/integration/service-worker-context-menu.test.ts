@@ -85,6 +85,7 @@ describe("service worker visible-tab targeting", () => {
     let failPendingRead = false
 
     vi.stubGlobal("chrome", {
+      commands: { onCommand: { addListener: vi.fn() } },
       storage: {
         local: {
           get: vi.fn(async (key: string) => ({ [key]: local[key] })),
@@ -109,6 +110,7 @@ describe("service worker visible-tab targeting", () => {
       bookmarks: { search: searchBookmarks, getRecent: getRecentBookmarks },
       runtime: {
         id: "test-extension",
+        onConnect: { addListener: vi.fn() },
         onInstalled: {
           addListener: vi.fn((listener: () => void) => (listeners.installed = listener)),
         },

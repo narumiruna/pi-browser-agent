@@ -23,6 +23,7 @@ let updated: (id: number, change: object) => void
 let activated: () => void
 let focusChanged: (windowId: number) => void
 let permissionRemoved: () => void
+let panelConnected: (port: chrome.runtime.Port) => void
 let permission: boolean
 let tab: { id: number; url: string; active: boolean; windowId: number }
 let context: TabContext
@@ -140,6 +141,7 @@ beforeEach(async () => {
     return [{ result }]
   })
   vi.stubGlobal("chrome", {
+    commands: { onCommand: noopEvent },
     storage: {
       local: {
         setAccessLevel: vi.fn(async () => {}),
@@ -159,6 +161,12 @@ beforeEach(async () => {
     },
     runtime: {
       id: "extension",
+      onConnect: {
+        addListener: (value: typeof panelConnected) => {
+          panelConnected = value
+        },
+      },
+      getManifest: () => ({ side_panel: { default_path: "panel.html" } }),
       onInstalled: noopEvent,
       onMessage: {
         addListener: (value: Listener) => {
@@ -218,6 +226,46 @@ afterEach(() => {
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
   vi.resetModules()
+})
+
+test("panel disconnect stops only the picker in that panel's window", async () => {
+  const connectPanel = (windowId: number) => {
+    let message: (value: unknown) => void = () => undefined
+    let disconnected: () => void = () => undefined
+    chrome.runtime.getURL = (path) => `chrome-extension://extension/${path}`
+    panelConnected({
+      name: "element-picker-shortcut",
+      sender: {
+        id: "extension",
+        url: "chrome-extension://extension/panel.html",
+        tab: { windowId },
+      },
+      onMessage: {
+        addListener: (value: typeof message) => {
+          message = value
+        },
+      },
+      onDisconnect: {
+        addListener: (value: typeof disconnected) => {
+          disconnected = value
+        },
+      },
+      disconnect: () => disconnected(),
+      postMessage: vi.fn(),
+    } as unknown as chrome.runtime.Port)
+    Reflect.deleteProperty(chrome.runtime, "getURL")
+    message({ kind: "ready", windowId })
+    return () => disconnected()
+  }
+  const host = "[data-pi-browser-agent-element-picker]"
+  await expect(startPickerRequest()).resolves.toMatchObject({ ok: true, result: { active: true } })
+  expect(document.querySelector(host)).not.toBeNull()
+  connectPanel(2)()
+  await Promise.resolve()
+  await Promise.resolve()
+  expect(document.querySelector(host)).not.toBeNull()
+  connectPanel(1)()
+  await vi.waitFor(() => expect(document.querySelector(host)).toBeNull())
 })
 
 describe("worker injection failures", () => {
