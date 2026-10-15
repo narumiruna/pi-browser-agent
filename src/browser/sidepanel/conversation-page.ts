@@ -631,10 +631,11 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
 
   async function toggleElementPicker(shortcutContext?: TabContext): Promise<void> {
     setError()
-    if (
-      pickerStarting ||
-      (!pickerStopping && (pickerActive || (shortcutContext && shortcutPermissionContext)))
-    ) {
+    const cancelsPendingAuthorization =
+      shortcutContext &&
+      shortcutPermissionContext &&
+      sameTabContext(shortcutContext, shortcutPermissionContext)
+    if (pickerStarting || (!pickerStopping && (pickerActive || cancelsPendingAuthorization))) {
       await stopElementPicker()
       return
     }

@@ -3124,6 +3124,52 @@ test("command missing site access requires an explicit picker click", async () =
   await expect(controller.locator("#auth-status")).toHaveAttribute("data-logged-in", /true|false/)
 })
 
+for (const change of ["navigation", "tab activation"] as const) {
+  test(`a command ignores pending authorization from before ${change}`, async () => {
+    await prepareFeatureSession()
+    const approvedUrl = `http://127.0.0.1:${fixture.port}/`
+    let destination = page
+    try {
+      // localhost has Chrome access through the fixture manifest, but no app approval.
+      await page.goto(`http://localhost:${fixture.port}/`)
+      await page.bringToFront()
+      await expect
+        .poll(async () => {
+          const state = await request("app.getState")
+          return (state.tabContext as { url?: string } | undefined)?.url
+        })
+        .toBe(page.url())
+      await dispatchPickerCommand()
+      await expect(controller.locator("#error")).toContainText("Click Select page element")
+      await expect(page.locator("[data-pi-browser-agent-element-picker]")).toHaveCount(0)
+
+      // A repeated command for this exact target still cancels the pending action.
+      await dispatchPickerCommand()
+      await expect(controller.locator("#error")).toBeHidden()
+      await dispatchPickerCommand()
+      await expect(controller.locator("#error")).toContainText("Click Select page element")
+
+      if (change === "tab activation") destination = await context.newPage()
+      await destination.goto(approvedUrl)
+      await destination.bringToFront()
+      tabContext = await waitForCurrentTab(destination.url())
+      await dispatchPickerCommand()
+      const host = destination.locator("[data-pi-browser-agent-element-picker]")
+      await expect(host).toHaveCount(1)
+      await expect(controller.locator("#element-picker")).toHaveAttribute("aria-pressed", "true")
+      await expect(controller.locator(".selected-element-chip")).toHaveCount(0)
+      await expect(controller.locator("#transcript .message.user")).toHaveCount(0)
+      await dispatchPickerCommand()
+      await expect(host).toHaveCount(0)
+    } finally {
+      if (destination !== page) await destination.close()
+      await page.goto(approvedUrl)
+      await page.bringToFront()
+      tabContext = await waitForCurrentTab(page.url())
+    }
+  })
+}
+
 test("a repeated command cancels a start waiting for its permission check", async () => {
   await prepareFeatureSession()
   await page.bringToFront()
