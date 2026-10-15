@@ -4,6 +4,7 @@ import { BrowserAgentRuntime } from "../agent/runtime.js"
 import { safeErrorMessage } from "../auth/redaction.js"
 import {
   BOOKMARKS_PERMISSION,
+  hasApprovedHostPermission,
   requestBookmarkPermission,
   requestHostPermission,
   requestHostPermissions,
@@ -22,6 +23,11 @@ import type { JsonObject, TabContext } from "../runtime/types.js"
 import { SETTINGS_KEY } from "../storage.js"
 import { AuthenticationController } from "./authentication.js"
 import { activityText, conversationText } from "./conversation-copy.js"
+import {
+  assignedPickerShortcut,
+  connectElementPickerShortcut,
+  pickerButtonTitle,
+} from "./element-picker-shortcut.js"
 import {
   type ComposerImage,
   imageContentSource,
@@ -65,6 +71,7 @@ function sameTabContext(left: TabContext, right: TabContext): boolean {
 }
 
 export async function initializeConversationPage(params: URLSearchParams): Promise<void> {
+  document.body.dataset.conversationReady = "false"
   const settingsContextId = params.get("source") ?? crypto.randomUUID()
   const transcript = element<HTMLElement>("transcript")
   const promptInput = element<HTMLTextAreaElement>("prompt")
@@ -126,7 +133,14 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   let tabRefreshVersion = 0
   let pickerActive = false
   let pickerStarting = false
+  let pickerContext: TabContext | undefined
+  let pickerStopping: Promise<void> | undefined
   let pickerClientId: string | undefined
+  let pickerStartVersion = 0
+  let shortcutPermissionContext: TabContext | undefined
+  let pickerShortcut = ""
+  let disconnectPickerShortcut: (() => void) | undefined
+  let disposed = false
   let voiceInput: VoiceInputController | undefined
   let voiceInputStarting = false
   let authentication: AuthenticationController | undefined
@@ -467,9 +481,10 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   function setPickerActive(active: boolean, clientId?: string): void {
     pickerActive = active
     pickerClientId = active ? clientId : undefined
+    if (!active) pickerContext = undefined
     elementPickerButton.setAttribute("aria-pressed", String(active))
     elementPickerButton.ariaLabel = active ? "Cancel element selection" : "Select page element"
-    elementPickerButton.title = active ? "取消選取網頁元素" : "選取網頁元素"
+    elementPickerButton.title = pickerButtonTitle(active, pickerShortcut)
     updateSendButton()
   }
 
@@ -586,49 +601,116 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   }
 
   async function stopElementPicker(): Promise<void> {
-    setPickerActive(false)
-    const context = currentTabContext ?? (await refreshTabContext().catch(() => undefined))
-    await sendRuntimeRequest("elementPicker.stop", {}, context ? { tabContext: context } : {})
+    pickerStartVersion += 1
+    pickerStarting = false
+    shortcutPermissionContext = undefined
+    updateSendButton()
+    if (pickerStopping) return pickerStopping
+    pickerStopping = (async () => {
+      try {
+        // A replacement worker has a new epoch. Do not send the cached pre-restart context.
+        const context = await refreshTabContext()
+        await sendRuntimeRequest("elementPicker.stop", {}, context ? { tabContext: context } : {})
+      } finally {
+        pickerStopping = undefined
+        setPickerActive(false)
+      }
+    })()
+    return pickerStopping
   }
 
-  async function toggleElementPicker(): Promise<void> {
-    if (runtime.agent.state.isStreaming && !runtime.usesPageContext) {
-      throw new Error("This turn does not use page context")
+  function assertPickerActionAvailable(): void {
+    if (
+      activeSubmissionGuard !== undefined ||
+      voiceInputStarting ||
+      voiceInput?.active === true ||
+      selectedElements.length >= ELEMENT_PICKER_LIMITS.elements
+    ) {
+      throw new Error(
+        "Element selection is unavailable while another action is in progress or the attachment limit is reached",
+      )
     }
-    if (pickerActive) {
-      await stopElementPicker()
-      return
+  }
+
+  async function toggleElementPicker(shortcutContext?: TabContext): Promise<void> {
+    setError()
+    const cancelsPendingAuthorization =
+      shortcutContext &&
+      shortcutPermissionContext &&
+      sameTabContext(shortcutContext, shortcutPermissionContext)
+    const replacesPicker =
+      shortcutContext &&
+      (pickerActive || pickerStarting) &&
+      (!pickerContext || !sameTabContext(shortcutContext, pickerContext))
+    let previousStop = pickerStopping
+    if (pickerStarting || (!pickerStopping && (pickerActive || cancelsPendingAuthorization))) {
+      if (replacesPicker) assertPickerActionAvailable()
+      previousStop = stopElementPicker()
+      if (!replacesPicker) {
+        await previousStop
+        return
+      }
     }
+    if (disposed) return
+    // The rendered button can still describe the previous tab. Check page state after refresh.
+    assertPickerActionAvailable()
+    // A button click is a fresh action on the current page, not a replay of a pending command.
+    shortcutPermissionContext = undefined
+    const version = ++pickerStartVersion
     pickerStarting = true
+    pickerContext = shortcutContext ?? currentTabContext
     updateSendButton()
     try {
+      // Do not let an older stop injection remove a newly started picker.
+      await previousStop
+      if (version !== pickerStartVersion || disposed) return
       const permissionContext = await refreshTabContext()
+      if (version !== pickerStartVersion) return
       if (!permissionContext) {
         throw new Error("Open an HTTP or HTTPS page before selecting an element")
+      }
+      pickerContext = permissionContext
+      if (shortcutContext && !sameTabContext(shortcutContext, permissionContext)) {
+        throw new Error("The page changed before selection could start. Select it again.")
       }
       if (runtime.agent.state.isStreaming && !runtime.usesPageContext) {
         throw new Error("This turn does not use page context")
       }
-      if (!(await requestSiteAccess(permissionContext.url))) {
+      if (shortcutContext) {
+        const allowed = await hasApprovedHostPermission(permissionContext.url)
+        if (version !== pickerStartVersion) return
+        if (!allowed) {
+          shortcutPermissionContext = permissionContext
+          throw new Error("Click Select page element to allow this site and start selection")
+        }
+      } else if (!(await requestSiteAccess(permissionContext.url))) {
         throw new Error("Site access is required to select an element")
       }
+      if (version !== pickerStartVersion) return
       // Chrome's permission prompt temporarily changes browser focus and invalidates the old epoch.
       const context = await refreshTabContext()
+      if (version !== pickerStartVersion) return
       if (!context) throw new Error("Open an HTTP or HTTPS page before selecting an element")
       if (runtime.agent.state.isStreaming && !runtime.usesPageContext) {
         throw new Error("This turn does not use page context")
       }
-      if (context.tabId !== permissionContext.tabId || context.url !== permissionContext.url) {
+      if (
+        shortcutContext
+          ? !sameTabContext(shortcutContext, context)
+          : context.tabId !== permissionContext.tabId || context.url !== permissionContext.url
+      ) {
         throw new Error("The page changed while site access was being granted. Select it again.")
       }
+      assertPickerActionAvailable()
       const clientId = crypto.randomUUID()
+      pickerContext = context
       pickerClientId = clientId
       const result = await sendRuntimeRequest(
         "elementPicker.start",
         { clientId },
         { tabContext: context },
       )
-      if (pickerClientId !== clientId) return
+      if (version !== pickerStartVersion || pickerClientId !== clientId) return
       const active =
         typeof result === "object" &&
         result !== null &&
@@ -637,9 +719,17 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
         result.clientId === clientId
       setPickerActive(active, active ? clientId : undefined)
     } finally {
-      pickerStarting = false
-      updateSendButton()
+      if (version === pickerStartVersion) {
+        pickerStarting = false
+        if (!pickerActive) pickerContext = undefined
+        updateSendButton()
+      }
     }
+  }
+
+  async function refreshPickerShortcut(): Promise<void> {
+    pickerShortcut = await assignedPickerShortcut().catch(() => "")
+    elementPickerButton.title = pickerButtonTitle(pickerActive, pickerShortcut)
   }
 
   function requestSiteAccess(url: string): Promise<boolean> {
@@ -986,7 +1076,11 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   document.addEventListener(
     "keydown",
     (event) => {
-      if (event.key !== "Escape" || !pickerActive) return
+      if (
+        event.key !== "Escape" ||
+        (!pickerActive && !pickerStarting && !shortcutPermissionContext)
+      )
+        return
       event.preventDefault()
       event.stopPropagation()
       void run(stopElementPicker, setError)
@@ -1035,7 +1129,8 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
         !sameTabContext(event.tabContext, currentTabContext)
       ) {
         currentTabContext = undefined
-        setPickerActive(false)
+        // Restart refresh can emit a new epoch before the stop request completes.
+        if (!pickerStopping) setPickerActive(false)
         clearSelectedElements()
       }
       void refreshTab().catch(setError)
@@ -1087,7 +1182,12 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       setRunStatus(conversationText("settingsSaved"))
     }, setError)
   })
+  window.addEventListener("focus", () => void refreshPickerShortcut())
   window.addEventListener("pagehide", () => {
+    disposed = true
+    document.body.dataset.conversationReady = "false"
+    pickerStartVersion += 1
+    disconnectPickerShortcut?.()
     transcriptResizeObserver.disconnect()
     observedTranscriptElements.clear()
     voiceInput?.abort()
@@ -1110,6 +1210,24 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     authentication.refresh(),
     refreshTab(),
     pullPendingSelection(),
+    refreshPickerShortcut(),
   ])
+  if (disposed) return
+  // Focus before the asynchronous port setup so it cannot close a menu opened meanwhile.
   promptInput.focus()
+  disconnectPickerShortcut = await connectElementPickerShortcut({
+    toggle: toggleElementPicker,
+    error: setError,
+    disconnected() {
+      if (pickerActive || pickerStarting) {
+        // Wake the replacement worker and wait for cleanup before clearing the active UI.
+        void stopElementPicker().catch(setError)
+      } else {
+        pickerStartVersion += 1
+        shortcutPermissionContext = undefined
+      }
+    },
+  })
+  if (disposed) disconnectPickerShortcut()
+  else document.body.dataset.conversationReady = "true"
 }

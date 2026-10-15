@@ -30,6 +30,15 @@
       "32": "icons/icon-32.png"
     }
   },
+  "commands": {
+    "toggle-element-picker": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+E",
+        "mac": "Command+Shift+E"
+      },
+      "description": "Open Pi Browser Agent and select a page element"
+    }
+  },
   "side_panel": {
     "default_path": "src/browser/sidepanel/index.html"
   },

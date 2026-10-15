@@ -23,6 +23,18 @@ Use a production build from `npm run build`. Do not test login with development 
 
 - Browser confirmation modes: automated `tests/e2e/confirmation-modes.spec.ts` passed on Chrome for Testing 153.0.8010.12. It covers Strict/Balanced/Convenient bookmark prompts, changed request limits, decline and retry, Side Panel and MV3 worker restart, full Chromium restart, Convenient clear, and WebMCP tool/argument matching. Stable Chrome native permission prompts and browser-owned Side Panel verification remain pending before release.
 
+## Element-picker shortcut acceptance — 2026-10-15
+
+- Status: implementation and automated validation are complete; stable-Chrome physical-key acceptance remains pending. The user reported loading the extension, but did not yet report a shortcut result.
+- Host: macOS; installed stable Google Chrome `155.0.8059.79`.
+- An isolated minimal extension probe used a fresh temporary profile and a visible browser. `--load-extension` did not load an extension service worker; CDP `Extensions.loadUnpacked` returned `Method not available`, including with `--enable-unsafe-extension-debugging`. No command event, physical shortcut, or Side Panel opening was verified.
+- The Chrome DevTools MCP launch also failed because its configured Linux executable is absent on this host.
+- Automated verification after the CI readiness fix: `npm run ci` passed with 480 unit/integration tests and all 69 E2E tests using the default four local workers. The harness now waits for `data-conversation-ready="true"`, set only after complete conversation initialization, on startup, credential reload, and browser restart. A delayed-initialization regression test and an independent full-browser session-restore test are in `tests/e2e/extension-lifecycle.spec.ts`. Earlier parallel failures remain recorded in the plan; no stable-Chrome physical-key acceptance is inferred from automated results.
+- Automated command tests use a test-only worker callback and stub native `sidePanel.open()`; they do not prove real shortcut dispatch or browser-owned panel opening. Unit tests cover intent expiry, acknowledgements, wrong-window/sender rejection, disconnect, and restart without replay.
+- For manual acceptance, run `npm run build`, reload the extension at `chrome://extensions`, and check the assigned key at `chrome://extensions/shortcuts`. On an approved HTTP(S) page, close the panel and press `Cmd+Shift+E` (macOS) or `Ctrl+Shift+E` (Windows/Linux). Expected: the panel opens and the picker starts. Repeat with the panel open and with focus in the page and panel. Press again or press `Esc`: selection stops and the panel remains open. Select a button: one unsent chip appears, the button does not activate, and no message is submitted.
+- Repeat after stopping the service worker through extension DevTools. Retry if startup exceeds 10 seconds. Without site approval, expect a prompt to click the picker button, no automatic permission request, and no selection until explicit authorization. Verify permission decline/revocation, restricted pages and PDFs, tab changes during startup, repeated presses during startup, and a conflicting or unassigned shortcut. Record each result and Chrome/OS version here.
+- macOS physical-key acceptance and all Windows/Linux acceptance remain pending. No successful stable-Chrome result is inferred from the user's installation report. See `docs/plans/2026-10-15_element-picker-shortcut-plan.md`.
+
 ## Procedure
 
 1. **Clean setup and Side Panel header**
