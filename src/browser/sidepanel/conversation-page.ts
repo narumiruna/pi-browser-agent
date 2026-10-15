@@ -71,6 +71,7 @@ function sameTabContext(left: TabContext, right: TabContext): boolean {
 }
 
 export async function initializeConversationPage(params: URLSearchParams): Promise<void> {
+  document.body.dataset.conversationReady = "false"
   const settingsContextId = params.get("source") ?? crypto.randomUUID()
   const transcript = element<HTMLElement>("transcript")
   const promptInput = element<HTMLTextAreaElement>("prompt")
@@ -1135,6 +1136,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   window.addEventListener("focus", () => void refreshPickerShortcut())
   window.addEventListener("pagehide", () => {
     disposed = true
+    document.body.dataset.conversationReady = "false"
     pickerStartVersion += 1
     disconnectPickerShortcut?.()
     transcriptResizeObserver.disconnect()
@@ -1175,4 +1177,5 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     },
   })
   if (disposed) disconnectPickerShortcut()
+  else document.body.dataset.conversationReady = "true"
 }

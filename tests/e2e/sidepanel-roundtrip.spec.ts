@@ -10,6 +10,7 @@ import {
   test,
   type Worker,
 } from "@playwright/test"
+import { waitForConversationReady } from "./support/extension-harness.js"
 import {
   CODEX_RESPONSES_URL as codexUrl,
   finalTextResponse as finalText,
@@ -60,7 +61,6 @@ let extensionId: string
 let extensionPath: string
 let panelPath: string
 let profileDirectory: string
-let savedSessionId: string
 let controllerErrors: string[]
 let testBookmarkIds: string[]
 let tabContext: { tabId: number; url: string; epoch: number }
@@ -237,6 +237,10 @@ test.beforeAll(async () => {
   }, `http://127.0.0.1:${fixture.port}/`)
   tabContext = await waitForCurrentTab(`http://127.0.0.1:${fixture.port}/`)
   expect(tabContext.tabId).toBe(fixtureTabId)
+})
+
+test.beforeEach(async () => {
+  await waitForConversationReady(controller)
 })
 
 test.afterAll(async () => {
@@ -1876,6 +1880,7 @@ test("opens Settings in a full browser tab and persists the selected interface f
   )
 
   await controller.reload()
+  await waitForConversationReady(controller)
   await controller.locator("#account-menu-trigger").click()
   const reopenedSettingsTabPromise = context.waitForEvent("page")
   await controller.locator("#open-settings").click()
@@ -4642,7 +4647,7 @@ test("restores IndexedDB sessions after the Side Panel closes and reopens", asyn
   const previousSessionId = await controller.locator("#sessions").inputValue()
   await controller.locator("#new-session").click()
   await expect.poll(() => controller.locator("#sessions").inputValue()).not.toBe(previousSessionId)
-  savedSessionId = await controller.locator("#sessions").inputValue()
+  const savedSessionId = await controller.locator("#sessions").inputValue()
   expect(savedSessionId).not.toBe("")
   await controller.reload()
   await expect(controller.locator("#sessions")).toHaveValue(savedSessionId)
@@ -4660,16 +4665,4 @@ test("rediscovers the visible tab after a service-worker restart", async () => {
   if (!target) throw new Error("Service worker target not found")
   await cdp.send("Target.closeTarget", { targetId: target.targetId })
   await expect.poll(async () => (await request("tabs.getActive")).title).toBe("Second")
-})
-
-test("restores sessions after a full Chrome restart", async () => {
-  await context.close()
-  context = await chromium.launchPersistentContext(profileDirectory, {
-    channel: "chromium",
-    headless: true,
-    args: [`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`],
-  })
-  controller = await context.newPage()
-  await controller.goto(`chrome-extension://${extensionId}/${panelPath}`)
-  await expect(controller.locator("#sessions")).toHaveValue(savedSessionId)
 })

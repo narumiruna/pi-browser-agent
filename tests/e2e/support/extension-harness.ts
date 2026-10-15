@@ -3,7 +3,7 @@ import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { createServer, type Server } from "node:http"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
-import { type BrowserContext, chromium, type Page, type Worker } from "@playwright/test"
+import { type BrowserContext, chromium, expect, type Page, type Worker } from "@playwright/test"
 
 const BUILD_DIRECTORY = resolve("dist/chrome")
 const FIXTURE_PATH = "/smoke-page.html"
@@ -66,6 +66,11 @@ function trackPageErrors(context: BrowserContext, errors: string[]): void {
   }
   for (const page of context.pages()) track(page)
   context.on("page", track)
+}
+
+export async function waitForConversationReady(controller: Page): Promise<void> {
+  // DOMContentLoaded and individual refreshes precede completion of async startup.
+  await expect(controller.locator("body")).toHaveAttribute("data-conversation-ready", "true")
 }
 
 function hostPermissionPattern(url: string): string {
@@ -135,6 +140,7 @@ export async function launchExtensionHarness(
       waitUntil: "domcontentloaded",
     })
     await fixturePage.bringToFront()
+    await waitForConversationReady(controller)
 
     let closed = false
     const harness: ExtensionHarness = {
@@ -169,6 +175,7 @@ export async function launchExtensionHarness(
         harness.fixturePage = await context.newPage()
         await harness.fixturePage.goto(fixtureUrl, { waitUntil: "domcontentloaded" })
         await harness.fixturePage.bringToFront()
+        await waitForConversationReady(harness.controller)
       },
       async close() {
         if (closed) return
@@ -213,4 +220,6 @@ export async function configureMockCodex(harness: ExtensionHarness): Promise<voi
   )
   await harness.controller.reload({ waitUntil: "domcontentloaded" })
   await harness.fixturePage.bringToFront()
+  await waitForConversationReady(harness.controller)
+  await expect(harness.controller.locator("#auth-status")).toHaveAttribute("data-logged-in", "true")
 }
