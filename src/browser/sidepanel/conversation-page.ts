@@ -654,11 +654,11 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     if (disposed) return
     // The rendered button can still describe the previous tab. Check page state after refresh.
     assertPickerActionAvailable()
-    const expected = shortcutContext ?? shortcutPermissionContext
+    // A button click is a fresh action on the current page, not a replay of a pending command.
     shortcutPermissionContext = undefined
     const version = ++pickerStartVersion
     pickerStarting = true
-    pickerContext = expected ?? currentTabContext
+    pickerContext = shortcutContext ?? currentTabContext
     updateSendButton()
     try {
       // Do not let an older stop injection remove a newly started picker.
@@ -670,7 +670,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
         throw new Error("Open an HTTP or HTTPS page before selecting an element")
       }
       pickerContext = permissionContext
-      if (expected && !sameTabContext(expected, permissionContext)) {
+      if (shortcutContext && !sameTabContext(shortcutContext, permissionContext)) {
         throw new Error("The page changed before selection could start. Select it again.")
       }
       if (runtime.agent.state.isStreaming && !runtime.usesPageContext) {

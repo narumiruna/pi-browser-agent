@@ -3124,8 +3124,13 @@ test("command missing site access requires an explicit picker click", async () =
   await expect(controller.locator("#auth-status")).toHaveAttribute("data-logged-in", /true|false/)
 })
 
-for (const change of ["navigation", "tab activation"] as const) {
-  test(`a command ignores pending authorization from before ${change}`, async () => {
+for (const [change, action] of [
+  ["navigation", "command"],
+  ["navigation", "button"],
+  ["tab activation", "command"],
+  ["tab activation", "button"],
+] as const) {
+  test(`a ${action} ignores pending authorization from before ${change}`, async () => {
     await prepareFeatureSession()
     const approvedUrl = `http://127.0.0.1:${fixture.port}/`
     let destination = page
@@ -3153,7 +3158,8 @@ for (const change of ["navigation", "tab activation"] as const) {
       await destination.goto(approvedUrl)
       await destination.bringToFront()
       tabContext = await waitForCurrentTab(destination.url())
-      await dispatchPickerCommand()
+      if (action === "command") await dispatchPickerCommand()
+      else await controller.locator("#element-picker").click()
       const host = destination.locator("[data-pi-browser-agent-element-picker]")
       await expect(host).toHaveCount(1)
       await expect(controller.locator("#element-picker")).toHaveAttribute("aria-pressed", "true")
