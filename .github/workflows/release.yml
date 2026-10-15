@@ -56,13 +56,15 @@ jobs:
           fi
           npm ci
           npm run pack
+          mv dist/pi-browser-agent-chrome.zip dist/pi-browser-agent.zip
+          test -s dist/pi-browser-agent.zip
       - name: Create release or upload extension archive
         if: steps.extension_release.outputs.needed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="v$(node -p "require('./package.json').version")"
-          archive=dist/chrome/pi-browser-agent.zip
+          archive=dist/pi-browser-agent.zip
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" "$archive"
           else
