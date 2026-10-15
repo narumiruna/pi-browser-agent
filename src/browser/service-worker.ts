@@ -45,6 +45,9 @@ let elementSnapshot: ElementSnapshot | undefined
 let activeElementPicker:
   | { clientId: string; context: TabContext; expiresAt: number; token: string }
   | undefined
+type PickerStart = { windowId?: number; disconnectedWindows: Set<number> }
+let startingElementPicker: PickerStart | undefined
+let elementPickerCleanup: Promise<void> = Promise.resolve()
 let elementPickerOperationVersion = 0
 let contextEpoch = 0
 let visibleTabSyncVersion = 0
@@ -63,6 +66,9 @@ const pickerShortcut = installElementPickerShortcut({
     return context
   },
   stop(windowId) {
+    // Record disconnects even while the start is still looking up its owning window.
+    startingElementPicker?.disconnectedWindows.add(windowId)
+    if (startingElementPicker?.windowId === windowId) elementPickerOperationVersion += 1
     const picker = activeElementPicker
     if (!picker) return
     void chrome.tabs
@@ -106,16 +112,21 @@ async function notifyInjectedElementPickerToStop(context: TabContext): Promise<v
     .catch(() => undefined)
 }
 
-async function stopInjectedElementPicker(context: TabContext): Promise<void> {
-  await notifyInjectedElementPickerToStop(context)
-  await chrome.scripting
-    .executeScript({
-      target: { tabId: context.tabId },
-      func: stopElementPickerInjection,
-      world: "ISOLATED",
-      args: [],
-    })
+function stopInjectedElementPicker(context: TabContext): Promise<void> {
+  elementPickerCleanup = elementPickerCleanup
     .catch(() => undefined)
+    .then(async () => {
+      await notifyInjectedElementPickerToStop(context)
+      await chrome.scripting
+        .executeScript({
+          target: { tabId: context.tabId },
+          func: stopElementPickerInjection,
+          world: "ISOLATED",
+          args: [],
+        })
+        .catch(() => undefined)
+    })
+  return elementPickerCleanup
 }
 
 async function stopActiveElementPicker(reason: string, emit = true): Promise<void> {
@@ -715,66 +726,84 @@ async function startElementPicker(
   request: RuntimeRequest<"elementPicker.start">,
 ): Promise<JsonValue> {
   const operationVersion = ++elementPickerOperationVersion
-  const context = await refreshBoundContext()
-  if (operationVersion !== elementPickerOperationVersion) return { active: false }
-  assertTabContext(request.tabContext, context)
-  elementPickerPageUrl(context.url)
-  if (!(await hasHostPermission(context.url))) {
-    throw new RuntimeError(
-      "PERMISSION_DENIED",
-      "Grant access to the current site before selecting an element",
-    )
-  }
-  if (operationVersion !== elementPickerOperationVersion) return { active: false }
-  await assertReadableDocument(context)
-  if (operationVersion !== elementPickerOperationVersion) return { active: false }
-  if (activeElementPicker) await stopActiveElementPicker("replaced")
-  if (operationVersion !== elementPickerOperationVersion) return { active: false }
-  const token = crypto.randomUUID()
-  activeElementPicker = {
-    clientId: request.params.clientId,
-    context,
-    token,
-    expiresAt: Date.now() + ELEMENT_PICKER_LIMITS.lifetimeMs,
-  }
-  let injectionFailed = false
+  const starting: PickerStart = { disconnectedWindows: new Set() }
+  startingElementPicker = starting
   try {
-    let results: chrome.scripting.InjectionResult<ElementPickerOperationResult>[]
+    const context = await refreshBoundContext()
+    if (operationVersion !== elementPickerOperationVersion) return { active: false }
+    assertTabContext(request.tabContext, context)
+    const tab = await chrome.tabs.get(context.tabId)
+    starting.windowId = tab.windowId
+    if (starting.disconnectedWindows.has(tab.windowId)) {
+      if (operationVersion === elementPickerOperationVersion) elementPickerOperationVersion += 1
+      return { active: false }
+    }
+    if (operationVersion !== elementPickerOperationVersion) return { active: false }
+    elementPickerPageUrl(context.url)
+    if (!(await hasHostPermission(context.url))) {
+      throw new RuntimeError(
+        "PERMISSION_DENIED",
+        "Grant access to the current site before selecting an element",
+      )
+    }
+    if (operationVersion !== elementPickerOperationVersion) return { active: false }
+    await assertReadableDocument(context)
+    if (operationVersion !== elementPickerOperationVersion) return { active: false }
+    if (activeElementPicker) await stopActiveElementPicker("replaced")
+    // Lifecycle stops clear active state before their page cleanup finishes.
+    await elementPickerCleanup
+    if (operationVersion !== elementPickerOperationVersion) return { active: false }
+    const token = crypto.randomUUID()
+    activeElementPicker = {
+      clientId: request.params.clientId,
+      context,
+      token,
+      expiresAt: Date.now() + ELEMENT_PICKER_LIMITS.lifetimeMs,
+    }
+    let injectionFailed = false
     try {
-      results = await chrome.scripting.executeScript({
-        target: { tabId: context.tabId },
-        func: executeElementPicker,
-        world: "ISOLATED",
-        args: ["start", token, context, ELEMENT_PICKER_LIMITS],
-      })
+      let results: chrome.scripting.InjectionResult<ElementPickerOperationResult>[]
+      try {
+        results = await chrome.scripting.executeScript({
+          target: { tabId: context.tabId },
+          func: executeElementPicker,
+          world: "ISOLATED",
+          args: ["start", token, context, ELEMENT_PICKER_LIMITS],
+        })
+      } catch (error) {
+        injectionFailed = true
+        if (activeElementPicker?.token === token) activeElementPicker = undefined
+        throw await injectionFailure(context, error)
+      }
+      const outcome = results[0]?.result
+      if (!outcome?.ok || outcome.result.started !== true) {
+        throw new RuntimeError(
+          "STALE_CONTEXT",
+          "The page changed before the element picker started",
+        )
+      }
+      await revalidateRequestContext(request, context)
+      const active = activeElementPicker?.token === token
+      if (active) {
+        emitEvent({
+          kind: "event",
+          name: "elementPicker.started",
+          payload: { active: true, clientId: request.params.clientId },
+          tabContext: context,
+        })
+      }
+      return { active, clientId: request.params.clientId }
     } catch (error) {
-      injectionFailed = true
       if (activeElementPicker?.token === token) activeElementPicker = undefined
-      throw await injectionFailure(context, error)
+      if (!injectionFailed) await stopInjectedElementPicker(context)
+      if (error instanceof RuntimeError) throw error
+      throw new RuntimeError(
+        "PERMISSION_DENIED",
+        error instanceof Error ? error.message : "Chrome denied access to the current tab",
+      )
     }
-    const outcome = results[0]?.result
-    if (!outcome?.ok || outcome.result.started !== true) {
-      throw new RuntimeError("STALE_CONTEXT", "The page changed before the element picker started")
-    }
-    await revalidateRequestContext(request, context)
-    const active = activeElementPicker?.token === token
-    if (active) {
-      emitEvent({
-        kind: "event",
-        name: "elementPicker.started",
-        payload: { active: true, clientId: request.params.clientId },
-        tabContext: context,
-      })
-    }
-    return { active, clientId: request.params.clientId }
-  } catch (error) {
-    if (activeElementPicker?.token === token) activeElementPicker = undefined
-    if (!injectionFailed) await stopInjectedElementPicker(context)
-    if (error instanceof RuntimeError) throw error
-    throw new RuntimeError(
-      "PERMISSION_DENIED",
-      error instanceof Error ? error.message : "Chrome denied access to the current tab",
-    )
+  } finally {
+    if (startingElementPicker === starting) startingElementPicker = undefined
   }
 }
 

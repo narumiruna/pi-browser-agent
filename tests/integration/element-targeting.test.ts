@@ -228,35 +228,36 @@ afterEach(() => {
   vi.resetModules()
 })
 
+function connectPanel(windowId: number): () => void {
+  let message: (value: unknown) => void = () => undefined
+  let disconnected: () => void = () => undefined
+  chrome.runtime.getURL = (path) => `chrome-extension://extension/${path}`
+  panelConnected({
+    name: "element-picker-shortcut",
+    sender: {
+      id: "extension",
+      url: "chrome-extension://extension/panel.html",
+      tab: { windowId },
+    },
+    onMessage: {
+      addListener: (value: typeof message) => {
+        message = value
+      },
+    },
+    onDisconnect: {
+      addListener: (value: typeof disconnected) => {
+        disconnected = value
+      },
+    },
+    disconnect: () => disconnected(),
+    postMessage: vi.fn(),
+  } as unknown as chrome.runtime.Port)
+  Reflect.deleteProperty(chrome.runtime, "getURL")
+  message({ kind: "ready", windowId })
+  return () => disconnected()
+}
+
 test("panel disconnect stops only the picker in that panel's window", async () => {
-  const connectPanel = (windowId: number) => {
-    let message: (value: unknown) => void = () => undefined
-    let disconnected: () => void = () => undefined
-    chrome.runtime.getURL = (path) => `chrome-extension://extension/${path}`
-    panelConnected({
-      name: "element-picker-shortcut",
-      sender: {
-        id: "extension",
-        url: "chrome-extension://extension/panel.html",
-        tab: { windowId },
-      },
-      onMessage: {
-        addListener: (value: typeof message) => {
-          message = value
-        },
-      },
-      onDisconnect: {
-        addListener: (value: typeof disconnected) => {
-          disconnected = value
-        },
-      },
-      disconnect: () => disconnected(),
-      postMessage: vi.fn(),
-    } as unknown as chrome.runtime.Port)
-    Reflect.deleteProperty(chrome.runtime, "getURL")
-    message({ kind: "ready", windowId })
-    return () => disconnected()
-  }
   const host = "[data-pi-browser-agent-element-picker]"
   await expect(startPickerRequest()).resolves.toMatchObject({ ok: true, result: { active: true } })
   expect(document.querySelector(host)).not.toBeNull()
@@ -267,6 +268,120 @@ test("panel disconnect stops only the picker in that panel's window", async () =
   connectPanel(1)()
   await vi.waitFor(() => expect(document.querySelector(host)).toBeNull())
 })
+
+describe("panel disconnect during picker preflight", () => {
+  for (const stage of [
+    "tab refresh",
+    "window lookup",
+    "permission",
+    "document validation",
+  ] as const) {
+    for (const windowId of [1, 2]) {
+      test(`${stage}: disconnect in window ${windowId} affects only its own start`, async () => {
+        const disconnect = connectPanel(windowId)
+        let release: () => void = () => undefined
+        let markEntered: () => void = () => undefined
+        const entered = new Promise<void>((resolve) => {
+          markEntered = resolve
+        })
+        const gate = new Promise<void>((resolve) => {
+          release = resolve
+        })
+        if (stage === "tab refresh") {
+          vi.mocked(chrome.tabs.query).mockImplementationOnce(async () => {
+            markEntered()
+            await gate
+            return [tab] as chrome.tabs.Tab[]
+          })
+        } else if (stage === "window lookup") {
+          vi.mocked(chrome.tabs.get).mockImplementationOnce(async () => {
+            markEntered()
+            await gate
+            return tab as chrome.tabs.Tab
+          })
+        } else if (stage === "permission") {
+          vi.mocked(chrome.permissions.contains).mockImplementationOnce(async () => {
+            markEntered()
+            await gate
+            return permission
+          })
+        } else {
+          const original = executeScript.getMockImplementation()
+          executeScript.mockImplementationOnce(async (injection) => {
+            expect(injection.func.name).toBe("readDocumentContentType")
+            markEntered()
+            await gate
+            return original?.(injection) ?? []
+          })
+        }
+        const starting = startPickerRequest()
+        try {
+          await entered
+          disconnect()
+        } finally {
+          release()
+        }
+        await expect(starting).resolves.toMatchObject({
+          ok: true,
+          result: { active: windowId !== tab.windowId },
+        })
+        expect(document.querySelector("[data-pi-browser-agent-element-picker]") !== null).toBe(
+          windowId !== tab.windowId,
+        )
+        if (windowId !== tab.windowId) {
+          connectPanel(tab.windowId)()
+          await vi.waitFor(() =>
+            expect(document.querySelector("[data-pi-browser-agent-element-picker]")).toBeNull(),
+          )
+        }
+      })
+    }
+  }
+})
+
+test.each([false, true])(
+  "navigation cleanup precedes replacement (panel disconnect: %s)",
+  async (disconnectWhileWaiting) => {
+    const disconnect = connectPanel(tab.windowId)
+    await expect(startPickerRequest()).resolves.toMatchObject({
+      ok: true,
+      result: { active: true },
+    })
+    let release: () => void = () => undefined
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    vi.mocked(chrome.tabs.sendMessage).mockImplementationOnce(async () => {
+      await gate
+    })
+    const operations: string[] = []
+    const original = executeScript.getMockImplementation()
+    executeScript.mockImplementation(async (injection) => {
+      if (injection.func.name === "stopElementPickerInjection") operations.push("cleanup")
+      if (injection.func.name === "executeElementPicker" && injection.args?.[0] === "start") {
+        operations.push("start")
+      }
+      return original?.(injection) ?? []
+    })
+    updated(tab.id, { status: "loading" })
+    await state()
+    const starting = startPickerRequest()
+    // Drain the resolved preflight promises while the older cleanup remains blocked.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    if (disconnectWhileWaiting) disconnect()
+    release()
+    await expect(starting).resolves.toMatchObject({
+      ok: true,
+      result: { active: !disconnectWhileWaiting },
+    })
+    await vi.waitFor(() => expect(operations).toContain("cleanup"))
+    expect(operations).toEqual(disconnectWhileWaiting ? ["cleanup"] : ["cleanup", "start"])
+    expect(document.querySelector("[data-pi-browser-agent-element-picker]") !== null).toBe(
+      !disconnectWhileWaiting,
+    )
+    await send("elementPicker.stop")
+  },
+)
 
 describe("worker injection failures", () => {
   const paths = [
