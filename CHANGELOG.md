@@ -1,5 +1,16 @@
 # pi-browser-agent
 
+## 0.6.0
+
+### Minor Changes
+
+- 066261c: Add Cmd+Shift+E on macOS and Ctrl+Shift+E on Windows/Linux to open Pi Browser Agent and toggle page-element selection. Keep site authorization explicit, cancel stale startup requests, and show the assigned shortcut in the picker tooltip.
+
+### Patch Changes
+
+- 4848afc: Update the pi SDK and adapt browser Azure configuration to the renamed provider. Migrate saved Azure credentials, model settings, and session selections so existing users retain authentication and can restore conversations after upgrading.
+- dcfa381: Simplify browser injection failure handling, confirmation permission checks, and activity-only transcript rendering without changing authorization or visible behavior. Reuse the shared Codex response fixtures and expand regression coverage.
+
 ## 0.5.1
 
 ### Patch Changes
