@@ -3318,8 +3318,10 @@ test("a third command waits for the previous stop before starting a new picker",
 
 test("worker disconnect keeps the picker active until replacement-worker cleanup completes", async () => {
   await prepareFeatureSession()
+  await page.goto(`http://127.0.0.1:${fixture.port}/?restart-picker=1`)
   await page.bringToFront()
   tabContext = await waitForCurrentTab(page.url())
+  expect(tabContext.epoch).toBeGreaterThan(0)
   const host = page.locator("[data-pi-browser-agent-element-picker]")
   const picker = controller.locator("#element-picker")
   await dispatchPickerCommand()
@@ -3371,6 +3373,7 @@ test("worker disconnect keeps the picker active until replacement-worker cleanup
     await expect(host).toHaveCount(0)
     await expect(picker).toHaveAttribute("aria-pressed", "false")
     tabContext = await waitForCurrentTab(page.url())
+    await expect(controller.locator("#error")).toBeHidden()
     await dispatchPickerCommand()
     await expect(host).toHaveCount(1)
     await dispatchPickerCommand()
@@ -3382,6 +3385,152 @@ test("worker disconnect keeps the picker active until replacement-worker cleanup
       ).disconnectStopGate?.release(),
     )
     await cdp.detach().catch(() => undefined)
+    await controller.reload()
+    await waitForConversationReady(controller)
+  }
+})
+
+test("a command starts on the new tab before old picker lifecycle events arrive", async () => {
+  await prepareFeatureSession()
+  const destination = await context.newPage()
+  await destination.goto(`http://127.0.0.1:${fixture.port}/second`)
+  await page.bringToFront()
+  tabContext = await waitForCurrentTab(page.url())
+  await controller.evaluate(() => sessionStorage.setItem("gatePickerLifecycle", "true"))
+  await controller.addInitScript(() => {
+    if (location.protocol !== "chrome-extension:") return
+    if (sessionStorage.getItem("gatePickerLifecycle") !== "true") return
+    const state = window as typeof window & {
+      pickerLifecycleGate?: { hold: boolean; count: number; release: () => void }
+    }
+    const pending: Array<() => void> = []
+    state.pickerLifecycleGate = {
+      hold: false,
+      count: 0,
+      release() {
+        if (state.pickerLifecycleGate) state.pickerLifecycleGate.hold = false
+        for (const deliver of pending.splice(0)) deliver()
+      },
+    }
+    const addListener = chrome.runtime.onMessage.addListener.bind(chrome.runtime.onMessage)
+    chrome.runtime.onMessage.addListener = (listener) => {
+      addListener((message, sender, respond) => {
+        if (
+          state.pickerLifecycleGate?.hold &&
+          message?.kind === "event" &&
+          ["tab.changed", "elementPicker.cancelled"].includes(message.name)
+        ) {
+          state.pickerLifecycleGate.count += 1
+          pending.push(() => listener(message, sender, respond))
+          return false
+        }
+        return listener(message, sender, respond)
+      })
+    }
+  })
+  try {
+    await controller.reload()
+    await waitForConversationReady(controller)
+    await page.bringToFront()
+    await dispatchPickerCommand()
+    await expect(page.locator("[data-pi-browser-agent-element-picker]")).toHaveCount(1)
+    await expect(controller.locator("#element-picker")).toHaveAttribute("aria-pressed", "true")
+    await controller.evaluate(() => {
+      const gate = (window as typeof window & { pickerLifecycleGate?: { hold: boolean } })
+        .pickerLifecycleGate
+      if (gate) gate.hold = true
+    })
+    await destination.bringToFront()
+    tabContext = await waitForCurrentTab(destination.url())
+    await expect
+      .poll(() =>
+        controller.evaluate(
+          () =>
+            (window as typeof window & { pickerLifecycleGate?: { count: number } })
+              .pickerLifecycleGate?.count,
+        ),
+      )
+      .toBeGreaterThan(0)
+    // The panel still shows the previous tab's active picker.
+    await expect(controller.locator("#element-picker")).toHaveAttribute("aria-pressed", "true")
+    await dispatchPickerCommand()
+    await expect(destination.locator("[data-pi-browser-agent-element-picker]")).toHaveCount(1)
+    await expect(page.locator("[data-pi-browser-agent-element-picker]")).toHaveCount(0)
+    await dispatchPickerCommand()
+    await expect(destination.locator("[data-pi-browser-agent-element-picker]")).toHaveCount(0)
+  } finally {
+    await controller.evaluate(() => {
+      ;(
+        window as typeof window & { pickerLifecycleGate?: { release: () => void } }
+      ).pickerLifecycleGate?.release()
+      sessionStorage.removeItem("gatePickerLifecycle")
+    })
+    await destination.close()
+    await page.bringToFront()
+    tabContext = await waitForCurrentTab(page.url())
+    await controller.reload()
+    await waitForConversationReady(controller)
+  }
+})
+
+test("a command rejects a same-URL reload during its permission check", async () => {
+  await prepareFeatureSession()
+  await page.bringToFront()
+  tabContext = await waitForCurrentTab(page.url())
+  const originalEpoch = tabContext.epoch
+  await controller.evaluate(() => {
+    const original = chrome.permissions.contains.bind(chrome.permissions)
+    let release: () => void = () => undefined
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const state = window as typeof window & {
+      reloadPermissionGate?: { entered: boolean; release: () => void }
+    }
+    state.reloadPermissionGate = {
+      entered: false,
+      release() {
+        chrome.permissions.contains = original
+        release()
+      },
+    }
+    chrome.permissions.contains = (async (permissions) => {
+      if (permissions.origins?.some((origin) => origin.includes("127.0.0.1"))) {
+        if (state.reloadPermissionGate) state.reloadPermissionGate.entered = true
+        await gate
+      }
+      return original(permissions)
+    }) as typeof chrome.permissions.contains
+  })
+  try {
+    await dispatchPickerCommand()
+    await expect
+      .poll(() =>
+        controller.evaluate(
+          () =>
+            (window as typeof window & { reloadPermissionGate?: { entered: boolean } })
+              .reloadPermissionGate?.entered,
+        ),
+      )
+      .toBe(true)
+    await page.reload()
+    await expect
+      .poll(async () => (await waitForCurrentTab(page.url())).epoch)
+      .not.toBe(originalEpoch)
+    await controller.evaluate(() =>
+      (
+        window as typeof window & { reloadPermissionGate?: { release: () => void } }
+      ).reloadPermissionGate?.release(),
+    )
+    await expect(controller.locator("#error")).toContainText("The page changed")
+    await expect(controller.locator("#element-picker")).toHaveAttribute("aria-pressed", "false")
+    await expect(page.locator("[data-pi-browser-agent-element-picker]")).toHaveCount(0)
+  } finally {
+    await controller.evaluate(() =>
+      (
+        window as typeof window & { reloadPermissionGate?: { release: () => void } }
+      ).reloadPermissionGate?.release(),
+    )
     await controller.reload()
     await waitForConversationReady(controller)
   }

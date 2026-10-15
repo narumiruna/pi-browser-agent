@@ -133,6 +133,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   let tabRefreshVersion = 0
   let pickerActive = false
   let pickerStarting = false
+  let pickerContext: TabContext | undefined
   let pickerStopping: Promise<void> | undefined
   let pickerClientId: string | undefined
   let pickerStartVersion = 0
@@ -480,6 +481,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   function setPickerActive(active: boolean, clientId?: string): void {
     pickerActive = active
     pickerClientId = active ? clientId : undefined
+    if (!active) pickerContext = undefined
     elementPickerButton.setAttribute("aria-pressed", String(active))
     elementPickerButton.ariaLabel = active ? "Cancel element selection" : "Select page element"
     elementPickerButton.title = pickerButtonTitle(active, pickerShortcut)
@@ -606,7 +608,8 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     if (pickerStopping) return pickerStopping
     pickerStopping = (async () => {
       try {
-        const context = currentTabContext ?? (await refreshTabContext().catch(() => undefined))
+        // A replacement worker has a new epoch. Do not send the cached pre-restart context.
+        const context = await refreshTabContext()
         await sendRuntimeRequest("elementPicker.stop", {}, context ? { tabContext: context } : {})
       } finally {
         pickerStopping = undefined
@@ -635,9 +638,18 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       shortcutContext &&
       shortcutPermissionContext &&
       sameTabContext(shortcutContext, shortcutPermissionContext)
+    const replacesPicker =
+      shortcutContext &&
+      (pickerActive || pickerStarting) &&
+      (!pickerContext || !sameTabContext(shortcutContext, pickerContext))
+    let previousStop = pickerStopping
     if (pickerStarting || (!pickerStopping && (pickerActive || cancelsPendingAuthorization))) {
-      await stopElementPicker()
-      return
+      if (replacesPicker) assertPickerActionAvailable()
+      previousStop = stopElementPicker()
+      if (!replacesPicker) {
+        await previousStop
+        return
+      }
     }
     if (disposed) return
     // The rendered button can still describe the previous tab. Check page state after refresh.
@@ -646,16 +658,18 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     shortcutPermissionContext = undefined
     const version = ++pickerStartVersion
     pickerStarting = true
+    pickerContext = expected ?? currentTabContext
     updateSendButton()
     try {
       // Do not let an older stop injection remove a newly started picker.
-      await pickerStopping
+      await previousStop
       if (version !== pickerStartVersion || disposed) return
       const permissionContext = await refreshTabContext()
       if (version !== pickerStartVersion) return
       if (!permissionContext) {
         throw new Error("Open an HTTP or HTTPS page before selecting an element")
       }
+      pickerContext = permissionContext
       if (expected && !sameTabContext(expected, permissionContext)) {
         throw new Error("The page changed before selection could start. Select it again.")
       }
@@ -680,11 +694,16 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       if (runtime.agent.state.isStreaming && !runtime.usesPageContext) {
         throw new Error("This turn does not use page context")
       }
-      if (context.tabId !== permissionContext.tabId || context.url !== permissionContext.url) {
+      if (
+        shortcutContext
+          ? !sameTabContext(shortcutContext, context)
+          : context.tabId !== permissionContext.tabId || context.url !== permissionContext.url
+      ) {
         throw new Error("The page changed while site access was being granted. Select it again.")
       }
       assertPickerActionAvailable()
       const clientId = crypto.randomUUID()
+      pickerContext = context
       pickerClientId = clientId
       const result = await sendRuntimeRequest(
         "elementPicker.start",
@@ -702,6 +721,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     } finally {
       if (version === pickerStartVersion) {
         pickerStarting = false
+        if (!pickerActive) pickerContext = undefined
         updateSendButton()
       }
     }
@@ -1109,7 +1129,8 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
         !sameTabContext(event.tabContext, currentTabContext)
       ) {
         currentTabContext = undefined
-        setPickerActive(false)
+        // Restart refresh can emit a new epoch before the stop request completes.
+        if (!pickerStopping) setPickerActive(false)
         clearSelectedElements()
       }
       void refreshTab().catch(setError)
