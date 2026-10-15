@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest"
 import {
   BOOKMARKS_PERMISSION,
+  hasApprovedHostPermission,
   hasBookmarkPermission,
   hasHostPermission,
   hasHostPermissions,
@@ -97,6 +98,30 @@ describe("browser permissions", () => {
 
     await expect(hasHostPermission("https://example.test/path")).resolves.toBe(true)
     expect(getAll).not.toHaveBeenCalled()
+  })
+
+  test("requires existing Chrome and app approval without migrating an exact grant", async () => {
+    const contains = vi.fn().mockResolvedValue(true)
+    const getAll = vi.fn().mockResolvedValue({ origins: ["https://example.test/*"] })
+    const get = vi.fn().mockResolvedValue({ piBrowserAgentApprovedHostPermissions: [] })
+    const set = vi.fn()
+    const request = vi.fn()
+    vi.stubGlobal("chrome", {
+      permissions: { contains, getAll, request },
+      storage: { local: { get, set } },
+    })
+
+    await expect(hasApprovedHostPermission("https://example.test/path")).resolves.toBe(false)
+    get.mockResolvedValue({
+      piBrowserAgentApprovedHostPermissions: ["https://example.test/*"],
+    })
+    await expect(hasApprovedHostPermission("https://example.test/path")).resolves.toBe(true)
+    contains.mockResolvedValue(false)
+    await expect(hasApprovedHostPermission("https://example.test/path")).resolves.toBe(false)
+    expect(contains).toHaveBeenCalledWith({ origins: ["https://example.test/*"] })
+    expect(getAll).not.toHaveBeenCalled()
+    expect(set).not.toHaveBeenCalled()
+    expect(request).not.toHaveBeenCalled()
   })
 
   test("migrates an independently granted exact origin to app approval", async () => {

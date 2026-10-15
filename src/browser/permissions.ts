@@ -58,6 +58,13 @@ function approveHostPermissions(origins: readonly string[]): Promise<void> {
   })
 }
 
+/** Check existing approval without migrating Chrome grants or changing storage. */
+export async function hasApprovedHostPermission(value: string | URL): Promise<boolean> {
+  const origin = toHostPermissionPattern(value)
+  if (!(await chrome.permissions.contains({ origins: [origin] }))) return false
+  return (await approvedHostPermissions()).has(origin)
+}
+
 export async function hasHostPermission(value: string | URL): Promise<boolean> {
   return hasHostPermissions([value])
 }

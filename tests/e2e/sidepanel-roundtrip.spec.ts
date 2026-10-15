@@ -3016,6 +3016,61 @@ test("hands a command to the panel, cancels, and attaches without activating or 
   await controller.locator(".remove-selected-element").click()
 })
 
+test("a command refreshes page eligibility while the old tab refresh is pending", async () => {
+  await prepareFeatureSession()
+  await page.goto("chrome://settings/")
+  await page.bringToFront()
+  await expect(controller.locator("#element-picker")).toBeDisabled()
+  await controller.evaluate(() => {
+    const original = chrome.runtime.sendMessage.bind(chrome.runtime)
+    let release: () => void = () => undefined
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const state = window as typeof window & {
+      tabRefreshGate?: { entered: boolean; allowNew: boolean; release: () => void }
+    }
+    state.tabRefreshGate = { entered: false, allowNew: false, release }
+    chrome.runtime.sendMessage = (async (message: { method?: string }) => {
+      if (message.method === "app.getState" && !state.tabRefreshGate?.allowNew) {
+        if (state.tabRefreshGate) state.tabRefreshGate.entered = true
+        await gate
+      }
+      return original(message)
+    }) as typeof chrome.runtime.sendMessage
+  })
+  try {
+    await page.goto(`http://127.0.0.1:${fixture.port}/`)
+    tabContext = await waitForCurrentTab(page.url())
+    await expect
+      .poll(() =>
+        controller.evaluate(
+          () =>
+            (window as typeof window & { tabRefreshGate?: { entered: boolean } }).tabRefreshGate
+              ?.entered,
+        ),
+      )
+      .toBe(true)
+    await expect(controller.locator("#element-picker")).toBeDisabled()
+    await controller.evaluate(() => {
+      const state = window as typeof window & { tabRefreshGate?: { allowNew: boolean } }
+      if (state.tabRefreshGate) state.tabRefreshGate.allowNew = true
+    })
+    await dispatchPickerCommand()
+    await expect(page.locator("[data-pi-browser-agent-element-picker]")).toHaveCount(1)
+    await page.keyboard.press("Escape")
+    await expect(page.locator("[data-pi-browser-agent-element-picker]")).toHaveCount(0)
+  } finally {
+    await controller.evaluate(() =>
+      (
+        window as typeof window & { tabRefreshGate?: { release: () => void } }
+      ).tabRefreshGate?.release(),
+    )
+    await controller.reload()
+    await waitForConversationReady(controller)
+  }
+})
+
 test("command missing site access requires an explicit picker click", async () => {
   await prepareFeatureSession()
   await page.bringToFront()
@@ -3031,6 +3086,8 @@ test("command missing site access requires an explicit picker click", async () =
     }
     state.shortcutPermissionRequests = 0
     state.shortcutDenyPermission = true
+    // An independently granted exact origin must not become app approval through the command.
+    chrome.permissions.getAll = async () => ({ origins: ["http://127.0.0.1/*"] })
     chrome.permissions.request = (async (permissions) => {
       state.shortcutPermissionRequests = (state.shortcutPermissionRequests ?? 0) + 1
       if (state.shortcutDenyPermission) return false
@@ -3047,6 +3104,12 @@ test("command missing site access requires an explicit picker click", async () =
           .shortcutPermissionRequests,
     ),
   ).toBe(0)
+  expect(
+    await controller.evaluate(async () => {
+      const stored = await chrome.storage.local.get("piBrowserAgentApprovedHostPermissions")
+      return stored.piBrowserAgentApprovedHostPermissions
+    }),
+  ).not.toContain("http://127.0.0.1/*")
   await controller.locator("#element-picker").click()
   await expect(controller.locator("#error")).toContainText("Site access is required")
   await expect(page.locator("[data-pi-browser-agent-element-picker]")).toHaveCount(0)
@@ -3111,6 +3174,171 @@ test("a repeated command cancels a start waiting for its permission check", asyn
     )
   }
   await expect(page.locator("[data-pi-browser-agent-element-picker]")).toHaveCount(0)
+})
+
+test("a third command waits for the previous stop before starting a new picker", async () => {
+  await prepareFeatureSession()
+  await page.bringToFront()
+  tabContext = await waitForCurrentTab(page.url())
+  const host = page.locator("[data-pi-browser-agent-element-picker]")
+  await dispatchPickerCommand()
+  await expect(host).toHaveCount(1)
+  await controller.evaluate(() => {
+    const original = chrome.runtime.sendMessage.bind(chrome.runtime)
+    let release: () => void = () => undefined
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const state = window as typeof window & {
+      pickerStopGate?: {
+        entered: boolean
+        starts: number
+        stopped: boolean
+        prematureStart: boolean
+        release: () => void
+      }
+    }
+    state.pickerStopGate = {
+      entered: false,
+      starts: 0,
+      stopped: false,
+      prematureStart: false,
+      release,
+    }
+    chrome.runtime.sendMessage = (async (message: { method?: string }) => {
+      if (message.method === "elementPicker.stop") {
+        if (state.pickerStopGate) state.pickerStopGate.entered = true
+        await gate
+        const result = await original(message)
+        if (state.pickerStopGate) state.pickerStopGate.stopped = true
+        return result
+      }
+      if (message.method === "elementPicker.start" && state.pickerStopGate) {
+        state.pickerStopGate.starts += 1
+        state.pickerStopGate.prematureStart ||= !state.pickerStopGate.stopped
+      }
+      return original(message)
+    }) as typeof chrome.runtime.sendMessage
+  })
+  try {
+    await dispatchPickerCommand()
+    await expect
+      .poll(() =>
+        controller.evaluate(
+          () =>
+            (window as typeof window & { pickerStopGate?: { entered: boolean } }).pickerStopGate
+              ?.entered,
+        ),
+      )
+      .toBe(true)
+    await dispatchPickerCommand()
+    // The third toggle has entered its start path while the old stop remains blocked.
+    await expect(controller.locator("#element-picker")).toBeDisabled()
+    await controller.evaluate(() =>
+      (
+        window as typeof window & { pickerStopGate?: { release: () => void } }
+      ).pickerStopGate?.release(),
+    )
+    await expect
+      .poll(() =>
+        controller.evaluate(
+          () =>
+            (window as typeof window & { pickerStopGate?: { starts: number } }).pickerStopGate
+              ?.starts,
+        ),
+      )
+      .toBe(1)
+    await expect(host).toHaveCount(1)
+    await expect(controller.locator("#element-picker")).toHaveAttribute("aria-pressed", "true")
+    expect(
+      await controller.evaluate(
+        () =>
+          (window as typeof window & { pickerStopGate?: { prematureStart: boolean } })
+            .pickerStopGate?.prematureStart,
+      ),
+    ).toBe(false)
+    await dispatchPickerCommand()
+    await expect(host).toHaveCount(0)
+  } finally {
+    await controller.evaluate(() =>
+      (
+        window as typeof window & { pickerStopGate?: { release: () => void } }
+      ).pickerStopGate?.release(),
+    )
+    await controller.reload()
+    await waitForConversationReady(controller)
+  }
+})
+
+test("worker disconnect keeps the picker active until replacement-worker cleanup completes", async () => {
+  await prepareFeatureSession()
+  await page.bringToFront()
+  tabContext = await waitForCurrentTab(page.url())
+  const host = page.locator("[data-pi-browser-agent-element-picker]")
+  const picker = controller.locator("#element-picker")
+  await dispatchPickerCommand()
+  await expect(host).toHaveCount(1)
+  await expect(picker).toHaveAttribute("aria-pressed", "true")
+  await controller.evaluate(() => {
+    const original = chrome.runtime.sendMessage.bind(chrome.runtime)
+    let release: () => void = () => undefined
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const state = window as typeof window & {
+      disconnectStopGate?: { entered: boolean; release: () => void }
+    }
+    state.disconnectStopGate = { entered: false, release }
+    chrome.runtime.sendMessage = (async (message: { method?: string }) => {
+      if (message.method === "elementPicker.stop") {
+        if (state.disconnectStopGate) state.disconnectStopGate.entered = true
+        await gate
+      }
+      return original(message)
+    }) as typeof chrome.runtime.sendMessage
+  })
+  const cdp = await context.browser()?.newBrowserCDPSession()
+  if (!cdp) throw new Error("No browser CDP session")
+  try {
+    const targets = await cdp.send("Target.getTargets")
+    const target = targets.targetInfos.find(
+      (target) => target.type === "service_worker" && target.url === worker.url(),
+    )
+    if (!target) throw new Error("No service worker target")
+    await cdp.send("Target.closeTarget", { targetId: target.targetId })
+    await expect
+      .poll(() =>
+        controller.evaluate(
+          () =>
+            (window as typeof window & { disconnectStopGate?: { entered: boolean } })
+              .disconnectStopGate?.entered,
+        ),
+      )
+      .toBe(true)
+    // A stop response, not port disconnection alone, clears the active UI.
+    await expect(picker).toHaveAttribute("aria-pressed", "true")
+    await controller.evaluate(() =>
+      (
+        window as typeof window & { disconnectStopGate?: { release: () => void } }
+      ).disconnectStopGate?.release(),
+    )
+    await expect(host).toHaveCount(0)
+    await expect(picker).toHaveAttribute("aria-pressed", "false")
+    tabContext = await waitForCurrentTab(page.url())
+    await dispatchPickerCommand()
+    await expect(host).toHaveCount(1)
+    await dispatchPickerCommand()
+    await expect(host).toHaveCount(0)
+  } finally {
+    await controller.evaluate(() =>
+      (
+        window as typeof window & { disconnectStopGate?: { release: () => void } }
+      ).disconnectStopGate?.release(),
+    )
+    await cdp.detach().catch(() => undefined)
+    await controller.reload()
+    await waitForConversationReady(controller)
+  }
 })
 
 test("retains a command while the conversation initializes", async () => {

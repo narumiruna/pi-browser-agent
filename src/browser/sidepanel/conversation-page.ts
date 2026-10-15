@@ -4,7 +4,7 @@ import { BrowserAgentRuntime } from "../agent/runtime.js"
 import { safeErrorMessage } from "../auth/redaction.js"
 import {
   BOOKMARKS_PERMISSION,
-  hasHostPermission,
+  hasApprovedHostPermission,
   requestBookmarkPermission,
   requestHostPermission,
   requestHostPermissions,
@@ -133,6 +133,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   let tabRefreshVersion = 0
   let pickerActive = false
   let pickerStarting = false
+  let pickerStopping: Promise<void> | undefined
   let pickerClientId: string | undefined
   let pickerStartVersion = 0
   let shortcutPermissionContext: TabContext | undefined
@@ -601,29 +602,54 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     pickerStartVersion += 1
     pickerStarting = false
     shortcutPermissionContext = undefined
-    setPickerActive(false)
-    const context = currentTabContext ?? (await refreshTabContext().catch(() => undefined))
-    await sendRuntimeRequest("elementPicker.stop", {}, context ? { tabContext: context } : {})
+    updateSendButton()
+    if (pickerStopping) return pickerStopping
+    pickerStopping = (async () => {
+      try {
+        const context = currentTabContext ?? (await refreshTabContext().catch(() => undefined))
+        await sendRuntimeRequest("elementPicker.stop", {}, context ? { tabContext: context } : {})
+      } finally {
+        pickerStopping = undefined
+        setPickerActive(false)
+      }
+    })()
+    return pickerStopping
   }
 
-  async function toggleElementPicker(shortcutContext?: TabContext): Promise<void> {
-    setError()
-    if (pickerActive || pickerStarting || (shortcutContext && shortcutPermissionContext)) {
-      await stopElementPicker()
-      return
-    }
-    if (disposed) return
-    if (elementPickerButton.disabled) {
+  function assertPickerActionAvailable(): void {
+    if (
+      activeSubmissionGuard !== undefined ||
+      voiceInputStarting ||
+      voiceInput?.active === true ||
+      selectedElements.length >= ELEMENT_PICKER_LIMITS.elements
+    ) {
       throw new Error(
         "Element selection is unavailable while another action is in progress or the attachment limit is reached",
       )
     }
+  }
+
+  async function toggleElementPicker(shortcutContext?: TabContext): Promise<void> {
+    setError()
+    if (
+      pickerStarting ||
+      (!pickerStopping && (pickerActive || (shortcutContext && shortcutPermissionContext)))
+    ) {
+      await stopElementPicker()
+      return
+    }
+    if (disposed) return
+    // The rendered button can still describe the previous tab. Check page state after refresh.
+    assertPickerActionAvailable()
     const expected = shortcutContext ?? shortcutPermissionContext
     shortcutPermissionContext = undefined
     const version = ++pickerStartVersion
     pickerStarting = true
     updateSendButton()
     try {
+      // Do not let an older stop injection remove a newly started picker.
+      await pickerStopping
+      if (version !== pickerStartVersion || disposed) return
       const permissionContext = await refreshTabContext()
       if (version !== pickerStartVersion) return
       if (!permissionContext) {
@@ -636,7 +662,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
         throw new Error("This turn does not use page context")
       }
       if (shortcutContext) {
-        const allowed = await hasHostPermission(permissionContext.url)
+        const allowed = await hasApprovedHostPermission(permissionContext.url)
         if (version !== pickerStartVersion) return
         if (!allowed) {
           shortcutPermissionContext = permissionContext
@@ -656,6 +682,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       if (context.tabId !== permissionContext.tabId || context.url !== permissionContext.url) {
         throw new Error("The page changed while site access was being granted. Select it again.")
       }
+      assertPickerActionAvailable()
       const clientId = crypto.randomUUID()
       pickerClientId = clientId
       const result = await sendRuntimeRequest(
@@ -1170,10 +1197,13 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     toggle: toggleElementPicker,
     error: setError,
     disconnected() {
-      pickerStartVersion += 1
-      pickerStarting = false
-      shortcutPermissionContext = undefined
-      setPickerActive(false)
+      if (pickerActive || pickerStarting) {
+        // Wake the replacement worker and wait for cleanup before clearing the active UI.
+        void stopElementPicker().catch(setError)
+      } else {
+        pickerStartVersion += 1
+        shortcutPermissionContext = undefined
+      }
     },
   })
   if (disposed) disconnectPickerShortcut()
