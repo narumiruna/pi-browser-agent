@@ -290,6 +290,26 @@
           <p>Choose which browser tools the assistant can use. Changes apply to the next run; confirmations and Chrome permissions still apply.</p>
           <fieldset id="available-tools" class="tool-options" aria-labelledby="tools-title"></fieldset>
         </section>
+        <section class="settings-section" aria-labelledby="mcp-title">
+          <h2 id="mcp-title">Remote MCP servers</h2>
+          <p>Connect public HTTPS Streamable HTTP servers. Changes here save immediately, separately from other settings. Each remote tool call requires confirmation in every mode and can have side effects. Tool metadata and results can go to your selected model and saved session.</p>
+          <label for="mcp-server">Server</label>
+          <select id="mcp-server"><option value="">New server</option></select>
+          <label for="mcp-name">Name</label>
+          <input id="mcp-name" maxlength="80" autocomplete="off" />
+          <label for="mcp-endpoint">HTTPS endpoint (no query or fragment)</label>
+          <input id="mcp-endpoint" type="url" maxlength="2048" autocomplete="off" />
+          <label for="mcp-token">Bearer token (optional; 16 to 4096 characters; blank keeps an existing token at the same endpoint)</label>
+          <input id="mcp-token" type="password" minlength="16" maxlength="4096" autocomplete="off" />
+          <label><input id="mcp-clear-token" type="checkbox" />Remove existing token</label>
+          <button id="mcp-save" type="button">Save disconnected</button>
+          <button id="mcp-connect" type="button">Connect and preview</button>
+          <button id="mcp-disable" type="button">Disable</button>
+          <button id="mcp-remove" type="button">Remove server and token</button>
+          <p id="mcp-status" role="status" aria-live="polite"></p>
+          <p>Untrusted MCP tool preview</p>
+          <pre id="mcp-tools"></pre>
+        </section>
         <section class="settings-section" aria-labelledby="confirmation-title">
           <h2 id="confirmation-title">Browser action confirmations</h2>
           <label for="confirmation-mode">Confirmation mode</label>

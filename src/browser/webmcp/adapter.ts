@@ -28,13 +28,16 @@ export async function executeWebMcpOperation(
   })
   const modelContext = (): {
     getTools?: () => Promise<Record<string, unknown>[]>
-    executeTool?: (tool: Record<string, unknown>, args: string) => Promise<unknown>
+    executeTool?: (tool: Record<string, unknown>, args: string | JsonObject) => Promise<unknown>
   } | null => {
     const documentContext = (
       document as Document & {
         modelContext?: {
           getTools?: () => Promise<Record<string, unknown>[]>
-          executeTool?: (tool: Record<string, unknown>, args: string) => Promise<unknown>
+          executeTool?: (
+            tool: Record<string, unknown>,
+            args: string | JsonObject,
+          ) => Promise<unknown>
         }
       }
     ).modelContext
@@ -44,7 +47,10 @@ export async function executeWebMcpOperation(
         navigator as Navigator & {
           modelContext?: {
             getTools?: () => Promise<Record<string, unknown>[]>
-            executeTool?: (tool: Record<string, unknown>, args: string) => Promise<unknown>
+            executeTool?: (
+              tool: Record<string, unknown>,
+              args: string | JsonObject,
+            ) => Promise<unknown>
           }
         }
       ).modelContext ?? null
@@ -120,8 +126,12 @@ export async function executeWebMcpOperation(
         )
       }
     }
-    // Chrome 153's native executeTool parses arguments as JSON text, not an object.
-    const result = await context.executeTool(tool, JSON.stringify(args))
+    // Native schema shape identifies the input format without probing or retrying a call.
+    // Chrome 153 exposes schema text; Chrome 156 exposes an object and ontoolactivated.
+    const objectInput =
+      (tool.inputSchema !== null && typeof tool.inputSchema === "object") ||
+      (tool.inputSchema === undefined && "ontoolactivated" in context)
+    const result = await context.executeTool(tool, objectInput ? args : JSON.stringify(args))
     return success(jsonSafe(result))
   } catch (error) {
     return failure(

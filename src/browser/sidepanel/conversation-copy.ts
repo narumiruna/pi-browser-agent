@@ -93,6 +93,7 @@ type ActivityKey =
   | "default"
   | "elements"
   | "navigation"
+  | "mcp"
   | "page"
   | "recentBookmarks"
   | "screenshot"
@@ -156,6 +157,11 @@ const ENGLISH_ACTIVITIES: Record<ActivityKey, ActivityLabels> = {
     complete: "Used a page feature",
     error: "Could not use the page feature",
   },
+  mcp: {
+    active: "Calling a remote tool",
+    complete: "Remote tool completed",
+    error: "Remote tool needs attention",
+  },
   default: {
     active: "Working with the page",
     complete: "Page activity completed",
@@ -191,6 +197,7 @@ const ACTIVITY_KEYS: Record<string, ActivityKey> = {
 }
 
 export function activityText(name: string, stage: ActivityStage, error = false): string {
-  const activity = ENGLISH_ACTIVITIES[ACTIVITY_KEYS[name] ?? "default"]
+  const activity =
+    ENGLISH_ACTIVITIES[name.startsWith("mcp_") ? "mcp" : (ACTIVITY_KEYS[name] ?? "default")]
   return error ? activity.error : activity[stage]
 }

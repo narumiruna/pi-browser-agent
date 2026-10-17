@@ -1,6 +1,6 @@
 # Privacy Policy for Pi Browser Agent
 
-**Effective date:** September 22, 2026
+**Effective date:** October 17, 2026
 
 Pi Browser Agent is a Chrome extension that provides an AI assistant for the page the user is viewing. This policy explains what information Pi Browser Agent handles, why it is handled, where it is stored, and when it is shared.
 
@@ -31,6 +31,12 @@ Pi Browser Agent does not continuously collect page content or maintain a backgr
 
 If the user explicitly confirms a bookmark operation and grants the optional permission, Pi Browser Agent may search bookmark titles and URLs or read a bounded list of recent bookmarks. Every bookmark read requires confirmation or a matching approval for the same operation, query, and limit under the selected confirmation mode. Pi Browser Agent does not create, modify, move, or delete bookmarks.
 
+### Remote MCP servers
+
+If configured by the user, remote MCP servers receive connection requests, client/protocol metadata, and confirmed tool names and arguments. A successful **Connect and preview** enables discovery for later submitted runs. Tool metadata and returned text or structured JSON can be sent to the selected model provider and stored in conversation history. Each call requires fresh confirmation in all modes. Remote MCP does not require a readable page.
+
+Server names, exact endpoint approvals, enablement, and configuration revisions are stored locally. Optional MCP bearer tokens use a separate trusted local store, bound to the server and endpoint. They are sent only as authentication to that endpoint, not to the selected model, websites, the service worker, transcripts, or diagnostics. MCP requests omit cookies and reject redirects. Removing a server deletes its token and endpoint connection approval; deleting sessions does not remove server settings or tokens. Remote services apply their own retention policies. Cancelling a request cannot undo a remote side effect.
+
 ### Settings and permission records
 
 Pi Browser Agent stores the selected provider and model, interface preferences, confirmation mode, user-edited instructions, the active session identifier, and exact origins approved through user actions. **Strict** prompts for every browser action currently requiring confirmation. **Balanced** (new-install default) remembers the same action and target until a browser restart; **Convenient** remembers it across restarts until cleared. Existing installations with no saved mode retain Strict. Form submissions, downloads, and clicks without a stable target always prompt. Matching WebMCP calls reuse only the same page, tool name, and arguments; bookmark reads reuse only the same query and limit. Repeating even an identical WebMCP call can have side effects. Switching modes clears remembered approvals; Settings also has **Clear remembered approvals**. The ledger contains bounded SHA-256 fingerprints, not raw arguments, bookmark queries, or full page URLs; it holds at most 256 matches per mode. A context-menu selection that has not yet reached the Side Panel can be held temporarily in `chrome.storage.session`.
@@ -56,6 +62,7 @@ Pi Browser Agent can share information in these circumstances:
 
 - **Selected AI provider:** When the user sends a prompt or approves a tool operation, Pi Browser Agent sends the provider the information needed for the conversation. Depending on the request, this may include prompts, prior conversation content, the current page URL, visible or selected page content, element descriptions, attached images, approved screenshots, approved bookmark titles and URLs, and tool results. Provider credentials are sent only to the associated provider endpoint for authentication.
 - **OpenAI authentication:** If the user chooses OpenAI Codex account login, Pi Browser Agent communicates with OpenAI's authentication and ChatGPT services to complete and refresh the device authorization flow.
+- **Configured remote MCP server:** Explicit setup or a later submitted run discovers enabled server tools. A confirmed call sends the displayed tool name and arguments to the approved endpoint. Tool metadata and results can also reach the selected AI provider and local transcript. MCP tokens authenticate only to their configured endpoint.
 - **Chrome speech provider:** If the user enables voice input, Chrome's speech service may process spoken audio and return transcript text.
 - **Current website:** At the user's request, page actions may interact with the active website. Typing actions provide text to an editable field and trigger page input and change events that the website can observe. Page-defined WebMCP calls require separate confirmation or a matching prior approval and may send arguments to, or receive results from, the website.
 
@@ -65,7 +72,7 @@ Pi Browser Agent does not sell user data, transfer it to data brokers or adverti
 
 ## Local storage and retention
 
-- Provider credentials, settings, the active session identifier, approved origins, and Convenient approval fingerprints remain in `chrome.storage.local` until removed, cleared, or extension data is deleted.
+- Provider credentials, MCP server configurations and tokens, settings, the active session identifier, approved origins, and Convenient approval fingerprints remain in `chrome.storage.local` until removed, cleared, or extension data is deleted.
 - An undelivered context-menu selection and Balanced approval fingerprints remain in `chrome.storage.session` until consumed, cleared, or the browser session ends.
 - Conversation records are stored in the extension's IndexedDB database. Pi Browser Agent retains at most 50 sessions and limits each serialized session record to 5 MB. If a session exceeds that limit, Pi Browser Agent first replaces embedded images with omission placeholders and then, if necessary, removes the oldest messages until the record fits. The Side Panel reports this loss to the user.
 - Partial streaming output, unsent pasted or annotated image previews, editable annotation strokes, unsent selected-element chips, and live picker/operation state are kept only in memory for the relevant Side Panel, page, or worker lifetime.
