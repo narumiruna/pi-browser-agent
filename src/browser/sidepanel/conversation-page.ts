@@ -163,7 +163,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   ): Promise<boolean> {
     const detailText = details ? JSON.stringify(details, null, 2) : ""
     confirmMessage.textContent = detailText
-      ? `${message}\n${detailText.length > 4_096 ? `${detailText.slice(0, 4_096)}… [details truncated]` : detailText}`
+      ? `${message}\n${detailText.length > 4_096 && typeof details?.endpoint !== "string" ? `${detailText.slice(0, 4_096)}… [details truncated]` : detailText}`
       : message
     confirmError.textContent = ""
     confirmDialog.showModal()
@@ -235,10 +235,11 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   }
 
   function setRunStatus(text: string, options: { busy?: boolean; streaming?: boolean } = {}): void {
-    const streaming = options.streaming ?? runtime.agent.state.isStreaming
-    const busy = options.busy ?? streaming
-    const status =
-      !busy && text === conversationText("ready")
+    const streaming = runtime.isPreparing || (options.streaming ?? runtime.agent.state.isStreaming)
+    const busy = runtime.isPreparing || (options.busy ?? streaming)
+    const status = runtime.isPreparing
+      ? conversationText("working")
+      : !busy && text === conversationText("ready")
         ? visiblePage.kind === "web"
           ? text
           : visiblePage.kind === "none"
@@ -368,6 +369,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   function onAgentEvent(event: AgentEvent): void {
     switch (event.type) {
       case "agent_start":
+        if (activeSubmissionGuard) releaseSubmissionGuard(activeSubmissionGuard)
         setRunStatus(conversationText("working"), { busy: true, streaming: true })
         renderPageCapability()
         setError()
@@ -397,6 +399,11 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     onAgentEvent,
     onSettingsModelChanged: () => void run(refreshActiveSessionUi, setError),
     onPersistenceError: setError,
+    onPreparing: (preparing) =>
+      setRunStatus(conversationText(preparing ? "working" : "ready"), {
+        busy: preparing,
+        streaming: preparing,
+      }),
   })
 
   screenshotAnnotation = new ScreenshotAnnotationController({
@@ -884,7 +891,6 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
           submittedElements.map((element) => element.context),
           usePage,
         )
-        releaseSubmissionGuard(submissionGuard)
         const mode = await submission
         if (mode !== "prompt")
           setRunStatus(conversationText("instructionQueued"), { busy: true, streaming: true })

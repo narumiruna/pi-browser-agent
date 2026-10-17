@@ -14,6 +14,7 @@ import {
   MIN_FONT_SIZE,
 } from "../storage.js"
 import { AuthenticationController } from "./authentication.js"
+import { initializeMcpSettings } from "./mcp-settings.js"
 import { SearchableSelect } from "./searchable-select.js"
 import { applyAppearance, element, run, setErrorOutput } from "./ui.js"
 
@@ -272,6 +273,7 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
   document.body.dataset.view = "settings"
   initialSelection = await configuration.initialize(initialModel)
   populateSettings()
+  await initializeMcpSettings()
   applyAppearance(configuration.appSettings.fontFamily, configuration.appSettings.fontSize)
   page.hidden = false
   await authentication.refresh()

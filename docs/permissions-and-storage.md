@@ -33,6 +33,19 @@ OpenAI authentication origins are requested together only after the user chooses
 
 The extension CSP permits HTTP(S) connections so a user-selected built-in provider can operate after Chrome grants its optional host permission. It still permits scripts only from the packaged extension and does not permit remote scripts. Screenshot and bookmark access can be revoked separately from Chrome's extension settings. A later protected operation fails or returns to its explicit confirmation flow without an automatic background permission request.
 
+## Remote MCP permissions and storage
+
+MCP uses the existing optional HTTPS host pattern; it adds no required permission. **Connect and preview** is the only MCP host-request gesture. Authorization also requires a stored connection approval for the full normalized endpoint and its configuration revision. A screenshot grant alone cannot approve a server. Chrome's hostname patterns do not include a port or path; MCP checks both independently on every request.
+
+The Side Panel owns MCP clients. It checks trusted configuration, endpoint approval, token binding, and Chrome permission before each request. Settings edits, disablement/removal, panel shutdown, and host permission revocation cancel local MCP work. No server connection or interrupted call is restored from a transcript.
+
+Two versioned `chrome.storage.local` keys are restricted to trusted contexts and updated together under a cross-context Web Lock:
+
+- `piBrowserAgentMcpServersV1`: at most eight public server records, including IDs, revisions, exact endpoints, enablement, connection approvals, and whether authentication is configured.
+- `piBrowserAgentMcpTokensV1`: optional bearer tokens bound to a server ID, revision, and endpoint.
+
+Remove servers individually to delete these settings and tokens. **Clear all session data** deletes conversation records, not MCP configuration. Existing transcripts can retain tool declarations, arguments, and results until the sessions are deleted or compacted. Older builds ignore the new keys; remove servers before downgrading if the tokens must not remain. See [remote MCP](mcp.md).
+
 ## Microphone access
 
 Microphone access is a Chrome content permission for the extension origin, not a manifest permission. Chrome suppresses microphone prompts in Side Panels, so selecting the microphone without an existing grant opens a full packaged Pi Browser Agent access tab. Only its explicit **Allow microphone access** button calls `getUserMedia({ audio: true })`; the temporary stream is stopped immediately after Chrome records the grant. The Side Panel then uses Chrome's Web Speech API for dictation. Spoken audio may be processed by Chrome's speech service, while only the editable transcript is sent to the selected model provider after the user selects **Send**. Users can revoke the grant from Chrome microphone settings; Pi Browser Agent stores no separate microphone approval.

@@ -45,6 +45,14 @@ Voice input uses Chrome's Web Speech service in the browser language. Spoken aud
 
 Pi Browser Agent registers the browser-compatible built-in `pi-ai` providers and their tool-capable chat model catalogs. Credential setup first selects an authentication method and then shows only providers that support that method in Chrome. API-key authentication is available for browser-compatible providers; OpenAI Codex is currently the only account-login choice and uses the browser device flow. Adding a credential does not change the selected model. Radius models load after configuration. Amazon Bedrock is excluded because its `pi-ai` adapter intentionally loads a Node-only AWS SDK module. Other provider OAuth implementations are Node-only, so Pi Browser Agent exposes only their API-key path. Image-generation providers are separate from chat agents and are not exposed.
 
+## Remote MCP
+
+Open **Settings → Remote MCP servers** to add a public HTTPS Streamable HTTP endpoint and an optional bearer token. Select **Save disconnected**, then **Connect and preview** to approve the exact endpoint and enable its tools. These controls save immediately, independently of other settings.
+
+MCP tools also work without a readable page. Every call requires fresh confirmation in every confirmation mode. Arguments go to the configured server; tool metadata and results can go to the selected model provider and saved session. Cookies, redirects, OAuth, stdio, local bridges, resources, and non-text result blocks are not supported. Closing the panel or changing server settings cancels local work; interrupted calls are never replayed automatically. Cancellation cannot undo server-side effects.
+
+Use **Disable** to stop a server, or **Remove server and token** to delete its configuration and token. See [remote MCP support and limits](docs/mcp.md). Remote MCP is separate from page-provided WebMCP.
+
 ## Browser safety
 
 The agent can read visible text and selection, discover visible interactive elements, capture the visible viewport, click or type using discovered element references or CSS selectors, navigate, and use page WebMCP tools when available. `browser_read_page` accepts optional `selector` (first rendered HTML match, such as `main` or `article`) and `offset` (UTF-16 text index, starting at 0). Without a selector it reads the page body. A long read returns `nextOffset` when truncated; pass it back with the same selector to continue. Invalid, missing, or non-rendered selectors fail rather than falling back to the full page. This reads rendered DOM text, including text outside the viewport, not raw HTML, form field values, or iframe/Shadow DOM contents. To use WebMCP, enable `chrome://flags/#enable-webmcp-testing`, relaunch Chrome, and reload the page; the page must provide WebMCP tools. See [WebMCP status](docs/webmcp.md) for details.
@@ -129,3 +137,4 @@ Pushes to `main` create or update the **chore(release): version packages** pull 
 - [Security model](docs/security.md)
 - [Manual acceptance](docs/manual-acceptance.md)
 - [WebMCP status](docs/webmcp.md)
+- [Remote MCP](docs/mcp.md)

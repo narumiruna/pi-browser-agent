@@ -721,6 +721,14 @@ body[data-view="microphone"] {
   width: 100%;
 }
 
+#mcp-tools {
+  max-height: 240px;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  font-size: 0.8rem;
+}
+
 .tool-options {
   min-width: 0;
   margin: 0;

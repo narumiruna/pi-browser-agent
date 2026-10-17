@@ -37,8 +37,16 @@ OpenAI Codex is currently the only provider under **Sign in with an account**. P
 
 If an OAuth access token is near expiry, refresh occurs inside `CredentialStore.modify()`. Credential-map mutations serialize across providers and Side Panel contexts through a Web Lock; later callers reuse a newly refreshed credential, and rotated refresh and access tokens are committed together. A refresh error preserves the previous credential for an explicit retry or new login; it does not trigger another provider or destination.
 
+## Remote MCP authentication
+
+Remote MCP has separate configuration and token stores; it never uses provider credentials. **Settings → Remote MCP servers** accepts a public HTTPS endpoint and an optional bearer token. **Connect and preview** requests Chrome host access from its click gesture and approves the exact endpoint, including its port and path. All tool calls require a separate fresh confirmation.
+
+A blank token field preserves an existing token only at an unchanged endpoint. **Remove existing token** explicitly removes it. Endpoint changes clear the old token, and all edits disconnect the server until it is explicitly reconnected. Invalid or missing token records fail closed instead of falling back to unauthenticated access. Requests omit cookies, reject redirects, and perform no OAuth or automatic auth discovery. Authentication failures expose a fixed error, never server error text.
+
+Disablement retains the token but cancels current MCP work. Removal deletes the server, token, and connection approval. Chrome permission revocation blocks requests and cancels local MCP work, but retains stored authentication. See [remote MCP](mcp.md) for limits and recovery.
+
 ## Credential removal and revocation
 
 **Remove credential** aborts active model work, waits for the agent to stop, and deletes the selected provider credential. Revoking either OpenAI origin immediately aborts active work and removes the Codex credential. Revoking another provider endpoint leaves its credential stored but blocks requests until access is granted again.
 
-To remove all local data, remove provider credentials individually and use **Clear all session data**. Page and provider host permissions can be removed separately from Chrome's extension settings.
+To remove all local data, remove provider credentials and MCP servers individually and use **Clear all session data**. Page and provider host permissions can be removed separately from Chrome's extension settings.
