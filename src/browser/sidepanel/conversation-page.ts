@@ -120,6 +120,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   })
   const setError = (error?: unknown): void => setErrorOutput(errorOutput, error)
   let activeSubmissionGuard: object | undefined
+  let pendingSubmission: { guard: object; accept: () => void } | undefined
   let pendingPasteOperations = 0
   let imageAttachmentQueue = Promise.resolve()
   let composerImages: Array<ComposerImage & { id: string }> = []
@@ -369,6 +370,8 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   function onAgentEvent(event: AgentEvent): void {
     switch (event.type) {
       case "agent_start":
+        if (pendingSubmission?.guard === activeSubmissionGuard) pendingSubmission?.accept()
+        pendingSubmission = undefined
         if (activeSubmissionGuard) releaseSubmissionGuard(activeSubmissionGuard)
         setRunStatus(conversationText("working"), { busy: true, streaming: true })
         renderPageCapability()
@@ -827,7 +830,8 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       setError("Wait for the pasted image preview before sending")
       return
     }
-    const text = promptInput.value.trim()
+    const draftText = promptInput.value
+    const text = draftText.trim()
     const submittedImages = composerImages.map((image) => ({
       id: image.id,
       content: { ...image.content },
@@ -876,14 +880,18 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
         }
         const submittedImageIds = new Set(submittedImages.map((image) => image.id))
         const submittedElementIds = new Set(submittedElements.map((element) => element.id))
-        composerImages = composerImages.filter((image) => !submittedImageIds.has(image.id))
-        selectedElements = selectedElements.filter(
-          (element) => !submittedElementIds.has(element.id),
-        )
-        promptInput.value = ""
-        renderComposerImages()
-        renderSelectedElements()
-        resizePromptInput()
+        const accept = (): void => {
+          if (activeSubmissionGuard !== submissionGuard) return
+          composerImages = composerImages.filter((image) => !submittedImageIds.has(image.id))
+          selectedElements = selectedElements.filter(
+            (element) => !submittedElementIds.has(element.id),
+          )
+          if (promptInput.value === draftText) promptInput.value = ""
+          renderComposerImages()
+          renderSelectedElements()
+          resizePromptInput()
+        }
+        pendingSubmission = { guard: submissionGuard, accept }
         const submission = runtime.submit(
           text,
           queueAfterCurrentTask ? "followUp" : "steer",
@@ -892,9 +900,12 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
           usePage,
         )
         const mode = await submission
-        if (mode !== "prompt")
+        if (mode !== "prompt") {
+          accept()
           setRunStatus(conversationText("instructionQueued"), { busy: true, streaming: true })
+        }
       } finally {
+        if (pendingSubmission?.guard === submissionGuard) pendingSubmission = undefined
         releaseSubmissionGuard(submissionGuard)
       }
     }, setError)

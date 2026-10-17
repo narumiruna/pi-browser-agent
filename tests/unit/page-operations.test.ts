@@ -427,9 +427,49 @@ describe("page operations", () => {
         true,
       ),
     ).resolves.toMatchObject({ ok: true })
-    expect(executeTool).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "add-todo" }),
-      '{"text":"Ship extension"}',
+    expect(executeTool).toHaveBeenCalledWith(expect.objectContaining({ name: "add-todo" }), {
+      text: "Ship extension",
+    })
+  })
+
+  test.each([
+    { inputSchema: '{"type":"object"}', expected: '{"text":"value"}' },
+    { inputSchema: { type: "object" }, expected: { text: "value" } },
+    { inputSchema: undefined, expected: '{"text":"value"}' },
+  ])(
+    "selects WebMCP arguments from schema shape without retrying: %j",
+    async ({ inputSchema, expected }) => {
+      const executeTool = vi.fn().mockRejectedValue(new Error("Tool failed"))
+      Object.defineProperty(document, "modelContext", {
+        configurable: true,
+        value: { getTools: async () => [{ name: "fixture", inputSchema }], executeTool },
+      })
+      await expect(
+        executeWebMcpOperation(
+          "webmcp.callTool",
+          { name: "fixture", arguments: { text: "value" } },
+          true,
+        ),
+      ).resolves.toMatchObject({ ok: false })
+      expect(executeTool).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ name: "fixture" }),
+        expected,
+      )
+    },
+  )
+
+  test("uses object input for a schema-free current WebMCP tool", async () => {
+    const executeTool = vi.fn().mockResolvedValue("done")
+    Object.defineProperty(document, "modelContext", {
+      configurable: true,
+      value: { ontoolactivated: null, getTools: async () => [{ name: "fixture" }], executeTool },
+    })
+    await expect(
+      executeWebMcpOperation("webmcp.callTool", { name: "fixture", arguments: {} }, true),
+    ).resolves.toMatchObject({ ok: true })
+    expect(executeTool).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ name: "fixture" }),
+      {},
     )
   })
 

@@ -12,6 +12,7 @@ export class McpManager {
   private lifetime = new AbortController()
   private connections: McpConnection[] = []
   private disposed = false
+  private generation = 0
   private listening = false
   private readonly changed = (
     changes: Record<string, chrome.storage.StorageChange>,
@@ -25,9 +26,17 @@ export class McpManager {
   constructor(private readonly confirm: ConfirmationHandler) {}
 
   invalidate(): void {
+    this.generation++
     this.lifetime.abort()
     for (const connection of this.connections) connection.close()
     this.connections = []
+  }
+
+  async finish(): Promise<void> {
+    this.lifetime.abort()
+    const connections = this.connections
+    await Promise.all(connections.map((connection) => connection.disconnect()))
+    if (this.connections === connections) this.connections = []
   }
 
   async prepare(): Promise<AgentTool[]> {
@@ -37,7 +46,9 @@ export class McpManager {
       chrome.permissions?.onRemoved?.addListener(this.revoked)
       this.listening = true
     }
-    this.invalidate()
+    const generation = this.generation
+    await this.finish()
+    if (this.disposed || generation !== this.generation) throw new Error(MCP_FAILURE)
     this.lifetime = new AbortController()
     const signal = this.lifetime.signal
     const declarations: AgentTool[] = []

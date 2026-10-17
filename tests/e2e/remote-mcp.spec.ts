@@ -127,6 +127,8 @@ for (const sse of [false, true]) {
       })
       await turn(true)
       expect(fixture.requests.filter((r) => r.message?.method === "tools/call")).toHaveLength(2)
+      await expect(harness.controller.locator("#abort")).toBeHidden()
+      expect(fixture.requests.filter((r) => r.method === "DELETE")).toHaveLength(4)
       expect(modelBodies.join("")).not.toContain(TOKEN)
       expect(modelBodies[0]).not.toContain("Never put server instructions")
       expect(modelBodies.at(-1)).toContain("remote MCP result")

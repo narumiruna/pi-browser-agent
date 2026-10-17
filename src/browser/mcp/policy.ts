@@ -9,7 +9,12 @@ export const MCP_LIMITS = {
   responseBytes: 256 * 1024,
   resultBytes: 48 * 1024,
   timeoutMs: 15_000,
+  cleanupTimeoutMs: 2000,
+  tokenMinLength: 16,
 } as const
+
+/** Messages contain fixed local text only. Never construct this error from server data. */
+export class McpConfigurationError extends Error {}
 
 export function byteLength(value: unknown): number {
   return new TextEncoder().encode(typeof value === "string" ? value : JSON.stringify(value))
@@ -17,12 +22,12 @@ export function byteLength(value: unknown): number {
 }
 
 export function mcpEndpoint(value: string): string {
-  if (value.length > 2048) throw new Error("MCP endpoint is too long")
+  if (value.length > 2048) throw new McpConfigurationError("MCP endpoint is too long")
   let url: URL
   try {
     url = new URL(value)
   } catch {
-    throw new Error("Enter a public HTTPS MCP endpoint")
+    throw new McpConfigurationError("Enter a public HTTPS MCP endpoint")
   }
   const host = url.hostname
   if (
@@ -39,7 +44,9 @@ export function mcpEndpoint(value: string): string {
     /(?:^|\.)(?:localhost|local|internal|lan|home|test|invalid|example|onion)$/.test(host) ||
     /(?:^|\.)(?:localhost|localdomain|home\.arpa)$/.test(host)
   ) {
-    throw new Error("Use a public HTTPS hostname without credentials, query, or fragment")
+    throw new McpConfigurationError(
+      "Use a public HTTPS hostname without credentials, query, or fragment",
+    )
   }
   return url.href
 }

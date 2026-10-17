@@ -87,10 +87,12 @@ export function mockMcpFetch(
 ) {
   const messages: { method: string; params?: Record<string, unknown>; init: RequestInit }[] = []
   const fetch = vi.fn(async (_url: string, init: RequestInit) => {
-    const message = JSON.parse(init.body as string)
+    const message =
+      init.method === "DELETE" ? { method: "session/delete" } : JSON.parse(init.body as string)
     messages.push({ ...message, init })
     const override = await options.response?.(message, init)
     if (override) return override
+    if (init.method === "DELETE") return new Response(null, { status: 204 })
     if (message.id === undefined) return new Response(null, { status: 202 })
     let result: unknown
     switch (message.method) {

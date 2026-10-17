@@ -1,7 +1,7 @@
 import { hasApprovedHostPermission } from "../permissions.js"
 import { restrictLocalStorageToTrustedContexts } from "../storage.js"
 import { withExclusiveStorageWrite } from "../storage-lock.js"
-import { MCP_LIMITS, mcpEndpoint } from "./policy.js"
+import { MCP_LIMITS, McpConfigurationError, mcpEndpoint } from "./policy.js"
 
 export const MCP_SERVERS_KEY = "piBrowserAgentMcpServersV1"
 export const MCP_TOKENS_KEY = "piBrowserAgentMcpTokensV1"
@@ -69,7 +69,7 @@ function writableServers(value: unknown): McpServer[] {
       !Array.isArray(record.servers) ||
       record.servers.length !== servers.length)
   ) {
-    throw new Error("Saved MCP configuration is invalid; no records were changed")
+    throw new McpConfigurationError("Saved MCP configuration is invalid; no records were changed")
   }
   return servers
 }
@@ -102,13 +102,17 @@ function writableTokens(value: unknown): Record<string, unknown> {
     typeof record.tokens !== "object" ||
     Array.isArray(record.tokens)
   ) {
-    throw new Error("Saved MCP token storage is invalid; no records were changed")
+    throw new McpConfigurationError("Saved MCP token storage is invalid; no records were changed")
   }
   return { ...record.tokens }
 }
 
 function validToken(token: string): boolean {
-  return token.length <= 4096 && /^[A-Za-z0-9._~+/-]+=*$/.test(token)
+  return (
+    token.length >= MCP_LIMITS.tokenMinLength &&
+    token.length <= 4096 &&
+    /^[A-Za-z0-9._~+/-]+=*$/.test(token)
+  )
 }
 
 export async function listMcpServers(): Promise<McpServer[]> {
@@ -118,6 +122,7 @@ export async function listMcpServers(): Promise<McpServer[]> {
 /** Empty token removes authentication. Tokens are never returned to the settings UI. */
 export async function saveMcpServer(input: {
   id?: string
+  revision?: string
   name: string
   endpoint: string
   token?: string
@@ -125,16 +130,24 @@ export async function saveMcpServer(input: {
   const endpoint = mcpEndpoint(input.endpoint)
   const name = input.name.trim()
   if (!name || name.length > 80)
-    throw new Error("Enter an MCP server name of at most 80 characters")
-  if (input.token && !validToken(input.token)) throw new Error("Invalid MCP bearer token")
+    throw new McpConfigurationError("Enter an MCP server name of at most 80 characters")
+  if (input.token && !validToken(input.token))
+    throw new McpConfigurationError(
+      "Enter an MCP bearer token of 16 to 4096 characters without spaces",
+    )
   await restrictLocalStorageToTrustedContexts()
   return withExclusiveStorageWrite(LOCK, async () => {
     const stored = await chrome.storage.local.get([MCP_SERVERS_KEY, MCP_TOKENS_KEY])
     const servers = writableServers(stored[MCP_SERVERS_KEY])
     const previous = servers.find((server) => server.id === input.id)
-    if (input.id && !previous) throw new Error("MCP server no longer exists")
+    if (input.id && !previous) throw new McpConfigurationError("MCP server no longer exists")
+    if (previous && previous.revision !== input.revision) {
+      throw new McpConfigurationError(
+        "MCP server changed. Reload Settings before saving this edit.",
+      )
+    }
     if (!previous && servers.length >= MCP_LIMITS.servers)
-      throw new Error("MCP server limit reached")
+      throw new McpConfigurationError("MCP server limit reached")
     const server: McpServer = {
       id: previous?.id ?? crypto.randomUUID(),
       revision: crypto.randomUUID(),
@@ -153,7 +166,7 @@ export async function saveMcpServer(input: {
         (previousToken &&
           (previousToken.revision !== previous.revision || previousToken.endpoint !== endpoint)))
     ) {
-      throw new Error("Replace or remove the invalid MCP token explicitly")
+      throw new McpConfigurationError("Replace or remove the invalid MCP token explicitly")
     }
     const token =
       input.token ?? (previous?.endpoint === endpoint ? previousToken?.token : undefined)
@@ -179,11 +192,11 @@ export async function setMcpConnection(
   return withExclusiveStorageWrite(LOCK, async () => {
     const servers = await listMcpServers()
     const server = servers.find((item) => item.id === id)
-    if (!server) throw new Error("MCP server no longer exists")
+    if (!server) throw new McpConfigurationError("MCP server no longer exists")
     if ((connect || revision !== undefined) && revision !== server.revision)
-      throw new Error("MCP server changed before connection approval")
+      throw new McpConfigurationError("MCP server changed before connection approval")
     if (connect && !(await hasApprovedHostPermission(server.endpoint))) {
-      throw new Error("MCP host access is required")
+      throw new McpConfigurationError("MCP host access is required")
     }
     server.enabled = connect
     server.approved = connect
@@ -219,7 +232,7 @@ export async function mcpAccess(snapshot: McpServer): Promise<string | undefined
     current.hasToken !== snapshot.hasToken ||
     !(await hasApprovedHostPermission(current.endpoint))
   ) {
-    throw new Error("MCP connection changed or access was revoked")
+    throw new McpConfigurationError("MCP connection changed or access was revoked")
   }
   const tokenStore = stored[MCP_TOKENS_KEY] as { version?: unknown; tokens?: unknown } | undefined
   if (

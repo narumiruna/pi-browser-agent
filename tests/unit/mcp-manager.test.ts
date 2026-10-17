@@ -90,7 +90,7 @@ describe("remote MCP tool ownership", () => {
           await saveMcpServer({ ...server, endpoint: `${server.endpoint}/new` })
           break
         case "token":
-          await saveMcpServer({ ...server, token: "new-secret" })
+          await saveMcpServer({ ...server, token: "new-secret-token-1" })
           break
         case "revoke":
           env.revoke()
@@ -130,6 +130,34 @@ describe("remote MCP tool ownership", () => {
     await expect(required(blockedTool).execute("stale", { text: "x" }, undefined)).rejects.toThrow()
     expect(mock.messages.filter((m) => m.method === "tools/call")).toHaveLength(1)
     blocked.dispose()
+  })
+
+  test("Stop during graceful cleanup cannot start another discovery", async () => {
+    const env = mcpEnvironment()
+    await env.server()
+    const mock = mockMcpFetch({
+      response: (message, init) => {
+        if (message.method === "session/delete")
+          return new Promise<Response>((_resolve, reject) => {
+            init.signal?.addEventListener("abort", () => reject(new Error("Cancelled")), {
+              once: true,
+            })
+          })
+        return
+      },
+    })
+    const manager = new McpManager(async () => true)
+    await manager.prepare()
+    const pending = manager.prepare()
+    const rejected = expect(pending).rejects.toThrow("MCP request failed")
+    await vi.waitFor(() =>
+      expect(mock.messages.some((m) => m.method === "session/delete")).toBe(true),
+    )
+    manager.invalidate()
+    await rejected
+    expect(mock.messages.filter((m) => m.method === "initialize")).toHaveLength(1)
+    expect(await manager.prepare()).toHaveLength(1)
+    manager.dispose()
   })
 
   test("bounds aggregate declarations and exposes new metadata only in a later run", async () => {

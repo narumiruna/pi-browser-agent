@@ -49,13 +49,13 @@ describe("MCP endpoint policy", () => {
 describe("MCP configuration and token storage", () => {
   test("starts disconnected, separates secrets, and requires exact snapshot consent", async () => {
     const env = mcpEnvironment()
-    const saved = await saveMcpServer({ name: "Fixture", endpoint, token: "private-token" })
+    const saved = await saveMcpServer({ name: "Fixture", endpoint, token: "private-token-value" })
     expect(saved).toMatchObject({ enabled: false, approved: false })
-    expect(JSON.stringify(env.data[MCP_SERVERS_KEY])).not.toContain("private-token")
+    expect(JSON.stringify(env.data[MCP_SERVERS_KEY])).not.toContain("private-token-value")
     await expect(mcpAccess(saved)).rejects.toThrow()
     await expect(setMcpConnection(saved.id, true)).rejects.toThrow("changed")
     const connected = await setMcpConnection(saved.id, true, saved.revision)
-    expect(await mcpAccess(connected)).toBe("private-token")
+    expect(await mcpAccess(connected)).toBe("private-token-value")
     expect(env.local.setAccessLevel).toHaveBeenCalledWith({ accessLevel: "TRUSTED_CONTEXTS" })
   })
 
@@ -72,9 +72,10 @@ describe("MCP configuration and token storage", () => {
 
   test("endpoint edits discard tokens and connection approval, including same-host paths", async () => {
     const env = mcpEnvironment()
-    const server = await env.server("secret-token")
+    const server = await env.server("secret-token-value")
     const edited = await saveMcpServer({
       id: server.id,
+      revision: server.revision,
       name: "Edited",
       endpoint: `${endpoint}/new`,
     })
@@ -86,10 +87,10 @@ describe("MCP configuration and token storage", () => {
 
   test("same endpoint retains a token without returning it; blank explicitly removes it", async () => {
     const env = mcpEnvironment()
-    const server = await env.server("secret-token")
+    const server = await env.server("secret-token-value")
     const edited = await saveMcpServer({ ...server, name: "Edited" })
     const reconnected = await setMcpConnection(edited.id, true, edited.revision)
-    expect(await mcpAccess(reconnected)).toBe("secret-token")
+    expect(await mcpAccess(reconnected)).toBe("secret-token-value")
     const cleared = await saveMcpServer({ ...edited, token: "" })
     expect(
       await mcpAccess(await setMcpConnection(cleared.id, true, cleared.revision)),
@@ -101,7 +102,7 @@ describe("MCP configuration and token storage", () => {
 
   test("serializes concurrent writes and keeps records unchanged when a write fails", async () => {
     const env = mcpEnvironment()
-    await Promise.all([env.server("first"), env.server("second")])
+    await Promise.all([env.server("first-test-token-value"), env.server("second-test-token-value")])
     expect(await listMcpServers()).toHaveLength(2)
     const original = structuredClone(env.data)
     env.local.set.mockRejectedValueOnce(new Error("Disk full"))
@@ -111,7 +112,7 @@ describe("MCP configuration and token storage", () => {
 
   test("fails closed on corrupt configuration, tokens, and token binding", async () => {
     const env = mcpEnvironment()
-    const server = await env.server("secret-token")
+    const server = await env.server("secret-token-value")
     const original = structuredClone(env.data[MCP_TOKENS_KEY])
     for (const bad of [
       undefined,
@@ -148,19 +149,52 @@ describe("MCP configuration and token storage", () => {
 
   test("preserves another server's corrupt token entry during edits and refuses corrupt store replacement", async () => {
     const env = mcpEnvironment()
-    const first = await env.server("first-token")
-    const second = await env.server("second-token")
+    const first = await env.server("first-token-value")
+    const second = await env.server("second-token-value")
     const tokens = env.data[MCP_TOKENS_KEY] as { version: number; tokens: Record<string, unknown> }
     tokens.tokens[second.id] = { invalid: "retained-for-explicit-removal" }
-    await saveMcpServer({ ...first, name: "Edited" })
+    const edited = await saveMcpServer({ ...first, name: "Edited" })
     expect((env.data[MCP_TOKENS_KEY] as typeof tokens).tokens[second.id]).toEqual({
       invalid: "retained-for-explicit-removal",
     })
     await expect(mcpAccess(second)).rejects.toThrow("invalid")
     env.data[MCP_TOKENS_KEY] = { version: 2, tokens: {} }
     const original = structuredClone(env.data)
-    await expect(saveMcpServer({ ...first, token: "new-token" })).rejects.toThrow("invalid")
+    await expect(saveMcpServer({ ...edited, token: "new-token-value-1" })).rejects.toThrow(
+      "invalid",
+    )
     expect(env.data).toEqual(original)
+  })
+
+  test("rejects short tokens before any storage change", async () => {
+    const env = mcpEnvironment()
+    for (const token of ["a", "123456789012345"]) {
+      await expect(saveMcpServer({ name: "Fixture", endpoint, token })).rejects.toThrow(
+        "16 to 4096",
+      )
+    }
+    expect(env.local.set).not.toHaveBeenCalled()
+    expect(env.local.setAccessLevel).not.toHaveBeenCalled()
+  })
+
+  test("rejects stale or missing edit revisions without losing a newer endpoint or token", async () => {
+    const env = mcpEnvironment()
+    const original = await env.server("original-token-value")
+    const current = await saveMcpServer({
+      ...original,
+      name: "Current",
+      endpoint: `${endpoint}/new`,
+      token: "replacement-token-value",
+    })
+    const snapshot = structuredClone(env.data)
+    await expect(saveMcpServer({ ...original, name: "Stale" })).rejects.toThrow("Reload Settings")
+    await expect(saveMcpServer({ id: current.id, name: "No revision", endpoint })).rejects.toThrow(
+      "Reload Settings",
+    )
+    expect(env.data).toEqual(snapshot)
+    expect(await mcpAccess(await setMcpConnection(current.id, true, current.revision))).toBe(
+      "replacement-token-value",
+    )
   })
 
   test("enforces server and token limits", async () => {

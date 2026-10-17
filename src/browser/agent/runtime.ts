@@ -152,12 +152,14 @@ export class BrowserAgentRuntime {
     })
     this.agent.subscribe(async (event) => {
       if (event.type === "agent_end") {
-        const idle = this.agent.waitForIdle()
+        const cleanup = this.mcp.finish()
+        const idle = Promise.all([this.agent.waitForIdle(), cleanup]).then(() => undefined)
         this.finishingRun = idle
         void idle.then(() => {
           if (this.finishingRun === idle) this.finishingRun = undefined
         })
         await this.persist(this.closing ? "interrupted" : "idle")
+        await cleanup
         if (
           !this.closing &&
           (this.pendingSettingsModel || this.pendingThinkingLevel !== undefined)

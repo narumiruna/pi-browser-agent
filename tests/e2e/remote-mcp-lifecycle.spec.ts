@@ -66,6 +66,7 @@ test("Stop cancels discovery before any model request and permits a later new ru
     await expect(harness.controller.locator("#error")).toContainText("MCP request failed")
     await expect.poll(() => fixture.state.cancelledDiscovery).toBe(1)
     expect(modelRequests).toBe(0)
+    await expect(harness.controller.locator("#prompt")).toHaveValue("Start discovery")
     fixture.state.holdDiscovery = false
     await harness.controller.locator("#prompt").fill("Start a fresh run")
     await harness.controller.locator("#send").click()
@@ -184,6 +185,7 @@ for (const change of [
       }
       if (change !== "disable-confirmation")
         await expect.poll(() => fixture.state.cancelledCalls).toBe(1)
+      expect(fixture.requests.filter((r) => r.method === "DELETE")).toHaveLength(1)
       const calls = change === "disable-confirmation" ? 0 : 1
       expect(fixture.requests.filter((r) => r.message?.method === "tools/call")).toHaveLength(calls)
       expect(modelBodies.join("")).not.toContain("lifecycle-private-token")

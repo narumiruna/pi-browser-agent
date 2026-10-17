@@ -10,7 +10,7 @@ describe("MCP browser runtime integration", () => {
   test("discovers only on explicit submission, works without a page, and does not restore connections", async () => {
     const env = mcpEnvironment()
     vi.stubGlobal("indexedDB", new IDBFactory())
-    await env.server("private-token")
+    await env.server("private-token-value")
     const mock = mockMcpFetch()
     const runtime = new BrowserAgentRuntime({
       confirm: vi.fn(async () => true),
@@ -27,7 +27,7 @@ describe("MCP browser runtime integration", () => {
     if (!tool) throw new Error("Missing MCP tool")
     expect(tool.name).toMatch(/^mcp_/)
     await tool.execute("id", { text: "hello" }, undefined)
-    expect(JSON.stringify(runtime.agent.state.messages)).not.toContain("private-token")
+    expect(JSON.stringify(runtime.agent.state.messages)).not.toContain("private-token-value")
     runtime.abort()
     await expect(tool.execute("old", { text: "hello" }, undefined)).rejects.toThrow()
     // A new runtime starts with browser tools only, even if a saved transcript contains MCP data.

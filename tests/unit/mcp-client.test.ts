@@ -13,7 +13,7 @@ describe("MCP SDK transport boundaries", () => {
   test("uses fixed endpoint, no cookies, no redirects, session headers, and a scoped token", async () => {
     const env = mcpEnvironment()
     const mock = mockMcpFetch()
-    const connection = new McpConnection(await env.server("secret-token"))
+    const connection = new McpConnection(await env.server("secret-token-value"))
     expect(await connection.discover()).toEqual([remoteTool])
     expect(await connection.call(remoteTool, { text: "hello" })).toMatchObject({
       content: [{ type: "text", text: "Remote result" }],
@@ -30,7 +30,9 @@ describe("MCP SDK transport boundaries", () => {
         redirect: "error",
         cache: "no-store",
       })
-      expect(new Headers(message.init.headers).get("authorization")).toBe("Bearer secret-token")
+      expect(new Headers(message.init.headers).get("authorization")).toBe(
+        "Bearer secret-token-value",
+      )
     }
     expect(new Headers(mock.messages.at(-1)?.init.headers).get("mcp-session-id")).toBe("session")
     connection.close()
@@ -44,12 +46,12 @@ describe("MCP SDK transport boundaries", () => {
       const env = mcpEnvironment()
       const mock = mockMcpFetch({
         response: () =>
-          new Response("secret-token", {
+          new Response("secret-token-value", {
             status,
             headers: { location: "https://evil.example.com/steal" },
           }),
       })
-      const connection = new McpConnection(await env.server("secret-token"))
+      const connection = new McpConnection(await env.server("secret-token-value"))
       await expect(connection.discover()).rejects.toThrow("MCP request failed")
       expect(mock.fetch).toHaveBeenCalledTimes(1)
     },
@@ -69,7 +71,7 @@ describe("MCP SDK transport boundaries", () => {
     { body: "not json", type: "application/json" },
     { body: "event: message\ndata: not json\n\n", type: "text/event-stream" },
     { body: "x".repeat(MCP_LIMITS.responseBytes + 1), type: "application/json" },
-    { body: "secret-token", type: "text/plain" },
+    { body: "secret-token-value", type: "text/plain" },
   ])(
     "rejects malformed, oversized, unsupported, or credential-echoing responses",
     async ({ body, type }) => {
@@ -77,7 +79,7 @@ describe("MCP SDK transport boundaries", () => {
       const mock = mockMcpFetch({
         response: () => new Response(body, { headers: { "content-type": type } }),
       })
-      const connection = new McpConnection(await env.server("secret-token"))
+      const connection = new McpConnection(await env.server("secret-token-value"))
       await expect(connection.discover()).rejects.toThrow("MCP request failed")
       expect(mock.fetch).toHaveBeenCalledTimes(1)
     },
@@ -92,13 +94,13 @@ describe("MCP SDK transport boundaries", () => {
               JSON.stringify({
                 jsonrpc: "2.0",
                 id: message.id,
-                result: { content: [{ type: "text", text: "secret-token" }] },
-              }).replace("secret-token", "\\u0073ecret-token"),
+                result: { content: [{ type: "text", text: "secret-token-value" }] },
+              }).replace("secret-token-value", "\\u0073ecret-token-value"),
               { headers: { "content-type": "application/json" } },
             )
           : undefined,
     })
-    const connection = new McpConnection(await env.server("secret-token"))
+    const connection = new McpConnection(await env.server("secret-token-value"))
     await connection.discover()
     await expect(connection.call(remoteTool, { text: "x" })).rejects.toThrow("MCP request failed")
     expect(mock.messages.filter((m) => m.method === "tools/call")).toHaveLength(1)
@@ -235,6 +237,86 @@ describe("MCP SDK transport boundaries", () => {
     await setMcpConnection(server.id, false)
     await expect(fresh.call(remoteTool, { text: "x" })).rejects.toThrow()
     expect(mock.messages.filter((m) => m.method === "tools/call")).toHaveLength(1)
+  })
+
+  test("terminates an idle session once with valid authorization, then closes", async () => {
+    const env = mcpEnvironment()
+    const mock = mockMcpFetch()
+    const connection = new McpConnection(await env.server("secret-token-value"))
+    await connection.discover()
+    await Promise.all([connection.disconnect(), connection.disconnect()])
+    const deletes = mock.messages.filter((m) => m.method === "session/delete")
+    expect(deletes).toHaveLength(1)
+    expect(deletes[0]?.init).toMatchObject({
+      method: "DELETE",
+      credentials: "omit",
+      redirect: "error",
+      keepalive: true,
+    })
+    expect(new Headers(deletes[0]?.init.headers).get("authorization")).toBe(
+      "Bearer secret-token-value",
+    )
+    expect(new Headers(deletes[0]?.init.headers).get("mcp-session-id")).toBe("session")
+    await expect(connection.call(remoteTool, { text: "x" })).rejects.toThrow("MCP request failed")
+  })
+
+  test.each(["revoke", "remove", "abort"])(
+    "does not send a cleanup request after %s",
+    async (action) => {
+      const env = mcpEnvironment()
+      const mock = mockMcpFetch()
+      const server = await env.server()
+      const connection = new McpConnection(server)
+      await connection.discover()
+      if (action === "revoke") env.revoke()
+      else if (action === "remove") await setMcpConnection(server.id, false)
+      else connection.close()
+      await connection.disconnect()
+      expect(mock.messages.some((m) => m.method === "session/delete")).toBe(false)
+    },
+  )
+
+  test.each([405, 500, 307])(
+    "cleanup status %s does not retry a call or escape its endpoint",
+    async (status) => {
+      const env = mcpEnvironment()
+      const mock = mockMcpFetch({
+        response: (message) =>
+          message.method === "session/delete"
+            ? new Response(null, {
+                status,
+                headers: { location: "https://evil.example.com/steal" },
+              })
+            : undefined,
+      })
+      const connection = new McpConnection(await env.server())
+      await connection.discover()
+      await connection.disconnect()
+      expect(mock.messages.filter((m) => m.method === "session/delete")).toHaveLength(1)
+      expect(mock.messages.filter((m) => m.method === "initialize")).toHaveLength(1)
+      expect(mock.fetch.mock.calls.every(([url]) => url === connection.server.endpoint)).toBe(true)
+    },
+  )
+
+  test("bounds cleanup duration and aborts a pending DELETE", async () => {
+    const env = mcpEnvironment()
+    const mock = mockMcpFetch({
+      response: (message, init) => {
+        if (message.method === "session/delete")
+          return new Promise<Response>((_resolve, reject) => {
+            init.signal?.addEventListener("abort", () => reject(new Error("Aborted")), {
+              once: true,
+            })
+          })
+        return
+      },
+    })
+    const connection = new McpConnection(await env.server())
+    await connection.discover()
+    const started = Date.now()
+    await connection.disconnect()
+    expect(Date.now() - started).toBeLessThan(MCP_LIMITS.cleanupTimeoutMs + 1500)
+    expect(mock.messages.filter((m) => m.method === "session/delete")).toHaveLength(1)
   })
 
   test("aborts a pending operation and applies a finite deadline without replay", async () => {

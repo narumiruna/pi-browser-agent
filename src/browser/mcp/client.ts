@@ -20,6 +20,7 @@ export class McpConnection {
   private readonly client: Client
   private readonly transport: StreamableHTTPClientTransport
   private closed = false
+  private disconnecting?: Promise<void>
 
   constructor(readonly server: McpServer) {
     this.client = new Client(
@@ -58,21 +59,25 @@ export class McpConnection {
       if (new Headers(init.headers).has("last-event-id")) throw new Error(MCP_FAILURE)
       return new Response(null, { status: 405 })
     }
+    const cleanup = init?.method === "DELETE" && this.disconnecting !== undefined
     if (
-      init?.method !== "POST" ||
-      typeof init.body !== "string" ||
-      byteLength(init.body) > MCP_LIMITS.requestBytes
+      !cleanup &&
+      (init?.method !== "POST" ||
+        typeof init.body !== "string" ||
+        byteLength(init.body) > MCP_LIMITS.requestBytes)
     ) {
       throw new Error(MCP_FAILURE)
     }
-    const message = JSON.parse(init.body) as { method?: string }
-    if (!methods.has(message.method ?? "")) throw new Error(MCP_FAILURE)
-    const headers = new Headers(init.headers)
+    if (!cleanup) {
+      const message = JSON.parse(init?.body as string) as { method?: string }
+      if (!methods.has(message.method ?? "")) throw new Error(MCP_FAILURE)
+    }
+    const headers = new Headers(init?.headers)
     headers.delete("authorization")
     if (token) headers.set("authorization", `Bearer ${token}`)
     const response = await fetch(this.server.endpoint, {
-      method: "POST",
-      body: init.body,
+      method: cleanup ? "DELETE" : "POST",
+      ...(cleanup ? { keepalive: true } : { body: init?.body }),
       headers,
       signal,
       credentials: "omit",
@@ -83,6 +88,11 @@ export class McpConnection {
     if (response.status >= 300 && response.status < 400) {
       await response.body?.cancel()
       throw new Error(MCP_FAILURE)
+    }
+    if (cleanup) {
+      await response.body?.cancel()
+      if (!response.ok && response.status !== 405) throw new Error(MCP_FAILURE)
+      return new Response(null, { status: response.status })
     }
     const session = response.headers.get("mcp-session-id")
     if (session && (session.length > 256 || !/^[\x21-\x7e]+$/.test(session))) {
@@ -240,6 +250,40 @@ export class McpConnection {
         ...(result.isError ? { isError: true } : {}),
       }
     }, signal)
+  }
+
+  /** Best-effort cleanup for idle, authorized sessions. Abort and revocation use close(). */
+  disconnect(): Promise<void> {
+    if (this.disconnecting) return this.disconnecting
+    if (this.closed || this.operation || !this.transport.sessionId) {
+      this.close()
+      return Promise.resolve()
+    }
+    this.operation = AbortSignal.any([
+      this.lifetime.signal,
+      AbortSignal.timeout(MCP_LIMITS.cleanupTimeoutMs),
+    ])
+    let stop = (): void => undefined
+    const stopped = new Promise<void>((resolve) => {
+      stop = resolve
+    })
+    const abort = () => {
+      this.close()
+      stop()
+    }
+    this.operation.addEventListener("abort", abort, { once: true })
+    // Defer the SDK call so fetch can identify this one permitted DELETE operation.
+    this.disconnecting = Promise.resolve()
+      .then(() =>
+        this.closed ? undefined : Promise.race([this.transport.terminateSession(), stopped]),
+      )
+      .catch(() => undefined)
+      .finally(() => {
+        this.operation?.removeEventListener("abort", abort)
+        this.operation = undefined
+        this.close()
+      })
+    return this.disconnecting
   }
 
   close(): void {

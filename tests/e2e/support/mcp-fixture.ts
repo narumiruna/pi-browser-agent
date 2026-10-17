@@ -61,6 +61,10 @@ export async function startMcpFixture() {
         headers: request.headers,
         message,
       })
+      if (request.method === "DELETE") {
+        response.writeHead(204).end()
+        return
+      }
       const origin = request.headers.origin
       if (state.rejectOrigin || (origin && !/^chrome-extension:\/\/[a-z]+$/.test(origin))) {
         response.writeHead(403).end("Origin rejected")

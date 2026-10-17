@@ -299,8 +299,8 @@
           <input id="mcp-name" maxlength="80" autocomplete="off" />
           <label for="mcp-endpoint">HTTPS endpoint (no query or fragment)</label>
           <input id="mcp-endpoint" type="url" maxlength="2048" autocomplete="off" />
-          <label for="mcp-token">Bearer token (optional; blank keeps an existing token at the same endpoint)</label>
-          <input id="mcp-token" type="password" maxlength="4096" autocomplete="off" />
+          <label for="mcp-token">Bearer token (optional; 16 to 4096 characters; blank keeps an existing token at the same endpoint)</label>
+          <input id="mcp-token" type="password" minlength="16" maxlength="4096" autocomplete="off" />
           <label><input id="mcp-clear-token" type="checkbox" />Remove existing token</label>
           <button id="mcp-save" type="button">Save disconnected</button>
           <button id="mcp-connect" type="button">Connect and preview</button>

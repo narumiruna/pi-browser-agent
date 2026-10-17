@@ -3,14 +3,14 @@
 ## Setup and use
 
 1. Open **Settings → Remote MCP servers**.
-2. Enter a name, a public HTTPS Streamable HTTP endpoint, and an optional bearer token. Do not put credentials in the URL. Query strings and fragments are not supported.
+2. Enter a name, a public HTTPS Streamable HTTP endpoint, and an optional bearer token of 16 to 4096 characters without spaces. Shorter tokens are rejected before storage or a connection. Replace or remove any older short token in Settings. Do not put credentials in the URL. Query strings and fragments are not supported.
 3. Select **Save disconnected**. These controls save immediately, independently of **Save settings** or **Cancel** for other preferences.
 4. Select **Connect and preview** to approve that exact endpoint and request Chrome host access. Review the plain-text tool preview. A successful connection enables the server; a failed test disconnects it.
 5. Send a prompt. Each new run discovers enabled servers again. Review the endpoint, tool name, and complete arguments before confirming each call.
 
 MCP works without a readable page. Browser-tool checkboxes do not control MCP tools. Every MCP call requires fresh confirmation in Strict, Balanced, and Convenient. Server read-only annotations do not remove this requirement.
 
-Edit a selected server and save to disconnect it and invalidate its previous declarations. A blank token field keeps an existing token only at the same endpoint; **Remove existing token** deletes it. Changing the endpoint, including its port or path, never transfers the old token automatically. Reconnect after any edit. **Disable** blocks future calls but retains the configuration and token. **Remove server and token** deletes both and the endpoint connection approval.
+Edit a selected server and save to disconnect it and invalidate its previous declarations. A blank token field keeps an existing token only at the same endpoint; **Remove existing token** deletes it. Changing the endpoint, including its port or path, never transfers the old token automatically. An edit must match the saved revision. A stale Settings tab cannot replace newer data or tokens; reload it before editing. Local validation errors state what must be corrected without showing input values. Reconnect after any edit. **Disable** blocks future calls but retains the configuration and token. **Remove server and token** deletes both and the endpoint connection approval.
 
 ## Supported protocol
 
@@ -48,6 +48,7 @@ Input schemas must have an object root. Input and optional output schemas use an
 | Tool result | 48 KiB; unsupported or oversized results fail instead of being truncated |
 | JSON data nesting | 16 levels |
 | Operation deadline | 15 seconds for discovery or one call, including response reading |
+| Graceful session cleanup | 2 seconds; one authorized DELETE, with no retry |
 
 ## Ownership and authorization
 
@@ -64,13 +65,15 @@ flowchart LR
 
 Connection approval binds the full normalized endpoint, a stable server ID, and its configuration revision. Chrome host patterns do not encode ports or endpoint paths; they are an additional requirement, not a substitute for this approval. The broad screenshot grant alone is not MCP consent.
 
-Clients and declarations belong to a panel and a run. No client or token enters the service worker or page context. Closing the panel, stopping the run, changing MCP configuration, or revoking a host permission cancels local MCP work. MCP configuration changes conservatively invalidate all MCP clients in that panel. Tool definitions change only after discovery for a later run. Startup and session restoration do not connect or replay calls.
+Clients and declarations belong to a panel and a run. No client or token enters the service worker or page context. Closing the panel, stopping the run, changing MCP configuration, or revoking a host permission cancels local MCP work. MCP configuration changes conservatively invalidate all MCP clients in that panel. Tool definitions change only after discovery for a later run. Startup and session restoration do not connect or replay calls. Failed or cancelled discovery keeps the unsent text, images, and element chips in the composer. Acceptance removes only the submitted attachments and unchanged text; text edited during discovery stays in the composer.
 
 Tokens use a separate trusted storage key and are not included in public server configuration, model messages, tool results, transcripts, or diagnostics. Server error text is replaced by a fixed error. Responses that echo the known token are rejected before metadata or results leave the client, including JSON-escaped echoes. A malicious server already receives its configured token and can misuse or encode it; use a dedicated least-privilege token.
 
 ## Failure and recovery
 
 A network failure, authentication error, unsupported schema/protocol, expired session, denied confirmation, oversized response, or revoked permission cannot trigger a fallback destination or automatic call retry. On an expired session, a later explicit connection or run can create a new discovery session; an uncertain tool call is never replayed.
+
+A successful preview and a completed run use the SDK session-termination request before closing an idle stateful connection. Cleanup rechecks the exact endpoint, revision, and host grant, omits cookies, rejects redirects, and stops after two seconds. Cleanup is best effort. Revocation, configuration changes, or interrupted execution close locally without a new request. The server must expire sessions that could not be terminated.
 
 Cancellation cannot undo remote side effects. Review server state before requesting another call. Disable an unavailable server to continue ordinary chat without it. Revoking Chrome permission retains the token but prevents requests until access is approved again.
 
@@ -86,9 +89,9 @@ The browser-boundary probe includes the SDK client and Streamable HTTP transport
 
 ### Validation environment
 
-On October 17, 2026, the complete `npm run ci` suite passed with Chrome for Testing 153.0.8010.12, using a temporary `PLAYWRIGHT_BROWSERS_PATH` that selects the installed Chromium 153 browser and headless shell. No test was skipped or modified for that run. The new remote MCP HTTPS suites also passed on Chromium 156.0.8078.4.
+The first implementation passed the complete suite on Chrome 153. The default Chromium 156 run exposed an older WebMCP argument-format failure, also reproduced on base commit `6e6c22f`. The review fix now selects the native argument format from the registered schema shape before the call. It does not probe or retry execution. The native smoke test remains enabled.
 
-The default Chromium 156 full-suite run has an existing native WebMCP failure: `executeTool` rejects the adapter's JSON-text arguments. The same smoke test fails on clean `origin/main` commit `6e6c22f` with Chromium 156. This remote MCP change does not alter the WebMCP adapter or hide that failure. Stable-Chrome Side Panel layout, native permission dialogs, and external production MCP services were not manually tested.
+Review validation covers both browser API formats and the remote MCP boundaries. See [the PR review ledger](reviews/pr-98-review.md) for current checks. Stable-Chrome Side Panel layout, native permission dialogs, and external production MCP services were not manually tested.
 
 Protocol references used for implementation:
 

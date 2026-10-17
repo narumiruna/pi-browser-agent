@@ -1,5 +1,5 @@
 import { McpConnection } from "../mcp/client.js"
-import { MCP_FAILURE } from "../mcp/policy.js"
+import { MCP_FAILURE, McpConfigurationError } from "../mcp/policy.js"
 import {
   listMcpServers,
   MCP_SERVERS_KEY,
@@ -74,8 +74,8 @@ export async function initializeMcpSettings(): Promise<void> {
     status.textContent = "Working…"
     try {
       await action()
-    } catch {
-      status.textContent = MCP_FAILURE
+    } catch (error) {
+      status.textContent = error instanceof McpConfigurationError ? error.message : MCP_FAILURE
     } finally {
       busy = false
       if (!disposed) {
@@ -89,6 +89,7 @@ export async function initializeMcpSettings(): Promise<void> {
   save.addEventListener("click", () => {
     const input = {
       id: select.value || undefined,
+      revision: servers.find((server) => server.id === select.value)?.revision,
       name: name.value,
       endpoint: endpoint.value,
       token: clearToken.checked ? "" : token.value || undefined,
@@ -113,6 +114,7 @@ export async function initializeMcpSettings(): Promise<void> {
       try {
         if (disposed) throw new Error(MCP_FAILURE)
         const tools = await connection.discover()
+        await connection.disconnect()
         await refresh(server.id)
         preview.textContent =
           tools.map((tool) => `${tool.name}\n${tool.description ?? ""}`).join("\n\n") ||
@@ -124,7 +126,7 @@ export async function initializeMcpSettings(): Promise<void> {
         await refresh(server.id)
         throw new Error(MCP_FAILURE)
       } finally {
-        connection.close()
+        await connection.disconnect()
         connection = undefined
       }
     })
