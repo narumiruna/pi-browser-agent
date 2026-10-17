@@ -22,7 +22,16 @@
 | C1 | Fix failed CI; explicit user request | Run `39020551882` passed 574 tests and the build, then failed the native WebMCP smoke test. The same failure exists on the base. The user now explicitly authorizes fixing CI. Preserve one-shot execution and Chrome 153 compatibility. | P2 | Already addressed in `bd91a7c`. Native schema shape selects JSON-text or object input before one call. The full default local CI and GitHub CI pass. No tests are disabled or retried. |
 | I1 | Automated review receipt and conversation summary | These report the same five findings. They add no separate code proposal or question. | Informational | Already addressed as review intake. Track the five source threads, not duplicate replies to generated summaries. |
 
-## Publication and validation
+## New review at `abe27b3`
+
+The repository, head commits, instructions, full diff, and successful CI result are unchanged. That evidence is reused. All new reviews, inline comments, conversation comments, and thread pages were fetched. The two items below are valid in-scope P2 defects. The PR is open, so fixes belong on its current branch.
+
+| ID | Feedback | Evidence and relation to goal | Severity | Outcome |
+| --- | --- | --- | --- | --- |
+| R6 | [Check revision before removal](https://github.com/narumiruna/pi-browser-agent/pull/98#discussion_r4302270936) | `removeMcpServer(id)` filters by ID and deletes the token without checking the editor's saved revision. An old Settings tab can delete newer configuration. This affects safe MCP settings updates. | P2 | Already addressed by this update. Removal checks the loaded revision under the write lock before either store changes. Unit tests cover stale and concurrent removal. The two-tab browser test checks rejected stale removal and successful current removal. |
+| R7 | [Enable after preview](https://github.com/narumiruna/pi-browser-agent/pull/98#discussion_r4302270939) | Settings calls `setMcpConnection(..., true)` before `discover()`. A concurrent run can load this server before preview succeeds. This breaks the stated enablement boundary. | P2 | Already addressed by this update. Preview keeps both public flags false. Its client can discover and clean up but cannot call tools. Enablement requires successful preview and the same revision. Unit tests cover access separation and cancellation. Browser tests cover concurrent runs during successful and failed previews. |
+
+## First publication and validation (`bd91a7c`)
 
 - Fix commit: `bd91a7c1c9956a3b666e35c7869a37e33a93d717`, pushed to the open PR head branch.
 - Default Chromium 156: `npm run ci` passes 589 unit/integration tests, the browser probe, build, typecheck, artifact audit, and all 92 E2E tests. No tests are skipped.
@@ -33,3 +42,12 @@
 - No deferred items or clarification requests remain. Stable-Chrome native UI and external production servers are still unverified release-review paths, not new review findings.
 - [GitHub CI run `39022303794`](https://github.com/narumiruna/pi-browser-agent/actions/runs/39022303794) completed with `success` for the published fix commit. C1 is closed.
 - The completed implementation plan `docs/plans/2026-10-17_remote-mcp-support-plan.md` is removed after all completion checks pass. The unrelated Skills plan is unchanged.
+
+## Current review validation
+
+- Default `npm run ci` passes 594 unit/integration tests, the browser probe, build, typecheck, artifact audit, and all 94 E2E tests. No tests are skipped.
+- The focused remote MCP suites pass all 16 E2E tests, including the two concurrent-preview cases.
+- `npm audit --omit=dev`: zero vulnerabilities.
+- Prior Chrome 153 native API evidence is reused. This update does not change WebMCP.
+- R1–R5 and C1 remain addressed. Only R6 and R7 need new replies and Resolve actions after publication. Their final states and the new commit's GitHub CI result are verified in the PR.
+- No item is deferred. No clarification or external action is required.

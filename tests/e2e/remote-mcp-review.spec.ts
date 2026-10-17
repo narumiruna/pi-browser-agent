@@ -171,7 +171,88 @@ test("shows safe local validation messages without any remote request", async ()
   }
 })
 
-test("a stale Settings tab cannot replace newer server data or its token", async () => {
+for (const success of [true, false]) {
+  test(`a pending ${success ? "successful" : "failed"} preview stays unavailable to a concurrent run`, async () => {
+    const fixture = await startMcpFixture()
+    const harness = await launchExtensionHarness({
+      hostPatterns: ["https://mcp.e2e.example.com/*"],
+      browserArgs: fixture.browserArgs,
+    })
+    let release = (): void => undefined
+    try {
+      await configureMockCodex(harness)
+      const settings = await harness.context.newPage()
+      await settings.goto(`${harness.controller.url()}?view=settings`)
+      await saveServer(settings, fixture.endpoint)
+      const gate = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      let waiting = false
+      await harness.context.route(fixture.endpoint, async (route) => {
+        if (route.request().postDataJSON()?.method === "initialize") {
+          waiting = true
+          await gate
+        }
+        await route.continue()
+      })
+      await settings.locator("#mcp-connect").click()
+      await expect.poll(() => waiting).toBe(true)
+      const record = () =>
+        settings.evaluate(async () => {
+          const stored = await chrome.storage.local.get("piBrowserAgentMcpServersV1")
+          return (
+            stored.piBrowserAgentMcpServersV1 as {
+              servers: { enabled: boolean; approved: boolean }[]
+            }
+          ).servers[0]
+        })
+      expect(await record()).toMatchObject({ enabled: false, approved: false })
+      expect(fixture.requests).toHaveLength(0)
+      const bodies: string[] = []
+      await harness.context.route(CODEX_RESPONSES_URL, async (route) => {
+        bodies.push(route.request().postData() ?? "")
+        await route.fulfill({
+          status: 200,
+          contentType: "text/event-stream",
+          body: finalTextResponse(bodies.length, `Concurrent run ${bodies.length}`),
+        })
+      })
+      await harness.fixturePage.goto("about:blank")
+      await harness.fixturePage.bringToFront()
+      await harness.controller.locator("#prompt").fill("Answer while preview is pending")
+      await harness.controller.locator("#send").click()
+      await expect(harness.controller.locator("#transcript")).toContainText("Concurrent run 1")
+      expect(bodies[0]).not.toMatch(/mcp_[a-f0-9]{32}_/)
+      expect(bodies[0]).not.toContain("Untrusted fixture tool")
+      expect(fixture.requests).toHaveLength(0)
+      fixture.state.status = success ? 200 : 503
+      release()
+      await expect(settings.locator("#mcp-status")).toContainText(
+        success ? "Connected and enabled" : "MCP request failed",
+      )
+      expect(await record()).toMatchObject({ enabled: success, approved: success })
+      const before = fixture.requests.length
+      await harness.controller.locator("#prompt").fill("Answer after preview ends")
+      await harness.controller.locator("#send").click()
+      await expect(harness.controller.locator("#transcript")).toContainText("Concurrent run 2")
+      if (success) expect(bodies[1]).toMatch(/mcp_[a-f0-9]{32}_/)
+      else {
+        expect(bodies[1]).not.toMatch(/mcp_[a-f0-9]{32}_/)
+        expect(fixture.requests).toHaveLength(before)
+      }
+      expect(fixture.requests.some((request) => request.message?.method === "tools/call")).toBe(
+        false,
+      )
+      expect(harness.pageErrors).toEqual([])
+    } finally {
+      release()
+      await harness.close()
+      await fixture.close()
+    }
+  })
+}
+
+test("a stale Settings tab cannot replace or remove newer server data or its token", async () => {
   const fixture = await startMcpFixture()
   const harness = await launchExtensionHarness({ browserArgs: fixture.browserArgs })
   try {
@@ -195,6 +276,14 @@ test("a stale Settings tab cannot replace newer server data or its token", async
     await first.locator("#mcp-save").click()
     await expect(first.locator("#mcp-status")).toContainText("Reload Settings")
     expect(await read()).toEqual(current)
+    await first.locator("#mcp-remove").click()
+    await expect(first.locator("#mcp-status")).toContainText("Reload Settings")
+    expect(await read()).toEqual(current)
+    await second.locator("#mcp-remove").click()
+    await expect(second.locator("#mcp-status")).toContainText("New server")
+    const removed = await read()
+    expect(removed.piBrowserAgentMcpServersV1).toEqual({ version: 1, servers: [] })
+    expect(removed.piBrowserAgentMcpTokensV1).toEqual({ version: 1, tokens: {} })
     expect(fixture.requests).toHaveLength(0)
   } finally {
     await harness.close()

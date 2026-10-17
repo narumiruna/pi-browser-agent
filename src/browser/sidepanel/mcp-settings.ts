@@ -108,23 +108,24 @@ export async function initializeMcpSettings(): Promise<void> {
     const permission = requestHostPermission(server.endpoint)
     void perform(async () => {
       if (!(await permission) || disposed) throw new Error(MCP_FAILURE)
-      const approved = await setMcpConnection(server.id, true, server.revision)
+      const previewServer = await setMcpConnection(server.id, false, server.revision)
       connection?.close()
-      connection = new McpConnection(approved)
+      connection = new McpConnection(previewServer, "preview")
       try {
         if (disposed) throw new Error(MCP_FAILURE)
         const tools = await connection.discover()
         await connection.disconnect()
+        if (disposed) throw new Error(MCP_FAILURE)
+        await setMcpConnection(previewServer.id, true, previewServer.revision)
         await refresh(server.id)
         preview.textContent =
           tools.map((tool) => `${tool.name}\n${tool.description ?? ""}`).join("\n\n") ||
           "No tools returned"
         status.textContent =
           "Connected and enabled. Tool metadata and results can go to the selected model."
-      } catch {
-        await setMcpConnection(approved.id, false, approved.revision).catch(() => undefined)
+      } catch (error) {
         await refresh(server.id)
-        throw new Error(MCP_FAILURE)
+        throw error instanceof McpConfigurationError ? error : new Error(MCP_FAILURE)
       } finally {
         await connection.disconnect()
         connection = undefined
@@ -135,7 +136,9 @@ export async function initializeMcpSettings(): Promise<void> {
     "click",
     () =>
       void perform(async () => {
-        await setMcpConnection(select.value, false)
+        const server = servers.find((item) => item.id === select.value)
+        if (!server) return
+        await setMcpConnection(server.id, false, server.revision)
         await refresh()
       }),
   )
@@ -143,20 +146,27 @@ export async function initializeMcpSettings(): Promise<void> {
     "click",
     () =>
       void perform(async () => {
-        await removeMcpServer(select.value)
+        const server = servers.find((item) => item.id === select.value)
+        if (!server) return
+        await removeMcpServer(server.id, server.revision)
         await refresh("")
       }),
   )
   const changed = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
     if (area !== "local" || !connection) return
-    if (MCP_TOKENS_KEY in changes) connection.close()
+    if (MCP_TOKENS_KEY in changes && !(MCP_SERVERS_KEY in changes)) connection.close()
     if (MCP_SERVERS_KEY in changes) {
       const record = changes[MCP_SERVERS_KEY].newValue as { servers?: McpServer[] } | undefined
       const records = record?.servers
       const current = Array.isArray(records)
         ? records.find((s) => s?.id === connection?.server.id)
         : undefined
-      if (!current?.enabled || !current.approved || current.revision !== connection.server.revision)
+      if (
+        !current ||
+        current.enabled !== connection.server.enabled ||
+        current.approved !== connection.server.approved ||
+        current.revision !== connection.server.revision
+      )
         connection.close()
     }
   }

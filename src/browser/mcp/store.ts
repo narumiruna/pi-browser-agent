@@ -190,7 +190,8 @@ export async function setMcpConnection(
   revision?: string,
 ): Promise<McpServer> {
   return withExclusiveStorageWrite(LOCK, async () => {
-    const servers = await listMcpServers()
+    const stored = await chrome.storage.local.get([MCP_SERVERS_KEY, MCP_TOKENS_KEY])
+    const servers = writableServers(stored[MCP_SERVERS_KEY])
     const server = servers.find((item) => item.id === id)
     if (!server) throw new McpConfigurationError("MCP server no longer exists")
     if ((connect || revision !== undefined) && revision !== server.revision)
@@ -200,20 +201,39 @@ export async function setMcpConnection(
     }
     server.enabled = connect
     server.approved = connect
-    await chrome.storage.local.set({ [MCP_SERVERS_KEY]: { version: 1, servers } })
+    const update: Record<string, unknown> = {}
+    if (!connect) {
+      // A fresh revision also cancels previews when an already-disabled server is disabled again.
+      const previousRevision = server.revision
+      server.revision = crypto.randomUUID()
+      const tokens = writableTokens(stored[MCP_TOKENS_KEY])
+      const token = tokensFrom(stored[MCP_TOKENS_KEY])[id]
+      if (token?.revision === previousRevision && token.endpoint === server.endpoint) {
+        tokens[id] = { ...token, revision: server.revision }
+      }
+      update[MCP_TOKENS_KEY] = { version: 1, tokens }
+    }
+    update[MCP_SERVERS_KEY] = { version: 1, servers }
+    await chrome.storage.local.set(update)
     return server
   })
 }
 
-export async function removeMcpServer(id: string): Promise<void> {
+export async function removeMcpServer(id: string, revision: string): Promise<void> {
   await withExclusiveStorageWrite(LOCK, async () => {
     const stored = await chrome.storage.local.get([MCP_SERVERS_KEY, MCP_TOKENS_KEY])
+    const servers = writableServers(stored[MCP_SERVERS_KEY])
+    const server = servers.find((item) => item.id === id)
+    if (!server) throw new McpConfigurationError("MCP server no longer exists")
+    if (server.revision !== revision) {
+      throw new McpConfigurationError("MCP server changed. Reload Settings before removing it.")
+    }
     const tokens = writableTokens(stored[MCP_TOKENS_KEY])
     delete tokens[id]
     await chrome.storage.local.set({
       [MCP_SERVERS_KEY]: {
         version: 1,
-        servers: writableServers(stored[MCP_SERVERS_KEY]).filter((s) => s.id !== id),
+        servers: servers.filter((s) => s.id !== id),
       },
       [MCP_TOKENS_KEY]: { version: 1, tokens },
     })
@@ -221,12 +241,17 @@ export async function removeMcpServer(id: string): Promise<void> {
 }
 
 /** Read only in a trusted MCP client, never in worker messages or model context. */
-export async function mcpAccess(snapshot: McpServer): Promise<string | undefined> {
+export async function mcpAccess(
+  snapshot: McpServer,
+  access: "run" | "preview" = "run",
+): Promise<string | undefined> {
   const stored = await chrome.storage.local.get([MCP_SERVERS_KEY, MCP_TOKENS_KEY])
   const current = serversFrom(stored[MCP_SERVERS_KEY]).find((s) => s.id === snapshot.id)
   if (
-    !current?.enabled ||
-    !current.approved ||
+    !current ||
+    (access === "preview"
+      ? current.enabled || current.approved
+      : !current.enabled || !current.approved) ||
     current.revision !== snapshot.revision ||
     current.endpoint !== snapshot.endpoint ||
     current.hasToken !== snapshot.hasToken ||

@@ -22,7 +22,10 @@ export class McpConnection {
   private closed = false
   private disconnecting?: Promise<void>
 
-  constructor(readonly server: McpServer) {
+  constructor(
+    readonly server: McpServer,
+    private readonly access: "run" | "preview" = "run",
+  ) {
     this.client = new Client(
       { name: "pi-browser-agent", version: "1" },
       {
@@ -47,7 +50,7 @@ export class McpConnection {
 
   private async fetch(input: string | URL | Request, init?: RequestInit): Promise<Response> {
     if (String(input) !== this.server.endpoint || this.closed) throw new Error(MCP_FAILURE)
-    const token = await mcpAccess(this.server)
+    const token = await mcpAccess(this.server, this.access)
     const signal = AbortSignal.any([
       this.lifetime.signal,
       this.operation ?? AbortSignal.timeout(MCP_LIMITS.timeoutMs),
@@ -70,7 +73,11 @@ export class McpConnection {
     }
     if (!cleanup) {
       const message = JSON.parse(init?.body as string) as { method?: string }
-      if (!methods.has(message.method ?? "")) throw new Error(MCP_FAILURE)
+      if (
+        !methods.has(message.method ?? "") ||
+        (this.access === "preview" && message.method === "tools/call")
+      )
+        throw new Error(MCP_FAILURE)
     }
     const headers = new Headers(init?.headers)
     headers.delete("authorization")
@@ -157,7 +164,7 @@ export class McpConnection {
       const result = await action(combined)
       if (!boundedJson(result)) throw new Error(MCP_FAILURE)
       combined.throwIfAborted()
-      const token = await mcpAccess(this.server)
+      const token = await mcpAccess(this.server, this.access)
       if (token && JSON.stringify(result).includes(token)) throw new Error(MCP_FAILURE)
       return result
     } catch {
@@ -215,6 +222,7 @@ export class McpConnection {
     structuredContent?: Record<string, unknown>
     isError?: boolean
   }> {
+    if (this.access === "preview") throw new Error(MCP_FAILURE)
     return this.run(async (operation) => {
       validateArguments(tool.inputSchema, args)
       // Use a request rather than cached per-page output validators: the run snapshot owns metadata.

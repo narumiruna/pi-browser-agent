@@ -239,6 +239,31 @@ describe("MCP SDK transport boundaries", () => {
     expect(mock.messages.filter((m) => m.method === "tools/call")).toHaveLength(1)
   })
 
+  test("preview access discovers and cleans up a disabled server but cannot call a tool", async () => {
+    const env = mcpEnvironment()
+    const server = await env.server("secret-token-value")
+    const preview = await setMcpConnection(server.id, false, server.revision)
+    const mock = mockMcpFetch()
+    const connection = new McpConnection(preview, "preview")
+    expect(await connection.discover()).toEqual([remoteTool])
+    await expect(connection.call(remoteTool, { text: "x" })).rejects.toThrow("MCP request failed")
+    expect(mock.messages.some((message) => message.method === "tools/call")).toBe(false)
+    await connection.disconnect()
+    expect(mock.messages.filter((message) => message.method === "session/delete")).toHaveLength(1)
+    expect(new Headers(mock.messages.at(-1)?.init.headers).get("authorization")).toBe(
+      "Bearer secret-token-value",
+    )
+  })
+
+  test("a normal client cannot discover a disabled preview server", async () => {
+    const env = mcpEnvironment()
+    const server = await env.server()
+    const preview = await setMcpConnection(server.id, false, server.revision)
+    const mock = mockMcpFetch()
+    await expect(new McpConnection(preview).discover()).rejects.toThrow("MCP request failed")
+    expect(mock.fetch).not.toHaveBeenCalled()
+  })
+
   test("terminates an idle session once with valid authorization, then closes", async () => {
     const env = mcpEnvironment()
     const mock = mockMcpFetch()

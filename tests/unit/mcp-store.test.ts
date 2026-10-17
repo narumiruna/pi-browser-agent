@@ -95,7 +95,7 @@ describe("MCP configuration and token storage", () => {
     expect(
       await mcpAccess(await setMcpConnection(cleared.id, true, cleared.revision)),
     ).toBeUndefined()
-    await removeMcpServer(server.id)
+    await removeMcpServer(server.id, cleared.revision)
     expect(await listMcpServers()).toEqual([])
     expect(env.data[MCP_TOKENS_KEY]).toEqual({ version: 1, tokens: {} })
   })
@@ -143,7 +143,7 @@ describe("MCP configuration and token storage", () => {
     await expect(mcpAccess(server)).rejects.toThrow()
     const corrupt = structuredClone(env.data)
     await expect(saveMcpServer({ name: "New", endpoint })).rejects.toThrow("invalid")
-    await expect(removeMcpServer(server.id)).rejects.toThrow("invalid")
+    await expect(removeMcpServer(server.id, server.revision)).rejects.toThrow("invalid")
     expect(env.data).toEqual(corrupt)
   })
 
@@ -195,6 +195,63 @@ describe("MCP configuration and token storage", () => {
     expect(await mcpAccess(await setMcpConnection(current.id, true, current.revision))).toBe(
       "replacement-token-value",
     )
+  })
+
+  test("rejects stale removal before changing configuration or tokens", async () => {
+    const env = mcpEnvironment()
+    const original = await env.server("original-token-value")
+    const current = await saveMcpServer({
+      ...original,
+      name: "Current",
+      endpoint: `${endpoint}/new`,
+      token: "replacement-token-value",
+    })
+    const snapshot = structuredClone(env.data)
+    for (const revision of ["", original.revision]) {
+      await expect(removeMcpServer(current.id, revision)).rejects.toThrow("Reload Settings")
+      expect(env.data).toEqual(snapshot)
+    }
+    await removeMcpServer(current.id, current.revision)
+    expect(await listMcpServers()).toEqual([])
+    expect(env.data[MCP_TOKENS_KEY]).toEqual({ version: 1, tokens: {} })
+  })
+
+  test("serializes concurrent edits and removals without applying both", async () => {
+    const env = mcpEnvironment()
+    const server = await env.server("original-token-value")
+    const [edit, removal] = await Promise.allSettled([
+      saveMcpServer({ ...server, name: "Newer", token: "replacement-token-value" }),
+      removeMcpServer(server.id, server.revision),
+    ])
+    expect([edit.status, removal.status].sort()).toEqual(["fulfilled", "rejected"])
+    if (edit.status === "fulfilled") {
+      const [current] = await listMcpServers()
+      if (!current) throw new Error("Newer server was removed")
+      expect(current.name).toBe("Newer")
+      expect(await mcpAccess(await setMcpConnection(current.id, true, current.revision))).toBe(
+        "replacement-token-value",
+      )
+    } else {
+      expect(await listMcpServers()).toEqual([])
+      expect(env.data[MCP_TOKENS_KEY]).toEqual({ version: 1, tokens: {} })
+    }
+  })
+
+  test("disabled previews retain token binding and cannot become run access before approval", async () => {
+    const env = mcpEnvironment()
+    const server = await env.server("original-token-value")
+    const preview = await setMcpConnection(server.id, false, server.revision)
+    expect(preview.revision).not.toBe(server.revision)
+    expect(preview).toMatchObject({ enabled: false, approved: false })
+    await expect(mcpAccess(preview)).rejects.toThrow("revoked")
+    expect(await mcpAccess(preview, "preview")).toBe("original-token-value")
+    const disabled = await setMcpConnection(preview.id, false, preview.revision)
+    await expect(mcpAccess(preview, "preview")).rejects.toThrow("revoked")
+    await expect(setMcpConnection(preview.id, true, preview.revision)).rejects.toThrow("changed")
+    expect(await mcpAccess(disabled, "preview")).toBe("original-token-value")
+    const connected = await setMcpConnection(disabled.id, true, disabled.revision)
+    expect(await mcpAccess(connected)).toBe("original-token-value")
+    await expect(mcpAccess(disabled, "preview")).rejects.toThrow("revoked")
   })
 
   test("enforces server and token limits", async () => {

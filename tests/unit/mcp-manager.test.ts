@@ -84,7 +84,7 @@ describe("remote MCP tool ownership", () => {
           await setMcpConnection(server.id, false)
           break
         case "remove":
-          await removeMcpServer(server.id)
+          await removeMcpServer(server.id, server.revision)
           break
         case "endpoint":
           await saveMcpServer({ ...server, endpoint: `${server.endpoint}/new` })
