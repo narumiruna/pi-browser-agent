@@ -1,5 +1,17 @@
 # pi-browser-agent
 
+## 0.7.0
+
+### Minor Changes
+
+- f8e0f3f: Add user-configured remote MCP tools over HTTPS Streamable HTTP, with separate bearer-token storage, bounded discovery and results, fresh confirmation for every call, and cancellation without automatic replay.
+
+### Patch Changes
+
+- e3d9092: Keep MCP discovery, confirmation, calls, and previews active when an unrelated permission is removed. Recheck endpoint access for origin removals. Cancel current connections if access is lost or cannot be checked.
+- 912ef23: Reject stale MCP server removals before changing settings or tokens. Keep servers disabled during preview and allow preview access only for discovery and session cleanup. Enable tools only after preview succeeds with the same saved revision.
+- bd91a7c: Preserve drafts on failed MCP discovery, show safe local validation errors, reject short tokens and stale settings edits, and terminate authorized idle server sessions. Restore native WebMCP calls on current Chromium without retrying execution.
+
 ## 0.6.0
 
 ### Minor Changes
