@@ -9,7 +9,7 @@ import {
   saveMcpServer,
   setMcpConnection,
 } from "../mcp/store.js"
-import { requestHostPermission } from "../permissions.js"
+import { hasApprovedHostPermission, requestHostPermission } from "../permissions.js"
 import { element } from "./ui.js"
 
 /** MCP changes save independently; tokens never populate form fields or preview output. */
@@ -170,7 +170,15 @@ export async function initializeMcpSettings(): Promise<void> {
         connection.close()
     }
   }
-  const revoked = () => connection?.close()
+  const revoked = (removed: chrome.permissions.Permissions) => {
+    if (!removed.origins?.length || !connection) return
+    const current = connection
+    void hasApprovedHostPermission(current.server.endpoint)
+      .then((allowed) => {
+        if (!allowed) current.close()
+      })
+      .catch(() => current.close())
+  }
   chrome.storage.onChanged.addListener(changed)
   chrome.permissions.onRemoved.addListener(revoked)
   window.addEventListener(

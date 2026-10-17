@@ -107,6 +107,126 @@ describe("remote MCP tool ownership", () => {
     },
   )
 
+  for (const removed of [
+    { permissions: ["bookmarks" as const] },
+    { origins: ["https://unrelated.example.org/*"] },
+    { origins: ["<all_urls>"] },
+    { origins: ["https://*.example.com/*"] },
+  ]) {
+    for (const phase of ["discovery", "confirmation", "call"]) {
+      test(`${JSON.stringify(removed)} keeps ${phase} active while endpoint access remains granted`, async () => {
+        const env = mcpEnvironment()
+        await env.server()
+        let signal: AbortSignal | undefined
+        let release = (): void => undefined
+        const mock = mockMcpFetch({
+          response: (message, init) => {
+            if (
+              (phase === "discovery" && message.method === "initialize") ||
+              (phase === "call" && message.method === "tools/call")
+            ) {
+              signal = init.signal ?? undefined
+              return new Promise<Response | undefined>((resolve, reject) => {
+                release = () => resolve(undefined)
+                init.signal?.addEventListener("abort", () => reject(new Error("Cancelled")), {
+                  once: true,
+                })
+              })
+            }
+            return undefined
+          },
+        })
+        const manager = new McpManager(async (_message, _details, confirmationSignal) => {
+          if (phase !== "confirmation") return true
+          signal = confirmationSignal
+          return new Promise<boolean>((resolve) => {
+            release = () => resolve(true)
+            confirmationSignal?.addEventListener("abort", () => resolve(false), { once: true })
+          })
+        })
+        const pending =
+          phase === "discovery"
+            ? manager.prepare()
+            : required((await manager.prepare())[0]).execute("call", { text: "x" }, undefined)
+        const completed = pending.then(
+          () => true,
+          () => false,
+        )
+        await vi.waitFor(() => expect(signal).toBeDefined())
+        for (const listener of env.permissionListeners) listener(removed)
+        expect(signal?.aborted).toBe(false)
+        release()
+        expect(await completed).toBe(true)
+        expect(mock.messages.filter((message) => message.method === "initialize")).toHaveLength(1)
+        expect(mock.messages.filter((message) => message.method === "tools/call")).toHaveLength(
+          phase === "discovery" ? 0 : 1,
+        )
+        manager.dispose()
+      })
+    }
+  }
+
+  test.each(["<all_urls>", "https://*.example.com/*"])(
+    "lost endpoint access after removing %s cancels confirmation",
+    async (origin) => {
+      const env = mcpEnvironment()
+      await env.server()
+      mockMcpFetch()
+      let signal: AbortSignal | undefined
+      const manager = new McpManager(async (_message, _details, confirmationSignal) => {
+        signal = confirmationSignal
+        return new Promise<boolean>((resolve) =>
+          confirmationSignal?.addEventListener("abort", () => resolve(false), { once: true }),
+        )
+      })
+      const [tool] = await manager.prepare()
+      const pending = required(tool).execute("pending", { text: "x" }, undefined)
+      const rejected = expect(pending).rejects.toThrow()
+      await vi.waitFor(() => expect(signal).toBeDefined())
+      env.revoke({ origins: [origin] })
+      await rejected
+      expect(signal?.aborted).toBe(true)
+      manager.dispose()
+    },
+  )
+
+  test("a late permission result cannot invalidate a newer run", async () => {
+    const env = mcpEnvironment()
+    await env.server()
+    mockMcpFetch()
+    const manager = new McpManager(async () => true)
+    await manager.prepare()
+    let release = (_allowed: boolean): void => undefined
+    vi.mocked(chrome.permissions.contains).mockImplementationOnce(
+      () =>
+        new Promise<boolean>((resolve) => {
+          release = resolve
+        }),
+    )
+    for (const listener of env.permissionListeners)
+      listener({ origins: ["https://unrelated.example.org/*"] })
+    const [tool] = await manager.prepare()
+    release(false)
+    await expect(required(tool).execute("fresh", { text: "x" }, undefined)).resolves.toBeDefined()
+    manager.dispose()
+  })
+
+  test("an endpoint permission query failure cancels current declarations", async () => {
+    const env = mcpEnvironment()
+    await env.server()
+    mockMcpFetch()
+    const manager = new McpManager(async () => true)
+    const [tool] = await manager.prepare()
+    const invalidated = vi.spyOn(manager, "invalidate")
+    vi.mocked(chrome.permissions.contains).mockRejectedValueOnce(
+      new Error("Permission query failed"),
+    )
+    for (const listener of env.permissionListeners) listener({ origins: ["<all_urls>"] })
+    await vi.waitFor(() => expect(invalidated).toHaveBeenCalledTimes(1))
+    await expect(required(tool).execute("closed", { text: "x" }, undefined)).rejects.toThrow()
+    manager.dispose()
+  })
+
   test("revalidates consent after confirmation and snapshots arguments", async () => {
     const env = mcpEnvironment()
     const server = await env.server()

@@ -28,8 +28,16 @@ The repository, head commits, instructions, full diff, and successful CI result 
 
 | ID | Feedback | Evidence and relation to goal | Severity | Outcome |
 | --- | --- | --- | --- | --- |
-| R6 | [Check revision before removal](https://github.com/narumiruna/pi-browser-agent/pull/98#discussion_r4302270936) | `removeMcpServer(id)` filters by ID and deletes the token without checking the editor's saved revision. An old Settings tab can delete newer configuration. This affects safe MCP settings updates. | P2 | Already addressed by this update. Removal checks the loaded revision under the write lock before either store changes. Unit tests cover stale and concurrent removal. The two-tab browser test checks rejected stale removal and successful current removal. |
-| R7 | [Enable after preview](https://github.com/narumiruna/pi-browser-agent/pull/98#discussion_r4302270939) | Settings calls `setMcpConnection(..., true)` before `discover()`. A concurrent run can load this server before preview succeeds. This breaks the stated enablement boundary. | P2 | Already addressed by this update. Preview keeps both public flags false. Its client can discover and clean up but cannot call tools. Enablement requires successful preview and the same revision. Unit tests cover access separation and cancellation. Browser tests cover concurrent runs during successful and failed previews. |
+| R6 | [Check revision before removal](https://github.com/narumiruna/pi-browser-agent/pull/98#discussion_r4302270936) | `removeMcpServer(id)` filters by ID and deletes the token without checking the editor's saved revision. An old Settings tab can delete newer configuration. This affects safe MCP settings updates. | P2 | Already addressed in `912ef23`. Removal checks the loaded revision under the write lock before either store changes. Unit tests cover stale and concurrent removal. The two-tab browser test checks rejected stale removal and successful current removal. |
+| R7 | [Enable after preview](https://github.com/narumiruna/pi-browser-agent/pull/98#discussion_r4302270939) | Settings calls `setMcpConnection(..., true)` before `discover()`. A concurrent run can load this server before preview succeeds. This breaks the stated enablement boundary. | P2 | Already addressed in `912ef23`. Preview keeps both public flags false. Its client can discover and clean up but cannot call tools. Enablement requires successful preview and the same revision. Unit tests cover access separation and cancellation. Browser tests cover concurrent runs during successful and failed previews. |
+
+## New review at `912ef23`
+
+Prior commits, instructions, the complete diff, and CI are unchanged. Their evidence is reused. All feedback pages were fetched again. R1–R7 remain addressed, and GitHub confirms their threads are resolved. The new review receipt and summary add no separate question.
+
+| ID | Feedback | Evidence and relation to goal | Severity | Outcome |
+| --- | --- | --- | --- | --- |
+| R8 | [Filter permission removals](https://github.com/narumiruna/pi-browser-agent/pull/98#discussion_r4302350924) | Both `McpManager.revoked` and the Settings preview listener close connections for every `permissions.onRemoved` event. The MCP endpoint grant can remain valid after an unrelated API or origin grant is removed. This creates needless call cancellation and uncertain remote effects in the new MCP feature. | P2 | Already addressed by this update. Ignore API-only events. Origin events recheck actual endpoint access. Valid access keeps discovery, confirmation, calls, and preview active. Lost or unknown access closes current clients. Late checks cannot invalidate a newer run. |
 
 ## First publication and validation (`bd91a7c`)
 
@@ -43,11 +51,19 @@ The repository, head commits, instructions, full diff, and successful CI result 
 - [GitHub CI run `39022303794`](https://github.com/narumiruna/pi-browser-agent/actions/runs/39022303794) completed with `success` for the published fix commit. C1 is closed.
 - The completed implementation plan `docs/plans/2026-10-17_remote-mcp-support-plan.md` is removed after all completion checks pass. The unrelated Skills plan is unchanged.
 
-## Current review validation
+## Review validation at `912ef23`
 
 - Default `npm run ci` passes 594 unit/integration tests, the browser probe, build, typecheck, artifact audit, and all 94 E2E tests. No tests are skipped.
 - The focused remote MCP suites pass all 16 E2E tests, including the two concurrent-preview cases.
 - `npm audit --omit=dev`: zero vulnerabilities.
 - Prior Chrome 153 native API evidence is reused. This update does not change WebMCP.
-- R1–R5 and C1 remain addressed. Only R6 and R7 need new replies and Resolve actions after publication. Their final states and the new commit's GitHub CI result are verified in the PR.
+- R1–R7 and C1 remain addressed. R6 and R7 have replies and are resolved through GitHub's Resolve API. Reply IDs: `4302346413` and `4302346510`. GitHub CI run `39024715163` passed for `912ef23`.
 - No item is deferred. No clarification or external action is required.
+
+## R8 validation
+
+- `npm run ci` passes 610 unit/integration tests, the browser probe, build, typecheck, artifact audit, and all 94 E2E tests. No tests are skipped.
+- New unit cases cover bookmarks, unrelated sites, broad grants, and wildcard grants during discovery, confirmation, and dispatched calls. They also cover real access loss, permission-query failure, and a late result after run replacement.
+- The two gated preview browser cases now remove a granted unrelated origin through the Chrome API. Both receive the native event, verify that the MCP grant remains, and complete the expected success or failure path.
+- `npm audit --omit=dev`: zero vulnerabilities.
+- GitHub CI and the new thread's Resolve result are verified in the PR after publication. No new reply is needed on the seven earlier threads.

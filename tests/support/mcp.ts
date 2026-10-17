@@ -19,7 +19,7 @@ export function mcpEnvironment() {
   const storageListeners = new Set<
     (changes: Record<string, chrome.storage.StorageChange>, area: string) => void
   >()
-  const permissionListeners = new Set<() => void>()
+  const permissionListeners = new Set<(removed: chrome.permissions.Permissions) => void>()
   let granted = true
   const local = {
     get: vi.fn(async (keys: string | string[]) =>
@@ -53,8 +53,10 @@ export function mcpEnvironment() {
     permissions: {
       contains: vi.fn(async () => granted),
       onRemoved: {
-        addListener: (f: () => void) => permissionListeners.add(f),
-        removeListener: (f: () => void) => permissionListeners.delete(f),
+        addListener: (f: (removed: chrome.permissions.Permissions) => void) =>
+          permissionListeners.add(f),
+        removeListener: (f: (removed: chrome.permissions.Permissions) => void) =>
+          permissionListeners.delete(f),
       },
     },
   })
@@ -63,9 +65,9 @@ export function mcpEnvironment() {
     local,
     storageListeners,
     permissionListeners,
-    revoke() {
+    revoke(removed: chrome.permissions.Permissions = { origins: ["https://mcp.example.com/*"] }) {
       granted = false
-      for (const listener of permissionListeners) listener()
+      for (const listener of permissionListeners) listener(removed)
     },
     async server(token?: string) {
       const saved = await saveMcpServer({ name: "Fixture", endpoint, token })

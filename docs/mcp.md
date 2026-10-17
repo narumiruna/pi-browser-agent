@@ -75,6 +75,8 @@ A network failure, authentication error, unsupported schema/protocol, expired se
 
 A successful preview and a completed run use the SDK session-termination request before closing an idle stateful connection. Cleanup rechecks the exact endpoint, revision, and host grant, omits cookies, rejects redirects, and stops after two seconds. Cleanup is best effort. Revocation, configuration changes, or interrupted execution close locally without a new request. The server must expire sessions that could not be terminated.
 
+API-only permission removals do not stop MCP. Origin removals recheck the MCP endpoint grant. An unrelated site grant or a broader grant can be removed without stopping MCP if endpoint access remains valid. If access is lost or cannot be checked, the current connection closes.
+
 Cancellation cannot undo remote side effects. Review server state before requesting another call. Disable an unavailable server to continue ordinary chat without it. Revoking Chrome permission retains the token but prevents requests until access is approved again.
 
 Deleting sessions does not remove MCP settings or tokens. Remove servers individually before downgrading to a build without MCP controls. An older build ignores the two new storage keys; uninstalling the extension removes extension storage. Deleting local records cannot delete data already held by a remote server or model provider.

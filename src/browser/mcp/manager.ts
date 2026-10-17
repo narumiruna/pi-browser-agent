@@ -1,6 +1,7 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core"
 import type { TSchema } from "typebox"
 import type { ConfirmationHandler } from "../agent/browser-tools.js"
+import { hasApprovedHostPermission } from "../permissions.js"
 import { formatUntrusted, type JsonObject } from "../runtime/types.js"
 import { McpConnection } from "./client.js"
 import { byteLength, MCP_FAILURE, MCP_LIMITS } from "./policy.js"
@@ -21,7 +22,17 @@ export class McpManager {
     if (area === "local" && (MCP_SERVERS_KEY in changes || MCP_TOKENS_KEY in changes))
       this.invalidate()
   }
-  private readonly revoked = () => this.invalidate()
+  private readonly revoked = (removed: chrome.permissions.Permissions) => {
+    if (!removed.origins?.length) return
+    const connections = this.connections
+    void Promise.all(connections.map(({ server }) => hasApprovedHostPermission(server.endpoint)))
+      .then((allowed) => {
+        if (this.connections === connections && allowed.includes(false)) this.invalidate()
+      })
+      .catch(() => {
+        if (this.connections === connections) this.invalidate()
+      })
+  }
 
   constructor(private readonly confirm: ConfirmationHandler) {}
 

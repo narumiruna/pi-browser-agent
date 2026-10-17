@@ -172,7 +172,7 @@ test("shows safe local validation messages without any remote request", async ()
 })
 
 for (const success of [true, false]) {
-  test(`a pending ${success ? "successful" : "failed"} preview stays unavailable to a concurrent run`, async () => {
+  test(`a ${success ? "successful" : "failed"} preview stays isolated and survives unrelated permission removal`, async () => {
     const fixture = await startMcpFixture()
     const harness = await launchExtensionHarness({
       hostPatterns: ["https://mcp.e2e.example.com/*"],
@@ -184,6 +184,20 @@ for (const success of [true, false]) {
       const settings = await harness.context.newPage()
       await settings.goto(`${harness.controller.url()}?view=settings`)
       await saveServer(settings, fixture.endpoint)
+      const permissions = await harness.context.newPage()
+      await permissions.goto("chrome://extensions/")
+      await permissions.evaluate(async (id) => {
+        const api = chrome as unknown as {
+          developerPrivate: { addHostPermission(id: string, origin: string): Promise<void> }
+        }
+        await api.developerPrivate.addHostPermission(id, "https://unrelated.example.org/*")
+      }, harness.extensionId)
+      await permissions.close()
+      expect(
+        await settings.evaluate(() =>
+          chrome.permissions.request({ origins: ["https://unrelated.example.org/*"] }),
+        ),
+      ).toBe(true)
       const gate = new Promise<void>((resolve) => {
         release = resolve
       })
@@ -197,6 +211,26 @@ for (const success of [true, false]) {
       })
       await settings.locator("#mcp-connect").click()
       await expect.poll(() => waiting).toBe(true)
+      expect(
+        await settings.evaluate(async () => {
+          const event = new Promise<void>((resolve, reject) => {
+            const timer = setTimeout(() => reject(new Error("No permission removal event")), 5000)
+            const listener = () => {
+              clearTimeout(timer)
+              chrome.permissions.onRemoved.removeListener(listener)
+              resolve()
+            }
+            chrome.permissions.onRemoved.addListener(listener)
+          })
+          if (
+            !(await chrome.permissions.remove({ origins: ["https://unrelated.example.org/*"] }))
+          ) {
+            throw new Error("Optional grant was not removed")
+          }
+          await event
+          return chrome.permissions.contains({ origins: ["https://mcp.e2e.example.com/*"] })
+        }),
+      ).toBe(true)
       const record = () =>
         settings.evaluate(async () => {
           const stored = await chrome.storage.local.get("piBrowserAgentMcpServersV1")
