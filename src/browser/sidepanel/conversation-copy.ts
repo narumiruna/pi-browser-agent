@@ -99,6 +99,7 @@ type ActivityKey =
   | "screenshot"
   | "selection"
   | "type"
+  | "wait"
   | "web"
 
 const ENGLISH_ACTIVITIES: Record<ActivityKey, ActivityLabels> = {
@@ -147,6 +148,11 @@ const ENGLISH_ACTIVITIES: Record<ActivityKey, ActivityLabels> = {
     complete: "Entered text",
     error: "Could not enter text",
   },
+  wait: {
+    active: "Waiting for a page condition",
+    complete: "Observed the page condition",
+    error: "Page condition was not observed",
+  },
   navigation: {
     active: "Opening a page",
     complete: "Opened a page",
@@ -178,6 +184,10 @@ const ACTIVITY_KEYS: Record<string, ActivityKey> = {
   browser_get_active_tab: "currentTab",
   browser_get_recent_bookmarks: "recentBookmarks",
   browser_get_selection: "selection",
+  browser_find_text: "page",
+  browser_get_select_options: "elements",
+  browser_set_checked: "click",
+  browser_wait_for: "wait",
   browser_list_elements: "elements",
   browser_navigate: "navigation",
   browser_read_page: "page",
@@ -187,6 +197,10 @@ const ACTIVITY_KEYS: Record<string, ActivityKey> = {
   "page.captureVisible": "screenshot",
   "page.click": "click",
   "page.getSelection": "selection",
+  "page.findText": "page",
+  "page.getSelectOptions": "elements",
+  "page.setChecked": "click",
+  "page.waitFor": "wait",
   "page.getVisibleText": "page",
   "page.listElements": "elements",
   "page.type": "type",

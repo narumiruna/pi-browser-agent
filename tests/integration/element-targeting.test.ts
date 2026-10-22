@@ -1068,6 +1068,332 @@ describe("worker browser interactions", () => {
   }
 })
 
+describe("worker condition waits", () => {
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
+
+  test("waits for a delayed visible control without replacing an existing snapshot", async () => {
+    const target = await discover("Go")
+    const waiting = send("page.waitFor", { selector: "#delayed", state: "visible" })
+    await vi.advanceTimersByTimeAsync(0)
+    const before = injectionCount
+    document.body.insertAdjacentHTML("beforeend", '<button id="delayed">Ready</button>')
+    await vi.advanceTimersByTimeAsync(250)
+    expect(await waiting).toMatchObject({ ok: true, result: { matched: true, elapsedMs: 250 } })
+    expect(injectionCount).toBe(before + 1)
+    expect(await send("page.getElementDetails", target)).toMatchObject({ ok: true })
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  test("binds a context-free wait once to the original active document", async () => {
+    expect(
+      await send(
+        "page.waitFor",
+        { selector: "button", state: "visible" },
+        {
+          tabContext: undefined,
+        },
+      ),
+    ).toMatchObject({ ok: true, result: { matched: true } })
+    const waiting = send(
+      "page.waitFor",
+      { selector: "#delayed", state: "visible" },
+      {
+        tabContext: undefined,
+      },
+    )
+    await vi.advanceTimersByTimeAsync(0)
+    tab.id = 2
+    activated()
+    document.body.insertAdjacentHTML("beforeend", '<button id="delayed">Ready</button>')
+    await vi.advanceTimersByTimeAsync(250)
+    expect(await waiting).toMatchObject({ ok: false, error: { code: "STALE_CONTEXT" } })
+  })
+
+  test("context-free initial lookup stays inside the timeout budget", async () => {
+    let release: (tabs: chrome.tabs.Tab[]) => void = () => undefined
+    vi.mocked(chrome.tabs.query).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve
+        }),
+    )
+    const waiting = send(
+      "page.waitFor",
+      { selector: "button", state: "visible", timeoutMs: 100 },
+      {
+        tabContext: undefined,
+      },
+    )
+    await vi.advanceTimersByTimeAsync(100)
+    expect(await waiting).toMatchObject({ ok: false, error: { code: "TIMEOUT" } })
+    release([tab as chrome.tabs.Tab])
+    await vi.advanceTimersByTimeAsync(0)
+    expect(await send("page.getElementDetails", await discover("Go"))).toMatchObject({ ok: true })
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  test("condition probes do not renew snapshot expiry", async () => {
+    const target = await discover("Go")
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000 - 100)
+    const waiting = send("page.waitFor", { selector: "#delayed", state: "visible" })
+    await vi.advanceTimersByTimeAsync(0)
+    document.body.insertAdjacentHTML("beforeend", '<button id="delayed">Ready</button>')
+    await vi.advanceTimersByTimeAsync(250)
+    expect(await waiting).toMatchObject({ ok: true, result: { matched: true } })
+    expect(await send("page.getElementDetails", target)).toMatchObject({
+      ok: false,
+      error: { code: "STALE_CONTEXT" },
+    })
+  })
+
+  test("timeout is distinct from injection denial and keeps the page and snapshot readable", async () => {
+    const target = await discover("Go")
+    const waiting = send("page.waitFor", {
+      selector: "#never",
+      state: "visible",
+      timeoutMs: 501,
+    })
+    await vi.advanceTimersByTimeAsync(501)
+    expect(await waiting).toMatchObject({ ok: false, error: { code: "TIMEOUT" } })
+    expect(await send("page.getElementDetails", target)).toMatchObject({ ok: true })
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  test.each(["delay", "injection"] as const)("cancels during %s without replay", async (stage) => {
+    let release: () => void = () => undefined
+    if (stage === "injection") {
+      const gate = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      beforeInjection = () => gate
+    }
+    const waiting = send(
+      "page.waitFor",
+      {
+        selector: "#never",
+        state: "visible",
+      },
+      { requestId: "wait-to-cancel" },
+    )
+    await vi.advanceTimersByTimeAsync(0)
+    const count = injectionCount
+    await send("requests.cancel", { requestId: "wait-to-cancel" })
+    expect(await waiting).toMatchObject({ ok: false, error: { code: "REQUEST_CANCELLED" } })
+    release()
+    await vi.advanceTimersByTimeAsync(10000)
+    expect(injectionCount).toBe(count)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  test("late rejection after a deadline does not mark the page inaccessible", async () => {
+    let reject: (reason: Error) => void = () => undefined
+    const gate = new Promise<void>((_resolve, rejectPromise) => {
+      reject = rejectPromise
+    })
+    beforeInjection = () => gate
+    const waiting = send("page.waitFor", { selector: "button", state: "visible", timeoutMs: 100 })
+    await vi.advanceTimersByTimeAsync(100)
+    expect(await waiting).toMatchObject({ ok: false, error: { code: "TIMEOUT" } })
+    reject(new Error("Late injection failure"))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(await send("page.getElementDetails", await discover("Go"))).toMatchObject({ ok: true })
+  })
+
+  test.each(["permission", "navigation", "focus", "activation"] as const)(
+    "fails closed on %s changes between probes",
+    async (change) => {
+      const waiting = send("page.waitFor", { selector: "#never", state: "visible" })
+      await vi.advanceTimersByTimeAsync(0)
+      if (change === "permission") permission = false
+      if (change === "navigation") {
+        tab.url = `${location.origin}/replacement`
+        updated(tab.id, { url: tab.url, status: "loading" })
+      }
+      if (change === "focus") {
+        vi.mocked(chrome.windows.get).mockImplementation((async () => ({
+          focused: false,
+        })) as unknown as typeof chrome.windows.get)
+        focusChanged(-1)
+      }
+      if (change === "activation") {
+        tab.id = 2
+        activated()
+      }
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(await waiting).toMatchObject({
+        ok: false,
+        error: {
+          code:
+            change === "permission"
+              ? "PERMISSION_DENIED"
+              : expect.stringMatching(/STALE_CONTEXT|TAB_NOT_BOUND/),
+        },
+      })
+      expect(vi.getTimerCount()).toBe(0)
+    },
+  )
+
+  test.each(["activation", "focus", "same-URL reload"] as const)(
+    "remembers intervening %s even if the same tab is active at the next probe",
+    async (event) => {
+      const waiting = send("page.waitFor", { selector: "#delayed", state: "visible" })
+      await vi.advanceTimersByTimeAsync(0)
+      if (event === "activation") activated()
+      if (event === "focus") focusChanged(1)
+      if (event === "same-URL reload") updated(tab.id, { status: "loading" })
+      document.body.insertAdjacentHTML("beforeend", '<button id="delayed">Ready</button>')
+      await vi.advanceTimersByTimeAsync(250)
+      expect(await waiting).toMatchObject({ ok: false, error: { code: "STALE_CONTEXT" } })
+    },
+  )
+
+  test("rechecks context events arriving during a matching injection", async () => {
+    afterInjection = async () => {
+      activated()
+    }
+    expect(await send("page.waitFor", { selector: "button", state: "visible" })).toMatchObject({
+      ok: false,
+      error: { code: "STALE_CONTEXT" },
+    })
+  })
+
+  test("rechecks revoked site access after an otherwise matching injection", async () => {
+    afterInjection = async () => {
+      permission = false
+    }
+    expect(await send("page.waitFor", { selector: "button", state: "visible" })).toMatchObject({
+      ok: false,
+      error: { code: "PERMISSION_DENIED" },
+    })
+  })
+
+  test("invalid selectors fail without entering the polling delay", async () => {
+    expect(await send("page.waitFor", { selector: "[", state: "absent" })).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_REQUEST" },
+    })
+    expect(vi.getTimerCount()).toBe(0)
+  })
+})
+
+describe("worker checked-state and option-read guards", () => {
+  function checkbox() {
+    document.body.innerHTML = '<input type="checkbox" aria-label="Accept">'
+    return document.querySelector("input") as HTMLInputElement
+  }
+
+  test("no-op checked state requires no confirmation or snapshot invalidation", async () => {
+    const input = checkbox()
+    const clicked = vi.fn()
+    input.addEventListener("click", clicked)
+    const target = await discover("Accept")
+    expect(await send("page.setChecked", { ...target, checked: false })).toMatchObject({
+      ok: true,
+      result: { changed: false, activated: false, finalStateVerified: true },
+    })
+    expect(clicked).not.toHaveBeenCalled()
+    expect(await send("page.getElementDetails", target)).toMatchObject({ ok: true })
+  })
+
+  test("actual activation requires fresh confirmation and invalidates both registries", async () => {
+    const input = checkbox()
+    const clicked = vi.fn()
+    input.addEventListener("click", clicked)
+    const target = await discover("Accept")
+    expect(await send("page.setChecked", { ...target, checked: true })).toMatchObject({
+      ok: false,
+      error: { code: "CONFIRMATION_REQUIRED" },
+    })
+    expect(input.checked).toBe(false)
+    expect(
+      await send("page.setChecked", { ...target, checked: true }, { confirmed: true }),
+    ).toMatchObject({
+      ok: true,
+      result: { activated: true, requestedReached: true, checked: true, snapshotInvalidated: true },
+    })
+    expect(clicked).toHaveBeenCalledOnce()
+    expect(await send("page.getElementDetails", target)).toMatchObject({
+      ok: false,
+      error: { code: "STALE_CONTEXT" },
+    })
+  })
+
+  test.each(["permission", "cancellation", "focus", "metadata"] as const)(
+    "rechecks %s at the final checked-state mutation boundary",
+    async (guard) => {
+      const input = checkbox()
+      const clicked = vi.fn()
+      input.addEventListener("click", clicked)
+      const target = await discover("Accept")
+      beforeInjection = async () => {
+        if (guard === "permission") permission = false
+        if (guard === "cancellation") await send("requests.cancel", { requestId: "check-cancel" })
+        if (guard === "metadata") input.setAttribute("aria-label", "Changed")
+        if (guard === "focus") {
+          vi.mocked(chrome.windows.get)
+            .mockImplementationOnce((async () => ({
+              focused: true,
+            })) as unknown as typeof chrome.windows.get)
+            .mockImplementationOnce((async () => ({
+              focused: false,
+            })) as unknown as typeof chrome.windows.get)
+        }
+      }
+      expect(
+        await send(
+          "page.setChecked",
+          { ...target, checked: true },
+          {
+            confirmed: true,
+            requestId: "check-cancel",
+          },
+        ),
+      ).toMatchObject({ ok: false })
+      expect(input.checked).toBe(false)
+      expect(clicked).not.toHaveBeenCalled()
+    },
+  )
+
+  test("preserves performed activation when its own handler navigates", async () => {
+    const input = checkbox()
+    const target = await discover("Accept")
+    input.addEventListener("click", () => {
+      updated(tab.id, { status: "loading" })
+    })
+    expect(
+      await send("page.setChecked", { ...target, checked: true }, { confirmed: true }),
+    ).toMatchObject({
+      ok: true,
+      result: { activated: true, snapshotInvalidated: true },
+    })
+  })
+
+  test("option reads and filtered discovery retain normal freshness and privacy checks", async () => {
+    document.body.innerHTML =
+      '<select aria-label="Choice"><option value="private-value">Public label</option></select><button type="button">Go</button>'
+    const target = await discover("Choice")
+    const result = await send("page.getSelectOptions", target)
+    expect(result).toMatchObject({ ok: true, result: { options: [{ label: "Public label" }] } })
+    expect(JSON.stringify(result)).not.toContain("private-value")
+    expect(await send("page.getElementDetails", target)).toMatchObject({ ok: true })
+    expect(await send("page.listElements", { role: "button", name: "Go" })).toMatchObject({
+      ok: true,
+      result: { elements: [{ name: "Go" }] },
+    })
+    expect(await send("page.getSelectOptions", target)).toMatchObject({
+      ok: false,
+      error: { code: "STALE_CONTEXT" },
+    })
+    const fresh = await discover("Choice")
+    permission = false
+    expect(await send("page.getSelectOptions", fresh)).toMatchObject({
+      ok: false,
+      error: { code: "PERMISSION_DENIED" },
+    })
+  })
+})
+
 describe("worker element picker lifecycle", () => {
   const host = (): HTMLElement | null =>
     document.querySelector("[data-pi-browser-agent-element-picker]")

@@ -1,7 +1,17 @@
 import { describe, expect, test } from "vitest"
-import { formatUntrusted, truncateUtf8 } from "../../src/browser/runtime/types.js"
+import { formatUntrusted, RuntimeError, truncateUtf8 } from "../../src/browser/runtime/types.js"
 
 describe("browser output limits", () => {
+  test("serializes a distinct timeout error without classifying it as access denial", () => {
+    expect(
+      new RuntimeError("TIMEOUT", "Condition was not observed", { elapsedMs: 5000 }).toData(),
+    ).toEqual({
+      code: "TIMEOUT",
+      message: "Condition was not observed",
+      details: { elapsedMs: 5000 },
+    })
+  })
+
   test("truncates UTF-8 without splitting surrogate pairs", () => {
     const result = truncateUtf8(`prefix ${"😀".repeat(100)}`, 40)
     expect(result.truncated).toBe(true)

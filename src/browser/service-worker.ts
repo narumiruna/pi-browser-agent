@@ -14,6 +14,7 @@ import {
   hasScreenshotPermission,
   SCREENSHOT_HOST_PERMISSION,
 } from "./permissions.js"
+import { waitForCondition } from "./runtime/condition-wait.js"
 import { ELEMENT_PICKER_LIMITS, parseSelectedElementContext } from "./runtime/element-context.js"
 import { parseRuntimeRequest, type RuntimeEvent, type RuntimeRequest } from "./runtime/messages.js"
 import { classifyPage, type PageCapability } from "./runtime/page-capability.js"
@@ -50,6 +51,9 @@ let startingElementPicker: PickerStart | undefined
 let elementPickerCleanup: Promise<void> = Promise.resolve()
 let elementPickerOperationVersion = 0
 let contextEpoch = 0
+// Waits have no element snapshot. Remember intervening context events even if the user
+// returns to the same tab before the next probe or a concurrent refresh wins the race.
+let waitContextVersion = 0
 let visibleTabSyncVersion = 0
 let latestVisibleTabSync: { version: number; promise: Promise<TabContext | undefined> } | undefined
 let pendingSelectionTake: Promise<JsonValue> = Promise.resolve(null)
@@ -396,7 +400,7 @@ function readDocumentContentType(): string {
   return document.contentType
 }
 
-async function assertReadableDocument(context: TabContext): Promise<void> {
+async function assertReadableDocument(context: TabContext, signal?: AbortSignal): Promise<void> {
   let contentType: string | undefined
   try {
     const results = await chrome.scripting.executeScript({
@@ -406,8 +410,11 @@ async function assertReadableDocument(context: TabContext): Promise<void> {
     })
     contentType = results[0]?.result
   } catch (error) {
+    if (signal?.aborted)
+      throw new RuntimeError("REQUEST_CANCELLED", "Browser request was cancelled")
     throw await injectionFailure(context, error)
   }
+  if (signal?.aborted) throw new RuntimeError("REQUEST_CANCELLED", "Browser request was cancelled")
   const latest = await syncVisibleTab()
   if (
     !latest ||
@@ -438,8 +445,13 @@ async function runPageOperation(
     | "page.scroll"
     | "page.selectOption"
     | "page.getElementDetails"
+    | "page.findText"
+    | "page.waitFor"
+    | "page.getSelectOptions"
+    | "page.setChecked"
   >,
   trustedLinkTargetUrl: string | null = null,
+  probeSignal?: AbortSignal,
 ): Promise<JsonValue> {
   const context = await refreshBoundContext()
   assertTabContext(request.tabContext, context)
@@ -449,9 +461,10 @@ async function runPageOperation(
       "Grant access to the current site before using page tools",
     )
   }
-  if (activeRequests.get(request.requestId)?.signal.aborted)
-    throw new RuntimeError("REQUEST_CANCELLED", "Browser request was cancelled")
-  await assertReadableDocument(context)
+  const signal = probeSignal ?? activeRequests.get(request.requestId)?.signal
+  if (signal?.aborted) throw new RuntimeError("REQUEST_CANCELLED", "Browser request was cancelled")
+  await assertReadableDocument(context, signal)
+  if (signal?.aborted) throw new RuntimeError("REQUEST_CANCELLED", "Browser request was cancelled")
   let snapshot: ElementSnapshot | null = null
   if (operation === "listElements") {
     snapshot = {
@@ -492,6 +505,8 @@ async function runPageOperation(
       ],
     })
   } catch (error) {
+    if (signal?.aborted)
+      throw new RuntimeError("REQUEST_CANCELLED", "Browser request was cancelled")
     throw await injectionFailure(context, error)
   }
   const outcome = results[0]?.result
@@ -506,14 +521,68 @@ async function runPageOperation(
     outcome.result !== null &&
     !Array.isArray(outcome.result) &&
     outcome.result.navigationAllowed === true
+  const checkedActivation =
+    operation === "setChecked" &&
+    typeof outcome.result === "object" &&
+    outcome.result !== null &&
+    !Array.isArray(outcome.result) &&
+    outcome.result.activated === true
   // A successful injected mutation may itself invalidate its snapshot by navigating. Preserve
   // that outcome; reads and navigation not yet performed still require a current snapshot.
-  if (!["click", "type", "scroll", "selectOption"].includes(operation) || navigationPending) {
+  if (
+    (!["click", "type", "scroll", "selectOption"].includes(operation) && !checkedActivation) ||
+    navigationPending
+  ) {
+    if (signal?.aborted)
+      throw new RuntimeError("REQUEST_CANCELLED", "Browser request was cancelled")
     await revalidateRequestContext(request, context)
     if (snapshot && snapshot !== elementSnapshot) throwStaleContext(context)
   }
-  if (operation === "scroll" || operation === "selectOption") elementSnapshot = undefined
+  if (operation === "scroll" || operation === "selectOption" || checkedActivation)
+    elementSnapshot = undefined
   return outcome.result
+}
+
+async function runConditionWait(
+  request: RuntimeRequest<"page.waitFor">,
+  signal: AbortSignal,
+): Promise<JsonValue> {
+  const version = waitContextVersion
+  let context = request.tabContext
+  const assertWaitContext = () => {
+    if (version !== waitContextVersion)
+      throw new RuntimeError("STALE_CONTEXT", "The page context changed while waiting")
+  }
+  return waitForCondition(
+    async (probeSignal) => {
+      assertWaitContext()
+      // Initial context lookup is part of the same timeout/cancellation budget.
+      context ??= await refreshBoundContext()
+      assertWaitContext()
+      if (probeSignal.aborted) throw probeSignal.reason
+      const boundRequest = { ...request, tabContext: context }
+      const value = await runPageOperation("probeCondition", boundRequest, null, probeSignal)
+      if (probeSignal.aborted) throw probeSignal.reason
+      // Recheck after the asynchronous injection; a revoked grant must not satisfy a wait.
+      if (!(await hasHostPermission(context.url)))
+        throw new RuntimeError("PERMISSION_DENIED", "Current site access was revoked")
+      const current = await refreshBoundContext()
+      assertTabContext(context, current)
+      assertWaitContext()
+      if (probeSignal.aborted) throw probeSignal.reason
+      if (
+        typeof value !== "object" ||
+        value === null ||
+        Array.isArray(value) ||
+        typeof value.matched !== "boolean"
+      ) {
+        throw new RuntimeError("INTERNAL_ERROR", "The page returned an invalid condition result")
+      }
+      return value.matched
+    },
+    signal,
+    request.params.timeoutMs,
+  )
 }
 
 async function runClick(request: RuntimeRequest<"page.click">): Promise<JsonValue> {
@@ -915,6 +984,18 @@ async function dispatch(request: RuntimeRequest, signal: AbortSignal): Promise<J
     case "page.getElementDetails":
       result = await runPageOperation("getElementDetails", request)
       break
+    case "page.findText":
+      result = await runPageOperation("findText", request)
+      break
+    case "page.waitFor":
+      result = await runConditionWait(request, signal)
+      break
+    case "page.getSelectOptions":
+      result = await runPageOperation("getSelectOptions", request)
+      break
+    case "page.setChecked":
+      result = await runPageOperation("setChecked", request)
+      break
     case "webmcp.listTools":
       result = truncateStructuredResult(await runWebMcp("webmcp.listTools", request))
       break
@@ -954,11 +1035,15 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   if (changeInfo.status === "loading" && inaccessibleTab?.id === tabId) inaccessibleTab = undefined
   elementPickerOperationVersion += 1
   if (activeElementPicker?.context.tabId === tabId) void stopActiveElementPicker("navigation")
-  if (boundContext?.tabId === tabId) elementSnapshot = undefined
+  if (boundContext?.tabId === tabId) {
+    elementSnapshot = undefined
+    waitContextVersion += 1
+  }
   void initialization.then(() => syncUpdatedVisibleTab(tabId)).catch(() => undefined)
 })
 
 chrome.tabs.onActivated.addListener(() => {
+  waitContextVersion += 1
   pickerShortcut.invalidate()
   elementPickerOperationVersion += 1
   if (activeElementPicker) void stopActiveElementPicker("tab-activated")
@@ -969,12 +1054,14 @@ chrome.tabs.onActivated.addListener(() => {
 chrome.tabs.onRemoved.addListener((tabId) => {
   pickerShortcut.invalidate(tabId)
   if (boundContext?.tabId === tabId) {
+    waitContextVersion += 1
     clearBoundTab()
     void initialization.then(() => syncVisibleTab()).catch(() => undefined)
   }
 })
 
 chrome.windows.onFocusChanged.addListener((windowId) => {
+  waitContextVersion += 1
   pickerShortcut.invalidate()
   elementPickerOperationVersion += 1
   if (activeElementPicker) void stopActiveElementPicker("window-focus-changed")
