@@ -22,7 +22,7 @@ export function stopElementPickerInjection(): ElementPickerOperationResult {
  * This function is passed directly to chrome.scripting.executeScript. Keep every runtime helper
  * inside the function because the isolated execution world cannot access module scope.
  */
-export function executeElementPicker(
+export async function executeElementPicker(
   operation: ElementPickerOperation,
   token: string,
   expectedContext: TabContext,
@@ -37,7 +37,7 @@ export function executeElementPicker(
     selector: number
     text: number
   },
-): ElementPickerOperationResult {
+): Promise<ElementPickerOperationResult> {
   type PickerState = {
     cleanup: () => void
     currentTag: string
@@ -154,6 +154,7 @@ export function executeElementPicker(
   const visibleText = (element: Element): string => {
     if (element.matches("input, textarea, select, [contenteditable]")) return ""
     const blockedFilters = new WeakMap<Element, boolean>()
+    const zoomScales = new WeakMap<Element, number>()
     const filterBlocksVisibility = (element: Element, style: CSSStyleDeclaration): boolean => {
       const cached = blockedFilters.get(element)
       if (cached !== undefined) return cached
@@ -188,13 +189,19 @@ export function executeElementPicker(
       }
       return current === null
     }
-    const hasVisiblePoint = (rect: DOMRect, parent: Element): boolean => {
+    const hasVisiblePoint = (raw: DOMRect, parent: Element): boolean => {
+      let scale = zoomScales.get(parent)
+      if (scale === undefined) {
+        scale = legacyZoomGeometry ? cssZoom(parent) : 1
+        zoomScales.set(parent, scale)
+      }
+      const rect = viewportRect(raw, scale)
       const left = Math.max(0, rect.left)
       const right = Math.min(window.innerWidth, rect.right)
       const top = Math.max(0, rect.top)
       const bottom = Math.min(window.innerHeight, rect.bottom)
       if (left >= right || top >= bottom) return false
-      if (typeof document.elementFromPoint !== "function") return true
+      if (typeof document.elementsFromPoint !== "function") return false
       const insetX = Math.min(1, (right - left) / 2)
       const insetY = Math.min(1, (bottom - top) / 2)
       return [
@@ -203,51 +210,45 @@ export function executeElementPicker(
         [right - insetX, top + insetY],
         [left + insetX, bottom - insetY],
         [right - insetX, bottom - insetY],
-      ].some(([x, y]) => document.elementFromPoint(x ?? 0, y ?? 0) === parent)
+      ].some(([x, y]) => hitTest(x ?? 0, y ?? 0) === parent)
     }
     const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT)
     const range = document.createRange()
     const inspectionLimit = Math.min(2_048, limits.text * 4)
     let text = ""
     let inspected = 0
-    const pointerEvents = host.style.pointerEvents
-    host.style.pointerEvents = "none"
-    try {
-      for (let count = 0; count < 100 && text.length < limits.text; count += 1) {
-        const node = walker.nextNode()
-        if (!node || inspected >= inspectionLimit) break
-        const parent = node.parentElement
+    for (let count = 0; count < 100 && text.length < limits.text; count += 1) {
+      const node = walker.nextNode()
+      if (!node || inspected >= inspectionLimit) break
+      const parent = node.parentElement
+      if (
+        !parent ||
+        parent.closest(
+          "input, textarea, select, [contenteditable], [hidden], [aria-hidden='true'], script, style",
+        ) ||
+        !hasVisibleAncestors(parent)
+      )
+        continue
+      text += " "
+      let offset = 0
+      for (const character of node.textContent ?? "") {
+        if (inspected + character.length > inspectionLimit) break
+        inspected += character.length
+        range.setStart(node, offset)
+        offset += character.length
+        range.setEnd(node, offset)
         if (
-          !parent ||
-          parent.closest(
-            "input, textarea, select, [contenteditable], [hidden], [aria-hidden='true'], script, style",
-          ) ||
-          !hasVisibleAncestors(parent)
-        )
-          continue
-        text += " "
-        let offset = 0
-        for (const character of node.textContent ?? "") {
-          if (inspected + character.length > inspectionLimit) break
-          inspected += character.length
-          range.setStart(node, offset)
-          offset += character.length
-          range.setEnd(node, offset)
-          if (
-            /\s/.test(character) ||
-            Array.from(range.getClientRects()).some((rect) => hasVisiblePoint(rect, parent))
-          ) {
-            text += character
-          }
+          /\s/.test(character) ||
+          Array.from(range.getClientRects()).some((rect) => hasVisiblePoint(rect, parent))
+        ) {
+          text += character
         }
       }
-    } finally {
-      host.style.pointerEvents = pointerEvents
     }
     return bounded(text, limits.text)
   }
   const contextFor = (element: Element): SelectedElementContext => {
-    const rectangle = element.getBoundingClientRect()
+    const rectangle = boundsFor(element)
     const selector = selectorFor(element)
     const attribute = (name: string): string =>
       bounded(element.getAttribute(name), limits.attributes)
@@ -312,47 +313,112 @@ export function executeElementPicker(
     return context
   }
 
+  // A root popover is inert while a page modal is open. Place our non-modal surface
+  // inside the active light-DOM modal, without closing or changing page surfaces.
+  const parent =
+    (typeof document.elementFromPoint === "function"
+      ? document
+          .elementFromPoint(window.innerWidth / 2, window.innerHeight / 2)
+          ?.closest("dialog:modal")
+      : null) ?? document.documentElement
+  const previousFocus = document.activeElement
   const host = document.createElement("div")
   host.dataset.piBrowserAgentElementPicker = ""
-  Object.assign(host.style, {
+  host.popover = "manual"
+  host.tabIndex = -1
+  for (const [name, value] of Object.entries({
     all: "initial",
+    // A fully transparent surface can be omitted from OOPIF compositor hit testing.
+    // Keep a painted, very light background (alpha must survive 8-bit quantization).
+    "background-color": "rgba(0, 0, 0, 0.01)",
     contain: "strict",
     cursor: "crosshair",
     display: "block",
-    height: "100vh",
+    "forced-color-adjust": "none",
+    height: "calc(100vh + 1px)",
     inset: "0",
     margin: "0",
+    opacity: "1",
+    filter: "none",
+    outline: "none",
     padding: "0",
-    pointerEvents: "auto",
+    "pointer-events": "auto",
     position: "fixed",
-    touchAction: "pan-x pan-y",
-    width: "100vw",
-    zIndex: "2147483647",
-  })
+    "touch-action": "pan-x pan-y",
+    visibility: "visible",
+    width: "calc(100vw + 1px)",
+    zoom: "1",
+  })) {
+    host.style.setProperty(name, value, "important")
+  }
+  const cssZoom = (element: Element): number => {
+    let scale = 1
+    for (let current: Element | null = element; current; current = current.parentElement) {
+      const value = getComputedStyle(current).zoom
+      const zoom = Number.parseFloat(value)
+      if (Number.isFinite(zoom) && zoom > 0) scale *= value.endsWith("%") ? zoom / 100 : zoom
+    }
+    return scale
+  }
+  let legacyZoomGeometry = false
+  const fitShield = (): void => {
+    // Top-layer positioning escapes ancestor transforms, but not CSS zoom. Chrome
+    // before 128 omits absolute zoom from DOM rectangles; probe our owned surface
+    // at a known scale instead of using user-agent checks or newer currentCSSZoom.
+    const scale = cssZoom(parent)
+    host.style.setProperty("zoom", String(2 / scale), "important")
+    const width = Number.parseFloat(getComputedStyle(host).width)
+    legacyZoomGeometry = Math.abs(host.getBoundingClientRect().width / width - 1) < 0.1
+    host.style.setProperty("zoom", String(1 / scale), "important")
+  }
+  const viewportRect = (rectangle: DOMRect, scale: number): DOMRect =>
+    legacyZoomGeometry
+      ? new DOMRect(
+          rectangle.x * scale,
+          rectangle.y * scale,
+          rectangle.width * scale,
+          rectangle.height * scale,
+        )
+      : rectangle
+  const boundsFor = (element: Element): DOMRect =>
+    viewportRect(element.getBoundingClientRect(), legacyZoomGeometry ? cssZoom(element) : 1)
   const shieldIntact = (): boolean => {
     const computed = getComputedStyle(host)
-    const rectangle = host.getBoundingClientRect()
+    const rectangle = boundsFor(host)
     return (
       host.isConnected &&
+      host.parentElement === parent &&
+      host.matches(":popover-open") &&
       !host.hidden &&
       computed.display !== "none" &&
       computed.visibility !== "hidden" &&
       computed.visibility !== "collapse" &&
+      host.style.pointerEvents === "auto" &&
+      host.style.getPropertyPriority("pointer-events") === "important" &&
       computed.pointerEvents === "auto" &&
+      computed.backgroundColor === "rgba(0, 0, 0, 0.01)" &&
       computed.position === "fixed" &&
       ["", "none"].includes(computed.transform) &&
       ["", "none"].includes(computed.clipPath) &&
-      Number.parseFloat(computed.opacity || "1") > 0 &&
+      ["", "none"].includes(computed.getPropertyValue("mask-image")) &&
+      ["", "none"].includes(computed.getPropertyValue("-webkit-mask-image")) &&
+      computed.filter === "none" &&
+      computed.opacity === "1" &&
       rectangle.left <= 0 &&
       rectangle.top <= 0 &&
       rectangle.right >= window.innerWidth &&
-      rectangle.bottom >= window.innerHeight
+      rectangle.bottom >= window.innerHeight &&
+      [0.05, 0.5, 0.95].every((x) =>
+        [0.05, 0.5, 0.95].every(
+          (y) => document.elementFromPoint(window.innerWidth * x, window.innerHeight * y) === host,
+        ),
+      )
     )
   }
   const shadow = host.attachShadow({ mode: "closed" })
   const style = document.createElement("style")
   style.textContent = `
-    :host { all: initial; }
+    :host::backdrop { background: transparent !important; pointer-events: none !important; }
     #highlight {
       position: fixed; display: none; pointer-events: none; box-sizing: border-box;
       border: 2px solid #5b5bd6; background: rgb(91 91 214 / 16%);
@@ -370,7 +436,6 @@ export function executeElementPicker(
   const label = document.createElement("div")
   label.id = "label"
   shadow.append(style, highlight, label)
-  document.documentElement.append(host)
 
   const controller = new AbortController()
   let current: Element | null = null
@@ -379,6 +444,8 @@ export function executeElementPicker(
   let expiryTimer = 0
   let finished = false
   let cleaned = false
+  let finishStartup: (() => void) | undefined
+  let resultDelivery: Promise<unknown> | undefined
   let runtimeStopListener:
     | ((message: unknown, sender: chrome.runtime.MessageSender) => false)
     | undefined
@@ -402,18 +469,14 @@ export function executeElementPicker(
     if (isolated.__piBrowserAgentElementPicker?.token === token)
       isolated.__piBrowserAgentElementPicker.currentTag = ""
   }
-  const hitTest = (x: number, y: number): Element | null => {
-    host.style.pointerEvents = "none"
-    const hit = document.elementFromPoint(x, y)
-    host.style.pointerEvents = "auto"
-    return hit && hit !== host && !host.contains(hit) ? hit : null
-  }
+  const hitTest = (x: number, y: number): Element | null =>
+    document.elementsFromPoint(x, y).find((hit) => hit !== host && !host.contains(hit)) ?? null
   const render = (element: Element | null): void => {
     if (!element?.isConnected) {
       hide()
       return
     }
-    const rectangle = element.getBoundingClientRect()
+    const rectangle = boundsFor(element)
     if (
       rectangle.width <= 0 ||
       rectangle.height <= 0 ||
@@ -461,12 +524,21 @@ export function executeElementPicker(
   const cleanup = (): void => {
     if (cleaned) return
     cleaned = true
+    finishStartup?.()
     if (frame) cancelAnimationFrame(frame)
     if (expiryTimer) clearTimeout(expiryTimer)
     controller.abort()
     observer.disconnect()
     if (runtimeStopListener) chrome.runtime.onMessage.removeListener(runtimeStopListener)
+    const restoreFocus = document.activeElement === host
+    try {
+      host.hidePopover()
+    } catch {
+      // A removed or changed popover can already be closed.
+    }
     host.remove()
+    if (restoreFocus && previousFocus instanceof HTMLElement && previousFocus.isConnected)
+      previousFocus.focus({ preventScroll: true })
     if (isolated.__piBrowserAgentElementPicker?.token === token)
       delete isolated.__piBrowserAgentElementPicker
   }
@@ -478,7 +550,7 @@ export function executeElementPicker(
     if (finished) return
     finished = true
     cleanup()
-    void chrome.runtime
+    resultDelivery = chrome.runtime
       .sendMessage({
         kind: "element-picker-result",
         token,
@@ -490,6 +562,10 @@ export function executeElementPicker(
       .catch(() => undefined)
   }
   const track = (event: MouseEvent): void => {
+    if (!shieldIntact()) {
+      notify("cancelled", undefined, "overlay-tampered")
+      return
+    }
     lastPoint = { x: event.clientX, y: event.clientY }
     render(hitTest(event.clientX, event.clientY))
   }
@@ -522,6 +598,20 @@ export function executeElementPicker(
     else block(event)
   }
 
+  try {
+    parent.append(host)
+    host.showPopover()
+    fitShield()
+    host.focus({ preventScroll: true })
+    if (!shieldIntact() || document.activeElement !== host) {
+      cleanup()
+      return { ok: true, result: { started: false, reason: "overlay-unavailable" } }
+    }
+  } catch {
+    cleanup()
+    return { ok: true, result: { started: false, reason: "overlay-unavailable" } }
+  }
+
   if (
     typeof chrome.runtime.getURL === "function" &&
     typeof chrome.runtime.onMessage?.addListener === "function"
@@ -550,7 +640,47 @@ export function executeElementPicker(
   for (const name of ["auxclick", "dblclick", "contextmenu", "dragstart"])
     window.addEventListener(name, block, { capture: true, signal: controller.signal })
   window.addEventListener("scroll", scheduleRefresh, { capture: true, signal: controller.signal })
-  window.addEventListener("resize", scheduleRefresh, { signal: controller.signal })
+  window.addEventListener(
+    "resize",
+    () => {
+      fitShield()
+      if (!shieldIntact()) notify("cancelled", undefined, "overlay-tampered")
+      else scheduleRefresh()
+    },
+    { signal: controller.signal },
+  )
+  for (const name of ["blur", "focus"]) {
+    window.addEventListener(
+      name,
+      (event) => {
+        // A child document has no top-frame focusin event. Recheck on return from
+        // the panel too; do not fight cross-process focus changes with repeated focus().
+        if (event.target !== window) return
+        queueMicrotask(() => {
+          if (!cleaned && document.hasFocus() && document.activeElement !== host)
+            notify("cancelled", undefined, "overlay-obscured")
+        })
+      },
+      { capture: true, signal: controller.signal },
+    )
+  }
+  window.addEventListener(
+    "beforetoggle",
+    (event) => {
+      const state = (event as ToggleEvent).newState
+      if (
+        (event.target === host && state === "closed") ||
+        (event.target !== host && state === "open")
+      )
+        notify("cancelled", undefined, "overlay-obscured")
+    },
+    { capture: true, signal: controller.signal },
+  )
+  document.addEventListener(
+    "fullscreenchange",
+    () => notify("cancelled", undefined, "overlay-obscured"),
+    { signal: controller.signal },
+  )
   window.addEventListener(
     "keydown",
     (event) => {
@@ -581,5 +711,26 @@ export function executeElementPicker(
     Math.max(1_000, limits.lifetimeMs),
   )
   isolated.__piBrowserAgentElementPicker = { cleanup, currentTag: "", token }
+  // Out-of-process iframe input routing uses the last committed compositor frame.
+  // Do not acknowledge startup until a frame containing the shield can be committed.
+  await new Promise<void>((resolve) => {
+    finishStartup = resolve
+    frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => {
+        frame = 0
+        finishStartup = undefined
+        resolve()
+      })
+    })
+  })
+  frame = 0
+  if (!cleaned) {
+    if (lastPoint) refresh()
+    if (!shieldIntact()) notify("cancelled", undefined, "overlay-tampered")
+  }
+  // A selection or final protection failure can finish during startup. Let the
+  // worker publish that result before the start response clears the UI client.
+  if (resultDelivery) await resultDelivery
+  if (cleaned) return { ok: true, result: { started: false, reason: "cancelled" } }
   return { ok: true, result: { started: true } }
 }

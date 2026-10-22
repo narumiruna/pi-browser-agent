@@ -46,7 +46,7 @@ let elementSnapshot: ElementSnapshot | undefined
 let activeElementPicker:
   | { clientId: string; context: TabContext; expiresAt: number; token: string }
   | undefined
-type PickerStart = { windowId?: number; disconnectedWindows: Set<number> }
+type PickerStart = { tabId?: number; windowId?: number; disconnectedWindows: Set<number> }
 let startingElementPicker: PickerStart | undefined
 let elementPickerCleanup: Promise<void> = Promise.resolve()
 let elementPickerOperationVersion = 0
@@ -803,12 +803,17 @@ async function startElementPicker(
   request: RuntimeRequest<"elementPicker.start">,
 ): Promise<JsonValue> {
   const operationVersion = ++elementPickerOperationVersion
-  const starting: PickerStart = { disconnectedWindows: new Set() }
+  // Own the target before the first lookup so unrelated tab loads cannot cancel startup.
+  const starting: PickerStart = {
+    tabId: request.tabContext?.tabId ?? boundContext?.tabId,
+    disconnectedWindows: new Set(),
+  }
   startingElementPicker = starting
   try {
     const context = await refreshBoundContext()
     if (operationVersion !== elementPickerOperationVersion) return { active: false }
     assertTabContext(request.tabContext, context)
+    starting.tabId = context.tabId
     const tab = await chrome.tabs.get(context.tabId)
     starting.windowId = tab.windowId
     if (starting.disconnectedWindows.has(tab.windowId)) {
@@ -849,10 +854,38 @@ async function startElementPicker(
         })
       } catch (error) {
         injectionFailed = true
-        if (activeElementPicker?.token === token) activeElementPicker = undefined
-        throw await injectionFailure(context, error)
+        const latest = await syncVisibleTab()
+        if (
+          !latest ||
+          latest.tabId !== context.tabId ||
+          latest.url !== context.url ||
+          latest.epoch !== context.epoch
+        ) {
+          throwStaleContext(context, latest)
+        }
+        // Classify the failure before changing page capability, then recheck ownership.
+        // An old injection must not mark a working replacement's page inaccessible.
+        if (activeElementPicker?.token !== token) {
+          throw new RuntimeError("REQUEST_CANCELLED", "Element selection was cancelled or replaced")
+        }
+        activeElementPicker = undefined
+        markTabInaccessible(context)
+        throw new RuntimeError(
+          "PERMISSION_DENIED",
+          error instanceof Error ? error.message : "Chrome denied access to the current tab",
+        )
       }
       const outcome = results[0]?.result
+      if (outcome?.ok && outcome.result.reason === "cancelled") {
+        if (activeElementPicker?.token === token) activeElementPicker = undefined
+        return { active: false, clientId: request.params.clientId }
+      }
+      if (outcome?.ok && outcome.result.reason === "overlay-unavailable") {
+        throw new RuntimeError(
+          "INTERNAL_ERROR",
+          "Could not protect element selection on this page. Reload the page and try again.",
+        )
+      }
       if (!outcome?.ok || outcome.result.started !== true) {
         throw new RuntimeError(
           "STALE_CONTEXT",
@@ -871,8 +904,9 @@ async function startElementPicker(
       }
       return { active, clientId: request.params.clientId }
     } catch (error) {
-      if (activeElementPicker?.token === token) activeElementPicker = undefined
-      if (!injectionFailed) await stopInjectedElementPicker(context)
+      const ownsPicker = activeElementPicker?.token === token
+      if (ownsPicker) activeElementPicker = undefined
+      if (!injectionFailed && ownsPicker) await stopInjectedElementPicker(context)
       if (error instanceof RuntimeError) throw error
       throw new RuntimeError(
         "PERMISSION_DENIED",
@@ -1033,7 +1067,9 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
     return
   }
   if (changeInfo.status === "loading" && inaccessibleTab?.id === tabId) inaccessibleTab = undefined
-  elementPickerOperationVersion += 1
+  if (startingElementPicker?.tabId === tabId || activeElementPicker?.context.tabId === tabId) {
+    elementPickerOperationVersion += 1
+  }
   if (activeElementPicker?.context.tabId === tabId) void stopActiveElementPicker("navigation")
   if (boundContext?.tabId === tabId) {
     elementSnapshot = undefined

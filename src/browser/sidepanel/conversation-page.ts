@@ -754,6 +754,8 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
         result.active === true &&
         result.clientId === clientId
       setPickerActive(active, active ? clientId : undefined)
+    } catch (error) {
+      if (version === pickerStartVersion && !disposed) throw error
     } finally {
       if (version === pickerStartVersion) {
         pickerStarting = false
@@ -1387,6 +1389,14 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
         event.payload?.reason === "capture-failed"
       ) {
         setError(new Error("Could not attach the selected element. Try another element."))
+      } else if (
+        ["overlay-tampered", "overlay-detached", "overlay-obscured"].includes(
+          String(event.payload?.reason),
+        )
+      ) {
+        setError(
+          new Error("Element selection lost its protection. Select again, or reload the page."),
+        )
       }
     }
     if (event.name === "elementPicker.selected" && currentPickerEvent) {

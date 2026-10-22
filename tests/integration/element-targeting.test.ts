@@ -6,6 +6,7 @@ import {
 } from "../../src/browser/runtime/element-context.js"
 import type { RuntimeResponse } from "../../src/browser/runtime/messages.js"
 import type { JsonObject, TabContext } from "../../src/browser/runtime/types.js"
+import { mockElementPickerSurface } from "../helpers/element-picker-surface.js"
 
 type Listener = (
   message: unknown,
@@ -31,6 +32,7 @@ let beforeInjection: (() => Promise<void>) | undefined
 let afterInjection: (() => Promise<void>) | undefined
 let injectionCount: number
 let emittedEvents: Array<{ name?: string; payload?: unknown }>
+let restoreSurface: () => void
 
 function send(
   method: string,
@@ -110,16 +112,15 @@ beforeEach(async () => {
   document.body.innerHTML = '<button type="button">Go</button><input aria-label="Title">'
   Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" })
   Object.defineProperty(document, "elementFromPoint", { configurable: true, value: undefined })
-  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
-    x: 0,
-    y: 0,
-    left: 0,
-    top: 0,
-    right: 20,
-    bottom: 20,
-    width: 20,
-    height: 20,
-  } as DOMRect)
+  restoreSurface = mockElementPickerSurface()
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (
+    this: HTMLElement,
+  ) {
+    const shield = this.hasAttribute("data-pi-browser-agent-element-picker")
+    const width = shield ? window.innerWidth : 20
+    const height = shield ? window.innerHeight : 20
+    return { x: 0, y: 0, left: 0, top: 0, right: width, bottom: height, width, height } as DOMRect
+  })
   // jsdom has no text layout; mirror the fixture's element geometry for text ranges.
   vi.spyOn(document, "createRange").mockImplementation(() => {
     const range = new Range()
@@ -225,6 +226,7 @@ beforeEach(async () => {
   await state()
 })
 afterEach(() => {
+  restoreSurface()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
   vi.resetModules()
@@ -338,6 +340,102 @@ describe("panel disconnect during picker preflight", () => {
         }
       })
     }
+  }
+})
+
+describe("picker startup navigation races", () => {
+  for (const stage of [
+    "tab refresh",
+    "window lookup",
+    "permission",
+    "document validation",
+  ] as const) {
+    test.each([
+      ["background loading", true],
+      ["background URL", true],
+      ["target title", true],
+      ["target URL", false],
+      ["target same-URL reload", false],
+      ["stop", false],
+      ["tab activation", false],
+      ["window focus", false],
+    ] as const)(`${stage}: %s`, async (event, shouldStart) => {
+      let release: () => void = () => undefined
+      let markEntered: () => void = () => undefined
+      const entered = new Promise<void>((resolve) => {
+        markEntered = resolve
+      })
+      const gate = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const pause = async () => {
+        markEntered()
+        await gate
+      }
+      if (stage === "tab refresh") {
+        vi.mocked(chrome.tabs.query).mockImplementationOnce(async () => {
+          await pause()
+          return [tab] as chrome.tabs.Tab[]
+        })
+      } else if (stage === "window lookup") {
+        vi.mocked(chrome.tabs.get).mockImplementationOnce(async () => {
+          await pause()
+          return tab as chrome.tabs.Tab
+        })
+      } else if (stage === "permission") {
+        vi.mocked(chrome.permissions.contains).mockImplementationOnce(async () => {
+          await pause()
+          return permission
+        })
+      } else {
+        const original = executeScript.getMockImplementation()
+        executeScript.mockImplementationOnce(async (injection) => {
+          expect(injection.func.name).toBe("readDocumentContentType")
+          await pause()
+          return original?.(injection) ?? []
+        })
+      }
+      const starting = startPickerRequest()
+      try {
+        await entered
+        if (event === "background loading") updated(2, { status: "loading" })
+        else if (event === "background URL") updated(2, { url: "https://background.test/next" })
+        else if (event === "target title") updated(tab.id, { title: "New title" })
+        else if (event === "target URL") {
+          tab = { ...tab, url: `${tab.url}next` }
+          updated(tab.id, { url: tab.url })
+        } else if (event === "target same-URL reload") updated(tab.id, { status: "loading" })
+        else if (event === "stop") {
+          expect(await send("elementPicker.stop")).toMatchObject({ ok: true })
+        } else if (event === "tab activation") activated()
+        else focusChanged(2)
+      } finally {
+        release()
+      }
+      try {
+        const response = await starting
+        if (shouldStart) {
+          expect(response).toMatchObject({ ok: true, result: { active: true } })
+        } else {
+          expect(response).toMatchObject(
+            response.ok ? { result: { active: false } } : { error: { code: "STALE_CONTEXT" } },
+          )
+        }
+        const starts = executeScript.mock.calls.filter(
+          ([injection]) =>
+            injection.func.name === "executeElementPicker" && injection.args?.[0] === "start",
+        )
+        expect(starts).toHaveLength(shouldStart ? 1 : 0)
+        expect(document.querySelectorAll("[data-pi-browser-agent-element-picker]")).toHaveLength(
+          shouldStart ? 1 : 0,
+        )
+        expect(
+          emittedEvents.filter((event) => event.name === "elementPicker.started"),
+        ).toHaveLength(shouldStart ? 1 : 0)
+      } finally {
+        await send("elementPicker.stop", {}, { tabContext: undefined })
+      }
+    })
   }
 })
 
@@ -1459,6 +1557,60 @@ describe("worker element picker lifecycle", () => {
     })
     expect(clicked).not.toHaveBeenCalled()
   })
+
+  test.each(["unsafe outcome", "injection rejection", "failure classification"] as const)(
+    "a late old %s cannot clean or invalidate a replacement picker",
+    async (failure) => {
+      const original = executeScript.getMockImplementation()
+      let release: () => void = () => undefined
+      let markEntered: () => void = () => undefined
+      const gate = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const entered = new Promise<void>((resolve) => {
+        markEntered = resolve
+      })
+      executeScript.mockImplementation(async (injection) => {
+        const result = (await original?.(injection)) ?? []
+        if (injection.args?.[0] !== "start") return result
+        executeScript.mockImplementation(original ?? (async () => []))
+        if (failure === "failure classification") {
+          vi.mocked(chrome.tabs.query).mockImplementationOnce(async () => {
+            markEntered()
+            await gate
+            return [tab] as chrome.tabs.Tab[]
+          })
+          throw new Error("Obsolete injection failure")
+        }
+        markEntered()
+        await gate
+        if (failure === "injection rejection") throw new Error("Obsolete injection failure")
+        return [{ result: { ok: true, result: { started: false, reason: "overlay-unavailable" } } }]
+      })
+      const old = startPickerRequest()
+      await entered
+      try {
+        expect(await send("elementPicker.stop")).toMatchObject({ ok: true })
+        expect(await startPickerRequest()).toMatchObject({ ok: true, result: { active: true } })
+        const isolated = globalThis as typeof globalThis & {
+          __piBrowserAgentElementPicker?: { token: string }
+        }
+        const replacement = isolated.__piBrowserAgentElementPicker?.token
+        expect(replacement).toBeTypeOf("string")
+        release()
+        expect(await old).toMatchObject({ ok: false })
+        expect(isolated.__piBrowserAgentElementPicker?.token).toBe(replacement)
+        expect(host()).not.toBeNull()
+        expect(await send("app.getState", {}, { tabContext: undefined })).toMatchObject({
+          ok: true,
+          result: { tabContext: context },
+        })
+      } finally {
+        release()
+        await send("elementPicker.stop", {}, { tabContext: undefined })
+      }
+    },
+  )
 
   test("rejects picker start when exact-origin access was revoked", async () => {
     permission = false

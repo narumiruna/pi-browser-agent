@@ -6,6 +6,7 @@ import {
 } from "../../src/browser/content/element-picker.js"
 import { ELEMENT_PICKER_LIMITS } from "../../src/browser/runtime/element-context.js"
 import type { TabContext } from "../../src/browser/runtime/types.js"
+import { mockElementPickerSurface } from "../helpers/element-picker-surface.js"
 
 const context: TabContext = { tabId: 1, url: location.href, epoch: 0 }
 const rectangle = {
@@ -21,6 +22,7 @@ const rectangle = {
 } as DOMRect
 let hit: Element | null
 let sent: Record<string, unknown>[]
+let restoreSurface: () => void
 
 function pickerHost(): HTMLElement | null {
   return document.querySelector("[data-pi-browser-agent-element-picker]")
@@ -35,6 +37,7 @@ beforeEach(() => {
     configurable: true,
     value: () => hit,
   })
+  restoreSurface = mockElementPickerSurface()
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function bounds(
     this: HTMLElement,
   ) {
@@ -73,6 +76,7 @@ beforeEach(() => {
 
 afterEach(() => {
   executeElementPicker("stop", "", context, ELEMENT_PICKER_LIMITS)
+  restoreSurface()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })
@@ -85,7 +89,9 @@ describe("injected element picker", () => {
     const clicked = vi.fn()
     target.addEventListener("click", clicked)
 
-    expect(executeElementPicker("start", "picker-token", context, ELEMENT_PICKER_LIMITS)).toEqual({
+    expect(
+      await executeElementPicker("start", "picker-token", context, ELEMENT_PICKER_LIMITS),
+    ).toEqual({
       ok: true,
       result: { started: true },
     })
@@ -121,11 +127,17 @@ describe("injected element picker", () => {
     ).toBeDefined()
   })
 
-  test("cancels when the page tampers with the extension shield", async () => {
+  test.each([
+    ["pointer-events", "none"],
+    ["background-color", "transparent"],
+    ["opacity", "0.001"],
+    ["filter", "opacity(0)"],
+    ["mask-image", "linear-gradient(transparent, transparent)"],
+  ])("cancels when the page tampers with shield %s", async (property, value) => {
     executeElementPicker("start", "tampered", context, ELEMENT_PICKER_LIMITS)
     const host = pickerHost()
     if (!host) throw new Error("Missing picker host")
-    host.style.pointerEvents = "none"
+    host.style.setProperty(property, value, "important")
 
     await vi.waitFor(() => {
       expect(sent).toMatchObject([{ status: "cancelled", reason: "overlay-tampered" }])
@@ -225,6 +237,173 @@ describe("injected element picker", () => {
     first.setAttribute("data-updated", "true")
     await Promise.resolve()
     expect(isolated.__piBrowserAgentElementPicker?.currentTag).toBe("div")
+  })
+
+  test.each(["legacy", "current"] as const)(
+    "normalizes %s CSS-zoom rectangles without changing page styles",
+    async (mode) => {
+      const previous = document.documentElement.style.zoom
+      document.documentElement.style.zoom = "0.9"
+      const computed = window.getComputedStyle.bind(window)
+      vi.spyOn(window, "getComputedStyle").mockImplementation((element, pseudo) => {
+        const style = computed(element, pseudo)
+        return new Proxy(style, {
+          get(target, property) {
+            if (
+              property === "width" &&
+              element.hasAttribute("data-pi-browser-agent-element-picker")
+            )
+              return `${window.innerWidth + 1}px`
+            const value = Reflect.get(target, property, target)
+            return typeof value === "function" ? value.bind(target) : value
+          },
+        })
+      })
+      const attach = Element.prototype.attachShadow
+      let shadow: ShadowRoot | undefined
+      vi.spyOn(Element.prototype, "attachShadow").mockImplementation(function (
+        this: Element,
+        options,
+      ) {
+        const root = attach.call(this, options)
+        shadow = root
+        return root
+      })
+      vi.mocked(HTMLElement.prototype.getBoundingClientRect).mockImplementation(function (
+        this: HTMLElement,
+      ) {
+        if (this.hasAttribute("data-pi-browser-agent-element-picker")) {
+          const scale = mode === "legacy" ? 1 : Number.parseFloat(this.style.zoom) * 0.9
+          return new DOMRect(
+            0,
+            0,
+            (window.innerWidth + 1) * scale,
+            (window.innerHeight + 1) * scale,
+          )
+        }
+        return mode === "legacy" ? rectangle : new DOMRect(18, 27, 180, 90)
+      })
+      const target = document.createElement("button")
+      document.body.append(target)
+      hit = target
+      try {
+        expect(await executeElementPicker("start", "zoom", context, ELEMENT_PICKER_LIMITS)).toEqual(
+          { ok: true, result: { started: true } },
+        )
+        pickerHost()?.dispatchEvent(new MouseEvent("pointermove", { clientX: 50, clientY: 60 }))
+        const highlight = shadow?.querySelector<HTMLElement>("#highlight")
+        expect(Number.parseFloat(highlight?.style.left ?? "")).toBeCloseTo(18)
+        expect(Number.parseFloat(highlight?.style.top ?? "")).toBeCloseTo(27)
+        expect(Number.parseFloat(highlight?.style.width ?? "")).toBeCloseTo(180)
+        expect(Number.parseFloat(highlight?.style.height ?? "")).toBeCloseTo(90)
+        expect(document.documentElement.style.zoom).toBe("0.9")
+      } finally {
+        stopElementPickerInjection()
+        document.documentElement.style.zoom = previous
+      }
+    },
+  )
+
+  test.each(["missing API", "failed geometry"] as const)(
+    "rejects unsafe startup with %s without leaving a surface",
+    async (failure) => {
+      if (failure === "missing API") Reflect.deleteProperty(HTMLElement.prototype, "showPopover")
+      else vi.mocked(HTMLElement.prototype.getBoundingClientRect).mockReturnValue(rectangle)
+      expect(await executeElementPicker("start", "unsafe", context, ELEMENT_PICKER_LIMITS)).toEqual(
+        {
+          ok: true,
+          result: { started: false, reason: "overlay-unavailable" },
+        },
+      )
+      expect(pickerHost()).toBeNull()
+      expect(sent).toHaveLength(0)
+    },
+  )
+
+  test("stop releases startup even when no compositor frame arrives", async () => {
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn(() => 1),
+    )
+    const start = executeElementPicker("start", "pending-paint", context, ELEMENT_PICKER_LIMITS)
+    expect(pickerHost()).not.toBeNull()
+    stopElementPickerInjection()
+    expect(await start).toEqual({ ok: true, result: { started: false, reason: "cancelled" } })
+    expect(pickerHost()).toBeNull()
+    expect(sent).toHaveLength(0)
+  })
+
+  test("waits for an early result acknowledgment before resolving startup", async () => {
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn(() => 1),
+    )
+    let acknowledge: () => void = () => undefined
+    const acknowledgment = new Promise<void>((resolve) => {
+      acknowledge = resolve
+    })
+    vi.mocked(chrome.runtime.sendMessage).mockImplementationOnce(() => acknowledgment)
+    const start = executeElementPicker("start", "early-result", context, ELEMENT_PICKER_LIMITS)
+    let settled = false
+    void start.then(() => {
+      settled = true
+    })
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }))
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(pickerHost()).toBeNull()
+    expect(settled).toBe(false)
+    acknowledge()
+    expect(await start).toEqual({ ok: true, result: { started: false, reason: "cancelled" } })
+  })
+
+  test("waits for acknowledgment of a failure found only after the last paint frame", async () => {
+    const callbacks: FrameRequestCallback[] = []
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      callbacks.push(callback)
+      return callbacks.length
+    })
+    const computed = window.getComputedStyle.bind(window)
+    let protectionLost = false
+    vi.spyOn(window, "getComputedStyle").mockImplementation((element, pseudo) => {
+      const style = computed(element, pseudo)
+      return new Proxy(style, {
+        get(target, property) {
+          if (
+            protectionLost &&
+            property === "backgroundColor" &&
+            element.hasAttribute("data-pi-browser-agent-element-picker")
+          )
+            return "transparent"
+          const value = Reflect.get(target, property, target)
+          return typeof value === "function" ? value.bind(target) : value
+        },
+      })
+    })
+    let acknowledge: () => void = () => undefined
+    const acknowledgment = new Promise<void>((resolve) => {
+      acknowledge = resolve
+    })
+    vi.mocked(chrome.runtime.sendMessage).mockImplementationOnce(() => acknowledgment)
+    const start = executeElementPicker("start", "post-paint-loss", context, ELEMENT_PICKER_LIMITS)
+    let settled = false
+    void start.then(() => {
+      settled = true
+    })
+    expect(callbacks).toHaveLength(1)
+    callbacks[0]?.(0)
+    expect(callbacks).toHaveLength(2)
+    protectionLost = true
+    callbacks[1]?.(0)
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(pickerHost()).toBeNull()
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "cancelled", reason: "overlay-tampered" }),
+    )
+    expect(settled).toBe(false)
+    acknowledge()
+    expect(await start).toEqual({ ok: true, result: { started: false, reason: "cancelled" } })
   })
 
   test("expires through the same one-shot cleanup path", async () => {
