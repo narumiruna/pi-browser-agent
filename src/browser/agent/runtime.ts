@@ -26,11 +26,20 @@ import { SessionLease } from "../sessions/session-lease.js"
 import {
   compactSession,
   createSession,
+  MAX_SESSION_BYTES,
   type SessionRecord,
   SessionSizeLimitError,
   SessionStore,
   type SessionSummary,
+  sessionByteLength,
 } from "../sessions/session-store.js"
+import {
+  createSessionTree,
+  type SessionTree,
+  selectTreeNode,
+  syncSessionTree,
+  validateSessionTree,
+} from "../sessions/session-tree.js"
 import { type AppSettings, getActiveSessionId, saveActiveSessionId } from "../storage.js"
 import { type ConfirmationHandler, createBrowserTools } from "./browser-tools.js"
 
@@ -115,6 +124,23 @@ export class BrowserAgentRuntime {
   private preparing = false
   private persistChain: Promise<void> = Promise.resolve()
   private pageToolsEnabled = true
+  private treeNavigating = false
+  private treeNavigation?: Promise<void>
+  private changingSession = false
+  private shuttingDown = false
+  private persistenceFailure?: unknown
+  private persistRevision = 0
+  private failedPersistRevision = 0
+  private treePreview?: {
+    sessionId: string
+    messages: string
+    sourceTree: SessionTree | undefined
+    tree: SessionTree
+  }
+
+  get isNavigatingTree(): boolean {
+    return this.treeNavigating
+  }
 
   get isPreparing(): boolean {
     return this.preparing
@@ -125,7 +151,10 @@ export class BrowserAgentRuntime {
       this.agent.state.isStreaming ||
       this.preparing ||
       this.finishingRun !== undefined ||
-      this.closing
+      this.closing ||
+      this.treeNavigating ||
+      this.changingSession ||
+      this.shuttingDown
     )
   }
 
@@ -186,6 +215,7 @@ export class BrowserAgentRuntime {
   }
 
   async initialize(sessionId?: string): Promise<void> {
+    this.assertNotNavigatingTree()
     this.currentModel = await this.configuration.initialize()
     this.agent.state.model = this.currentModel
     const preferredId = sessionId ?? (await getActiveSessionId())
@@ -227,6 +257,135 @@ export class BrowserAgentRuntime {
     return this.currentModel
   }
 
+  getSessionTree(): SessionTree {
+    const messages = this.agent.state.messages
+    const key = JSON.stringify(messages)
+    let preview = this.treePreview
+    if (
+      !preview ||
+      preview.sessionId !== this.session.id ||
+      preview.messages !== key ||
+      preview.sourceTree !== this.session.tree
+    ) {
+      const tree = this.session.tree
+        ? syncSessionTree(this.session.tree, messages)
+        : createSessionTree(messages)
+      if (!validateSessionTree(tree)) throw new Error("Invalid session tree")
+      preview = {
+        sessionId: this.session.id,
+        messages: key,
+        sourceTree: this.session.tree,
+        tree,
+      }
+      this.treePreview = preview
+    }
+    return structuredClone(preview.tree)
+  }
+
+  previewTreeSelection(nodeId: string | null): { text: string; images: ImageContent[] } {
+    return selectTreeNode(this.getSessionTree(), nodeId).draft
+  }
+
+  async navigateTree(
+    nodeId: string | null,
+    accept?: () => void,
+  ): Promise<{ text: string; images: ImageContent[] }> {
+    const sessionId = this.session.id
+    const assertCurrent = () => {
+      if (
+        this.session.id !== sessionId ||
+        this.sessionLease.sessionId !== sessionId ||
+        this.agent.sessionId !== sessionId
+      )
+        throw new Error("The active session changed")
+      if (this.configuration.isChangingAuth)
+        throw new Error("Wait for the authentication change to finish")
+      if (
+        this.agent.state.isStreaming ||
+        this.preparing ||
+        this.finishingRun ||
+        this.closing ||
+        this.changingSession ||
+        this.shuttingDown
+      )
+        throw new Error("Wait for the current operation to finish")
+      accept?.()
+    }
+    this.assertNotNavigatingTree()
+    assertCurrent()
+    this.treeNavigating = true
+    let finishNavigation!: () => void
+    this.treeNavigation = new Promise<void>((resolve) => {
+      finishNavigation = resolve
+    })
+    try {
+      await this.persistChain
+      assertCurrent()
+      if (this.failedPersistRevision > 0)
+        throw new Error(`Session persistence failed: ${safeErrorMessage(this.persistenceFailure)}`)
+      const source = this.session
+      const selection = selectTreeNode(this.getSessionTree(), nodeId)
+      const baseline = createInitialSystemMessage(
+        composeSystemPrompt(this.configuration.appSettings),
+        this.availableBrowserTools().map(toToolDeclaration),
+      )
+      if (!baseline) throw new Error("Missing system prompt and tools")
+      const candidate: SessionRecord = {
+        ...source,
+        updatedAt: Date.now(),
+        status: "idle",
+        model: {
+          provider: this.currentModel.provider,
+          id: this.currentModel.id,
+          thinkingLevel: this.agent.state.thinkingLevel,
+        },
+        messages: [baseline, ...selection.messages],
+        tree: selection.tree,
+      }
+      if (sessionByteLength(candidate) > MAX_SESSION_BYTES) throw new SessionSizeLimitError()
+      const model = this.requireModel(candidate.model.provider, candidate.model.id)
+      const protectedIds = await this.sessionLease.protectedSessionIds()
+      assertCurrent()
+      if (this.session !== source) throw new Error("The active session changed")
+      // The successful atomic write is the commit point. Local mutations are locked
+      // until the live agent has the same path; shutdown waits for this transaction.
+      await this.sessions.put(candidate, protectedIds)
+      this.session = candidate
+      this.treePreview = undefined
+      this.applySession(candidate, model)
+      return selection.draft
+    } catch (error) {
+      this.callbacks.onPersistenceError?.(
+        `Session tree navigation failed: ${safeErrorMessage(error)}`,
+      )
+      throw error
+    } finally {
+      this.treeNavigating = false
+      this.treeNavigation = undefined
+      if (this.pendingSettingsModel || this.pendingThinkingLevel !== undefined) {
+        void this.applyPendingSettings().catch((error) => {
+          this.callbacks.onPersistenceError?.(`Settings update failed: ${safeErrorMessage(error)}`)
+        })
+      }
+      finishNavigation()
+    }
+  }
+
+  private assertNotNavigatingTree(): void {
+    if (this.treeNavigating) throw new Error("Wait for session tree navigation to finish")
+  }
+
+  private async changeSession(operation: () => Promise<void>): Promise<void> {
+    this.assertNotNavigatingTree()
+    if (this.changingSession) throw new Error("Wait for the session change to finish")
+    this.changingSession = true
+    try {
+      await operation()
+    } finally {
+      this.changingSession = false
+    }
+  }
+
   async syncSettings(
     options: { applyModelToActiveSession?: boolean; applyThinkingToActiveSession?: boolean } = {},
   ): Promise<void> {
@@ -235,7 +394,7 @@ export class BrowserAgentRuntime {
     this.pendingSettingsModel ||= options.applyModelToActiveSession === true
     if (options.applyThinkingToActiveSession)
       this.pendingThinkingLevel = this.configuration.appSettings.thinkingLevel
-    if (this.agent.state.isStreaming || this.preparing) return
+    if (this.agent.state.isStreaming || this.preparing || this.treeNavigating) return
     await this.applyPendingSettings()
   }
 
@@ -269,9 +428,13 @@ export class BrowserAgentRuntime {
     elements: SelectedElementContext[] = [],
     usePage = true,
   ): Promise<SubmissionMode> {
+    this.assertNotNavigatingTree()
+    if (this.changingSession) throw new Error("Wait for the session change to finish")
     if (this.configuration.isChangingAuth)
       throw new Error("Wait for the authentication change to finish")
     if (this.finishingRun) await this.finishingRun
+    this.assertNotNavigatingTree()
+    if (this.changingSession) throw new Error("Wait for the session change to finish")
     if (this.configuration.isChangingAuth)
       throw new Error("Wait for the authentication change to finish")
     this.assertImageInput(images)
@@ -308,11 +471,14 @@ export class BrowserAgentRuntime {
     images: ImageContent[] = [],
     elements: SelectedElementContext[] = [],
   ): void {
+    this.assertNotNavigatingTree()
+    if (this.changingSession) throw new Error("Wait for the session change to finish")
     this.assertImageInput(images)
     this.queueStreamingMessage("followUp", composeElementContext(text, elements), images)
   }
 
   abort(): void {
+    this.assertNotNavigatingTree()
     this.mcp.invalidate()
     this.agent.abort()
   }
@@ -322,56 +488,68 @@ export class BrowserAgentRuntime {
   }
 
   async newSession(): Promise<void> {
-    const model = this.configuredModel()
-    await this.stopAgent()
-    await this.activateNewSession(model, "Unable to claim a new session")
+    await this.changeSession(async () => {
+      const model = this.configuredModel()
+      await this.stopAgent()
+      await this.activateNewSession(model, "Unable to claim a new session")
+    })
   }
 
   async resumeSession(id: string): Promise<void> {
-    await this.stopAgent()
-    let record = await this.sessions.get(id)
-    if (!record) throw new Error("Session not found")
-    this.requireModel(record.model.provider, record.model.id)
-    if (!(await this.sessionLease.claim(id))) {
-      throw new Error("That session is open in another Side Panel")
-    }
-    record = await this.normalizeClaimedSession(record)
-    this.session = record
-    this.applySession(record)
-    await saveActiveSessionId(record.id)
+    await this.changeSession(async () => {
+      await this.stopAgent()
+      let record = await this.sessions.get(id)
+      if (!record) throw new Error("Session not found")
+      this.requireModel(record.model.provider, record.model.id)
+      if (!(await this.sessionLease.claim(id))) {
+        throw new Error("That session is open in another Side Panel")
+      }
+      record = await this.normalizeClaimedSession(record)
+      this.session = record
+      this.applySession(record)
+      await saveActiveSessionId(record.id)
+    })
   }
 
   async renameSession(title: string): Promise<void> {
-    await this.persistChain
-    await this.sessions.rename(
-      this.session.id,
-      title,
-      await this.sessionLease.protectedSessionIds(),
-    )
-    this.session.title = title.trim().slice(0, 120)
+    await this.changeSession(async () => {
+      await this.persistChain
+      await this.sessions.rename(
+        this.session.id,
+        title,
+        await this.sessionLease.protectedSessionIds(),
+      )
+      this.session.title = title.trim().slice(0, 120)
+    })
   }
 
   async deleteSession(id: string): Promise<void> {
-    if (id !== this.session.id) {
+    await this.changeSession(async () => {
+      if (id !== this.session.id) {
+        await this.sessions.delete(id)
+        return
+      }
+      const model = this.configuredModel()
+      await this.stopAgent()
       await this.sessions.delete(id)
-      return
-    }
-    const model = this.configuredModel()
-    await this.stopAgent()
-    await this.sessions.delete(id)
-    await this.activateNewSession(model, "Unable to claim a replacement session")
+      await this.activateNewSession(model, "Unable to claim a replacement session")
+    })
   }
 
   async clearSessions(): Promise<void> {
-    const model = this.configuredModel()
-    await this.stopAgent()
-    await this.sessions.clear()
-    await this.activateNewSession(model, "Unable to claim a replacement session")
+    await this.changeSession(async () => {
+      const model = this.configuredModel()
+      await this.stopAgent()
+      await this.sessions.clear()
+      await this.activateNewSession(model, "Unable to claim a replacement session")
+    })
   }
 
   async shutdown(): Promise<void> {
     const wasRunning = this.agent.state.isStreaming || this.preparing
     this.closing = wasRunning
+    this.shuttingDown = true
+    if (this.treeNavigation) await this.treeNavigation
     this.mcp.dispose()
     this.agent.abort()
     await this.agent.waitForIdle()
@@ -406,6 +584,7 @@ export class BrowserAgentRuntime {
   }
 
   private async stopAgent(): Promise<void> {
+    if (this.treeNavigation) await this.treeNavigation
     this.mcp.invalidate()
     this.agent.abort()
     await this.agent.waitForIdle()
@@ -439,8 +618,15 @@ export class BrowserAgentRuntime {
     await this.sessions.put(record, await this.sessionLease.protectedSessionIds())
   }
 
-  private applySession(record: SessionRecord): void {
-    const model = this.requireModel(record.model.provider, record.model.id)
+  private applySession(
+    record: SessionRecord,
+    model = this.requireModel(record.model.provider, record.model.id),
+  ): void {
+    this.treePreview = undefined
+    this.persistenceFailure = undefined
+    this.failedPersistRevision = 0
+    // Reset queues and streaming state without replaying the discarded transcript's system metadata.
+    this.agent.state.messages = []
     this.agent.reset()
     this.agent.sessionId = record.id
     this.currentModel = model
@@ -452,8 +638,12 @@ export class BrowserAgentRuntime {
   }
 
   private updateAvailableTools(): void {
+    this.agent.state.tools = this.availableBrowserTools()
+  }
+
+  private availableBrowserTools(): AgentTool[] {
     const enabled = new Set(this.configuration.appSettings.enabledTools)
-    this.agent.state.tools = createBrowserTools(
+    return createBrowserTools(
       this.callbacks.confirm,
       () => this.pageToolsEnabled,
       () => {
@@ -478,7 +668,20 @@ export class BrowserAgentRuntime {
   }
 
   private persist(status: SessionRecord["status"]): Promise<void> {
+    this.assertNotNavigatingTree()
+    const revision = ++this.persistRevision
     const messages = structuredClone(this.agent.state.messages)
+    let tree: SessionTree | undefined
+    try {
+      tree = this.session.tree ? syncSessionTree(this.session.tree, messages) : undefined
+    } catch (error) {
+      this.persistenceFailure = error
+      this.failedPersistRevision = revision
+      const message = `Session persistence failed: ${safeErrorMessage(error)}`
+      console.error(message)
+      this.callbacks.onPersistenceError?.(message)
+      return Promise.resolve()
+    }
     const title =
       this.session.title === "New session"
         ? (messageTitle(messages) ?? this.session.title)
@@ -494,6 +697,7 @@ export class BrowserAgentRuntime {
         thinkingLevel: this.agent.state.thinkingLevel,
       },
       messages,
+      ...(tree ? { tree } : {}),
     }
     this.session = record
     this.persistChain = this.persistChain
@@ -501,7 +705,7 @@ export class BrowserAgentRuntime {
         try {
           await this.saveSession(record)
         } catch (error) {
-          if (!(error instanceof SessionSizeLimitError)) throw error
+          if (!(error instanceof SessionSizeLimitError) || record.tree) throw error
           const compacted = compactSession(record)
           await this.saveSession(compacted.record)
           if (this.session === record) {
@@ -516,8 +720,16 @@ export class BrowserAgentRuntime {
             `Session reached its size limit; removed ${details.join(" and ")} before saving.`,
           )
         }
+        if (revision >= this.failedPersistRevision) {
+          this.persistenceFailure = undefined
+          this.failedPersistRevision = 0
+        }
       })
       .catch((error) => {
+        if (revision >= this.failedPersistRevision) {
+          this.persistenceFailure = error
+          this.failedPersistRevision = revision
+        }
         const message = `Session persistence failed: ${safeErrorMessage(error)}`
         console.error(message)
         this.callbacks.onPersistenceError?.(message)

@@ -10,7 +10,15 @@ import { CODEX_RESPONSES_URL, finalTextResponse } from "./support/mock-codex.js"
 
 test.setTimeout(90_000)
 
-const COMMANDS = ["/new", "/resume", "/name blocked-title", "/settings", "/login", "/logout"]
+const COMMANDS = [
+  "/new",
+  "/resume",
+  "/tree",
+  "/name blocked-title",
+  "/settings",
+  "/login",
+  "/logout",
+]
 
 type SavedSession = { id: string; title: string; messages: unknown[] }
 type ProbeWindow = Window & {
@@ -290,7 +298,7 @@ test("rejects unknown, argument-bearing and multiline commands before any prompt
     const session = await activeSession(harness.controller)
     for (const draft of [
       "/not-a-command private-argument",
-      ...["new", "resume", "settings", "login", "logout"].map(
+      ...["new", "resume", "tree", "settings", "login", "logout"].map(
         (name) => `/${name} private-argument`,
       ),
       "/name private-argument\nsecond-line",
@@ -366,7 +374,7 @@ test("completion only fills drafts with keyboard and pointer input and fits 320p
       await page.emulateMedia({ colorScheme, reducedMotion: "reduce" })
       await prompt.fill("/")
       await expect(menu).toBeVisible()
-      await expect(menu.getByRole("option")).toHaveCount(6)
+      await expect(menu.getByRole("option")).toHaveCount(7)
       await expect(page.getByRole("textbox", { name: "Message", exact: true })).toBeFocused()
       await expect(prompt).not.toHaveAttribute("role")
       await expect(page.locator("#slash-command-menu-status")).toHaveAttribute("role", "status")

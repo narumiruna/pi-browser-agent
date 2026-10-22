@@ -50,6 +50,21 @@ Before release, load a production build in stable Chrome and record Chrome/OS ve
 
 Status: manual checks pending. Record observed results here; do not infer them from automated checks.
 
+## Conversation-tree acceptance — 2026-10-22
+
+Use a dedicated test conversation and a harmless page. Automated graph/store/runtime/dialog/browser tests verify branch preservation, legacy compatibility, active-path isolation, write failure, and no automatic tool replay. Actual screen-reader announcements and the browser-owned stable-Chrome Side Panel remain unverified until observed results are recorded.
+
+1. Send two requests, open `/tree`, and choose the first user message. Expected: its text and images return as an unsent draft; the transcript stops before that request. Edit and Send. Reopen the tree and select the original completed answer: both paths remain, and only the selected path is shown. Return to **Start of conversation**, send a third request, and verify the previous roots remain selectable.
+2. Close the panel and restart stable Chrome. Expected: the selected path and all inactive branches remain. A historical click or other browser mutation must not run again during selection or restart. Tree navigation does not undo its earlier page effect. An incomplete tool-call boundary is visible but unavailable.
+3. With a screen reader, open the tree and use Arrow keys, Home/End, Enter, Space, and Escape. Expected: the tree label, message role/summary, depth, current position, and unavailable boundaries are announced. Cancel changes neither history nor composer. During a save, duplicate selection and cancel are blocked until it settles.
+4. Repeat at 320–360 px Side Panel width and 24 px text in light/dark appearance. Expected: labels wrap without horizontal scrolling, keyboard focus remains visible, and the active entry scrolls into view.
+5. In the test conversation, try navigation with an unsent draft, pasted image, selected-element chip, or a running response. Expected: local errors retain the draft, attachments, and active path. Restored user images remain unsent until Send; stale element descriptions do not become live chips. No provider/site access prompt occurs merely from opening or choosing a tree entry.
+6. Review the documented 5 MB total-record/5,000-node limits and downgrade warning before testing any older build. Do not downgrade against real tree-enabled data without preserving complete session records. Size or transaction failures must leave the previous saved path and branches intact and show an error; no branch is silently pruned.
+
+Automated acceptance: [GitHub CI run 39792122881](https://github.com/narumiruna/pi-browser-agent/actions/runs/39792122881) passed the required workflow with 922 unit/integration tests and all 123 browser tests. Earlier local and remote timeout failures remain recorded in `docs/plans/2026-10-22_session-tree-plan.md`; no assertion or required test was waived.
+
+Status: manual checks pending. Record Chrome/OS and assistive-technology versions with observed results. Do not infer manual acceptance from headless tests.
+
 ## Procedure
 
 1. **Clean setup and Side Panel header**

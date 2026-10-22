@@ -20,6 +20,7 @@ import {
 import { pageCapabilityFrom, type RuntimeEvent, sendRuntimeRequest } from "../runtime/messages.js"
 import type { PageCapability } from "../runtime/page-capability.js"
 import type { JsonObject, TabContext } from "../runtime/types.js"
+import { getTreeItems } from "../sessions/session-tree.js"
 import { SETTINGS_KEY } from "../storage.js"
 import { AuthenticationController } from "./authentication.js"
 import { activityText, conversationText } from "./conversation-copy.js"
@@ -35,12 +36,14 @@ import {
   MAX_PASTED_IMAGES,
   readGeneratedImage,
   readPastedImage,
+  restoreComposerImages,
 } from "./images.js"
 import { TranscriptRenderer } from "./message-rendering.js"
 import { ScreenshotAnnotationController } from "./screenshot-annotation.js"
 import { SessionPicker } from "./session-picker.js"
+import { SessionTreeDialog } from "./session-tree-dialog.js"
 import { SlashCommandMenu } from "./slash-command-menu.js"
-import { parseSlashCommand, type SlashCommandName } from "./slash-commands.js"
+import { escapeRestoredPrompt, parseSlashCommand, type SlashCommandName } from "./slash-commands.js"
 import { applyAppearance, element, run, setErrorOutput } from "./ui.js"
 import {
   createVoiceInput,
@@ -122,6 +125,14 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     },
   })
   const setError = (error?: unknown): void => setErrorOutput(errorOutput, error)
+  let treeSessionId: string | undefined
+  let transcriptPathVersion = 0
+  const treeDialog = new SessionTreeDialog({
+    dialog: element<HTMLDialogElement>("session-tree-dialog"),
+    list: element<HTMLElement>("session-tree-list"),
+    error: element<HTMLElement>("session-tree-error"),
+    onSelect: navigateConversationTree,
+  })
   let commandResumePending = false
   let commandInProgress = false
   let activeSubmissionGuard: object | undefined
@@ -350,7 +361,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     const messages = [...runtime.agent.state.messages, ...(streaming ? [streaming] : [])].filter(
       (message) => message.role !== "system",
     )
-    transcriptRenderer.render(messages, runtime.activeSession.id)
+    transcriptRenderer.render(messages, `${runtime.activeSession.id}:${transcriptPathVersion}`)
     if (messages.length === 0) {
       const emptyState = document.createElement("div")
       emptyState.className = "empty-state"
@@ -827,11 +838,13 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     }
   }
 
-  function assertCommandIdle(guard?: object): void {
+  function assertCommandIdle(guard?: object, allowTreeNavigation = false): void {
     if (
       disposed ||
       document.body.dataset.conversationReady !== "true" ||
-      runtime.isBusy ||
+      (allowTreeNavigation && runtime.isNavigatingTree
+        ? runtime.agent.state.isStreaming || runtime.isPreparing
+        : runtime.isBusy) ||
       runtime.configuration.isChangingAuth ||
       (guard === undefined && authentication?.isBusy) ||
       (activeSubmissionGuard !== undefined && activeSubmissionGuard !== guard) ||
@@ -844,6 +857,56 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       throw new Error("Wait for the current operation to finish before using a command")
     if (composerImages.length > 0 || selectedElements.length > 0) {
       throw new Error("Remove images and selected elements before using a command")
+    }
+  }
+
+  async function navigateConversationTree(nodeId: string | null): Promise<void> {
+    assertCommandIdle()
+    const sessionId = runtime.activeSession.id
+    const providerId = runtime.model.provider
+    const draftText = promptInput.value
+    if (treeSessionId !== sessionId) throw new Error("The conversation changed. Open /tree again.")
+    if (draftText.trim()) throw new Error("Clear the unsent draft before changing branches")
+    const restored = restoreComposerImages(runtime.previewTreeSelection(nodeId).images).map(
+      (image) => ({ ...image, id: crypto.randomUUID() }),
+    )
+    const guard = {}
+    const accept = (): void => {
+      assertCommandIdle(guard, true)
+      if (
+        activeSubmissionGuard !== guard ||
+        runtime.activeSession.id !== sessionId ||
+        runtime.model.provider !== providerId ||
+        promptInput.value !== draftText
+      )
+        throw new Error("The conversation or draft changed. Open /tree again.")
+    }
+    activeSubmissionGuard = guard
+    commandInProgress = true
+    commandMenu.close()
+    updateSendButton()
+    try {
+      const draft = await runtime.navigateTree(nodeId, accept)
+      if (disposed) return
+      transcriptPathVersion += 1
+      if (
+        promptInput.value === draftText &&
+        composerImages.length === 0 &&
+        selectedElements.length === 0 &&
+        pendingPasteOperations === 0
+      ) {
+        promptInput.value = escapeRestoredPrompt(draft.text)
+        composerImages = restored
+        renderComposerImages()
+        resizePromptInput()
+      } else {
+        setError("Branch changed. Your newer draft and attachments were retained.")
+      }
+      renderMessages()
+      await refreshSessions().catch(setError)
+    } finally {
+      commandInProgress = false
+      releaseSubmissionGuard(guard)
     }
   }
 
@@ -907,6 +970,12 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
           sessionPicker.open(0)
           commandResumePending = true
           break
+        case "tree": {
+          const tree = runtime.getSessionTree()
+          treeSessionId = runtime.activeSession.id
+          treeDialog.open(getTreeItems(tree), tree.activeLeafId)
+          break
+        }
         case "name":
           accepted = await renameSession(argument || undefined, accept)
           break
@@ -1362,6 +1431,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     observedTranscriptElements.clear()
     voiceInput?.abort()
     screenshotAnnotation?.close()
+    treeDialog.close()
     if (pickerActive || pickerStarting) void stopElementPicker().catch(() => undefined)
     authentication?.abort()
     void runtime.shutdown()

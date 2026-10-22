@@ -162,6 +162,24 @@ async function setup() {
     newSession: vi.fn(async () => {}),
     resumeSession: vi.fn(async (_id: string) => {}),
     renameSession: vi.fn(async (_title: string) => {}),
+    getSessionTree: vi.fn(() => ({
+      version: 1 as const,
+      nodes: [
+        {
+          id: "request",
+          parentId: null,
+          message: { role: "user" as const, content: "Restored request", timestamp: 1 },
+        },
+      ],
+      activeLeafId: "request",
+    })),
+    previewTreeSelection: vi.fn((_id: string | null) => ({ text: "Restored request", images: [] })),
+    navigateTree: vi
+      .fn<BrowserAgentRuntime["navigateTree"]>()
+      .mockImplementation(async (_id, accept) => {
+        accept?.()
+        return { text: "Restored request", images: [] }
+      }),
     submit: vi.fn<BrowserAgentRuntime["submit"]>().mockImplementation(async () => {
       callbacks.onAgentEvent({ type: "agent_start" })
       return "prompt"
@@ -249,7 +267,7 @@ describe("initializeConversationPage slash-command routing", () => {
     expect(ui.input.value).toBe(text)
   })
 
-  test.each(["new", "name", "settings", "resume", "login", "logout"])(
+  test.each(["new", "name", "settings", "resume", "tree", "login", "logout"])(
     "/%s executes its local action without prompt preflight or runtime submission",
     async (command) => {
       const ui = await setup()
@@ -275,6 +293,11 @@ describe("initializeConversationPage slash-command routing", () => {
           ui.element<HTMLButtonElement>("session-options-option-1").click()
           await vi.waitFor(() => expect(ui.runtime.resumeSession).toHaveBeenCalledWith("saved"))
           break
+        case "tree":
+          expect(ui.element<HTMLDialogElement>("session-tree-dialog").open).toBe(true)
+          expect(ui.runtime.navigateTree).not.toHaveBeenCalled()
+          ui.element<HTMLButtonElement>("session-tree-cancel").click()
+          break
         case "login":
           expect(ui.element<HTMLDialogElement>("auth-method-dialog").open).toBe(true)
           ui.element<HTMLDialogElement>("auth-method-dialog").close("api_key")
@@ -298,13 +321,98 @@ describe("initializeConversationPage slash-command routing", () => {
       await vi.waitFor(() => expect(ui.input.value).toBe(""))
       ui.expectNoRun()
       // Session creation/resume and authentication refresh the credential UI, not run access.
-      if (command === "settings" || command === "name") {
+      if (command === "settings" || command === "name" || command === "tree") {
         expect(ui.configuration.authStatus).not.toHaveBeenCalled()
       } else {
         expect(ui.configuration.authStatus).toHaveBeenCalledOnce()
       }
     },
   )
+
+  test("tree selection restores an editable user draft without a model submission", async () => {
+    const ui = await setup()
+    ui.send("/tree")
+    await ui.idle()
+    ui.element<HTMLElement>("session-tree-list")
+      .querySelector<HTMLButtonElement>('[data-node-id="request"]')
+      ?.click()
+    await vi.waitFor(() =>
+      expect(ui.runtime.navigateTree).toHaveBeenCalledWith("request", expect.any(Function)),
+    )
+    await vi.waitFor(() => expect(ui.input.value).toBe("Restored request"))
+    await vi.waitFor(() =>
+      expect(ui.element<HTMLDialogElement>("session-tree-dialog").open).toBe(false),
+    )
+    ui.expectNoRun()
+  })
+
+  test("restored slash-prefixed user text is resent to the model, not dispatched locally", async () => {
+    const ui = await setup()
+    ui.runtime.navigateTree.mockResolvedValueOnce({ text: "/logout", images: [] })
+    ui.send("/tree")
+    await ui.idle()
+    ui.element<HTMLElement>("session-tree-list")
+      .querySelector<HTMLButtonElement>('[data-node-id="request"]')
+      ?.click()
+    await vi.waitFor(() =>
+      expect(ui.element<HTMLDialogElement>("session-tree-dialog").open).toBe(false),
+    )
+    expect(ui.input.value).toBe("//logout")
+    ui.expectNoRun()
+    ui.send(ui.input.value)
+    await vi.waitFor(() =>
+      expect(ui.runtime.submit).toHaveBeenCalledWith("/logout", "steer", [], [], true),
+    )
+    expect(ui.configuration.logout).not.toHaveBeenCalled()
+  })
+
+  test("a stale or edited tree dialog cannot replace an unsent draft", async () => {
+    const ui = await setup()
+    ui.send("/tree")
+    await ui.idle()
+    ui.input.value = "A newer draft"
+    ui.element<HTMLElement>("session-tree-list")
+      .querySelector<HTMLButtonElement>('[data-node-id="request"]')
+      ?.click()
+    await vi.waitFor(() =>
+      expect(ui.element<HTMLElement>("session-tree-error").textContent).toContain("unsent draft"),
+    )
+    expect(ui.runtime.navigateTree).not.toHaveBeenCalled()
+    expect(ui.input.value).toBe("A newer draft")
+    ui.element<HTMLButtonElement>("session-tree-cancel").click()
+    ui.input.value = ""
+    ui.send("/tree")
+    await ui.idle()
+    ui.runtime.activeSession.id = "another-session"
+    ui.element<HTMLElement>("session-tree-list")
+      .querySelector<HTMLButtonElement>('[data-node-id="request"]')
+      ?.click()
+    await vi.waitFor(() =>
+      expect(ui.element<HTMLElement>("session-tree-error").textContent).toContain(
+        "conversation changed",
+      ),
+    )
+    expect(ui.runtime.navigateTree).not.toHaveBeenCalled()
+    ui.expectNoRun()
+  })
+
+  test("tree write failures keep the modal and original composer", async () => {
+    const ui = await setup()
+    ui.runtime.navigateTree.mockRejectedValueOnce(new Error("Unable to save branch"))
+    ui.send("/tree")
+    await ui.idle()
+    ui.element<HTMLElement>("session-tree-list")
+      .querySelector<HTMLButtonElement>('[data-node-id="request"]')
+      ?.click()
+    await vi.waitFor(() =>
+      expect(ui.element<HTMLElement>("session-tree-error").textContent).toContain(
+        "Unable to save branch",
+      ),
+    )
+    expect(ui.element<HTMLDialogElement>("session-tree-dialog").open).toBe(true)
+    expect(ui.input.value).toBe("")
+    ui.expectNoRun()
+  })
 
   test.each([
     ["/unknown private-argument", "Unknown slash command."],
