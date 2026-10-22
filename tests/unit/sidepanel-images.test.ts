@@ -4,6 +4,7 @@ import {
   MAX_PASTED_IMAGE_BYTES,
   readGeneratedImage,
   readPastedImage,
+  restoreComposerImages,
 } from "../../src/browser/sidepanel/images.js"
 
 describe("Side Panel images", () => {
@@ -43,6 +44,31 @@ describe("Side Panel images", () => {
       readGeneratedImage(new Blob([new Uint8Array([1])], { type: "image/svg+xml" })),
     ).rejects.toThrow("PNG, JPEG, WebP, or GIF")
     await expect(readGeneratedImage(new Blob([], { type: "image/png" }))).rejects.toThrow("empty")
+  })
+
+  test("restores saved images with exact byte accounting and no shared content objects", () => {
+    const image = { type: "image" as const, data: "iVBORw==", mimeType: "image/png" }
+    const restored = restoreComposerImages([image])
+    expect(restored).toEqual([{ content: image, byteLength: 4 }])
+    expect(restored[0]?.content).not.toBe(image)
+    expect(restoreComposerImages([])).toEqual([])
+  })
+
+  test("rejects unsafe or oversized saved image drafts without dropping any image", () => {
+    const image = { type: "image" as const, data: "aGVsbG8=", mimeType: "image/png" }
+    expect(() => restoreComposerImages(Array(5).fill(image))).toThrow("image limit")
+    expect(() => restoreComposerImages([{ ...image, mimeType: "image/svg+xml" }])).toThrow(
+      "unsupported",
+    )
+    expect(() => restoreComposerImages([{ ...image, data: "not base64" }])).toThrow("unsupported")
+    expect(() => restoreComposerImages([{ ...image, data: "" }])).toThrow("unsupported")
+    expect(() => restoreComposerImages([{ ...image, data: "A".repeat(4_000_004) }])).toThrow("3 MB")
+    expect(() =>
+      restoreComposerImages([
+        { ...image, data: "A".repeat(2_000_000) },
+        { ...image, data: "A".repeat(2_000_004) },
+      ]),
+    ).toThrow("3 MB")
   })
 
   test("does not construct data URLs for invalid stored image content", () => {

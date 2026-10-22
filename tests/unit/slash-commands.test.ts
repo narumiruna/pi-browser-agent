@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest"
 import {
+  escapeRestoredPrompt,
   getSlashCommandMatches,
   parseSlashCommand,
   SLASH_COMMANDS,
@@ -92,11 +93,29 @@ describe("parseSlashCommand", () => {
   })
 })
 
+describe("restored literal prompts", () => {
+  test.each([
+    ["/logout", "//logout"],
+    ["//logout", "///logout"],
+    ["  /tree text", "  //tree text"],
+    ["/tmp/file", "//tmp/file"],
+    ["\n/name first\nsecond", "\n//name first\nsecond"],
+    ["ordinary /tree", "ordinary /tree"],
+    ["", ""],
+  ])("restores %j as literal model text", (text, draft) => {
+    expect(escapeRestoredPrompt(text)).toBe(draft)
+    const result = parseSlashCommand(draft)
+    expect(result.kind).toBe(text.trimStart().startsWith("/") ? "escaped" : "prompt")
+    expect("text" in result && result.text).toBe(text)
+  })
+})
+
 describe("slash command definitions and matching", () => {
-  test("defines exactly the six supported commands and their argument rules", () => {
+  test("defines the supported commands and their argument rules", () => {
     expect(SLASH_COMMANDS.map((command) => command.name)).toEqual([
       "new",
       "resume",
+      "tree",
       "name",
       "settings",
       "login",
@@ -109,7 +128,7 @@ describe("slash command definitions and matching", () => {
   })
 
   test.each([
-    ["", ["new", "resume", "name", "settings", "login", "logout"]],
+    ["", ["new", "resume", "tree", "name", "settings", "login", "logout"]],
     ["n", ["new", "name"]],
     ["lo", ["login", "logout"]],
     ["resume", ["resume"]],

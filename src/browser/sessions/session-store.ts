@@ -1,4 +1,10 @@
 import type { AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core"
+import {
+  getTreePath,
+  type SessionTree,
+  syncSessionTree,
+  validateSessionTree,
+} from "./session-tree.js"
 
 const DATABASE_NAME = "pi-browser-agent-sessions"
 const DATABASE_VERSION = 1
@@ -17,6 +23,7 @@ export interface SessionRecord {
   status: SessionStatus
   model: { provider: string; id: string; thinkingLevel: ThinkingLevel }
   messages: AgentMessage[]
+  tree?: SessionTree
 }
 
 export interface SessionSummary {
@@ -44,6 +51,18 @@ function transactionDone(transaction: IDBTransaction): Promise<void> {
   })
 }
 
+function isSessionSummary(value: unknown): value is SessionSummary {
+  if (typeof value !== "object" || value === null) return false
+  const record = value as Partial<SessionSummary>
+  return (
+    typeof record.id === "string" &&
+    typeof record.title === "string" &&
+    typeof record.createdAt === "number" &&
+    typeof record.updatedAt === "number" &&
+    ["idle", "interrupted", "running"].includes(record.status ?? "")
+  )
+}
+
 function isSessionRecord(value: unknown): value is SessionRecord {
   if (typeof value !== "object" || value === null) return false
   const record = value as Partial<SessionRecord>
@@ -60,6 +79,25 @@ function isSessionRecord(value: unknown): value is SessionRecord {
     typeof record.model.provider === "string" &&
     typeof record.model.id === "string"
   )
+}
+
+function assertValidTreeRecord(value: unknown): void {
+  if (typeof value !== "object" || value === null || !("tree" in value)) return
+  const record = value as SessionRecord
+  if (!validateSessionTree(record.tree)) throw new Error("Invalid session tree in saved session")
+  if (!Array.isArray(record.messages)) {
+    throw new Error("Session tree active messages do not match the saved session")
+  }
+  const projection =
+    record.messages[0]?.role === "system" ? record.messages.slice(1) : record.messages
+  if (getTreePath(record.tree).length !== projection.length) {
+    throw new Error("Session tree active messages do not match the saved session")
+  }
+  try {
+    syncSessionTree(record.tree, record.messages)
+  } catch {
+    throw new Error("Session tree active messages do not match the saved session")
+  }
 }
 
 export class SessionSizeLimitError extends Error {
@@ -82,6 +120,11 @@ export function compactSession(record: SessionRecord): {
   removedImages: number
   removedMessages: number
 } {
+  if ("tree" in record) {
+    assertWithinLimit(record)
+    assertValidTreeRecord(record)
+    return { record: structuredClone(record), removedImages: 0, removedMessages: 0 }
+  }
   const compacted = structuredClone(record)
   let removedImages = 0
   for (const message of compacted.messages) {
@@ -147,7 +190,19 @@ export class SessionStore {
       request.onerror = () => reject(request.error ?? new Error("IndexedDB request failed"))
       request.onsuccess = () => {
         const record: unknown = request.result
-        if (!isSessionRecord(record)) return resolve(undefined)
+        try {
+          assertValidTreeRecord(record)
+        } catch (error) {
+          reject(error)
+          return
+        }
+        if (!isSessionRecord(record)) {
+          if (typeof record === "object" && record !== null && "tree" in record) {
+            reject(new Error("Invalid saved session with a session tree"))
+            return
+          }
+          return resolve(undefined)
+        }
         if (record.model.provider === "azure-openai-responses") {
           record.model.provider = "azure"
           store.put(record)
@@ -165,7 +220,10 @@ export class SessionStore {
     const values: unknown[] = await requestResult(transaction.objectStore(STORE_NAME).getAll())
     await transactionDone(transaction)
     return values
-      .filter(isSessionRecord)
+      .filter(
+        (value): value is SessionSummary =>
+          isSessionRecord(value) || (isSessionSummary(value) && "tree" in value),
+      )
       .sort((left, right) => right.updatedAt - left.updatedAt)
       .map(({ id, title, createdAt, updatedAt, status }) => ({
         id,
@@ -180,13 +238,55 @@ export class SessionStore {
     record: SessionRecord,
     protectedSessionIds: ReadonlySet<string> = new Set(),
   ): Promise<void> {
-    if (!isSessionRecord(record)) throw new Error("Refusing to persist an invalid session")
-    assertWithinLimit(record)
+    const candidate = structuredClone(record)
+    assertValidTreeRecord(candidate)
+    if (!isSessionRecord(candidate)) throw new Error("Refusing to persist an invalid session")
+    assertWithinLimit(candidate)
     const database = await this.open()
     const transaction = database.transaction(STORE_NAME, "readwrite")
-    transaction.objectStore(STORE_NAME).put(structuredClone(record))
-    await transactionDone(transaction)
-    await this.enforceRetention(protectedSessionIds)
+    const done = transactionDone(transaction)
+    let retentionError: unknown
+    try {
+      const store = transaction.objectStore(STORE_NAME)
+      store.put(candidate)
+      const request = store.getAll()
+      request.onsuccess = () => {
+        try {
+          const records: unknown[] = request.result
+          const summaries = records.filter(isSessionSummary)
+          let excess = summaries.length - MAX_SESSIONS
+          for (const record of summaries.sort((left, right) => left.updatedAt - right.updatedAt)) {
+            if (excess <= 0) break
+            if (
+              record.id === candidate.id ||
+              protectedSessionIds.has(record.id) ||
+              !isSessionRecord(record)
+            )
+              continue
+            try {
+              assertValidTreeRecord(record)
+            } catch {
+              // Corrupt tree records require explicit deletion, not retention cleanup.
+              continue
+            }
+            store.delete(record.id)
+            excess -= 1
+          }
+        } catch (error) {
+          retentionError = error
+          transaction.abort()
+        }
+      }
+      await done
+    } catch (error) {
+      try {
+        transaction.abort()
+      } catch {
+        /* The transaction can already be aborted. */
+      }
+      await done.catch(() => undefined)
+      throw retentionError ?? error
+    }
   }
 
   async rename(
@@ -221,21 +321,6 @@ export class SessionStore {
     const database = await this.open()
     const transaction = database.transaction(STORE_NAME, "readwrite")
     transaction.objectStore(STORE_NAME).put({ ...record, status: "interrupted" })
-    await transactionDone(transaction)
-  }
-
-  private async enforceRetention(protectedSessionIds: ReadonlySet<string>): Promise<void> {
-    const summaries = await this.list()
-    const excess = summaries.length - MAX_SESSIONS
-    if (excess <= 0) return
-    const toDelete = [...summaries]
-      .reverse()
-      .filter((session) => !protectedSessionIds.has(session.id))
-      .slice(0, excess)
-    const database = await this.open()
-    const transaction = database.transaction(STORE_NAME, "readwrite")
-    const store = transaction.objectStore(STORE_NAME)
-    for (const session of toDelete) store.delete(session.id)
     await transactionDone(transaction)
   }
 }

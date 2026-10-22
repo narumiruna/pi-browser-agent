@@ -58,7 +58,7 @@ describe("SlashCommandMenu", () => {
     expect(input.hasAttribute("role")).toBe(false)
     expect(input.getAttribute("aria-describedby")).toContain("commands-status")
     expect(document.querySelector("#commands-status")?.textContent).toBe(
-      "Command list open. 6 commands available.",
+      `Command list open. ${SLASH_COMMANDS.length} commands available.`,
     )
     expect(input.getAttribute("aria-controls")).toBe(listbox.id)
     expect(input.getAttribute("aria-autocomplete")).toBe("list")
@@ -66,7 +66,7 @@ describe("SlashCommandMenu", () => {
     expect(input.getAttribute("aria-activedescendant")).toBe(
       listbox.querySelector("[aria-selected='true']")?.id,
     )
-    expect(listbox.querySelectorAll("[role='option']")).toHaveLength(6)
+    expect(listbox.querySelectorAll("[role='option']")).toHaveLength(SLASH_COMMANDS.length)
     expect(listbox.querySelectorAll("[aria-selected='true']")).toHaveLength(1)
   })
 
@@ -85,7 +85,7 @@ describe("SlashCommandMenu", () => {
     })
     draft("/")
     key("ArrowUp")
-    expect(listbox.scrollTop).toBe(180)
+    expect(listbox.scrollTop).toBe(SLASH_COMMANDS.length * 40 - 60)
     key("ArrowDown")
     expect(listbox.scrollTop).toBe(0)
   })

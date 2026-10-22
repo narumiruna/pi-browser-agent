@@ -65,6 +65,28 @@ export function readGeneratedImage(
   })
 }
 
+export function restoreComposerImages(images: readonly ImageContent[]): ComposerImage[] {
+  if (images.length > MAX_PASTED_IMAGES)
+    throw new Error("Saved message exceeds the composer image limit")
+  let bytes = 0
+  return images.map((image) => {
+    if (
+      typeof image.mimeType !== "string" ||
+      typeof image.data !== "string" ||
+      !imageContentSource(image)
+    ) {
+      throw new Error("Saved message contains an unsupported image")
+    }
+    const byteLength =
+      (image.data.length * 3) / 4 -
+      (image.data.endsWith("==") ? 2 : image.data.endsWith("=") ? 1 : 0)
+    bytes += byteLength
+    if (bytes > MAX_PASTED_IMAGE_BYTES)
+      throw new Error("Saved message images exceed the 3 MB composer limit")
+    return { content: { type: "image", mimeType: image.mimeType, data: image.data }, byteLength }
+  })
+}
+
 export function imageContentSource(image: ImageContent): string | undefined {
   const mimeType = image.mimeType.toLowerCase()
   if (!isSupportedImageType(mimeType)) return undefined

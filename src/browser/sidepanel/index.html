@@ -397,6 +397,29 @@
     </section>
 
     <dialog
+      id="session-tree-dialog"
+      class="session-tree-dialog"
+      aria-labelledby="session-tree-title"
+      aria-describedby="session-tree-description"
+    >
+      <h2 id="session-tree-title">Conversation tree</h2>
+      <p id="session-tree-description">
+        Select a user message to edit it, or a completed response to continue there.
+        Other branches are kept. Previous browser actions are not undone.
+      </p>
+      <div
+        id="session-tree-list"
+        class="session-tree-list"
+        role="tree"
+        aria-label="Conversation branches"
+      ></div>
+      <p id="session-tree-error" role="alert"></p>
+      <div class="dialog-actions">
+        <button type="button" id="session-tree-cancel" data-tree-cancel class="subtle">Cancel</button>
+      </div>
+    </dialog>
+
+    <dialog
       id="screenshot-annotation-dialog"
       class="screenshot-annotation-dialog"
       aria-labelledby="screenshot-annotation-title"

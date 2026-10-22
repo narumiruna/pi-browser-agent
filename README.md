@@ -93,6 +93,7 @@ Type `/` at the start of the composer to show commands. Use Arrow keys to select
 | --- | --- |
 | `/new` | Start a new session. |
 | `/resume` | Open the saved-session picker. |
+| `/tree` | Navigate and create branches in this conversation. |
 | `/name [title]` | Rename this session; omit the title to open the name dialog. |
 | `/settings` | Open Settings for this session. |
 | `/login` | Open credential setup. Enter credentials only in its dialogs. |
@@ -101,6 +102,12 @@ Type `/` at the start of the composer to show commands. Use Arrow keys to select
 Commands run locally, without a model request or current-site access. They require an idle conversation with no attached images or selected elements. They cannot be queued. Unknown commands, unsupported arguments, and multiline command input show a local error and retain the draft. Canceled dialogs also retain it. Only `/name` accepts an argument.
 
 To send literal slash-prefixed text to the model, start with `//`; Pi removes the first slash and applies normal prompt permissions. Paths such as `/tmp/file` and slashes elsewhere in a message remain ordinary prompts. These commands do not load terminal extensions, skills, or templates. Other terminal commands, including `/compact`, are not supported.
+
+**Conversation branches:** `/tree` opens a local tree without contacting a provider or reading the page. Select a user message to restore its text and images for editing; select a completed response or tool-result boundary to continue after it. **Start of conversation** returns to an empty path. Only an explicit **Send** starts a new response. Other branches remain saved and can be selected after restarting Chrome. Unsent edits are not saved until Send. Restored slash-prefixed prompts get an extra `/` escape so Send preserves model text instead of executing a local command. Use Arrow keys, Home/End, Enter, and Escape to navigate or cancel. Incomplete tool-call boundaries cannot be selected.
+
+Only the active path goes to the model. Switching branches does not undo browser actions and never replays a tool. Saved element descriptions remain untrusted text, not live element references. The current model, instructions, and browser permissions still apply. Unsent drafts or attachments block branch changes instead of being overwritten.
+
+Existing sessions keep their linear history until the first successful tree navigation. All branches and the active transcript projection share the existing 5 MB record limit, with at most 5,000 tree nodes. Large existing records can exceed that limit when tree metadata is added; navigation then fails without changing the saved record. Tree-enabled records do not automatically remove images or old branches to fit. Keep a copy of complete session records before downgrading: older builds can read the active transcript but do not preserve inactive branches when they save.
 
 The Side Panel supports creating, resuming, renaming, and deleting sessions. Complete transcript boundaries, including confirmed bookmark tool results, are stored in versioned IndexedDB records. Storage keeps at most 50 sessions and limits each record to 5 MB. **Clear all session data** removes transcripts and embedded images.
 

@@ -1,6 +1,7 @@
 export const SLASH_COMMANDS = [
   { name: "new", description: "Start a new session", acceptsArgument: false },
   { name: "resume", description: "Choose a saved session", acceptsArgument: false },
+  { name: "tree", description: "Navigate conversation branches", acceptsArgument: false },
   { name: "name", description: "Rename the current session", acceptsArgument: true },
   { name: "settings", description: "Open settings", acceptsArgument: false },
   { name: "login", description: "Sign in to a model provider", acceptsArgument: false },
@@ -40,6 +41,12 @@ export function parseSlashCommand(input: string): SlashCommandResult {
     return { kind: "invalid", error: "This slash command does not accept arguments." }
   }
   return { kind: "command", name: command.name, argument }
+}
+
+/** A saved user message is model text, not a new local command. */
+export function escapeRestoredPrompt(text: string): string {
+  const start = text.length - text.trimStart().length
+  return text[start] === "/" ? `${text.slice(0, start)}/${text.slice(start)}` : text
 }
 
 /** Match the command-name prefix, without its leading slash. */
