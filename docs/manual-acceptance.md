@@ -35,6 +35,57 @@ Use a production build from `npm run build`. Do not test login with development 
 - Repeat after stopping the service worker through extension DevTools. Retry if startup exceeds 10 seconds. Without site approval, expect a prompt to click the picker button, no automatic permission request, and no selection until explicit authorization. Verify permission decline/revocation, restricted pages and PDFs, tab changes during startup, repeated presses during startup, and a conflicting or unassigned shortcut. Record each result and Chrome/OS version here.
 - macOS physical-key acceptance and all Windows/Linux acceptance remain pending. No successful stable-Chrome result is inferred from the user's installation report. See `docs/plans/2026-10-15_element-picker-shortcut-plan.md`.
 
+## Element-picker reliability — 2026-10-23
+
+Status: implementation and required automated gates passed. Stable-Chrome manual acceptance and existing release restrictions remain unchanged. Automated completion does not establish product acceptance or release readiness; the minimum-version baseline limitation below is unresolved.
+
+### Automated evidence
+
+- Environment: Node 26.8.2 and Chrome for Testing 156.0.8078.4.
+- Original focused unit/integration baseline: 154 passed before this fix.
+- Initial overlay regressions: all eight production-build cases failed. Modal iframe clicks reached local sentinel handlers, CSS cases attached nothing, and modal highlight pixels did not change.
+- Gated startup races: the 32 new cases first produced eight unrelated-navigation failures and 24 passing controls. All 32 passed after target-scoped navigation invalidation.
+- Final focused unit/integration suite: 200 passed in four files.
+- Required `npm run ci`: 154 files checked, 1,302 unit/integration tests in 57 files, production build/typecheck/browser-boundary probe, 32-file artifact audit, and all 166 browser tests passed.
+- New production-build suite: all 26 cases passed in three consecutive runs (78 passes). It covers CSS zoom/important styles, modal/OOPIF pointer and keyboard protection, forced colors, dynamic frames/top layers, viewport resize, background navigation, setup/protection failures, stale UI results, and selection during startup.
+- Review regressions cover old injection failures during async classification, native `hidePopover()`, paint loss, and acknowledgment of a failure detected only after the last paint frame. The existing MCP attachment-preservation case passed three consecutive focused runs after the early-selection fix and passed again in final CI. No required gate or assertion was waived.
+- Captures: the repeated suite retained 42 harmless PNG files under `test-results/element-picker-reliability-*/`, including `css-before.png`, `css-highlight.png`, `modal-before.png`, `modal-after.png`, and forced-colors pairs. The tests also attach their buffers for reporters. These local review artifacts are not committed.
+- The build retains two existing bundle-size warnings (about 1.74 MiB and 1.45 MiB against a 1 MiB budget); the build and artifact audit pass. Permissions, package dependencies, and storage schemas are unchanged.
+
+Verified commands:
+
+```sh
+npm test -- tests/unit/element-picker.test.ts tests/unit/element-picker-shortcut.test.ts tests/unit/permissions.test.ts tests/integration/element-targeting.test.ts
+npm run build
+npm run test:e2e -- tests/e2e/element-picker-reliability.spec.ts --repeat-each=3 --workers=1
+npm run ci
+```
+
+The fix uses a manual non-modal top-layer shield inside the active top-frame light-DOM modal, or under `html` otherwise. Important viewport styles, computed ancestor zoom, and an owned-surface geometry probe preserve layout and normalize legacy/current DOM rectangles. A required 1% black painted background routes OOPIF compositor input to the shield; a fully transparent region can be omitted. Startup waits for two animation frames. Cleanup releases the paint wait, and early result acknowledgment prevents startup from losing a chip. The owned surface retains its paint/highlight colors in forced-colors mode without changing page colors. Target and visible-text hit tests filter the shield without disabling interception. There are no permission, dependency, or storage changes; Chrome 116 remains the minimum, without `currentCSSZoom`.
+
+### Known minimum-version baseline limitation
+
+The isolated picker probe passed on actual Chrome for Testing 116.0.5845.96 against final source SHA-256 `6c04d068446abf3839a590fe090701a4da91c0ed0c7df3c59c8343284b792c73`, including CSS zoom `.9`, `.777`, and `1.25`, root translation, physical highlight/text geometry, modal/popover handling, first-click OOPIF interception, forced colors, Escape, and cleanup. It uses a fake runtime, so it does not verify extension startup or the browser-owned Side Panel.
+
+A separate production-build attempt failed before picker startup in all eight selected cases: `chrome.storage.local.setAccessLevel is not a function`. An independent build of unchanged `main` at `fc74084` produced the same startup error as this branch on Chrome 116; the API is absent in both profiles. This is a confirmed existing compatibility defect, not a change-caused failure or a passed full-extension check. The declared minimum is unchanged. Do not skip the storage restriction or claim full-extension Chrome 116 acceptance. Separate compatibility/security work is required before such a release claim. Evidence: `/tmp/pi-chrome116-baseline.log` and `/tmp/pi-chrome116-probe/results.json` in the implementation environment.
+
+### Retained external handoff
+
+1. **Stable Chrome and native UI**
+   - Role: release reviewer.
+   - Prerequisites: a production build, a dedicated test profile, harmless local CSS/modal/same-origin and cross-origin iframe fixtures, and the actual browser-owned Side Panel.
+   - Action: repeat procedure 17 with button and physical-shortcut entry, page/panel focus changes, native site-access approval/decline/revocation, and full Chrome restart. While focus is in the Side Panel, let the page focus an iframe, then return by keyboard; selection must stop with an explanation before accepting child-document input. Record Chrome/OS versions and each result.
+   - Expected result: one unsent chip per selection, no target activation or replay, clear protection-failure feedback, and no stale shield. Iframe selections contain only top-frame wrapper metadata; shadow-owned controls and iframe contents remain unsupported.
+   - Unverified behavior: native shortcut dispatch, browser-owned panel focus/opening, and native permission dialogs are not proved by the automated extension-page harness. Residual earlier-capture-listener behavior, native revocation, timeout observation, and full stable-Chrome restart still require manual results.
+   - Release restriction: complete and record these stable-Chrome checks before release. Automated success or plan completion does not establish product acceptance or release readiness.
+2. **Visual and accessibility review**
+   - Role: release reviewer or accessibility tester.
+   - Prerequisites: the same production build, harmless before/after fixture captures, and a screen reader; record assistive-technology/version details.
+   - Action: inspect modal highlight visibility, the slight shield tint, focus recovery, protection-error announcements, and panel controls in light/dark appearance at 320–360 px width and 12/24 px text.
+   - Expected result: readable feedback, visible focus/highlights, usable controls without overflow, and announced errors. Cleanup restores prior page focus only if the shield still owns focus; it must not take focus back after a page-driven focus transfer.
+   - Unverified behavior: human visual acceptance and actual screen-reader output are not proved by screenshots or DOM assertions.
+   - Release restriction: retain the existing manual-acceptance requirements and record failures separately. Do not mark these checks passed from automated results.
+
 ## Slash-command acceptance — 2026-10-22
 
 Automated coverage is in `tests/unit/slash-commands.test.ts`, `tests/unit/slash-command-menu.test.ts`, `tests/unit/slash-command-routing.test.ts`, `tests/unit/authentication-actions.test.ts`, and `tests/e2e/slash-commands.spec.ts`. The 13 focused browser cases passed on headless Chrome for Testing 156.0.8078.4 on macOS, including local command effects, network isolation, lifecycle races, native-textbox semantics, active-option scrolling, and 320 px light/dark layout at 24 px text. Actual screen-reader output and the browser-owned Side Panel remain unverified; automated extension-page tests do not prove these paths.
@@ -178,10 +229,15 @@ External handoff: the release reviewer owns stable-Chrome browser-owned Side Pan
    - Repeat while a run is active using normal Enter and Alt+Enter. Expected: steer and follow-up each carry one annotated image, only accepted attachment IDs clear, and interrupted runs do not resend the image. Use a non-image model and a near-3 MB composer to verify clear capability/size errors without closing the editor.
    - Check light/dark themes, 320–360 px width, 12/24 px text, and touch scrolling outside the canvas. Expected: the modal and toolbar remain usable without page-level horizontal overflow. Confirm `chrome://extensions` shows no new permission.
 17. **Page element picker**
-   - On a controlled HTTP(S) page, select the cursor-and-dashed-box button beside the microphone. Expected: the Chinese hover tooltip reads **選取網頁元素**, `aria-pressed` becomes true, and hover shows a layout-neutral outline/label that follows scrolling and a dynamically replaced node.
-   - Select an ordinary button, same-origin and cross-origin links, a download, and a submit control. Expected: no handler, URL, download, or form state changes; picker mode exits; a removable chip appears. Inspect the submitted provider request and confirm versioned untrusted JSON contains bounded tag/accessibility/rectangle/viewport/selector fields but no input value, password/file data, hidden text, full HTML, or URL credentials.
+   - On a controlled HTTP(S) page, select the cursor-and-dashed-box button beside the microphone. Expected: the English hover tooltip reads **Select page element** (it can include the assigned shortcut), `aria-pressed` becomes true after protected startup, and hover shows a layout-neutral outline/label that follows scrolling and a dynamically replaced node.
+   - Repeat with root CSS zoom, a transformed/scrolled root, global important styles, and an already open light-DOM modal. Expected: a visible modal highlight and full-viewport interception without changed page layout, root styles, or page-owned modal/popover state. The shield adds a slight 1% black tint.
+     - With a same-origin and then cross-origin iframe inside the modal, focus an inner control before starting. Press Enter, then `Esc`. Expected: no inner activation, quiet cancellation, and the page modal remains open. Restart and select over the iframe: exactly one wrapper chip, no child text, and no child click/submit.
+     - While selection is active, move focus into a child document, open a new modal/popover, enter or exit fullscreen, or remove/change the shield. Expected: selection stops, no chip appears, and **Element selection lost its protection. Select again, or reload the page.** appears. A fresh explicit start can succeed after the unsafe condition is resolved.
+     - If shield setup fails, expect **Could not protect element selection on this page. Reload the page and try again.** The button must not remain active. Capture failure instead reports **Could not attach the selected element. Try another element.** No raw page exception or automatic retry is allowed.
+     - During startup, navigate an unrelated background tab. Expected: selection still starts once. Navigate/reload the target or stop startup: no stale picker remains.
+   - Select an ordinary button, same-origin and cross-origin links, a download, and a submit control. Expected: no target handler, URL, download, or form state changes; picker mode exits; a removable chip appears. Inspect the submitted provider request and confirm versioned untrusted JSON contains bounded tag/accessibility/rectangle/viewport/selector fields but no input value, password/file data, hidden text, full HTML, or URL credentials.
    - Test element-only Send, active-run steering, Alt+Enter follow-up, chip removal, five-item and 16 KB limits, duplicate selection, session switch, and tab-context change. Expected: only accepted attachment IDs clear, unsent chips do not persist, and sent JSON restores as user-message text.
-   - Test repeated toggle, Side Panel and page `Esc`, timeout, reload, SPA navigation, tab activation, focus loss, Side Panel close/reopen, service-worker restart, site-access denial, and revocation in Chrome settings. Expected: no overlay or reusable token remains. Confirm iframe and Shadow DOM targets are outside this version's supported scope, no new permission type appears, and an earlier page-level capture listener may observe an intercepted event even though target/default activation is blocked.
+   - Test repeated toggle, Side Panel and page `Esc`, timeout, reload, SPA navigation, tab activation, window focus loss, Side Panel close/reopen, service-worker restart, site-access denial, and revocation in Chrome settings. Expected: no overlay or reusable token remains; normal `Esc`, toggle, and navigation cancellation show no protection error. Cleanup restores prior page focus only if the shield still owns it. Confirm iframe contents and shadow-owned controls remain unsupported, no new permission type appears, and an earlier page-level capture listener may observe an intercepted event even though target/default activation is blocked.
    - Repeat in light/dark themes, 320–360 px width, and 12/24 px text. Expected: chips scroll within the composer, picker/voice/Stop/Send controls remain usable, and there is no horizontal page overflow.
 
 18. **Chat without a supported page**
