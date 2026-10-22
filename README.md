@@ -2,7 +2,7 @@
 
 Pi Browser Agent is a Chrome-native AI assistant. The Side Panel runs `pi-agent-core` and the browser-compatible built-in provider/model catalog from `pi-ai`. Chat works on any tab; bounded page tools work only on the active, accessible HTTP(S) tab in the focused Chrome window. With separate approval, Pi can also search or inspect recent Chrome bookmarks without a web page.
 
-No local agent process, native host, shell, filesystem access, pairing secret, or loopback connection is required.
+No local agent process, native host, shell, general filesystem access, pairing secret, or loopback connection is required. Skill import reads only the file you explicitly select.
 
 ## Requirements
 
@@ -53,6 +53,12 @@ MCP tools also work without a readable page. Every call requires fresh confirmat
 
 Use **Disable** to stop a server, or **Remove server and token** to delete its configuration and token. See [remote MCP support and limits](docs/mcp.md). Remote MCP is separate from page-provided WebMCP.
 
+## Browser skills
+
+Open **Settings → Skills**, choose a UTF-8 file named exactly `SKILL.md`, and review its plain-text preview before importing. Imports and explicit replacements start disabled. Enable a reviewed skill, then ask for it by name in chat. Importing or enabling sends no model request; a submitted run shares enabled metadata, and the model can request the body with `skills_load({id})`.
+
+Skills provide untrusted, user-authorized task guidance. They cannot grant permissions or bypass browser confirmations. Only text is supported: no scripts, supporting files, remote installation, or local directory discovery. Changes apply to the next run. Disabling or deleting blocks future loads, but previous content remains in saved conversations; deleting sessions does not delete skills. See [format, limits, and recovery](docs/skills.md).
+
 ## Browser safety
 
 The agent can read visible text and selection, discover visible controls and scroll containers, scroll the viewport or a container, inspect element details, select native options, capture the visible viewport, click or type using discovered element references or CSS selectors, navigate, and use page WebMCP tools when available. `browser_read_page` accepts optional `selector` (first rendered HTML match, such as `main` or `article`) and `offset` (UTF-16 text index, starting at 0). Without a selector it reads the page body. A long read returns `nextOffset` when truncated; pass it back with the same selector to continue. Invalid, missing, or non-rendered selectors fail rather than falling back to the full page. This reads rendered DOM text, including text outside the viewport, not raw HTML, form field values, or iframe/Shadow DOM contents. To use WebMCP, enable `chrome://flags/#enable-webmcp-testing`, relaunch Chrome, and reload the page; the page must provide WebMCP tools. See [WebMCP status](docs/webmcp.md) for details.
@@ -64,7 +70,7 @@ The agent can read visible text and selection, discover visible controls and scr
 - Password and file inputs are denied.
 - Form submissions and downloads always prompt; cross-origin links/navigation and WebMCP calls require either fresh confirmation or a matching approval in the selected confirmation mode. No cached approval replays a failed mutation.
 - A request created before navigation or a visible-tab change is rejected as stale. Chat and approved bookmark reads do not require a supported page; a no-page turn cannot use page tools even after a tab switch.
-- Chrome internal pages, Chrome Web Store pages, local files, and PDF viewers cannot be read or operated by page tools. A site whose URL looks like HTTP(S) but denies script injection also becomes unavailable until navigation/reload. No file/PDF import is provided in this release; enabling Chrome's file-URL access does not change that boundary.
+- Chrome internal pages, Chrome Web Store pages, local files, and PDF viewers cannot be read or operated by page tools. A site whose URL looks like HTTP(S) but denies script injection also becomes unavailable until navigation/reload. General file/PDF import is not supported; the separate, user-selected `SKILL.md` import does not change that page-tool boundary. Enabling Chrome's file-URL access does not change it.
 - Visible text and selected text are capped at 50 KB; screenshots are capped at 3 MB.
 - The element picker accepts up to five chips and 16 KB of combined context. It includes bounded visible text, accessibility metadata, an allowlist of attributes, viewport geometry, and a best-effort CSS selector; it excludes field values, hidden text, full HTML, credential-bearing URLs, iframes, and Shadow DOM. Selectors are descriptive hints, not durable mutation authorization.
 - Picker mode uses a layout-neutral interaction shield so selecting a button, link, or submit control does not activate it. `Esc`, a repeated button click, selection, navigation, tab/focus change, timeout, or closing the Side Panel cancels the mode. A page-level listener installed before the picker may still observe an intercepted event.
@@ -165,3 +171,4 @@ Pushes to `main` create or update the **chore(release): version packages** pull 
 - [Manual acceptance](docs/manual-acceptance.md)
 - [WebMCP status](docs/webmcp.md)
 - [Remote MCP](docs/mcp.md)
+- [Browser skills](docs/skills.md)
