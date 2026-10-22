@@ -61,6 +61,8 @@ Use a dedicated test conversation and a harmless page. Automated graph/store/run
 5. In the test conversation, try navigation with an unsent draft, pasted image, selected-element chip, or a running response. Expected: local errors retain the draft, attachments, and active path. Restored user images remain unsent until Send; stale element descriptions do not become live chips. No provider/site access prompt occurs merely from opening or choosing a tree entry.
 6. Review the documented 5 MB total-record/5,000-node limits and downgrade warning before testing any older build. Do not downgrade against real tree-enabled data without preserving complete session records. Size or transaction failures must leave the previous saved path and branches intact and show an error; no branch is silently pruned.
 
+Automated acceptance: [GitHub CI run 39792122881](https://github.com/narumiruna/pi-browser-agent/actions/runs/39792122881) passed the required workflow with 922 unit/integration tests and all 123 browser tests. Earlier local and remote timeout failures remain recorded in `docs/plans/2026-10-22_session-tree-plan.md`; no assertion or required test was waived.
+
 Status: manual checks pending. Record Chrome/OS and assistive-technology versions with observed results. Do not infer manual acceptance from headless tests.
 
 ## Procedure

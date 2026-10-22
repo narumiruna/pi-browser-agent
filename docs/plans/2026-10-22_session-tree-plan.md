@@ -35,7 +35,7 @@ A local modal tree uses plain text, bounded labels, keyboard/pointer selection, 
 - [x] Add `/tree` definitions, a keyboard-accessible tree dialog, and conversation integration; prove local dispatch, stale/busy/draft/attachment guards, image restoration, path-specific rendering, and cancellation with unit tests.
 - [x] Add browser tests for two-way branching, nested edits, image/tool history, reload/full restart, provider payload isolation, no navigation requests/permissions/tool replay, errors, and narrow/light/dark layout.
 - [x] Update README, architecture, storage/security/manual-acceptance documentation, and a minor changeset; verify that limits, browser side-effect semantics, legacy compatibility, and recovery limits match tests.
-- [ ] Run focused tests and `npm run ci`, plus `npm audit --omit=dev`; record actual failures and acceptance evidence. Review the full diff for correctness, security, lifecycle safety, compatibility, and scope.
+- [x] Run focused tests and `npm run ci`, plus `npm audit --omit=dev`; record actual failures and acceptance evidence. Review the full diff for correctness, security, lifecycle safety, compatibility, and scope. Evidence: [GitHub CI run 39792122881](https://github.com/narumiruna/pi-browser-agent/actions/runs/39792122881) passed the unchanged required workflow on commit `321483c`: 922 unit/integration tests, production build, 32-file artifact audit, and all 123 browser tests.
 - [x] Commit intended paths, push the focused branch, and open a pull request with verification evidence and remaining risks. Evidence: feature commit `3e82879` on `narumi/feat/session-tree`; [draft PR #103](https://github.com/narumiruna/pi-browser-agent/pull/103). No package, version tag, or release workflow was published or dispatched.
 
 ## Rollback / Recovery
@@ -50,13 +50,16 @@ Legacy records are not deleted or rewritten by a database-wide migration. A firs
 - Review found a post-commit retention failure risk, model-catalog race, malformed system metadata, an unnecessarily restrictive preview size check, and restored literal slash text being parsed as a local command. Each issue is fixed with regression coverage. Restored slash-prefixed prompts now get a composer-only escape; stored and provider-visible text remain unchanged.
 - Final local unit run: 922 tests passed across 47 files. `npm run check`, typecheck, production build/artifact audit, and `npm audit --omit=dev` pass (zero production vulnerabilities).
 - Local full CI was not consistently green: an earlier run passed 121/122 browser cases with one existing Strict bookmark-confirmation timeout; the latest run passed 122/123 with one existing element-picker shortcut assertion timeout. Neither run is counted as a full pass. A complete single-worker run also passed 122/123, with a different existing picker-stop ordering timeout. Every failed case passed its unchanged focused rerun: all 28 tree/slash/confirmation cases and both separate shortcut cases. These reruns do not waive the failed full runs. No assertions, repository timeouts, or required tests were weakened.
-- Final diff review found no remaining code defect after the literal-prompt correction. Required full CI acceptance remains open. [GitHub run 39789658542](https://github.com/narumiruna/pi-browser-agent/actions/runs/39789658542) is waiting in the unchanged `npx playwright install --with-deps chromium` setup step; `npm run ci` has not started there. Successful runner dependency installation is needed before remote verification can continue. Pull-request delivery is complete.
+- Initial [GitHub run 39789658542](https://github.com/narumiruna/pi-browser-agent/actions/runs/39789658542) had a slow dependency-installation step, then passed check, 922 unit tests, and build, but its browser run passed 122/123 with an existing screenshot-annotation dialog-close timeout. This run did not pass.
+- Full required workflow acceptance: [GitHub run 39792122881](https://github.com/narumiruna/pi-browser-agent/actions/runs/39792122881) completed successfully on Ubuntu/Node 26, with 922 unit/integration tests across 47 files and all 123 browser tests. No assertions, timeouts, retry settings, or required tests were changed to obtain that result.
+- Final diff review found no remaining code defect after the literal-prompt correction. Pull-request delivery is complete. Stable-Chrome and actual screen-reader observations remain unverified.
 - Actual stable-Chrome Side Panel and screen-reader observations remain unavailable; the manual procedure records these paths as pending rather than passed.
 
 ## Completion Checklist
 
-- [ ] All implementation tasks and material unknowns have passing evidence or explicit accepted limits.
-- [ ] Existing sessions retain their history; every saved branch survives restart and only the active path reaches the model.
-- [ ] Navigation never replays browser actions, bypasses permissions, or silently replaces unsent composer content.
-- [ ] Required automated checks and full diff review pass; unavailable manual accessibility checks are recorded without claiming success.
-- [ ] Pull request delivery is complete. Delete this plan only after all checks are satisfied; retain it if external/manual acceptance remains open.
+- [x] All implementation tasks and material unknowns have passing evidence or explicit accepted limits.
+- [x] Existing sessions retain their history; every saved branch survives restart and only the active path reaches the model.
+- [x] Navigation never replays browser actions, bypasses permissions, or silently replaces unsent composer content.
+- [x] Required automated checks and full diff review pass; unavailable manual accessibility checks are recorded without claiming success.
+- [x] Pull request delivery is complete: draft PR #103 contains the implementation, verification evidence, and remaining risks.
+- [ ] Delete this plan only after all checks are satisfied; retain it while stable-Chrome Side Panel or actual screen-reader acceptance remains open. No manual success is inferred from automated tests.
