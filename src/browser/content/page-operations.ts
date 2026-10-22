@@ -10,6 +10,10 @@ export type PageOperation =
   | "scroll"
   | "selectOption"
   | "getElementDetails"
+  | "findText"
+  | "probeCondition"
+  | "getSelectOptions"
+  | "setChecked"
 
 export interface PageOperationSuccess {
   ok: true
@@ -52,7 +56,10 @@ export async function executePageOperation(
     fingerprint: string
     form: HTMLFormElement | null
     labelControl: HTMLElement | null
+    checkedState: string | null
+    radioGroup: RadioGroup | null
   }
+  type RadioGroup = { root: Node; members: HTMLInputElement[]; states: string[]; complete: boolean }
   type Registry = { snapshot: ElementSnapshot; nodes: Map<string, Entry> }
   const isolated = globalThis as typeof globalThis & { __piBrowserAgentElements?: Registry }
   const staleReference = (): PageOperationFailure =>
@@ -69,9 +76,18 @@ export async function executePageOperation(
     ok: false,
     error: { code, message, ...(details ? { details } : {}) },
   })
+  const boundedString = (value: unknown, maximum: number, minimum = 0): value is string => {
+    if (typeof value !== "string" || value.length > maximum * 2) return false
+    const length = Array.from(value).length
+    return length >= minimum && length <= maximum
+  }
   const getSelector = (): string | undefined => {
     const value = params.selector
-    return typeof value === "string" && value.length > 0 && value.length <= 2048 ? value : undefined
+    const valid =
+      operation === "findText" || operation === "probeCondition"
+        ? boundedString(value, 2048, 1)
+        : typeof value === "string" && value.length > 0 && value.length <= 2048
+    return valid ? (value as string) : undefined
   }
   const findElement = (): Element | PageOperationFailure => {
     if ("snapshotId" in params || "ref" in params) {
@@ -384,6 +400,7 @@ export async function executePageOperation(
                 option.disabled,
                 option.parentElement instanceof HTMLOptGroupElement &&
                   option.parentElement.disabled,
+                optionHidden(option),
               ]
             }),
           ]
@@ -406,6 +423,424 @@ export async function executePageOperation(
       actionControl.getAttribute("formenctype"),
       actionControl.hasAttribute("formnovalidate"),
     ])
+  }
+  // A radio group is identified by the live form owner, tree root, and exact name. The entry
+  // separately checks form object identity; this state also binds approval to the checked state.
+  const checkedState = (element: HTMLElement): string | null =>
+    element instanceof HTMLInputElement && ["checkbox", "radio"].includes(element.type)
+      ? JSON.stringify([
+          element.type,
+          element.checked,
+          element.indeterminate,
+          element.name,
+          element.value,
+        ])
+      : null
+  const radioGroup = (element: HTMLElement): RadioGroup | null => {
+    if (!(element instanceof HTMLInputElement) || element.type !== "radio") return null
+    const root = element.getRootNode()
+    const group: RadioGroup = { root, members: [], states: [], complete: true }
+    if (!element.name) {
+      group.members.push(element)
+      group.states.push(String(element.checked))
+      return group
+    }
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT)
+    let inspected = 0
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (inspected++ >= 2000) {
+        group.complete = false
+        break
+      }
+      if (
+        node instanceof HTMLInputElement &&
+        node.type === "radio" &&
+        node.name === element.name &&
+        node.form === element.form
+      ) {
+        group.members.push(node)
+        group.states.push(
+          JSON.stringify([
+            node.checked,
+            node.value,
+            node.matches(":disabled"),
+            node.getAttribute("aria-disabled"),
+          ]),
+        )
+      }
+    }
+    return group
+  }
+  const sameRadioGroup = (before: RadioGroup | null, after: RadioGroup | null): boolean =>
+    before === null
+      ? after === null
+      : after !== null &&
+        before.complete &&
+        after.complete &&
+        before.root === after.root &&
+        before.members.length === after.members.length &&
+        before.members.every(
+          (node, index) =>
+            node === after.members[index] && before.states[index] === after.states[index],
+        )
+  const optionHidden = (option: HTMLOptionElement): boolean => {
+    for (
+      let node: HTMLElement | null = option;
+      node && !(node instanceof HTMLSelectElement);
+      node = node.parentElement
+    ) {
+      const style = getComputedStyle(node)
+      if (
+        node.hidden ||
+        node.getAttribute("aria-hidden") === "true" ||
+        style.display === "none" ||
+        style.contentVisibility === "hidden" ||
+        ["hidden", "collapse"].includes(style.visibility) ||
+        Number.parseFloat(style.opacity || "1") <= 0 ||
+        filterBlocksVisibility(node, style) ||
+        (style.display !== "contents" && masksText(style))
+      )
+        return true
+    }
+    return false
+  }
+  const validOffset = (maximum: number): boolean =>
+    !("offset" in params) ||
+    (Number.isSafeInteger(params.offset) &&
+      Number(params.offset) >= 0 &&
+      Number(params.offset) <= maximum)
+  const fitsResponse = (value: JsonValue, maximum = 48 * 1024): boolean =>
+    new TextEncoder().encode(JSON.stringify(value, null, 2)).byteLength <= maximum - 256
+  const readScope = (): HTMLElement | PageOperationFailure => {
+    if (!("selector" in params)) return document.body ?? document.documentElement
+    const selector = getSelector()
+    if (!selector) return failure("INVALID_REQUEST", "A non-empty CSS selector is required")
+    try {
+      const found = document.querySelector(selector)
+      if (!(found instanceof HTMLElement))
+        return failure("INVALID_REQUEST", "The selector must match an HTML element")
+      if (
+        found.isContentEditable ||
+        (document.designMode ?? "").toLowerCase() === "on" ||
+        found.closest("input, textarea, select, option, [contenteditable]")
+      )
+        return failure("PERMISSION_DENIED", "Form field contents cannot be read")
+      if (
+        found.closest("[hidden], [aria-hidden='true'], script, style, noscript, template") ||
+        ["hidden", "collapse"].includes(getComputedStyle(found).visibility)
+      )
+        return failure("INVALID_REQUEST", "The selected scope is not rendered")
+      for (let node: Element | null = found; node; node = filterParent(node)) {
+        const style = getComputedStyle(node)
+        if (
+          node.matches("[hidden], [aria-hidden='true']") ||
+          style.display === "none" ||
+          (style.display !== "contents" &&
+            (style.contentVisibility === "hidden" ||
+              Number.parseFloat(style.opacity || "1") <= 0 ||
+              !axisAlignedText(style) ||
+              filterBlocksVisibility(node, style) ||
+              masksText(style)))
+        )
+          return failure("INVALID_REQUEST", "The selected scope is not rendered")
+      }
+      const box = found.getBoundingClientRect()
+      if (box.width > 0 && box.height > 0) return found
+      // Boxless containers can still render children. Never enumerate the geometry of the
+      // whole subtree: probe single source units in the same bounded text-node prefix.
+      const walker = document.createTreeWalker(found, NodeFilter.SHOW_TEXT)
+      const range = document.createRange()
+      let nodes = 0
+      let units = 0
+      for (
+        let next = walker.nextNode();
+        next && nodes < 2000 && units < 100000;
+        next = walker.nextNode()
+      ) {
+        nodes++
+        const node = next as Text
+        const length = Math.min(node.length, 100000 - units)
+        units += length
+        if (length === 0 || !renderedTextParent(node)) continue
+        for (let index = 0; index < length; index++) {
+          range.setStart(node, index)
+          range.setEnd(node, index + 1)
+          if (readRects(range, node.parentElement as HTMLElement).length > 0) return found
+        }
+      }
+      return failure("INVALID_REQUEST", "The selected scope is not rendered")
+    } catch {
+      return failure("INVALID_REQUEST", "Invalid CSS selector")
+    }
+  }
+  // Fail closed for arbitrary CSS masking rather than approximate page-controlled clip shapes.
+  const masksText = (style: CSSStyleDeclaration): boolean =>
+    Boolean(
+      (style.clipPath && style.clipPath !== "none") ||
+        (style.clip && style.clip !== "auto") ||
+        (style.maskImage && style.maskImage !== "none") ||
+        (style.getPropertyValue("-webkit-mask-image") &&
+          style.getPropertyValue("-webkit-mask-image") !== "none"),
+    )
+  const axisAlignedText = (style: CSSStyleDeclaration): boolean => {
+    if (style.rotate && style.rotate !== "none") return false
+    if (
+      style.scale &&
+      style.scale !== "none" &&
+      style.scale.split(/\s+/).some((part) => !(Number.parseFloat(part) > 0))
+    )
+      return false
+    if (!style.transform || style.transform === "none") return true
+    const matrix = /^matrix\(([^)]+)\)$/.exec(style.transform)
+    if (!matrix?.[1]) return false
+    const values = matrix[1].split(",").map(Number)
+    return (
+      values.length === 6 &&
+      values.every(Number.isFinite) &&
+      (values[0] ?? 0) > 0 &&
+      values[1] === 0 &&
+      values[2] === 0 &&
+      (values[3] ?? 0) > 0
+    )
+  }
+  const textExcluded =
+    "input, textarea, select, option, [contenteditable], [hidden], [aria-hidden='true'], script, style, noscript, template"
+  // Read visibility does not require viewport intersection or hit testing. Clip text against
+  // non-root overflow boxes instead, so offscreen page text remains readable.
+  const renderedTextParent = (node: Text): boolean => {
+    const parent = node.parentElement
+    if (
+      !parent ||
+      parent.isContentEditable ||
+      (document.designMode ?? "").toLowerCase() === "on" ||
+      parent.closest(textExcluded)
+    )
+      return false
+    if (["hidden", "collapse"].includes(getComputedStyle(node.assignedSlot ?? parent).visibility))
+      return false
+    for (
+      let current: Element | null = node.assignedSlot ?? parent;
+      current;
+      current = filterParent(current)
+    ) {
+      const style = getComputedStyle(current)
+      if (
+        current.matches(textExcluded) ||
+        style.display === "none" ||
+        (style.display !== "contents" &&
+          (style.contentVisibility === "hidden" ||
+            Number.parseFloat(style.opacity || "1") <= 0 ||
+            !axisAlignedText(style) ||
+            filterBlocksVisibility(current, style) ||
+            masksText(style)))
+      )
+        return false
+    }
+    return true
+  }
+  const readRects = (range: Range, parent: HTMLElement): DOMRect[] => {
+    return Array.from(range.getClientRects()).filter((rect) => {
+      let left = rect.left
+      let right = rect.right
+      let top = rect.top
+      let bottom = rect.bottom
+      if (left >= right || top >= bottom) return false
+      const text = range.startContainer
+      for (
+        let current: Element | null = text instanceof Text ? (text.assignedSlot ?? parent) : parent;
+        current && current !== document.documentElement;
+        current = filterParent(current)
+      ) {
+        const style = getComputedStyle(current)
+        if (style.display === "contents" || current === document.scrollingElement) continue
+        if (current === document.body) {
+          // Body overflow propagates to the viewport only when both root axes are visible.
+          // Otherwise body is an independent clip/scroll container and must be checked.
+          const rootStyle = getComputedStyle(document.documentElement)
+          if (
+            [
+              rootStyle.overflowX || rootStyle.overflow || "visible",
+              rootStyle.overflowY || rootStyle.overflow || "visible",
+            ].every((overflow) => overflow === "visible")
+          )
+            continue
+        }
+        const clipX = /^(hidden|clip|scroll|auto|overlay)$/.test(style.overflowX || style.overflow)
+        const clipY = /^(hidden|clip|scroll|auto|overlay)$/.test(style.overflowY || style.overflow)
+        if (!clipX && !clipY) continue
+        // Overflow clips at the client/padding box, not the visible border box. Rounded
+        // clipping is not approximated: reject it rather than disclose a clipped corner.
+        if (
+          !(current instanceof HTMLElement) ||
+          current.offsetWidth <= 0 ||
+          current.offsetHeight <= 0
+        )
+          return false
+        if (
+          [
+            style.borderTopLeftRadius,
+            style.borderTopRightRadius,
+            style.borderBottomLeftRadius,
+            style.borderBottomRightRadius,
+          ].some(
+            (radius) =>
+              Boolean(radius) && radius.split(/\s+/).some((part) => Number.parseFloat(part) !== 0),
+          )
+        )
+          return false
+        const box = current.getBoundingClientRect()
+        const scaleX = box.width / current.offsetWidth
+        const scaleY = box.height / current.offsetHeight
+        const clipLeft = box.left + current.clientLeft * scaleX
+        const clipTop = box.top + current.clientTop * scaleY
+        if (clipX) {
+          left = Math.max(left, clipLeft)
+          right = Math.min(right, clipLeft + current.clientWidth * scaleX)
+        }
+        if (clipY) {
+          top = Math.max(top, clipTop)
+          bottom = Math.min(bottom, clipTop + current.clientHeight * scaleY)
+        }
+        if (left >= right || top >= bottom) return false
+      }
+      return true
+    })
+  }
+  /**
+   * Search each Text node separately; collapse each whitespace run to one ASCII space, without
+   * trimming. Never match across nodes or excluded/clipped runs. Match offsets are UTF-16 offsets
+   * in the raw scope traversal, including excluded nodes, and are valid only for this DOM read.
+   * Both traversal budgets include excluded nodes. Result offsets are non-overlapping match ordinals.
+   */
+  const searchText = (
+    root: HTMLElement,
+    query: string,
+    offset: number,
+    probe = false,
+  ): JsonObject => {
+    const result: JsonObject = {
+      matches: [],
+      offset,
+      scanTruncated: false,
+      hasMore: false,
+      truncated: false,
+    }
+    const matches: JsonObject[] = []
+    result.matches = matches
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+    const range = document.createRange()
+    let nodes = 0
+    let inspected = 0
+    let ordinal = 0
+    let pageFull = false
+    for (let next = walker.nextNode(); next; next = walker.nextNode()) {
+      if (nodes >= 2000 || inspected >= 100000) {
+        result.scanTruncated = true
+        break
+      }
+      nodes++
+      const node = next as Text
+      const base = inspected
+      const length = Math.min(node.length, 100000 - inspected)
+      inspected += length
+      if (length < node.length) result.scanTruncated = true
+      if (pageFull || !renderedTextParent(node)) continue
+      const parent = node.parentElement as HTMLElement
+      let text = ""
+      let starts: number[] = []
+      let ends: number[] = []
+      let hasRenderedText = false
+      // Per-code-point layout prevents a partly clipped node from exposing its clipped text.
+      const flush = (): boolean => {
+        if (!hasRenderedText) {
+          text = ""
+          starts = []
+          ends = []
+          return false
+        }
+        let from = 0
+        for (
+          let index = text.indexOf(query, from);
+          index !== -1;
+          index = text.indexOf(query, from)
+        ) {
+          from = index + query.length
+          if (ordinal++ < offset) continue
+          if (probe) {
+            matches.push({})
+            return true
+          }
+          if (matches.length >= 50) {
+            result.hasMore = true
+            return true
+          }
+          let snippetStart = Math.max(0, Math.min(index, text.length - 256))
+          let snippetEnd = Math.min(text.length, snippetStart + 256)
+          if (
+            /[\uDC00-\uDFFF]/.test(text[snippetStart] ?? "") &&
+            /[\uD800-\uDBFF]/.test(text[snippetStart - 1] ?? "")
+          )
+            snippetStart++
+          if (
+            /[\uD800-\uDBFF]/.test(text[snippetEnd - 1] ?? "") &&
+            /[\uDC00-\uDFFF]/.test(text[snippetEnd] ?? "")
+          )
+            snippetEnd--
+          const match: JsonObject = {
+            snippet: text.slice(snippetStart, snippetEnd),
+            start: base + (starts[index] ?? 0),
+            end: base + (ends[from - 1] ?? 0),
+          }
+          range.setStart(node, starts[index] ?? 0)
+          range.setEnd(node, ends[from - 1] ?? 0)
+          const rect = readRects(range, parent)[0]
+          if (rect && [rect.x, rect.y, rect.width, rect.height].every(Number.isFinite))
+            match.rect = { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+          matches.push(match)
+          result.hasMore = true
+          result.nextOffset = offset + matches.length
+          if (!fitsResponse(result)) {
+            matches.pop()
+            result.hasMore = true
+            return true
+          }
+          result.hasMore = false
+          delete result.nextOffset
+        }
+        text = ""
+        starts = []
+        ends = []
+        hasRenderedText = false
+        return false
+      }
+      for (let index = 0; index < length; ) {
+        const character = String.fromCodePoint(node.data.codePointAt(index) ?? 0)
+        if (index + character.length > length) break
+        range.setStart(node, index)
+        range.setEnd(node, index + character.length)
+        const whitespace = /\s/.test(character)
+        const rendered = readRects(range, parent).length > 0
+        hasRenderedText ||= rendered
+        if (!rendered && !whitespace) {
+          if (flush()) break
+        } else if (whitespace && text.endsWith(" ")) {
+          ends[ends.length - 1] = index + character.length
+        } else {
+          text += whitespace ? " " : character
+          for (let unit = 0; unit < (whitespace ? 1 : character.length); unit++) {
+            starts.push(index)
+            ends.push(index + character.length)
+          }
+        }
+        index += character.length
+      }
+      if (probe && matches.length > 0) break
+      pageFull = Boolean(result.hasMore || flush())
+      if (probe && matches.length > 0) break
+    }
+    if (result.hasMore) result.nextOffset = offset + matches.length
+    result.truncated = Boolean(result.scanTruncated || result.hasMore)
+    return result
   }
   const targetResult = (): JsonObject =>
     typeof params.ref === "string"
@@ -432,7 +867,7 @@ export async function executePageOperation(
     }
     if (
       expectedContext !== null &&
-      ["click", "type", "scroll", "selectOption"].includes(operation)
+      ["click", "type", "scroll", "selectOption", "setChecked"].includes(operation)
     ) {
       const assertion = (await chrome.runtime.sendMessage({
         kind: "assert-current-mutation-target",
@@ -455,12 +890,24 @@ export async function executePageOperation(
       case "listElements": {
         if (!snapshot || !expectedContext)
           return failure("INVALID_REQUEST", "A snapshot context is required")
+        if (
+          !validOffset(2000) ||
+          ["role", "type", "name"].some(
+            (key) => key in params && !boundedString(params[key], key === "name" ? 256 : 64),
+          )
+        )
+          return failure("INVALID_REQUEST", "Invalid discovery filters or offset")
+        const offset = Number(params.offset ?? 0)
         const registry: Registry = { snapshot, nodes: new Map() }
         isolated.__piBrowserAgentElements = registry
-        const result: { snapshotId: string; elements: JsonObject[]; truncated: boolean } = {
+        const result = {
           snapshotId: snapshot.id,
-          elements: [],
+          elements: [] as JsonObject[],
+          offset,
+          scanTruncated: false,
+          hasMore: false,
           truncated: false,
+          nextOffset: offset,
         }
         const walker = document.createTreeWalker(
           document.body ?? document.documentElement,
@@ -469,16 +916,14 @@ export async function executePageOperation(
         const candidates =
           "a[href], button, input, textarea, select, [contenteditable], [role='button'], [role='link'], [role='textbox']"
         let count = 0
+        let matched = 0
         // The body can scroll independently when the viewport has no overflow.
         const root = walker.root
         const first =
           root instanceof HTMLElement && scrollability(root).vertical ? root : walker.nextNode()
         for (let node: Node | null = first; node; node = walker.nextNode()) {
-          if (
-            ++count > snapshot.limits.candidates ||
-            result.elements.length >= snapshot.limits.results
-          ) {
-            result.truncated = true
+          if (++count > Math.min(2000, snapshot.limits.candidates)) {
+            result.scanTruncated = true
             break
           }
           if (
@@ -489,19 +934,31 @@ export async function executePageOperation(
             !isVisible(node, true)
           )
             continue
+          const role = elementRole(node)
+          const type =
+            node instanceof HTMLInputElement || node instanceof HTMLButtonElement ? node.type : ""
+          if (
+            (typeof params.role === "string" && params.role !== role) ||
+            (typeof params.type === "string" && params.type !== type)
+          )
+            continue
+          const name = elementName(node)
+          if (typeof params.name === "string" && !name.includes(params.name)) continue
+          if (matched++ < offset) continue
+          if (result.hasMore || result.elements.length >= Math.min(50, snapshot.limits.results)) {
+            result.hasMore = true
+            continue
+          }
           const disabled =
             node.matches(":disabled") || node.getAttribute("aria-disabled") === "true"
           const scrolling = scrollability(node)
           const ref = `e${result.elements.length + 1}`
           const entry: JsonObject = {
             ref,
-            name: elementName(node),
+            name,
             tag: node.tagName.toLowerCase(),
-            role: (node.getAttribute("role") ?? "").slice(0, snapshot.limits.role),
-            type:
-              node instanceof HTMLInputElement || node instanceof HTMLButtonElement
-                ? node.type
-                : "",
+            role: role.slice(0, snapshot.limits.role),
+            type,
             disabled,
             readOnly:
               node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement
@@ -521,22 +978,234 @@ export async function executePageOperation(
             scrollability: scrolling,
           }
           result.elements.push(entry)
-          if (
-            new TextEncoder().encode(JSON.stringify(result, null, 2)).byteLength >
-            snapshot.limits.bytes
-          ) {
+          result.nextOffset = offset + result.elements.length
+          if (!fitsResponse(result, Math.min(48 * 1024, snapshot.limits.bytes))) {
             result.elements.pop()
-            result.truncated = true
-            break
+            result.hasMore = true
+            continue
           }
           registry.nodes.set(ref, {
             element: node,
             fingerprint: fingerprint(node),
             form: formFor(node),
             labelControl: labelControlFor(node),
+            checkedState: checkedState(node),
+            radioGroup: radioGroup(node),
           })
         }
+        result.truncated = result.scanTruncated || result.hasMore
+        const { nextOffset: _, ...page } = result
+        return success(
+          result.hasMore ? { ...page, nextOffset: offset + result.elements.length } : page,
+        )
+      }
+      case "findText": {
+        if (!boundedString(params.query, 256, 1) || !validOffset(100000))
+          return failure(
+            "INVALID_REQUEST",
+            "Use a non-empty literal query of at most 256 characters and a valid offset",
+          )
+        const root = readScope()
+        if (isFailure(root)) return root
+        return success(searchText(root, params.query, Number(params.offset ?? 0)))
+      }
+      case "probeCondition": {
+        if (
+          "timeoutMs" in params &&
+          (!Number.isSafeInteger(params.timeoutMs) ||
+            Number(params.timeoutMs) < 1 ||
+            Number(params.timeoutMs) > 10000)
+        )
+          return failure("INVALID_REQUEST", "Invalid condition timeout")
+        if ("text" in params) {
+          if ("state" in params || !boundedString(params.text, 256, 1))
+            return failure("INVALID_REQUEST", "Use one non-empty literal text condition")
+          const root = readScope()
+          if (isFailure(root)) return root
+          const result = searchText(root, params.text, 0, true)
+          return success({ matched: Array.isArray(result.matches) && result.matches.length > 0 })
+        }
+        const selector = getSelector()
+        if (
+          !selector ||
+          !["present", "absent", "visible", "hidden", "enabled", "disabled"].includes(
+            String(params.state),
+          )
+        )
+          return failure("INVALID_REQUEST", "Use a selector and a supported condition state")
+        let found: Element | null
+        try {
+          found = document.querySelector(selector)
+        } catch {
+          return failure("INVALID_REQUEST", "Invalid CSS selector")
+        }
+        if (found && sensitiveControl(found))
+          return failure("PERMISSION_DENIED", "Sensitive controls cannot be probed")
+        if (!found)
+          return success({ matched: params.state === "absent" || params.state === "hidden" })
+        if (params.state === "present" || params.state === "absent")
+          return success({ matched: params.state === "present" })
+        const visible = isVisible(found, true)
+        const disabled =
+          found.matches(":disabled") || found.getAttribute("aria-disabled") === "true"
+        return success({
+          matched:
+            params.state === "visible"
+              ? visible
+              : params.state === "hidden"
+                ? !visible
+                : visible && (params.state === "disabled" ? disabled : !disabled),
+        })
+      }
+      case "getSelectOptions": {
+        if (
+          !("snapshotId" in params) ||
+          !("ref" in params) ||
+          "selector" in params ||
+          !validOffset(2000)
+        )
+          return failure("INVALID_REQUEST", "Use snapshotId/ref and a valid option offset")
+        const found = findElement()
+        if (isFailure(found)) return found
+        if (
+          !(found instanceof HTMLSelectElement) ||
+          found.multiple ||
+          found.size > 1 ||
+          found.options.length > 2000
+        )
+          return failure(
+            "NOT_SUPPORTED",
+            "Target must be a native single select with at most 2000 options",
+          )
+        if (!isVisible(found, true))
+          return failure("INVALID_REQUEST", "The select control is not visible")
+        const offset = Number(params.offset ?? 0)
+        const result: JsonObject = {
+          options: [],
+          offset,
+          scanTruncated: false,
+          hasMore: false,
+          truncated: false,
+        }
+        const options: JsonObject[] = []
+        result.options = options
+        const disabled =
+          found.matches(":disabled") || found.getAttribute("aria-disabled") === "true"
+        for (let index = offset; index < found.options.length; index++) {
+          const option = found.options.item(index)
+          if (!option) break
+          if (optionHidden(option)) continue
+          if (options.length >= 50) {
+            result.hasMore = true
+            result.nextOffset = index
+            break
+          }
+          let label = option.label.slice(0, 256)
+          if (
+            label.length < option.label.length &&
+            /[\uD800-\uDBFF]/.test(label.at(-1) ?? "") &&
+            /[\uDC00-\uDFFF]/.test(option.label[256] ?? "")
+          )
+            label = label.slice(0, -1)
+          options.push({
+            index,
+            label,
+            labelTruncated: label.length < option.label.length,
+            disabled:
+              disabled ||
+              option.disabled ||
+              (option.parentElement instanceof HTMLOptGroupElement &&
+                option.parentElement.disabled),
+          })
+          result.hasMore = true
+          result.nextOffset = index + 1
+          if (!fitsResponse(result)) {
+            options.pop()
+            result.nextOffset = index
+            break
+          }
+          result.hasMore = false
+          delete result.nextOffset
+        }
+        result.truncated = Boolean(result.hasMore)
         return success(result)
+      }
+      case "setChecked": {
+        if (
+          expectedContext &&
+          (location.href !== expectedContext.url || document.visibilityState !== "visible")
+        )
+          return failure("STALE_CONTEXT", "The page changed before checked-state activation")
+        if (
+          !("snapshotId" in params) ||
+          !("ref" in params) ||
+          "selector" in params ||
+          typeof params.checked !== "boolean"
+        )
+          return failure("INVALID_REQUEST", "Use snapshotId/ref and a boolean checked state")
+        const found = findElement()
+        if (isFailure(found)) return found
+        if (!(found instanceof HTMLInputElement) || !["checkbox", "radio"].includes(found.type))
+          return failure("NOT_SUPPORTED", "Target must be a native checkbox or radio")
+        if (found.type === "radio" && !params.checked)
+          return failure("NOT_SUPPORTED", "Native radio deselection is not supported")
+        if (!isVisible(found, true)) return failure("INVALID_REQUEST", "The control is not visible")
+        if (found.matches(":disabled") || found.getAttribute("aria-disabled") === "true")
+          return failure("PERMISSION_DENIED", "The control is disabled")
+        const entry = isolated.__piBrowserAgentElements?.nodes.get(String(params.ref))
+        if (!entry || entry.checkedState !== checkedState(found)) return staleReference()
+        if (found.checked === params.checked)
+          return success({
+            ...targetResult(),
+            changed: false,
+            activated: false,
+            requestedReached: true,
+            finalStateVerified: true,
+            checked: found.checked,
+            snapshotInvalidated: false,
+          })
+        if (entry.radioGroup && !entry.radioGroup.complete)
+          return failure("NOT_SUPPORTED", "Radio group exceeds the bounded validation scan")
+        if (!sameRadioGroup(entry.radioGroup, radioGroup(found))) return staleReference()
+        if (!confirmed)
+          return failure(
+            "CONFIRMATION_REQUIRED",
+            "Changing checked state can submit a form or run page actions",
+            { action: "setChecked", ...targetResult(), checked: params.checked },
+          )
+        // There is no await between the worker assertion, live reference/state checks, and this
+        // single native activation. Never re-resolve a reference after page handlers have run.
+        const beforeUrl = location.href
+        const beforeType = found.type
+        try {
+          HTMLElement.prototype.click.call(found)
+        } catch {
+          delete isolated.__piBrowserAgentElements
+          return success({
+            ...targetResult(),
+            changed: true,
+            activated: true,
+            requestedReached: null,
+            finalStateVerified: false,
+            snapshotInvalidated: true,
+          })
+        }
+        delete isolated.__piBrowserAgentElements
+        const verified =
+          found.isConnected &&
+          found.ownerDocument === document &&
+          found.type === beforeType &&
+          location.href === beforeUrl &&
+          document.visibilityState === "visible"
+        return success({
+          ...targetResult(),
+          changed: true,
+          activated: true,
+          requestedReached: verified ? found.checked === params.checked : null,
+          finalStateVerified: verified,
+          ...(verified ? { checked: found.checked } : {}),
+          snapshotInvalidated: true,
+        })
       }
       case "scroll": {
         if (

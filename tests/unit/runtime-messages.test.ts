@@ -20,6 +20,15 @@ describe("internal runtime messages", () => {
       expectTypeOf(request.params).toEqualTypeOf<{ query: string; limit: number }>()
     } else if (request.method === "requests.cancel") {
       expectTypeOf(request.params).toEqualTypeOf<{ requestId: string }>()
+    } else if (request.method === "page.setChecked") {
+      expectTypeOf(request.params).toEqualTypeOf<{
+        snapshotId: string
+        ref: string
+        checked: boolean
+      }>()
+    } else if (request.method === "page.waitFor") {
+      if ("text" in request.params) expectTypeOf(request.params.text).toEqualTypeOf<string>()
+      else expectTypeOf(request.params.selector).toEqualTypeOf<string>()
     }
   })
 
@@ -278,6 +287,25 @@ describe("internal runtime messages", () => {
         "Malformed or unknown",
       )
     }
+  })
+
+  test("preserves timeout classification from worker responses", async () => {
+    vi.stubGlobal("chrome", {
+      runtime: {
+        sendMessage: vi.fn(async () => ({
+          ok: false,
+          error: {
+            code: "TIMEOUT",
+            message: "Condition was not observed",
+            details: { elapsedMs: 5000 },
+          },
+        })),
+      },
+    })
+    await expect(sendRuntimeRequest("page.waitFor", { text: "Ready" })).rejects.toMatchObject({
+      code: "TIMEOUT",
+      details: { elapsedMs: 5000 },
+    })
   })
 
   test("rejects a response that completes after cancellation", async () => {

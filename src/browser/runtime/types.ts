@@ -38,6 +38,7 @@ export type RuntimeErrorCode =
   | "REQUEST_CANCELLED"
   | "STALE_CONTEXT"
   | "TAB_NOT_BOUND"
+  | "TIMEOUT"
 
 export interface RuntimeErrorData {
   code: RuntimeErrorCode

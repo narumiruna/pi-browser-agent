@@ -19,6 +19,10 @@ export const RUNTIME_METHODS = [
   "requests.cancel",
   "page.getVisibleText",
   "page.listElements",
+  "page.findText",
+  "page.waitFor",
+  "page.setChecked",
+  "page.getSelectOptions",
   "page.getSelection",
   "page.captureVisible",
   "page.click",
@@ -39,12 +43,37 @@ export const REQUEST_LIMITS = {
   typedText: 50_000,
   scrollPixels: 10_000,
   option: 256,
+  elementRole: 64,
+  elementType: 64,
+  elementName: 256,
+  elementOffset: 2000,
+  textQuery: 256,
+  textOffset: 100_000,
+  selectOptionsOffset: 2000,
+  waitTimeoutMs: 10_000,
   url: 16_384,
   bookmarkQuery: 500,
   bookmarkResults: 50,
   requestId: 256,
   webMcpName: 256,
 } as const
+
+export type ElementDiscoveryParams = {
+  role?: string
+  type?: string
+  name?: string
+  offset?: number
+}
+
+export type FindTextParams = { query: string; selector?: string; offset?: number }
+
+export type WaitForParams = (
+  | {
+      selector: string
+      state: "present" | "absent" | "visible" | "hidden" | "enabled" | "disabled"
+    }
+  | { text: string; selector?: string }
+) & { timeoutMs?: number }
 
 type RuntimeParams = {
   "app.getState": Record<string, never>
@@ -57,7 +86,11 @@ type RuntimeParams = {
   "elementPicker.stop": Record<string, never>
   "requests.cancel": { requestId: string }
   "page.getVisibleText": { selector?: string; offset?: number }
-  "page.listElements": Record<string, never>
+  "page.listElements": ElementDiscoveryParams
+  "page.findText": FindTextParams
+  "page.waitFor": WaitForParams
+  "page.setChecked": { snapshotId: string; ref: string; checked: boolean }
+  "page.getSelectOptions": { snapshotId: string; ref: string; offset?: number }
   "page.getSelection": Record<string, never>
   "page.captureVisible": Record<string, never>
   "page.click": ElementTarget
@@ -170,16 +203,72 @@ function hasValidTarget(params: Record<string, unknown>, extra: string[] = []): 
   )
 }
 
+function isBoundedString(value: unknown, maximum: number, minimum = 0): value is string {
+  if (typeof value !== "string" || value.length > maximum * 2) return false
+  // JSON Schema string lengths count Unicode code points, not UTF-16 source units.
+  const length = Array.from(value).length
+  return length >= minimum && length <= maximum
+}
+
+function isBoundedInteger(value: unknown, maximum: number, minimum = 0): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= minimum && (value as number) <= maximum
+}
+
 function hasValidParams(method: RuntimeMethod, params: Record<string, unknown>): boolean {
   switch (method) {
     case "app.getState":
     case "elementPicker.stop":
     case "tabs.getActive":
-    case "page.listElements":
     case "page.getSelection":
     case "page.captureVisible":
     case "webmcp.listTools":
       return Object.keys(params).length === 0
+    case "page.listElements":
+      return (
+        hasOnlyKeys(params, ["role", "type", "name", "offset"]) &&
+        (params.role === undefined || isBoundedString(params.role, REQUEST_LIMITS.elementRole)) &&
+        (params.type === undefined || isBoundedString(params.type, REQUEST_LIMITS.elementType)) &&
+        (params.name === undefined || isBoundedString(params.name, REQUEST_LIMITS.elementName)) &&
+        (params.offset === undefined ||
+          isBoundedInteger(params.offset, REQUEST_LIMITS.elementOffset))
+      )
+    case "page.findText":
+      return (
+        hasOnlyKeys(params, ["query", "selector", "offset"]) &&
+        isBoundedString(params.query, REQUEST_LIMITS.textQuery, 1) &&
+        (params.selector === undefined ||
+          isBoundedString(params.selector, REQUEST_LIMITS.selector, 1)) &&
+        (params.offset === undefined || isBoundedInteger(params.offset, REQUEST_LIMITS.textOffset))
+      )
+    case "page.waitFor":
+      return (
+        hasOnlyKeys(params, ["selector", "state", "text", "timeoutMs"]) &&
+        (params.timeoutMs === undefined ||
+          isBoundedInteger(params.timeoutMs, REQUEST_LIMITS.waitTimeoutMs, 1)) &&
+        ("text" in params
+          ? !("state" in params) &&
+            isBoundedString(params.text, REQUEST_LIMITS.textQuery, 1) &&
+            (params.selector === undefined ||
+              isBoundedString(params.selector, REQUEST_LIMITS.selector, 1))
+          : isBoundedString(params.selector, REQUEST_LIMITS.selector, 1) &&
+            typeof params.state === "string" &&
+            ["present", "absent", "visible", "hidden", "enabled", "disabled"].includes(
+              params.state,
+            ))
+      )
+    case "page.setChecked":
+      return (
+        !("selector" in params) &&
+        hasValidTarget(params, ["checked"]) &&
+        typeof params.checked === "boolean"
+      )
+    case "page.getSelectOptions":
+      return (
+        !("selector" in params) &&
+        hasValidTarget(params, ["offset"]) &&
+        (params.offset === undefined ||
+          isBoundedInteger(params.offset, REQUEST_LIMITS.selectOptionsOffset))
+      )
     case "page.getVisibleText":
       return (
         hasOnlyKeys(params, ["selector", "offset"]) &&
