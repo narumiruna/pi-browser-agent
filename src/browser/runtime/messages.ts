@@ -23,6 +23,9 @@ export const RUNTIME_METHODS = [
   "page.captureVisible",
   "page.click",
   "page.type",
+  "page.scroll",
+  "page.selectOption",
+  "page.getElementDetails",
   "webmcp.listTools",
   "webmcp.callTool",
 ] as const
@@ -34,6 +37,8 @@ export const REQUEST_LIMITS = {
   snapshotId: 36,
   elementRef: 8,
   typedText: 50_000,
+  scrollPixels: 10_000,
+  option: 256,
   url: 16_384,
   bookmarkQuery: 500,
   bookmarkResults: 50,
@@ -57,6 +62,15 @@ type RuntimeParams = {
   "page.captureVisible": Record<string, never>
   "page.click": ElementTarget
   "page.type": ElementTarget & { text: string }
+  "page.scroll": {
+    direction: "up" | "down"
+    amount: "page" | "half-page" | "pixels"
+    pixels?: number
+    snapshotId?: string
+    ref?: string
+  }
+  "page.selectOption": { snapshotId: string; ref: string } & ({ value: string } | { label: string })
+  "page.getElementDetails": { snapshotId: string; ref: string }
   "webmcp.listTools": Record<string, never>
   "webmcp.callTool": { name: string; arguments: JsonObject }
 }
@@ -219,6 +233,34 @@ function hasValidParams(method: RuntimeMethod, params: Record<string, unknown>):
         params.requestId.length > 0 &&
         params.requestId.length <= REQUEST_LIMITS.requestId
       )
+    case "page.scroll": {
+      const extra = ["direction", "amount", "pixels"]
+      const target =
+        "snapshotId" in params || "ref" in params
+          ? !("selector" in params) && hasValidTarget(params, extra)
+          : hasOnlyKeys(params, extra)
+      return (
+        target &&
+        (params.direction === "up" || params.direction === "down") &&
+        (params.amount === "page" || params.amount === "half-page" || params.amount === "pixels") &&
+        (params.amount === "pixels"
+          ? Number.isSafeInteger(params.pixels) &&
+            (params.pixels as number) >= 1 &&
+            (params.pixels as number) <= REQUEST_LIMITS.scrollPixels
+          : !("pixels" in params))
+      )
+    }
+    case "page.getElementDetails":
+      return !("selector" in params) && hasValidTarget(params)
+    case "page.selectOption": {
+      const option = "value" in params ? "value" : "label"
+      return (
+        !("selector" in params) &&
+        hasValidTarget(params, [option]) &&
+        typeof params[option] === "string" &&
+        params[option].length <= REQUEST_LIMITS.option
+      )
+    }
     case "page.click":
       return hasValidTarget(params)
     case "page.type":
