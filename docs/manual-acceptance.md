@@ -35,6 +35,21 @@ Use a production build from `npm run build`. Do not test login with development 
 - Repeat after stopping the service worker through extension DevTools. Retry if startup exceeds 10 seconds. Without site approval, expect a prompt to click the picker button, no automatic permission request, and no selection until explicit authorization. Verify permission decline/revocation, restricted pages and PDFs, tab changes during startup, repeated presses during startup, and a conflicting or unassigned shortcut. Record each result and Chrome/OS version here.
 - macOS physical-key acceptance and all Windows/Linux acceptance remain pending. No successful stable-Chrome result is inferred from the user's installation report. See `docs/plans/2026-10-15_element-picker-shortcut-plan.md`.
 
+## Slash-command acceptance — 2026-10-22
+
+Automated coverage is in `tests/unit/slash-commands.test.ts`, `tests/unit/slash-command-menu.test.ts`, `tests/unit/slash-command-routing.test.ts`, `tests/unit/authentication-actions.test.ts`, and `tests/e2e/slash-commands.spec.ts`. The 13 focused browser cases passed on headless Chrome for Testing 156.0.8078.4 on macOS, including local command effects, network isolation, lifecycle races, native-textbox semantics, active-option scrolling, and 320 px light/dark layout at 24 px text. Actual screen-reader output and the browser-owned Side Panel remain unverified; automated extension-page tests do not prove these paths.
+
+[GitHub CI run 39751534461](https://github.com/narumiruna/pi-browser-agent/actions/runs/39751534461) passed the full required workflow on Ubuntu/Node 26, with 799 unit/integration tests and 112 browser tests against the feature merged with updated `main`. Local macOS readiness and duration failures remain recorded in `docs/plans/2026-10-22_slash-commands-plan.md`; they are not evidence of manual acceptance.
+
+Before release, load a production build in stable Chrome and record Chrome/OS versions, assistive technology/version, and each result:
+
+1. With focus in the composer, type `/`. Use Arrow keys, Tab, and Enter to select a command. Expected: the screen reader announces the command list, active name/description, and expanded/collapsed state. Selection inserts text and does not execute. Enter again executes. Escape closes the list; during a response, a second Escape stops the response. Shift+Enter and IME composition must not execute a command.
+2. Repeat using pointer input at 320–360 px panel width, 24 px text, and light/dark appearance. Expected: commands remain readable, the selected option stays visible, there is no horizontal scrolling, and controls are not clipped.
+3. On `chrome://settings` with no configured credential, run `/new`, `/name Test`, `/resume`, and `/settings`. Expected: local actions work with no model or current-site permission request. Cancel the name and credential dialogs; their command drafts remain. Use `/logout` with no credential; expect a local not-configured status. Configure a dedicated test credential through `/login` and remove it with `/logout`; another provider's credential must remain.
+4. Attach an image or selected element and try a command. Expected: the draft and attachment remain with a local error. Try `/login secret`, an unknown command, and a multiline command; none reaches the provider. During a response, try Send and Queue with a command; neither interrupts nor queues it. Send `//name literal` as an ordinary prompt only when its content is safe to share; the model receives `/name literal` after normal access checks.
+
+Status: manual checks pending. Record observed results here; do not infer them from automated checks.
+
 ## Procedure
 
 1. **Clean setup and Side Panel header**

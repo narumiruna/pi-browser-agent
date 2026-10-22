@@ -17,6 +17,7 @@ interface SessionPickerElements {
 
 export class SessionPicker {
   private options: SessionPickerOption[] = []
+  private disabled = false
 
   constructor(private readonly elements: SessionPickerElements) {
     const { container, trigger, select } = elements
@@ -58,9 +59,16 @@ export class SessionPicker {
         : options[0]?.value
     if (selectedValue !== undefined) select.value = selectedValue
 
-    trigger.disabled = options.length === 0
+    trigger.disabled = this.disabled || options.length === 0
     this.syncToSelection()
     this.close()
+  }
+
+  setDisabled(disabled: boolean): void {
+    this.disabled = disabled
+    this.elements.select.disabled = disabled
+    this.elements.trigger.disabled = disabled || this.options.length === 0
+    if (disabled) this.close()
   }
 
   private renderOptions(): void {
@@ -155,6 +163,7 @@ export class SessionPicker {
   }
 
   private choose(index: number): void {
+    if (this.disabled) return
     const item = this.options[index]
     if (!item) return
 
@@ -169,7 +178,7 @@ export class SessionPicker {
     }
   }
 
-  private open(focusIndex?: number): void {
+  open(focusIndex?: number): void {
     const { menu, trigger } = this.elements
     if (trigger.disabled) return
 

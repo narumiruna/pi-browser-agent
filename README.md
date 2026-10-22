@@ -85,6 +85,23 @@ Each Pi turn groups its activity and final answer in one response card. Producti
 
 The conversation interface uses English. During a run, **Send** becomes **Add instruction**, and a separate clock control queues the prompt for later. The shorter keyboard hint keeps Enter focused on the primary action.
 
+### Slash commands
+
+Type `/` at the start of the composer to show commands. Use Arrow keys to select, then Tab or Enter to insert the command. Pointer selection also inserts it. Select **Send**, or press Enter again, to execute. Escape closes the command list before it stops a running response. Shift+Enter still inserts a line break.
+
+| Command | Action |
+| --- | --- |
+| `/new` | Start a new session. |
+| `/resume` | Open the saved-session picker. |
+| `/name [title]` | Rename this session; omit the title to open the name dialog. |
+| `/settings` | Open Settings for this session. |
+| `/login` | Open credential setup. Enter credentials only in its dialogs. |
+| `/logout` | Remove the selected model provider's credential. |
+
+Commands run locally, without a model request or current-site access. They require an idle conversation with no attached images or selected elements. They cannot be queued. Unknown commands, unsupported arguments, and multiline command input show a local error and retain the draft. Canceled dialogs also retain it. Only `/name` accepts an argument.
+
+To send literal slash-prefixed text to the model, start with `//`; Pi removes the first slash and applies normal prompt permissions. Paths such as `/tmp/file` and slashes elsewhere in a message remain ordinary prompts. These commands do not load terminal extensions, skills, or templates. Other terminal commands, including `/compact`, are not supported.
+
 The Side Panel supports creating, resuming, renaming, and deleting sessions. Complete transcript boundaries, including confirmed bookmark tool results, are stored in versioned IndexedDB records. Storage keeps at most 50 sessions and limits each record to 5 MB. **Clear all session data** removes transcripts and embedded images.
 
 Open **Account and settings** (the fixed avatar button in the top-right) and choose **Settings** to open settings in a full browser tab. The same structured menu contains credential, site-access, and conversation actions, with credential removal separated at the bottom. The settings page lets you choose a provider, model, thinking level (Minimal through Maximum), interface font, and a text size from 12 to 24 px using a slider. Save or close the page to return to the previous tab; the Side Panel conversation remains open. The selected model and thinking level are saved in each session, while the latest selections are used for new sessions. Explicitly changing either in Settings updates the opener's active session after any running response finishes. Settings persist across Side Panel and Chrome restarts. The system prompt and AGENTS-style instructions are also editable and apply to the next run. The extension does not discover instructions from the local filesystem.

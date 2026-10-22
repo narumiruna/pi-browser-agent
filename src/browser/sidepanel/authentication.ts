@@ -51,6 +51,7 @@ export class AuthenticationController {
   private readonly statusOutput?: HTMLElement
   private readonly providerPicker: SearchableSelect
   private configuring = false
+  private loggingOut = false
   private controller?: AbortController
   private refreshRequest = 0
   private verificationUri = ""
@@ -93,8 +94,13 @@ export class AuthenticationController {
       if (this.verificationUri) void chrome.tabs.create({ url: this.verificationUri })
     })
 
-    this.loginButton?.addEventListener("click", () => this.configure())
-    this.configureButton?.addEventListener("click", () => this.configure())
+    const configure = (): void => {
+      void run(async () => {
+        await this.configure()
+      }, options.updateError)
+    }
+    this.loginButton?.addEventListener("click", configure)
+    this.configureButton?.addEventListener("click", configure)
     this.refreshButton?.addEventListener("click", () => {
       if (!this.refreshButton) return
       this.refreshButton.disabled = true
@@ -106,14 +112,9 @@ export class AuthenticationController {
       })
     })
     this.logoutButton?.addEventListener("click", () => {
-      if (!this.logoutButton) return
-      this.logoutButton.disabled = true
       void run(async () => {
-        await options.configuration.logout(options.currentProviderId())
-        await this.refresh()
-      }, options.updateError).finally(() => {
-        if (this.logoutButton) this.logoutButton.disabled = false
-      })
+        await this.logout()
+      }, options.updateError)
     })
 
     chrome.permissions.onRemoved.addListener((permissions) => {
@@ -145,6 +146,10 @@ export class AuthenticationController {
     } else if (event.type === "progress" || event.type === "info") {
       this.options.onStatus?.(event.message)
     }
+  }
+
+  get isBusy(): boolean {
+    return this.configuring || this.loggingOut || this.options.configuration.isChangingAuth
   }
 
   abort(): void {
@@ -205,20 +210,20 @@ export class AuthenticationController {
     }
   }
 
-  private configure(): void {
-    if (this.configuring) return
+  async configure(guard?: () => void): Promise<boolean> {
+    if (this.isBusy) return false
     this.configuring = true
     if (this.loginButton) this.loginButton.disabled = true
     if (this.configureButton) this.configureButton.disabled = true
 
-    void run(async () => {
+    try {
       const preferredProviderId = this.options.currentProviderId()
       let selected: { authType: AuthType; providerId: string } | undefined
       while (!selected) {
         const authType = await this.selectAuthMethod()
-        if (!authType) return
+        if (!authType) return false
         const selection = await this.selectAuthProvider(authType, preferredProviderId)
-        if (!selection) return
+        if (!selection) return false
         if ("back" in selection) continue
         selected = { authType, providerId: selection.providerId }
       }
@@ -228,7 +233,9 @@ export class AuthenticationController {
         .getProviders(authType)
         .find((candidate) => candidate.id === providerId)
       if (!provider) throw new Error("Select a provider before configuring it")
+      guard?.()
       await requestProviderSetupPermission(providerId, authType)
+      guard?.()
       this.controller = new AbortController()
       try {
         await this.options.configuration.login(
@@ -237,17 +244,25 @@ export class AuthenticationController {
           this.controller.signal,
           (prompt) => this.promptForCredential(prompt),
         )
-        const loginDialog = element<HTMLDialogElement>("login-dialog")
-        if (loginDialog.open) loginDialog.close()
-        this.options.onProvidersChanged?.()
-        await this.refresh()
-        this.options.onStatus?.(
-          `${provider.name} configured with ${authType === "oauth" ? "an account" : "an API key"}`,
-        )
-      } finally {
-        this.controller = undefined
+      } catch (error) {
+        if (
+          this.controller.signal.aborted ||
+          (error instanceof Error && error.name === "AbortError")
+        ) {
+          return false
+        }
+        throw error
       }
-    }, this.options.updateError).finally(() => {
+      const loginDialog = element<HTMLDialogElement>("login-dialog")
+      if (loginDialog.open) loginDialog.close()
+      this.options.onProvidersChanged?.()
+      await this.refresh()
+      this.options.onStatus?.(
+        `${provider.name} configured with ${authType === "oauth" ? "an account" : "an API key"}`,
+      )
+      return true
+    } finally {
+      this.controller = undefined
       this.configuring = false
       if (this.loginButton) this.loginButton.disabled = false
       if (this.configureButton) {
@@ -255,7 +270,34 @@ export class AuthenticationController {
           .getProviders()
           .some((provider) => provider.authMethods.length > 0)
       }
-    })
+    }
+  }
+
+  async logout(guard?: () => void): Promise<boolean> {
+    if (this.isBusy) return false
+    this.loggingOut = true
+    if (this.logoutButton) this.logoutButton.disabled = true
+    try {
+      const providerId = this.options.currentProviderId()
+      const credential = await this.options.configuration.credentials.read(providerId)
+      if (this.options.currentProviderId() !== providerId) {
+        throw new Error("The selected provider changed. Try again.")
+      }
+      guard?.()
+      if (!credential) {
+        const provider = this.options.configuration
+          .getProviders()
+          .find((candidate) => candidate.id === providerId)
+        this.options.onStatus?.(`${provider?.name ?? providerId} not configured`)
+        return true
+      }
+      await this.options.configuration.logout(providerId)
+      await this.refresh()
+      return true
+    } finally {
+      this.loggingOut = false
+      if (this.logoutButton) this.logoutButton.disabled = false
+    }
   }
 
   private async selectAuthMethod(): Promise<AuthType | undefined> {
@@ -324,6 +366,7 @@ export class AuthenticationController {
         this.authPromptSelect.append(option)
       }
     }
+    this.authPromptDialog.returnValue = ""
     this.authPromptDialog.showModal()
     queueMicrotask(() => (isSelect ? this.authPromptSelect : this.authPromptInput).focus())
 
