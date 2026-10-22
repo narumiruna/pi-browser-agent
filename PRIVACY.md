@@ -25,7 +25,7 @@ Pi Browser Agent handles prompts, editable voice transcripts, attached images, m
 
 When required by a user request, Pi Browser Agent may handle the active tab's URL and approved page context, including visible text, selected text, descriptions of visible interactive elements, screenshot content, and results returned by page or WebMCP tools. Chat can run without a readable tab. The Side Panel displays a bounded active-page title and capability label, but does not automatically send protected-page URLs, local file paths, or titles to the model. A turn begun without a readable page keeps page tools disabled even if another tab becomes active, unless the agent explicitly switches to or opens an approved web tab after confirmation. If the user activates the element picker, a selected context can include bounded visible text, accessibility metadata, allowlisted attributes, viewport geometry, and a best-effort selector. It excludes input values, hidden text, full HTML, URL credentials, iframe contents, and Shadow DOM. It targets only the active, visible HTTP or HTTPS tab in the focused Chrome window.
 
-Pi Browser Agent does not continuously collect page content or maintain a background browsing-history service. It does not read Chrome internal pages, Web Store pages, local files, or PDFs; this release provides no file/PDF import. When the agent requests web tabs, it receives up to 20 current-window HTTP(S) tab titles and origins without reading those pages. Switching to one or opening an HTTP(S) tab requires user confirmation or a matching, previously approved action and site access; protected and local tabs are excluded. If the user enters a search query, the query is included in the confirmed destination URL and shared with the search provider when the tab opens. Page access occurs to provide the user-facing assistant features and is subject to Chrome permissions and Pi Browser Agent's runtime checks. Unsent selected-element chips remain only in memory and are cleared on relevant tab or session changes. They are shared only after the user selects **Send**.
+Pi Browser Agent does not continuously collect page content or maintain a background browsing-history service. Page tools do not read Chrome internal pages, Web Store pages, local files, or PDFs. General file/PDF import is not supported. The separate Skills feature reads only a `SKILL.md` file that the user explicitly selects; it grants no general filesystem access. When the agent requests web tabs, it receives up to 20 current-window HTTP(S) tab titles and origins without reading those pages. Switching to one or opening an HTTP(S) tab requires user confirmation or a matching, previously approved action and site access; protected and local tabs are excluded. If the user enters a search query, the query is included in the confirmed destination URL and shared with the search provider when the tab opens. Page access occurs to provide the user-facing assistant features and is subject to Chrome permissions and Pi Browser Agent's runtime checks. Unsent selected-element chips remain only in memory and are cleared on relevant tab or session changes. They are shared only after the user selects **Send**.
 
 ### Bookmark information
 
@@ -36,6 +36,12 @@ If the user explicitly confirms a bookmark operation and grants the optional per
 If configured by the user, remote MCP servers receive connection requests, client/protocol metadata, and confirmed tool names and arguments. A successful **Connect and preview** enables discovery for later submitted runs. Tool metadata and returned text or structured JSON can be sent to the selected model provider and stored in conversation history. Each call requires fresh confirmation in all modes. Remote MCP does not require a readable page.
 
 Server names, exact endpoint approvals, enablement, and configuration revisions are stored locally. Optional MCP bearer tokens use a separate trusted local store, bound to the server and endpoint. They are sent only as authentication to that endpoint, not to the selected model, websites, the service worker, transcripts, or diagnostics. MCP requests omit cookies and reject redirects. Removing a server deletes its token and endpoint connection approval; deleting sessions does not remove server settings or tokens. Remote services apply their own retention policies. Cancelling a request cannot undo a remote side effect.
+
+### Imported skills
+
+Users can select a UTF-8 `SKILL.md`, review its plain-text metadata and body, and import it into trusted local extension storage. Imported skills and explicit replacements start disabled. File selection, review, import, and enablement do not send a model request. On a later explicit chat submission, enabled skill IDs, names, and descriptions can reach the selected model provider. The model can request an enabled skill's body through `skills_load`; that body then enters the conversation and saved history. A later request can resend this history.
+
+Skill text is untrusted task guidance and can affect model behavior, but cannot grant browser permissions or bypass confirmations. Do not import secrets or content that is unsafe to share. Settings changes apply to the next run; an active run retains its initial snapshot. Disabling or deleting a skill blocks loads in future runs, but does not erase previously loaded content from sessions or provider records. Delete affected sessions separately. Deleting sessions does not delete installed skills. No scripts, supporting files, remote installation, or local directory discovery are supported. See [browser skills](docs/skills.md).
 
 ### Settings and permission records
 
@@ -51,7 +57,7 @@ Pi Browser Agent uses information only to:
 
 - authenticate requests to a provider selected by the user;
 - generate and display AI responses;
-- provide user-requested page, screenshot, bookmark, voice, and browser-tool features;
+- provide user-requested page, screenshot, bookmark, voice, skill, and browser-tool features;
 - preserve user settings and conversation sessions;
 - enforce permission, confirmation, size, retention, and stale-context safeguards; and
 - diagnose errors shown to the user without intentionally exposing credentials.
@@ -60,7 +66,7 @@ Pi Browser Agent uses information only to:
 
 Pi Browser Agent can share information in these circumstances:
 
-- **Selected AI provider:** When the user sends a prompt or approves a tool operation, Pi Browser Agent sends the provider the information needed for the conversation. Depending on the request, this may include prompts, prior conversation content, the current page URL, visible or selected page content, element descriptions, attached images, approved screenshots, approved bookmark titles and URLs, and tool results. Provider credentials are sent only to the associated provider endpoint for authentication.
+- **Selected AI provider:** When the user sends a prompt or approves a tool operation, Pi Browser Agent sends the provider the information needed for the conversation. Depending on the request, this may include prompts, prior conversation content, the current page URL, visible or selected page content, element descriptions, attached images, approved screenshots, approved bookmark titles and URLs, enabled skill metadata, loaded skill bodies, and tool results. Provider credentials are sent only to the associated provider endpoint for authentication.
 - **OpenAI authentication:** If the user chooses OpenAI Codex account login, Pi Browser Agent communicates with OpenAI's authentication and ChatGPT services to complete and refresh the device authorization flow.
 - **Configured remote MCP server:** Explicit setup or a later submitted run discovers enabled server tools. A confirmed call sends the displayed tool name and arguments to the approved endpoint. Tool metadata and results can also reach the selected AI provider and local transcript. MCP tokens authenticate only to their configured endpoint.
 - **Chrome speech provider:** If the user enables voice input, Chrome's speech service may process spoken audio and return transcript text.
@@ -72,7 +78,7 @@ Pi Browser Agent does not sell user data, transfer it to data brokers or adverti
 
 ## Local storage and retention
 
-- Provider credentials, MCP server configurations and tokens, settings, the active session identifier, approved origins, and Convenient approval fingerprints remain in `chrome.storage.local` until removed, cleared, or extension data is deleted.
+- Provider credentials, MCP server configurations and tokens, installed skill records (including disabled bodies), settings, the active session identifier, approved origins, and Convenient approval fingerprints remain in `chrome.storage.local` until removed, cleared, or extension data is deleted.
 - An undelivered context-menu selection and Balanced approval fingerprints remain in `chrome.storage.session` until consumed, cleared, or the browser session ends.
 - Conversation records are stored in the extension's IndexedDB database. Pi Browser Agent retains at most 50 sessions and limits each serialized session record to 5 MB. If a session exceeds that limit, Pi Browser Agent first replaces embedded images with omission placeholders and then, if necessary, removes the oldest messages until the record fits. The Side Panel reports this loss to the user.
 - Partial streaming output, unsent pasted or annotated image previews, editable annotation strokes, unsent selected-element chips, and live picker/operation state are kept only in memory for the relevant Side Panel, page, or worker lifetime.

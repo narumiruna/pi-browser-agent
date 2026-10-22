@@ -40,6 +40,8 @@ import {
   syncSessionTree,
   validateSessionTree,
 } from "../sessions/session-tree.js"
+import { SkillRun } from "../skills/run.js"
+import { SkillStore } from "../skills/store.js"
 import { type AppSettings, getActiveSessionId, saveActiveSessionId } from "../storage.js"
 import { type ConfirmationHandler, createBrowserTools } from "./browser-tools.js"
 
@@ -122,6 +124,8 @@ export class BrowserAgentRuntime {
   private finishingRun?: Promise<void>
   private closing = false
   private preparing = false
+  private preparationGeneration = 0
+  private skillRun?: SkillRun
   private persistChain: Promise<void> = Promise.resolve()
   private pageToolsEnabled = true
   private treeNavigating = false
@@ -190,6 +194,7 @@ export class BrowserAgentRuntime {
     })
     this.agent.subscribe(async (event) => {
       if (event.type === "agent_end") {
+        this.skillRun?.finish()
         const cleanup = this.mcp.finish()
         const idle = Promise.all([this.agent.waitForIdle(), cleanup]).then(() => undefined)
         this.finishingRun = idle
@@ -439,24 +444,37 @@ export class BrowserAgentRuntime {
       throw new Error("Wait for the authentication change to finish")
     this.assertImageInput(images)
     const content = composeElementContext(text, elements)
-    if (this.preparing) throw new Error("Wait for remote MCP discovery to finish")
+    if (this.preparing) throw new Error("Wait for skill and remote MCP discovery to finish")
     if (!this.agent.state.isStreaming) {
+      if (this.shuttingDown) throw new Error("The panel is shutting down")
       this.pageToolsEnabled = usePage
       this.preparing = true
+      const generation = ++this.preparationGeneration
+      const assertPreparing = () => {
+        if (generation !== this.preparationGeneration || this.shuttingDown) {
+          throw new Error("Run preparation was cancelled")
+        }
+      }
       let remoteTools: AgentTool[]
+      let skillRun: SkillRun
       try {
         this.callbacks.onPreparing?.(true)
+        skillRun = new SkillRun(await new SkillStore().list())
+        assertPreparing()
         remoteTools = await this.mcp.prepare()
+        assertPreparing()
       } catch (error) {
         this.preparing = false
-        if (!this.closing) await this.applyPendingSettings()
+        if (!this.closing && !this.shuttingDown) await this.applyPendingSettings()
         throw error
       } finally {
         this.preparing = false
         this.callbacks.onPreparing?.(false)
       }
+      this.skillRun?.finish()
+      this.skillRun = skillRun
       this.updateAvailableTools()
-      this.agent.state.tools.push(...remoteTools)
+      this.agent.state.tools.push(...skillRun.tools(), ...remoteTools)
       this.updateSystemPrompt()
       if (images.length > 0) await this.agent.prompt(multimodalUserMessage(content, images))
       else await this.agent.prompt(content)
@@ -479,6 +497,8 @@ export class BrowserAgentRuntime {
 
   abort(): void {
     this.assertNotNavigatingTree()
+    this.preparationGeneration++
+    this.skillRun?.finish()
     this.mcp.invalidate()
     this.agent.abort()
   }
@@ -549,6 +569,8 @@ export class BrowserAgentRuntime {
     const wasRunning = this.agent.state.isStreaming || this.preparing
     this.closing = wasRunning
     this.shuttingDown = true
+    this.preparationGeneration++
+    this.skillRun?.finish()
     if (this.treeNavigation) await this.treeNavigation
     this.mcp.dispose()
     this.agent.abort()
@@ -584,6 +606,8 @@ export class BrowserAgentRuntime {
   }
 
   private async stopAgent(): Promise<void> {
+    this.preparationGeneration++
+    this.skillRun?.finish()
     if (this.treeNavigation) await this.treeNavigation
     this.mcp.invalidate()
     this.agent.abort()
@@ -625,6 +649,8 @@ export class BrowserAgentRuntime {
     this.treePreview = undefined
     this.persistenceFailure = undefined
     this.failedPersistRevision = 0
+    this.skillRun?.finish()
+    this.skillRun = undefined
     // Reset queues and streaming state without replaying the discarded transcript's system metadata.
     this.agent.state.messages = []
     this.agent.reset()
@@ -654,7 +680,12 @@ export class BrowserAgentRuntime {
 
   private updateSystemPrompt(): void {
     const messages = this.agent.state.messages
-    const prompt = composeSystemPrompt(this.configuration.appSettings)
+    const prompt = [
+      composeSystemPrompt(this.configuration.appSettings),
+      this.skillRun?.instructions,
+    ]
+      .filter(Boolean)
+      .join("\n\n")
     const first = messages[0]
     const baseline = createInitialSystemMessage(
       prompt,

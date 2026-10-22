@@ -2,7 +2,7 @@
 
 ## Trust boundaries
 
-Trusted extension contexts are the Side Panel and MV3 service worker. Web pages, injected page results, bookmark titles and URLs, model output, WebMCP definitions, and WebMCP results are untrusted.
+Trusted extension contexts include the Side Panel, Settings page, and MV3 service worker. Web pages, injected page results, bookmark titles and URLs, model output, WebMCP definitions, WebMCP results, and imported skill metadata and bodies are untrusted.
 
 `chrome.storage.local` is restricted to `TRUSTED_CONTEXTS`. API keys and OAuth values never enter runtime messages, the service worker, injected functions, model messages, tool results, IndexedDB sessions, or logs. Diagnostic strings pass through credential redaction.
 
@@ -15,7 +15,7 @@ Credential removal first aborts the agent, waits for it to become idle, then rem
 ## Current-tab controls
 
 - Chat, provider authentication, and individually confirmed bookmark reads work without a readable tab. Only the active, accessible HTTP(S) tab in the focused Chrome window is targeted by page tools. A no-page turn keeps those tools disabled even if the active tab changes; queued instructions cannot upgrade it.
-- The UI capability label is not authorization: known restricted origins, local files, and apparent PDFs are excluded before binding; the worker probes document type and scriptability before page reads, WebMCP, picker, screenshots, tab metadata/navigation, and persistence of context-menu selection text, so extensionless PDF viewers also fail closed. Chrome-denied injection marks a web tab unavailable until reload/navigation. The worker still checks visibility and epoch; page tools also require exact-origin approval. The explicit context-menu gesture does not grant page-tool access. File/PDF page reads and local import are not implemented.
+- The UI capability label is not authorization: known restricted origins, local files, and apparent PDFs are excluded before binding; the worker probes document type and scriptability before page reads, WebMCP, picker, screenshots, tab metadata/navigation, and persistence of context-menu selection text, so extensionless PDF viewers also fail closed. Chrome-denied injection marks a web tab unavailable until reload/navigation. The worker still checks visibility and epoch; page tools also require exact-origin approval. The explicit context-menu gesture does not grant page-tool access. File/PDF page reads and general file import are not implemented. The separate Skills picker reads only a user-selected `SKILL.md`; it grants no page-tool or general filesystem access.
 - Tab and window activation automatically update the target; unsupported pages clear it. UI-only page status (bounded title and kind) changes even between two unsupported tabs; protected URLs and file paths are not sent to the model by default.
 - Tab ID, URL, and context epoch identify the operation context.
 - Navigation or a visible-tab change after request creation causes `STALE_CONTEXT`.
@@ -45,6 +45,14 @@ MCP tokens use a separate trusted store and authenticate only to the approved en
 Every remote call requires a new confirmation containing its endpoint, tool, and complete bounded arguments, regardless of confirmation mode or server read-only annotations. MCP calls execute sequentially with `replay: "never"`. Server metadata and results cannot grant access, enable tools, or become system instructions. Only bounded text blocks and structured JSON results are accepted; no linked resource is fetched. The JSON Schema subset is interpreted without code generation, reference fetching, or regex execution.
 
 [Remote MCP limits and recovery](mcp.md) define fixed request, response, declaration, schema, pagination, tool-count, and duration limits. A failed or cancelled call can still have changed remote state; the UI reports uncertainty rather than success or an automatic retry. No MCP client or token is passed to the service worker or a web page. Removing a server deletes its token and connection approval; previous session data remains until deleted separately.
+
+## Skill controls
+
+Skill import requires an explicit file selection and plain-text review. Imported records and explicit replacements start disabled; replacement retains the installed ID. Names, descriptions, and bodies are displayed as text, not executable HTML. The parser accepts only the fixed frontmatter subset and valid UTF-8 within the [skill limits](skills.md). It does not evaluate YAML tags, fetch dependencies, traverse directories, execute scripts, or install remote packages. Static warnings cannot identify every unsupported dependency; review the complete body.
+
+Enabled metadata is serialized as JSON containing only `id`, `name`, and `description`. The body is withheld until the model calls `skills_load({id})`. Both metadata and loaded bodies remain untrusted, user-authorized task guidance, not authority to change system rules, available tools, Chrome permissions, or browser confirmations. A no-page run can load a skill but does not gain page tools from it. Imported text can still influence model behavior; enable only reviewed content that is safe to share with the selected provider.
+
+The runtime snapshots enabled records at run start and validates load IDs against that snapshot. Settings edits apply to the next run, not the active snapshot. Repeated loads count toward the aggregate per-run byte limit. Disable all skills to omit the catalog and loader from later runs. A previous tool result cannot authorize a new load of a disabled or deleted record. Loaded bodies remain in ordinary saved history; disabling, replacement, or deletion does not erase them. Delete affected sessions separately to remove local transcripts; this cannot retract provider-held data.
 
 ## Bookmark controls
 

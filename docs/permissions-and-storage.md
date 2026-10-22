@@ -8,7 +8,7 @@
 | `contextMenus` | Send the current selection to the Side Panel. |
 | `scripting` | Run fixed bounded operation functions in the current page. |
 | `sidePanel` | Host the agent and user interface. |
-| `storage` | Store settings, credentials, and undelivered context-menu selections. |
+| `storage` | Store settings, credentials, installed skills, and undelivered context-menu selections. |
 | `tabs` | Identify the active tab and its URL when the user switches tabs or windows. |
 
 ## Optional host permissions
@@ -48,6 +48,16 @@ Two versioned `chrome.storage.local` keys are restricted to trusted contexts and
 
 Remove servers individually to delete these settings and tokens. **Clear all session data** deletes conversation records, not MCP configuration. Existing transcripts can retain tool declarations, arguments, and results until the sessions are deleted or compacted. Older builds ignore the new keys; remove servers before downgrading if the tokens must not remain. See [remote MCP](mcp.md).
 
+## Skill permissions and storage
+
+The Skills picker reads only the UTF-8 `SKILL.md` selected by the user. It adds no manifest or host permission and grants no general filesystem access, directory traversal, or local-file page-tool access. Import, review, and enablement make no model request. A later submitted run shares enabled metadata; `skills_load({id})` can return a reviewed body from that run's enabled snapshot. Changes apply to the next run.
+
+Skills use the trusted `chrome.storage.local` key `piBrowserAgentSkillsV1`, separate from settings, credentials, MCP records, and sessions. The exact envelope is `{version:1,records:[...]}`. Each record contains only `{id,name,description,body,enabled}`. Imports start disabled; explicit replacements retain the ID and start disabled. Cross-context writes serialize through a Web Lock and publish the complete envelope in one write. Failed writes leave the previous valid data unchanged; invalid stored records fail without being overwritten.
+
+Limits are 65,536 UTF-8 input bytes, 64 UTF-16 name units, 512 UTF-16 description units, 20 installed records, 524,288 UTF-8 serialized store bytes, 16,384 UTF-8 serialized enabled-catalog bytes, and 131,072 UTF-8 loaded-result bytes per run, including JSON wrapper overhead and repeated loads. See [the exact format and budget definitions](skills.md).
+
+Disable or delete skills in Settings to block loads in later runs. This does not erase loaded bodies from saved transcripts; delete affected sessions separately. **Clear all session data** does not remove skills. For corrupt-store recovery or downgrade cleanup, remove only `piBrowserAgentSkillsV1` from trusted extension storage as described in [skill recovery](skills.md#storage-and-recovery); do not clear credentials or unrelated settings. Older builds ignore this separate key.
+
 ## Microphone access
 
 Microphone access is a Chrome content permission for the extension origin, not a manifest permission. Chrome suppresses microphone prompts in Side Panels, so selecting the microphone without an existing grant opens a full packaged Pi Browser Agent access tab. Only its explicit **Allow microphone access** button calls `getUserMedia({ audio: true })`; the temporary stream is stopped immediately after Chrome records the grant. The Side Panel then uses Chrome's Web Speech API for dictation. Spoken audio may be processed by Chrome's speech service, while only the editable transcript is sent to the selected model provider after the user selects **Send**. Users can revoke the grant from Chrome microphone settings; Pi Browser Agent stores no separate microphone approval.
@@ -56,9 +66,9 @@ Microphone access is a Chrome content permission for the extension origin, not a
 
 | Store | Data | Lifetime |
 | --- | --- | --- |
-| `chrome.storage.local` | Provider-scoped API keys or Codex OAuth credential, selected provider/model/thinking level, confirmation mode, interface preferences, instructions, active session ID, app-approved exact host patterns, Convenient approval fingerprints | Until removed, mode changed, or extension data cleared (Convenient fingerprints); settings and other records retain their own lifetimes |
+| `chrome.storage.local` | Installed skill records (including disabled bodies), provider-scoped API keys or Codex OAuth credential, selected provider/model/thinking level, confirmation mode, interface preferences, instructions, active session ID, app-approved exact host patterns, Convenient approval fingerprints | Until removed, mode changed, or extension data cleared (Convenient fingerprints); settings and other records retain their own lifetimes |
 | `chrome.storage.session` | An undelivered context-menu selection and Balanced approval fingerprints | Browser session (or until manually cleared/mode changed for approval fingerprints) |
-| IndexedDB `pi-browser-agent-sessions` | Versioned complete messages and tool results, including confirmed bookmark titles and URLs, sent selected-element JSON, model state, names, timestamps, embedded original screenshots and sent pasted/annotated image content | Until retention deletion or user clear |
+| IndexedDB `pi-browser-agent-sessions` | Versioned complete messages and tool results, including loaded skill bodies, confirmed bookmark titles and URLs, sent selected-element JSON, model state, names, timestamps, embedded original screenshots and sent pasted/annotated image content | Until retention deletion or user clear |
 | Memory | Live agent, partial stream, confirmations, login cancellation, picker token/overlay state, unsent selected-element chips, unsent pasted/annotated image previews, and editable annotation strokes | Side Panel, page, or worker lifetime as applicable |
 
 Local extension storage is restricted to trusted contexts. Content injection has no storage API channel and receives only operation parameters. Strict confirms each protected operation; Balanced (new-install default) remembers the same operation and target until Chrome restarts; Convenient remembers them across restarts. Existing installations without a saved mode remain Strict. Approval fingerprints are SHA-256 digests of bounded, canonical action identities, capped at 256 per mode; raw WebMCP arguments, bookmark queries, and full URLs are not kept in the approval ledger. Settings can clear both ledgers; switching modes clears them automatically. Form submissions, downloads, and clicks lacking a stable target always prompt. Chrome-owned permission requests are never cached or suppressed by these modes.
