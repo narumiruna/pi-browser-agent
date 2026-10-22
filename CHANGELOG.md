@@ -1,5 +1,20 @@
 # pi-browser-agent
 
+## 0.8.0
+
+### Minor Changes
+
+- 409c6a6: Add bounded viewport and container scrolling, safe element details, and confirmed native option selection through discovered references. Invalidate element snapshots after scroll and selection, with permission, schema, and browser-layout tests.
+- 1ab2115: Add filtered element discovery, bounded literal text search and condition waits, label-only native select option reads, and confirmed checkbox/radio state changes. Preserve active-tab access checks, reference lifetime, and no-replay behavior without new permissions or dependencies.
+- 089d41e: Add reviewed, opt-in browser skills imported from text-only `SKILL.md` files. Keep enabled discovery metadata separate from model-requested bodies, enforce fixed parsing/storage/run limits, and preserve browser authorization boundaries. Provide explicit replacement, disablement, and deletion with saved-history retention disclosures.
+- 830afb3: Add local Side Panel slash commands for sessions, settings, and credential setup, with keyboard and pointer completion. Commands run only while idle and do not send command text or attached context to the model.
+- 3e82879: Add `/tree` for persistent conversation branches. Restore earlier user messages as editable drafts, switch between completed response paths without replaying tools, and retain inactive branches across restarts. Preserve legacy sessions and reject oversized tree writes without pruning branch history.
+
+### Patch Changes
+
+- d1f0973: Enable newly added browser tools by default after updates. Save explicit disabled-tool choices while keeping an enabled snapshot for older builds. Preserve original-tool opt-outs from legacy settings and enable later additions once; confirmations and Chrome permissions are unchanged.
+- 42dddc3: Fix element-picker startup during unrelated tab navigation and selection over page modals and iframes. Protect the viewport shield from page CSS, preserve legacy Chrome zoom geometry and forced-colors support, report protection failures, and prevent stale startup cleanup from stopping a replacement picker. Iframe contents and shadow-owned controls remain unsupported; permissions and storage are unchanged.
+
 ## 0.7.0
 
 ### Minor Changes
