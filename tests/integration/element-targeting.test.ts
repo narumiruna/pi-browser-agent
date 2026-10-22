@@ -111,6 +111,8 @@ beforeEach(async () => {
   Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" })
   Object.defineProperty(document, "elementFromPoint", { configurable: true, value: undefined })
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+    x: 0,
+    y: 0,
     left: 0,
     top: 0,
     right: 20,
@@ -752,6 +754,318 @@ describe("worker element reference lifecycle", () => {
     })
     expect(chrome.tabs.update).not.toHaveBeenCalled()
   })
+})
+
+describe("worker browser interactions", () => {
+  function viewportFixture() {
+    const root = document.documentElement
+    const scrollTo = vi.fn((options: ScrollToOptions) => {
+      root.scrollTop = Number(options.top ?? 0)
+    })
+    Object.defineProperty(document, "scrollingElement", { configurable: true, value: root })
+    Object.defineProperties(root, {
+      clientHeight: { configurable: true, value: 700 },
+      scrollHeight: { configurable: true, value: 700 },
+      scrollTo: { configurable: true, value: scrollTo },
+    })
+    return scrollTo
+  }
+
+  afterEach(() => {
+    Reflect.deleteProperty(document, "scrollingElement")
+    for (const property of ["clientHeight", "scrollHeight", "scrollTo"]) {
+      Reflect.deleteProperty(document.documentElement, property)
+    }
+    document.documentElement.scrollTop = 0
+  })
+
+  function selectFixture(): HTMLSelectElement {
+    document.body.innerHTML =
+      '<select aria-label="Choice"><option value="private-first">First</option><option value="private-second">Second</option><option disabled value="private-disabled">Disabled</option></select>'
+    return document.querySelector("select") as HTMLSelectElement
+  }
+
+  test.each(["page.scroll", "page.selectOption", "page.getElementDetails"])(
+    "%s rejects denied site access before injection",
+    async (method) => {
+      selectFixture()
+      const target = await discover("Choice")
+      permission = false
+      const count = executeScript.mock.calls.length
+      const params: JsonObject =
+        method === "page.scroll"
+          ? { direction: "down", amount: "page" }
+          : method === "page.selectOption"
+            ? { ...target, label: "Second" }
+            : target
+      expect(await send(method, params, { confirmed: true })).toMatchObject({
+        ok: false,
+        error: { code: "PERMISSION_DENIED" },
+      })
+      expect(executeScript).toHaveBeenCalledTimes(count)
+    },
+  )
+
+  test("details returns geometry and state without field values or mutation", async () => {
+    document.body.innerHTML =
+      '<input aria-label="Private title" role="textbox" value="private-field-value" readonly required>'
+    const input = document.querySelector("input") as HTMLInputElement
+    input.focus()
+    const events = vi.fn()
+    input.addEventListener("input", events)
+    input.addEventListener("change", events)
+    const target = await discover("Private title")
+    const result = await send("page.getElementDetails", target)
+    expect(result).toMatchObject({
+      ok: true,
+      result: {
+        name: "Private title",
+        role: "textbox",
+        visible: true,
+        rect: { x: 0, y: 0, top: 0, right: 20, bottom: 20, left: 0, width: 20, height: 20 },
+        state: { disabled: false, readOnly: true, required: true, focused: true },
+        scrollability: {
+          vertical: false,
+          horizontal: false,
+          scrollTop: 0,
+          scrollLeft: 0,
+          scrollHeight: 0,
+          scrollWidth: 0,
+          clientHeight: 0,
+          clientWidth: 0,
+        },
+      },
+    })
+    expect(JSON.stringify(result)).not.toContain("private-field-value")
+    expect(JSON.stringify(result)).not.toContain('"value":')
+    expect(input.value).toBe("private-field-value")
+    expect(events).not.toHaveBeenCalled()
+    expect(await send("page.getElementDetails", target)).toMatchObject({ ok: true })
+  })
+
+  test("details reports native and ARIA states without checkbox values", async () => {
+    document.body.innerHTML =
+      '<input type="checkbox" aria-label="Enabled" role="checkbox" value="private-checkbox-value" checked disabled required aria-expanded="false" aria-selected="true">'
+    const details = await send("page.getElementDetails", await discover("Enabled"))
+    expect(details).toMatchObject({
+      ok: true,
+      result: {
+        role: "checkbox",
+        state: {
+          disabled: true,
+          readOnly: false,
+          checked: true,
+          expanded: "false",
+          selected: "true",
+          required: true,
+          focused: false,
+        },
+      },
+    })
+    expect(JSON.stringify(details)).not.toContain("private-checkbox-value")
+  })
+
+  test.each(["up", "down"])(
+    "zero-distance viewport scroll %s invalidates worker and isolated snapshots",
+    async (direction) => {
+      const scrollTo = viewportFixture()
+      const target = await discover("Go")
+      expect(await send("page.getElementDetails", target)).toMatchObject({ ok: true })
+      const detailsInjection = executeScript.mock.calls.at(-1)?.[0]
+      expect(await send("page.scroll", { direction, amount: "page" })).toMatchObject({
+        ok: true,
+        result: {
+          distance: 0,
+          atTop: true,
+          atBottom: true,
+          position: 0,
+          maxPosition: 0,
+          snapshotInvalidated: true,
+        },
+      })
+      expect(scrollTo).toHaveBeenCalledOnce()
+      const count = injectionCount
+      expect(await send("page.getElementDetails", target)).toMatchObject({
+        ok: false,
+        error: { code: "STALE_CONTEXT" },
+      })
+      expect(injectionCount).toBe(count)
+      expect(await detailsInjection?.func(...(detailsInjection.args ?? []))).toMatchObject({
+        ok: false,
+        error: { code: "STALE_CONTEXT" },
+      })
+    },
+  )
+
+  test.each(["value", "label"] as const)(
+    "selects by %s only after confirmation, uses the native setter and invalidates both registries",
+    async (option) => {
+      const select = selectFixture()
+      const nativeSetterTrap = vi.fn()
+      Object.defineProperty(select, "value", {
+        configurable: true,
+        get: () => select.options[select.selectedIndex]?.value,
+        set: nativeSetterTrap,
+      })
+      const events: Array<{ type: string; value: string; bubbles: boolean }> = []
+      for (const type of ["input", "change"]) {
+        document.body.addEventListener(type, (event) => {
+          events.push({ type: event.type, value: select.value, bubbles: event.bubbles })
+        })
+      }
+      const target = await discover("Choice")
+      expect(await send("page.getElementDetails", target)).toMatchObject({ ok: true })
+      const detailsInjection = executeScript.mock.calls.at(-1)?.[0]
+      const params = { ...target, [option]: option === "value" ? "private-second" : "Second" }
+      expect(await send("page.selectOption", params)).toMatchObject({
+        ok: false,
+        error: { code: "CONFIRMATION_REQUIRED" },
+      })
+      expect(select.value).toBe("private-first")
+      expect(events).toEqual([])
+      expect(await send("page.selectOption", params, { confirmed: true })).toMatchObject({
+        ok: true,
+      })
+      expect(nativeSetterTrap).not.toHaveBeenCalled()
+      expect(select.value).toBe("private-second")
+      expect(events).toEqual([
+        { type: "input", value: "private-second", bubbles: true },
+        { type: "change", value: "private-second", bubbles: true },
+      ])
+      const count = injectionCount
+      expect(await send("page.getElementDetails", target)).toMatchObject({
+        ok: false,
+        error: { code: "STALE_CONTEXT" },
+      })
+      expect(injectionCount).toBe(count)
+      // Replay the old read directly, without worker snapshot validation.
+      expect(await detailsInjection?.func(...(detailsInjection.args ?? []))).toMatchObject({
+        ok: false,
+        error: { code: "STALE_CONTEXT" },
+      })
+      expect(await send("page.getElementDetails", await discover("Choice"))).toMatchObject({
+        ok: true,
+      })
+    },
+  )
+
+  test("selecting the current option still requires confirmation and invalidates references", async () => {
+    const select = selectFixture()
+    const events = vi.fn()
+    select.addEventListener("input", events)
+    select.addEventListener("change", events)
+    const target = await discover("Choice")
+    expect(await send("page.selectOption", { ...target, label: "First" })).toMatchObject({
+      ok: false,
+      error: { code: "CONFIRMATION_REQUIRED" },
+    })
+    expect(events).not.toHaveBeenCalled()
+    expect(
+      await send("page.selectOption", { ...target, label: "First" }, { confirmed: true }),
+    ).toMatchObject({ ok: true })
+    expect(select.value).toBe("private-first")
+    expect(events).toHaveBeenCalledTimes(2)
+    expect(await send("page.getElementDetails", target)).toMatchObject({
+      ok: false,
+      error: { code: "STALE_CONTEXT" },
+    })
+  })
+
+  test.each([
+    '<select aria-label="Choice" disabled><option>First</option></select>',
+    '<select aria-label="Choice" multiple><option>First</option></select>',
+    '<button aria-label="Choice">First</button>',
+  ])("does not select unsupported or disabled controls: %s", async (markup) => {
+    document.body.innerHTML = markup
+    const events = vi.fn()
+    document.querySelector("[aria-label]")?.addEventListener("input", events)
+    document.querySelector("[aria-label]")?.addEventListener("change", events)
+    const result = await send(
+      "page.selectOption",
+      { ...(await discover("Choice")), label: "First" },
+      { confirmed: true },
+    )
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: expect.stringMatching(/^(NOT_SUPPORTED|PERMISSION_DENIED)$/) },
+    })
+    expect(events).not.toHaveBeenCalled()
+  })
+
+  test("does not select missing or disabled options or a changed confirmation target", async () => {
+    const select = selectFixture()
+    const events = vi.fn()
+    select.addEventListener("input", events)
+    select.addEventListener("change", events)
+    const target = await discover("Choice")
+    for (const label of ["Missing", "Disabled"]) {
+      expect(
+        await send("page.selectOption", { ...target, label }, { confirmed: true }),
+      ).toMatchObject({
+        ok: false,
+      })
+      expect(select.value).toBe("private-first")
+    }
+    expect(await send("page.selectOption", { ...target, label: "Second" })).toMatchObject({
+      ok: false,
+      error: { code: "CONFIRMATION_REQUIRED" },
+    })
+    select.setAttribute("aria-label", "Changed")
+    expect(
+      await send("page.selectOption", { ...target, label: "Second" }, { confirmed: true }),
+    ).toMatchObject({ ok: false, error: { code: "STALE_CONTEXT" } })
+    expect(events).not.toHaveBeenCalled()
+  })
+
+  for (const method of ["page.scroll", "page.selectOption"] as const) {
+    test.each(["permission", "cancellation", "focus"] as const)(
+      `${method} rechecks %s immediately before mutation`,
+      async (guard) => {
+        const select = selectFixture()
+        const target = await discover("Choice")
+        const events = vi.fn()
+        select.addEventListener("input", events)
+        select.addEventListener("change", events)
+        const scroll = viewportFixture()
+        beforeInjection = async () => {
+          if (guard === "permission") permission = false
+          if (guard === "cancellation") {
+            await send("requests.cancel", { requestId: "interaction-cancel" })
+          }
+          if (guard === "focus") {
+            // Lose focus at the final window lookup, after the visible-tab refresh.
+            vi.mocked(chrome.windows.get)
+              .mockImplementationOnce((async () => ({
+                focused: true,
+              })) as unknown as typeof chrome.windows.get)
+              .mockImplementationOnce((async () => ({
+                focused: false,
+              })) as unknown as typeof chrome.windows.get)
+          }
+        }
+        const params: JsonObject =
+          method === "page.scroll"
+            ? { direction: "down", amount: "page" }
+            : { ...target, label: "Second" }
+        expect(
+          await send(method, params, { confirmed: true, requestId: "interaction-cancel" }),
+        ).toMatchObject({
+          ok: false,
+          error: {
+            code:
+              guard === "permission"
+                ? "PERMISSION_DENIED"
+                : guard === "cancellation"
+                  ? "REQUEST_CANCELLED"
+                  : "STALE_CONTEXT",
+          },
+        })
+        expect(select.value).toBe("private-first")
+        expect(events).not.toHaveBeenCalled()
+        expect(scroll).not.toHaveBeenCalled()
+      },
+    )
+  }
 })
 
 describe("worker element picker lifecycle", () => {

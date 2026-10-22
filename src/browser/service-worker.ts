@@ -430,7 +430,14 @@ async function assertReadableDocument(context: TabContext): Promise<void> {
 async function runPageOperation(
   operation: PageOperation,
   request: RuntimeRequest<
-    "page.getVisibleText" | "page.getSelection" | "page.listElements" | "page.click" | "page.type"
+    | "page.getVisibleText"
+    | "page.getSelection"
+    | "page.listElements"
+    | "page.click"
+    | "page.type"
+    | "page.scroll"
+    | "page.selectOption"
+    | "page.getElementDetails"
   >,
   trustedLinkTargetUrl: string | null = null,
 ): Promise<JsonValue> {
@@ -501,10 +508,11 @@ async function runPageOperation(
     outcome.result.navigationAllowed === true
   // A successful injected mutation may itself invalidate its snapshot by navigating. Preserve
   // that outcome; reads and navigation not yet performed still require a current snapshot.
-  if ((operation !== "click" && operation !== "type") || navigationPending) {
+  if (!["click", "type", "scroll", "selectOption"].includes(operation) || navigationPending) {
     await revalidateRequestContext(request, context)
     if (snapshot && snapshot !== elementSnapshot) throwStaleContext(context)
   }
+  if (operation === "scroll" || operation === "selectOption") elementSnapshot = undefined
   return outcome.result
 }
 
@@ -897,6 +905,15 @@ async function dispatch(request: RuntimeRequest, signal: AbortSignal): Promise<J
       break
     case "page.type":
       result = await runPageOperation("type", request)
+      break
+    case "page.scroll":
+      result = await runPageOperation("scroll", request)
+      break
+    case "page.selectOption":
+      result = await runPageOperation("selectOption", request)
+      break
+    case "page.getElementDetails":
+      result = await runPageOperation("getElementDetails", request)
       break
     case "webmcp.listTools":
       result = truncateStructuredResult(await runWebMcp("webmcp.listTools", request))

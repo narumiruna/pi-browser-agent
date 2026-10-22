@@ -7,6 +7,9 @@ export type PageOperation =
   | "listElements"
   | "inspectClick"
   | "type"
+  | "scroll"
+  | "selectOption"
+  | "getElementDetails"
 
 export interface PageOperationSuccess {
   ok: true
@@ -188,6 +191,47 @@ export async function executePageOperation(
       ),
     )
   }
+  const scrollability = (element: HTMLElement): JsonObject => {
+    const style = getComputedStyle(element)
+    return {
+      vertical:
+        /^(auto|scroll|overlay)$/.test(style.overflowY || style.overflow) &&
+        element.scrollHeight > element.clientHeight &&
+        element.clientHeight > 0,
+      horizontal:
+        /^(auto|scroll|overlay)$/.test(style.overflowX || style.overflow) &&
+        element.scrollWidth > element.clientWidth &&
+        element.clientWidth > 0,
+      scrollTop: element.scrollTop,
+      scrollLeft: element.scrollLeft,
+      scrollHeight: element.scrollHeight,
+      scrollWidth: element.scrollWidth,
+      clientHeight: element.clientHeight,
+      clientWidth: element.clientWidth,
+    }
+  }
+  const ariaState = (element: HTMLElement, name: string): string | null => {
+    const value = element.getAttribute(name)
+    return value !== null && ["true", "false", "mixed"].includes(value) ? value : null
+  }
+  const elementRole = (element: HTMLElement): string => {
+    const explicit = element.getAttribute("role")
+    if (explicit) return explicit.slice(0, 64)
+    if (element instanceof HTMLSelectElement)
+      return element.multiple || element.size > 1 ? "listbox" : "combobox"
+    if (element instanceof HTMLButtonElement) return "button"
+    if (element instanceof HTMLAnchorElement && element.hasAttribute("href")) return "link"
+    if (element instanceof HTMLTextAreaElement || element.isContentEditable) return "textbox"
+    if (element instanceof HTMLInputElement) {
+      if (["checkbox", "radio"].includes(element.type)) return element.type
+      if (["button", "submit", "reset", "image"].includes(element.type)) return "button"
+      if (element.type === "range") return "slider"
+      if (element.type === "number") return "spinbutton"
+      if (element.type === "search") return "searchbox"
+      return "textbox"
+    }
+    return "generic"
+  }
   const labelControlFor = (element: Element): HTMLElement | null =>
     element.closest("label")?.control ?? null
   const submitControlFor = (element: Element): HTMLButtonElement | HTMLInputElement | null => {
@@ -326,6 +370,24 @@ export async function executePageOperation(
       element.getAttribute("readonly"),
       element.getAttribute("aria-disabled"),
       element.isContentEditable,
+      element instanceof HTMLSelectElement
+        ? [
+            element.multiple,
+            element.size,
+            element.options.length,
+            ...Array.from({ length: Math.min(element.options.length, 2000) }, (_, index) => {
+              const option = element.options.item(index)
+              if (!option) return null
+              return [
+                option.value,
+                option.label,
+                option.disabled,
+                option.parentElement instanceof HTMLOptGroupElement &&
+                  option.parentElement.disabled,
+              ]
+            }),
+          ]
+        : null,
       anchor?.href,
       anchor?.getAttribute("download"),
       anchor?.getAttribute("target"),
@@ -368,7 +430,10 @@ export async function executePageOperation(
         "The page is no longer the visible target for this browser operation",
       )
     }
-    if (expectedContext !== null && (operation === "click" || operation === "type")) {
+    if (
+      expectedContext !== null &&
+      ["click", "type", "scroll", "selectOption"].includes(operation)
+    ) {
       const assertion = (await chrome.runtime.sendMessage({
         kind: "assert-current-mutation-target",
         tabContext: expectedContext,
@@ -404,7 +469,11 @@ export async function executePageOperation(
         const candidates =
           "a[href], button, input, textarea, select, [contenteditable], [role='button'], [role='link'], [role='textbox']"
         let count = 0
-        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        // The body can scroll independently when the viewport has no overflow.
+        const root = walker.root
+        const first =
+          root instanceof HTMLElement && scrollability(root).vertical ? root : walker.nextNode()
+        for (let node: Node | null = first; node; node = walker.nextNode()) {
           if (
             ++count > snapshot.limits.candidates ||
             result.elements.length >= snapshot.limits.results
@@ -414,13 +483,15 @@ export async function executePageOperation(
           }
           if (
             !(node instanceof HTMLElement) ||
-            !node.matches(candidates) ||
+            (!node.matches(candidates) &&
+              (node === document.documentElement || !scrollability(node).vertical)) ||
             sensitiveControl(node) ||
             !isVisible(node, true)
           )
             continue
           const disabled =
             node.matches(":disabled") || node.getAttribute("aria-disabled") === "true"
+          const scrolling = scrollability(node)
           const ref = `e${result.elements.length + 1}`
           const entry: JsonObject = {
             ref,
@@ -436,7 +507,18 @@ export async function executePageOperation(
               node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement
                 ? node.readOnly
                 : false,
-            actions: disabled ? [] : canType(node) ? ["click", "type"] : ["click"],
+            actions: disabled
+              ? []
+              : [
+                  ...(node.matches(candidates)
+                    ? canType(node)
+                      ? ["click", "type"]
+                      : ["click"]
+                    : []),
+                  ...(node instanceof HTMLSelectElement && !node.multiple ? ["selectOption"] : []),
+                  ...(scrolling.vertical ? ["scroll"] : []),
+                ],
+            scrollability: scrolling,
           }
           result.elements.push(entry)
           if (
@@ -455,6 +537,178 @@ export async function executePageOperation(
           })
         }
         return success(result)
+      }
+      case "scroll": {
+        if (
+          (params.direction !== "up" && params.direction !== "down") ||
+          (params.amount !== "page" &&
+            params.amount !== "half-page" &&
+            params.amount !== "pixels") ||
+          (params.amount === "pixels"
+            ? !Number.isSafeInteger(params.pixels) ||
+              Number(params.pixels) < 1 ||
+              Number(params.pixels) > 10_000
+            : "pixels" in params) ||
+          "selector" in params
+        )
+          return failure("INVALID_REQUEST", "Use up/down and page, half-page, or 1–10000 pixels")
+        const inner = "snapshotId" in params || "ref" in params
+        const found = inner ? findElement() : document.scrollingElement
+        if (found && isFailure(found)) return found
+        if (!(found instanceof HTMLElement))
+          return failure("NOT_SUPPORTED", "This document has no scrollable viewport")
+        if (inner && (!isVisible(found, true) || sensitiveControl(found)))
+          return failure("INVALID_REQUEST", "The scroll container is not visible or supported")
+        if (inner && !scrollability(found).vertical)
+          return failure(
+            "NOT_SUPPORTED",
+            "The referenced element is not a vertical scroll container",
+          )
+        const height = inner ? found.clientHeight : window.innerHeight
+        const distance =
+          params.amount === "pixels"
+            ? Number(params.pixels)
+            : height * (params.amount === "half-page" ? 0.5 : 1)
+        const before = found.scrollTop
+        const style = getComputedStyle(found)
+        // The viewport uses non-negative coordinates even when its root is reverse-flex.
+        const reversed =
+          found !== document.scrollingElement &&
+          ["flex", "inline-flex"].includes(style.display) &&
+          style.flexDirection === "column-reverse"
+        const range = Math.max(0, found.scrollHeight - found.clientHeight)
+        const min = reversed ? -range : 0
+        const max = reversed ? 0 : range
+        found.scrollTo({
+          top: Math.max(
+            min,
+            Math.min(max, before + distance * (params.direction === "up" ? -1 : 1)),
+          ),
+          left: found.scrollLeft,
+          behavior: "instant",
+        })
+        delete isolated.__piBrowserAgentElements
+        const position = found.scrollTop
+        const currentRange = Math.max(0, found.scrollHeight - found.clientHeight)
+        const minPosition = reversed ? -currentRange : 0
+        const maxPosition = reversed ? 0 : currentRange
+        return success({
+          distance: position - before,
+          position,
+          minPosition,
+          maxPosition,
+          atTop: position <= minPosition,
+          atBottom: position >= maxPosition - 1,
+          viewport: {
+            width: window.innerWidth,
+            height: window.innerHeight,
+            scrollX: window.scrollX,
+            scrollY: window.scrollY,
+          },
+          title: document.title.slice(0, 256),
+          url: location.href,
+          snapshotInvalidated: true,
+        })
+      }
+      case "getElementDetails": {
+        if (!("snapshotId" in params) || "selector" in params)
+          return failure("INVALID_REQUEST", "Element details require snapshotId and ref")
+        const found = findElement()
+        if (isFailure(found)) return found
+        if (!(found instanceof HTMLElement) || sensitiveControl(found))
+          return failure("PERMISSION_DENIED", "Sensitive or unsupported element")
+        const rect = found.getBoundingClientRect()
+        return success({
+          name: elementName(found),
+          role: elementRole(found),
+          visible: isVisible(found, true),
+          rect: {
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+            top: rect.top,
+            right: rect.right,
+            bottom: rect.bottom,
+            left: rect.left,
+          },
+          state: {
+            disabled: found.matches(":disabled") || found.getAttribute("aria-disabled") === "true",
+            readOnly:
+              found instanceof HTMLInputElement || found instanceof HTMLTextAreaElement
+                ? found.readOnly
+                : found.getAttribute("aria-readonly") === "true",
+            checked:
+              found instanceof HTMLInputElement && ["checkbox", "radio"].includes(found.type)
+                ? found.checked
+                : ariaState(found, "aria-checked"),
+            expanded: ariaState(found, "aria-expanded"),
+            selected: ariaState(found, "aria-selected"),
+            required: found.matches(":required") || found.getAttribute("aria-required") === "true",
+            focused: document.activeElement === found,
+          },
+          scrollability: scrollability(found),
+        })
+      }
+      case "selectOption": {
+        if (
+          !("snapshotId" in params) ||
+          "selector" in params ||
+          "value" in params === "label" in params ||
+          typeof (params.value ?? params.label) !== "string" ||
+          String(params.value ?? params.label).length > 256
+        )
+          return failure(
+            "INVALID_REQUEST",
+            "Use snapshotId/ref and exactly one option value or label",
+          )
+        const found = findElement()
+        if (isFailure(found)) return found
+        if (!(found instanceof HTMLSelectElement) || found.multiple || found.options.length > 2000)
+          return failure(
+            "NOT_SUPPORTED",
+            "Target must be a native single select with at most 2000 options",
+          )
+        if (!isVisible(found, true))
+          return failure("INVALID_REQUEST", "The select control is not visible")
+        if (found.matches(":disabled") || found.getAttribute("aria-disabled") === "true")
+          return failure("PERMISSION_DENIED", "The select control is disabled")
+        const options = Array.from(found.options).filter((option) =>
+          "value" in params ? option.value === params.value : option.label === params.label,
+        )
+        const option = options[0]
+        if (options.length !== 1 || !option)
+          return failure(
+            "INVALID_REQUEST",
+            "The option value or label must match exactly one option",
+          )
+        if (
+          option.disabled ||
+          (option.parentElement instanceof HTMLOptGroupElement && option.parentElement.disabled)
+        )
+          return failure("PERMISSION_DENIED", "The selected option is disabled")
+        if (!confirmed)
+          return failure(
+            "CONFIRMATION_REQUIRED",
+            "Changing this option can submit a form or run page actions",
+            {
+              action: "selectOption",
+              ...targetResult(),
+              ...("value" in params
+                ? { value: String(params.value) }
+                : { label: String(params.label) }),
+            },
+          )
+        const setter = Object.getOwnPropertyDescriptor(
+          HTMLSelectElement.prototype,
+          "selectedIndex",
+        )?.set
+        if (!setter) return failure("NOT_SUPPORTED", "Native select changes are unavailable")
+        setter.call(found, option.index)
+        delete isolated.__piBrowserAgentElements
+        found.dispatchEvent(new Event("input", { bubbles: true }))
+        found.dispatchEvent(new Event("change", { bubbles: true }))
+        return success({ selected: true, ...targetResult(), snapshotInvalidated: true })
       }
       case "getVisibleText": {
         let root: HTMLElement | null = document.body

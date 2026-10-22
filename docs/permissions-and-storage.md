@@ -33,6 +33,8 @@ OpenAI authentication origins are requested together only after the user chooses
 
 The extension CSP permits HTTP(S) connections so a user-selected built-in provider can operate after Chrome grants its optional host permission. It still permits scripts only from the packaged extension and does not permit remote scripts. Screenshot and bookmark access can be revoked separately from Chrome's extension settings. A later protected operation fails or returns to its explicit confirmation flow without an automatic background permission request.
 
+`browser_scroll`, `browser_select_option`, and `browser_get_element_details` add no Chrome permission or persistent store. They require the current site's existing Chrome permission and app approval. Scroll and details need no operation confirmation; native option selection always requires fresh confirmation. Scroll/selection discard volatile element snapshots. Returned viewport or element metadata follows normal model-tool and transcript storage. Details expose no field values. See [browser interaction tools](browser-interactions.md).
+
 ## Remote MCP permissions and storage
 
 MCP uses the existing optional HTTPS host pattern; it adds no required permission. **Connect and preview** is the only MCP host-request gesture. Authorization also requires a stored connection approval for the full normalized endpoint and its configuration revision. A screenshot grant alone cannot approve a server. Chrome's hostname patterns do not include a port or path; MCP checks both independently on every request.
