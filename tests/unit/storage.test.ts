@@ -68,16 +68,106 @@ describe("browser storage", () => {
       confirmationMode: "strict",
     })
 
+    values.piBrowserAgentSettings = { ...DEFAULT_SETTINGS, enabledTools: "browser_read_page" }
+    await expect(getSettings()).resolves.toMatchObject({
+      enabledTools: DEFAULT_SETTINGS.enabledTools,
+    })
+  })
+
+  test("enables added tools in legacy settings and preserves original-tool opt-outs", async () => {
+    const addedTools = [
+      "browser_scroll",
+      "browser_select_option",
+      "browser_get_element_details",
+      "browser_find_text",
+      "browser_wait_for",
+      "browser_set_checked",
+      "browser_get_select_options",
+    ]
+    const originalTools = DEFAULT_SETTINGS.enabledTools.filter((name) => !addedTools.includes(name))
+    const values: Record<string, unknown> = {
+      piBrowserAgentSettings: { ...DEFAULT_SETTINGS, enabledTools: originalTools },
+    }
+    vi.stubGlobal("chrome", {
+      storage: {
+        local: {
+          get: vi.fn(async (key: string) => ({ [key]: values[key] })),
+          set: vi.fn(async (items: Record<string, unknown>) => Object.assign(values, items)),
+        },
+      },
+    })
+
+    await expect(getSettings()).resolves.toEqual(DEFAULT_SETTINGS)
     values.piBrowserAgentSettings = {
       ...DEFAULT_SETTINGS,
       enabledTools: ["browser_read_page", "browser_read_page", "unknown_tool", 42],
     }
-    await expect(getSettings()).resolves.toMatchObject({ enabledTools: ["browser_read_page"] })
-    values.piBrowserAgentSettings = { ...DEFAULT_SETTINGS, enabledTools: [] }
-    await expect(getSettings()).resolves.toMatchObject({ enabledTools: [] })
-    values.piBrowserAgentSettings = { ...DEFAULT_SETTINGS, enabledTools: "browser_read_page" }
     await expect(getSettings()).resolves.toMatchObject({
-      enabledTools: DEFAULT_SETTINGS.enabledTools,
+      enabledTools: DEFAULT_SETTINGS.enabledTools.filter(
+        (name) => name === "browser_read_page" || addedTools.includes(name),
+      ),
+    })
+    values.piBrowserAgentSettings = { ...DEFAULT_SETTINGS, enabledTools: [] }
+    await expect(getSettings()).resolves.toMatchObject({
+      enabledTools: DEFAULT_SETTINGS.enabledTools.filter((name) => addedTools.includes(name)),
+    })
+  })
+
+  test("saves explicit opt-outs so later additions are enabled without losing choices", async () => {
+    const values: Record<string, unknown> = {}
+    vi.stubGlobal("chrome", {
+      storage: {
+        local: {
+          get: vi.fn(async (key: string) => ({ [key]: values[key] })),
+          set: vi.fn(async (items: Record<string, unknown>) => Object.assign(values, items)),
+        },
+      },
+    })
+    const enabledTools = DEFAULT_SETTINGS.enabledTools.filter(
+      (name) => name !== "browser_click" && name !== "browser_set_checked",
+    )
+    await saveSettings({ ...DEFAULT_SETTINGS, enabledTools })
+    expect(values.piBrowserAgentSettings).toEqual({
+      ...DEFAULT_SETTINGS,
+      enabledTools,
+      disabledTools: ["browser_set_checked", "browser_click"],
+    })
+    await expect(getSettings()).resolves.toMatchObject({ enabledTools })
+
+    const originalTools = DEFAULT_SETTINGS.enabledTools
+    DEFAULT_SETTINGS.enabledTools = [...originalTools, "browser_future_tool"]
+    try {
+      await expect(getSettings()).resolves.toMatchObject({
+        enabledTools: [...enabledTools, "browser_future_tool"],
+      })
+    } finally {
+      DEFAULT_SETTINGS.enabledTools = originalTools
+    }
+
+    await saveSettings({ ...DEFAULT_SETTINGS, enabledTools: [] })
+    await expect(getSettings()).resolves.toMatchObject({ enabledTools: [] })
+    await saveSettings(DEFAULT_SETTINGS)
+    expect(values.piBrowserAgentSettings).toEqual({ ...DEFAULT_SETTINGS, disabledTools: [] })
+    await expect(getSettings()).resolves.toEqual(DEFAULT_SETTINGS)
+  })
+
+  test("prefers validated disabled names over a stale enabled snapshot", async () => {
+    vi.stubGlobal("chrome", {
+      storage: {
+        local: {
+          get: vi.fn(async () => ({
+            piBrowserAgentSettings: {
+              ...DEFAULT_SETTINGS,
+              enabledTools: [],
+              disabledTools: ["browser_set_checked", "browser_set_checked", "unknown_tool", 42],
+            },
+          })),
+        },
+      },
+    })
+
+    await expect(getSettings()).resolves.toMatchObject({
+      enabledTools: DEFAULT_SETTINGS.enabledTools.filter((name) => name !== "browser_set_checked"),
     })
   })
 

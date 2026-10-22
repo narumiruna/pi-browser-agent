@@ -7,6 +7,24 @@ export const SETTINGS_KEY = "piBrowserAgentSettings"
 const ACTIVE_SESSION_KEY = "piBrowserAgentActiveSessionId"
 const PENDING_SELECTION_KEY = "piBrowserAgentPendingSelection"
 
+// Fixed catalog from the first tool-settings release. Do not add later tools here.
+const LEGACY_BROWSER_TOOLS = new Set([
+  "browser_list_tabs",
+  "browser_switch_tab",
+  "browser_open_website",
+  "browser_get_active_tab",
+  "browser_search_bookmarks",
+  "browser_get_recent_bookmarks",
+  "browser_read_page",
+  "browser_list_elements",
+  "browser_get_selection",
+  "browser_capture_visible",
+  "browser_click",
+  "browser_type",
+  "browser_navigate",
+  "browser_webmcp",
+])
+
 export const THINKING_LEVELS = [
   "minimal",
   "low",
@@ -78,15 +96,23 @@ export async function restrictLocalStorageToTrustedContexts(): Promise<void> {
   await chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" })
 }
 
-function validEnabledTools(value: unknown): string[] {
-  if (!Array.isArray(value)) return [...DEFAULT_SETTINGS.enabledTools]
-  const selected = new Set(value)
-  return DEFAULT_SETTINGS.enabledTools.filter((name) => selected.has(name))
+function validEnabledTools(enabledTools: unknown, disabledTools: unknown): string[] {
+  if (Array.isArray(disabledTools)) {
+    const disabled = new Set(disabledTools)
+    return DEFAULT_SETTINGS.enabledTools.filter((name) => !disabled.has(name))
+  }
+  if (!Array.isArray(enabledTools)) return [...DEFAULT_SETTINGS.enabledTools]
+  const selected = new Set(enabledTools)
+  return DEFAULT_SETTINGS.enabledTools.filter(
+    (name) => !LEGACY_BROWSER_TOOLS.has(name) || selected.has(name),
+  )
 }
 
 export async function getSettings(): Promise<AppSettings> {
   const stored = await chrome.storage.local.get(SETTINGS_KEY)
-  const value = stored[SETTINGS_KEY] as Partial<AppSettings> | undefined
+  const value = stored[SETTINGS_KEY] as
+    | (Partial<AppSettings> & { disabledTools?: unknown })
+    | undefined
   if (value?.modelProvider === "azure-openai-responses") {
     value.modelProvider = "azure"
     await chrome.storage.local.set({ [SETTINGS_KEY]: value })
@@ -116,12 +142,18 @@ export async function getSettings(): Promise<AppSettings> {
       : value === undefined
         ? DEFAULT_SETTINGS.confirmationMode
         : "strict",
-    enabledTools: validEnabledTools(value?.enabledTools),
+    enabledTools: validEnabledTools(value?.enabledTools, value?.disabledTools),
   }
 }
 
 export async function saveSettings(settings: AppSettings): Promise<void> {
-  await chrome.storage.local.set({ [SETTINGS_KEY]: settings })
+  const enabled = new Set(settings.enabledTools)
+  await chrome.storage.local.set({
+    [SETTINGS_KEY]: {
+      ...settings,
+      disabledTools: DEFAULT_SETTINGS.enabledTools.filter((name) => !enabled.has(name)),
+    },
+  })
 }
 
 export async function getActiveSessionId(): Promise<string | undefined> {
