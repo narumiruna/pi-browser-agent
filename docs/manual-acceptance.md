@@ -39,6 +39,8 @@ Use a production build from `npm run build`. Do not test login with development 
 
 Automated coverage is in `tests/unit/slash-commands.test.ts`, `tests/unit/slash-command-menu.test.ts`, `tests/unit/slash-command-routing.test.ts`, `tests/unit/authentication-actions.test.ts`, and `tests/e2e/slash-commands.spec.ts`. The 13 focused browser cases passed on headless Chrome for Testing 156.0.8078.4 on macOS, including local command effects, network isolation, lifecycle races, native-textbox semantics, active-option scrolling, and 320 px light/dark layout at 24 px text. Actual screen-reader output and the browser-owned Side Panel remain unverified; automated extension-page tests do not prove these paths.
 
+[GitHub CI run 39751534461](https://github.com/narumiruna/pi-browser-agent/actions/runs/39751534461) passed the full required workflow on Ubuntu/Node 26, with 799 unit/integration tests and 112 browser tests against the feature merged with updated `main`. Local macOS readiness and duration failures remain recorded in `docs/plans/2026-10-22_slash-commands-plan.md`; they are not evidence of manual acceptance.
+
 Before release, load a production build in stable Chrome and record Chrome/OS versions, assistive technology/version, and each result:
 
 1. With focus in the composer, type `/`. Use Arrow keys, Tab, and Enter to select a command. Expected: the screen reader announces the command list, active name/description, and expanded/collapsed state. Selection inserts text and does not execute. Enter again executes. Escape closes the list; during a response, a second Escape stops the response. Shift+Enter and IME composition must not execute a command.
