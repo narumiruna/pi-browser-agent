@@ -39,6 +39,8 @@ import {
 import { TranscriptRenderer } from "./message-rendering.js"
 import { ScreenshotAnnotationController } from "./screenshot-annotation.js"
 import { SessionPicker } from "./session-picker.js"
+import { SlashCommandMenu } from "./slash-command-menu.js"
+import { parseSlashCommand, type SlashCommandName } from "./slash-commands.js"
 import { applyAppearance, element, run, setErrorOutput } from "./ui.js"
 import {
   createVoiceInput,
@@ -92,6 +94,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     listbox: element<HTMLElement>("session-options"),
     emptyText: conversationText("newSession"),
     onOpen: () => {
+      commandResumePending = false
       for (const disclosure of disclosures) disclosure.open = false
     },
   })
@@ -119,6 +122,8 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     },
   })
   const setError = (error?: unknown): void => setErrorOutput(errorOutput, error)
+  let commandResumePending = false
+  let commandInProgress = false
   let activeSubmissionGuard: object | undefined
   let pendingSubmission: { guard: object; accept: () => void } | undefined
   let pendingPasteOperations = 0
@@ -153,6 +158,11 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   queueInstructionButton.title = conversationText("queueInstruction")
   sendLabel.textContent = conversationText("send")
   sendButton.ariaLabel = conversationText("send")
+  const commandMenu = new SlashCommandMenu({
+    input: promptInput,
+    listbox: element<HTMLElement>("slash-command-menu"),
+    onInput: resizePromptInput,
+  })
   promptInput.placeholder = conversationText("promptIdle")
   composerHint.textContent = conversationText("hintIdle")
   runStatus.textContent = conversationText("ready")
@@ -300,6 +310,11 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   }
 
   function updateSendButton(): void {
+    newSessionButton.disabled = commandInProgress
+    sessionPicker.setDisabled(commandInProgress)
+    element<HTMLButtonElement>("rename-session").disabled = commandInProgress
+    element<HTMLButtonElement>("delete-session").disabled = commandInProgress
+    element<HTMLButtonElement>("clear-sessions").disabled = commandInProgress
     sendButton.disabled =
       activeSubmissionGuard !== undefined ||
       pendingPasteOperations > 0 ||
@@ -812,7 +827,128 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     }
   }
 
+  function assertCommandIdle(guard?: object): void {
+    if (
+      disposed ||
+      document.body.dataset.conversationReady !== "true" ||
+      runtime.isBusy ||
+      runtime.configuration.isChangingAuth ||
+      (guard === undefined && authentication?.isBusy) ||
+      (activeSubmissionGuard !== undefined && activeSubmissionGuard !== guard) ||
+      pendingPasteOperations > 0 ||
+      pickerActive ||
+      pickerStarting ||
+      voiceInputStarting ||
+      voiceInput?.active
+    )
+      throw new Error("Wait for the current operation to finish before using a command")
+    if (composerImages.length > 0 || selectedElements.length > 0) {
+      throw new Error("Remove images and selected elements before using a command")
+    }
+  }
+
+  async function createSession(accept?: () => void): Promise<void> {
+    await clearElementComposerContext()
+    accept?.()
+    await runtime.newSession()
+    await refreshActiveSessionUi()
+  }
+
+  async function resumeSession(id: string, accept?: () => void): Promise<void> {
+    await clearElementComposerContext()
+    accept?.()
+    await runtime.resumeSession(id)
+    await refreshActiveSessionUi()
+  }
+
+  async function renameSession(title?: string, accept?: () => void): Promise<boolean> {
+    const name = title ?? globalThis.prompt("Conversation name", runtime.activeSession.title)
+    if (name === null) return false
+    accept?.()
+    await runtime.renameSession(name)
+    await refreshSessions()
+    return true
+  }
+
+  async function executeCommand(
+    name: SlashCommandName,
+    argument: string,
+    draft: string,
+  ): Promise<void> {
+    assertCommandIdle()
+    const auth = authentication
+    if (!auth) throw new Error("Wait for conversation initialization")
+    const guard = {}
+    const sessionId = runtime.activeSession.id
+    const providerId = runtime.model.provider
+    const accept = (): void => {
+      assertCommandIdle(guard)
+      if (
+        activeSubmissionGuard !== guard ||
+        runtime.activeSession.id !== sessionId ||
+        runtime.model.provider !== providerId
+      ) {
+        throw new Error("The conversation changed. Enter the command again.")
+      }
+    }
+    activeSubmissionGuard = guard
+    commandInProgress = true
+    commandMenu.close()
+    updateSendButton()
+    try {
+      accept()
+      let accepted = true
+      switch (name) {
+        case "new":
+          await createSession(accept)
+          break
+        case "resume":
+          sessionPicker.setDisabled(false)
+          sessionPicker.open(0)
+          commandResumePending = true
+          break
+        case "name":
+          accepted = await renameSession(argument || undefined, accept)
+          break
+        case "settings":
+          await openSettingsTab(accept)
+          break
+        case "login":
+          accepted = await auth.configure(accept)
+          break
+        case "logout":
+          accepted = await auth.logout(accept)
+          break
+      }
+      if (accepted && promptInput.value === draft) {
+        promptInput.value = ""
+        resizePromptInput()
+      }
+    } finally {
+      commandInProgress = false
+      releaseSubmissionGuard(guard)
+    }
+  }
+
   function submitPrompt(queueAfterCurrentTask = false): void {
+    const draft = promptInput.value
+    const parsed = parseSlashCommand(draft)
+    if (parsed.kind === "invalid") {
+      setError(parsed.error)
+      return
+    }
+    if (parsed.kind === "command") {
+      if (queueAfterCurrentTask) {
+        setError("Commands cannot be queued. Use Send when the conversation is idle.")
+        return
+      }
+      void run(() => executeCommand(parsed.name, parsed.argument, draft), setError)
+      return
+    }
+    if (commandInProgress || authentication?.isBusy) {
+      setError("Wait for the current operation to finish before sending")
+      return
+    }
     if (activeSubmissionGuard) return
     if (pickerActive || pickerStarting) {
       setError("Finish or cancel element selection before sending")
@@ -831,7 +967,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       return
     }
     const draftText = promptInput.value
-    const text = draftText.trim()
+    const text = parsed.text.trim()
     const submittedImages = composerImages.map((image) => ({
       id: image.id,
       content: { ...image.content },
@@ -890,6 +1026,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
           renderComposerImages()
           renderSelectedElements()
           resizePromptInput()
+          commandMenu.close()
         }
         pendingSubmission = { guard: submissionGuard, accept }
         const submission = runtime.submit(
@@ -921,8 +1058,10 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     clearSelectedElements()
   }
 
-  function openSettingsTab(): void {
+  async function openSettingsTab(accept?: () => void): Promise<void> {
     voiceInput?.abort()
+    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true })
+    accept?.()
     const url = new URL(window.location.href)
     url.searchParams.set("view", "settings")
     url.searchParams.set("source", settingsContextId)
@@ -930,13 +1069,10 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     url.searchParams.set("modelId", runtime.model.id)
     url.searchParams.set("thinkingLevel", runtime.agent.state.thinkingLevel)
     url.hash = ""
-    void run(async () => {
-      const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true })
-      await chrome.tabs.create({
-        url: url.href,
-        ...(activeTab?.id === undefined ? {} : { openerTabId: activeTab.id }),
-      })
-    }, setError)
+    await chrome.tabs.create({
+      url: url.href,
+      ...(activeTab?.id === undefined ? {} : { openerTabId: activeTab.id }),
+    })
   }
 
   function queueSelection(payload: JsonObject): void {
@@ -1036,6 +1172,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     resizePromptInput()
   })
   promptInput.addEventListener("keydown", (event) => {
+    if (commandMenu.handleKeyDown(event)) return
     if (event.key === "Escape" && runtime.agent.state.isStreaming) {
       event.preventDefault()
       runtime.abort()
@@ -1050,27 +1187,43 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   scrollToBottomButton.addEventListener("click", () => {
     transcript.scrollTo({ top: transcript.scrollHeight, behavior: "smooth" })
   })
-  element<HTMLButtonElement>("open-settings").addEventListener("click", openSettingsTab)
+  element<HTMLButtonElement>("open-settings").addEventListener("click", () => {
+    void run(() => openSettingsTab(), setError)
+  })
   newSessionButton.addEventListener("click", () => {
-    void run(async () => {
-      await clearElementComposerContext()
-      await runtime.newSession()
-      await refreshActiveSessionUi()
-    }, setError)
+    if (!commandInProgress) void run(() => createSession(), setError)
   })
   sessionSelect.addEventListener("change", () => {
+    if (commandInProgress) return
+    const fromCommand = commandResumePending
+    commandResumePending = false
+    const id = sessionSelect.value
     void run(async () => {
-      await clearElementComposerContext()
-      await runtime.resumeSession(sessionSelect.value)
-      await refreshActiveSessionUi()
+      let guard: object | undefined
+      try {
+        if (fromCommand) {
+          assertCommandIdle()
+          guard = {}
+          activeSubmissionGuard = guard
+          commandInProgress = true
+          updateSendButton()
+        }
+        await resumeSession(id, fromCommand ? () => assertCommandIdle(guard) : undefined)
+      } catch (error) {
+        await refreshSessions()
+        throw error
+      } finally {
+        if (guard) {
+          commandInProgress = false
+          releaseSubmissionGuard(guard)
+        }
+      }
     }, setError)
   })
   element<HTMLButtonElement>("rename-session").addEventListener("click", () => {
-    const title = globalThis.prompt("Conversation name", runtime.activeSession.title)
-    if (title === null) return
+    if (commandInProgress) return
     void run(async () => {
-      await runtime.renameSession(title)
-      await refreshSessions()
+      await renameSession()
     }, setError)
   })
   element<HTMLButtonElement>("delete-session").addEventListener("click", () => {

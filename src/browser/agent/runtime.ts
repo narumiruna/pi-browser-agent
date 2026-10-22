@@ -120,6 +120,15 @@ export class BrowserAgentRuntime {
     return this.preparing
   }
 
+  get isBusy(): boolean {
+    return (
+      this.agent.state.isStreaming ||
+      this.preparing ||
+      this.finishingRun !== undefined ||
+      this.closing
+    )
+  }
+
   get usesPageContext(): boolean {
     return this.pageToolsEnabled
   }

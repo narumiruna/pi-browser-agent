@@ -8,6 +8,7 @@ import {
   composeElementContext,
   composeSystemPrompt,
 } from "../../src/browser/agent/runtime.js"
+import { McpManager } from "../../src/browser/mcp/manager.js"
 import {
   ELEMENT_PICKER_LIMITS,
   type SelectedElementContext,
@@ -164,6 +165,79 @@ describe("browser agent configuration", () => {
     await expect(pageTool.execute("id", {}, undefined)).resolves.toMatchObject({
       details: { text: "Page text" },
     })
+  })
+
+  test("reports preparation, final persistence, and awaited listener settlement as busy", async () => {
+    vi.stubGlobal("indexedDB", new IDBFactory())
+    vi.stubGlobal("chrome", {
+      storage: { local: { get: vi.fn(async () => ({})), set: vi.fn(async () => undefined) } },
+    })
+    const deferred = () => {
+      let resolve: () => void = () => undefined
+      const promise = new Promise<void>((done) => {
+        resolve = done
+      })
+      return { promise, resolve }
+    }
+    const preparation = deferred()
+    const preparing = deferred()
+    vi.spyOn(McpManager.prototype, "prepare").mockImplementation(async () => {
+      preparing.resolve()
+      await preparation.promise
+      return []
+    })
+    const runtime = new BrowserAgentRuntime({
+      confirm: vi.fn(async () => false),
+      onAuthEvent: vi.fn(),
+      onAgentEvent: vi.fn(),
+    })
+    await runtime.configuration.updateSettings(DEFAULT_SETTINGS)
+    vi.spyOn(runtime.configuration, "initialize").mockResolvedValue(
+      runtime.configuration.defaultModel,
+    )
+    await runtime.initialize("missing-session")
+    expect(runtime.isBusy).toBe(false)
+    const persistence = deferred()
+    const persisting = deferred()
+    const put = runtime.sessions.put.bind(runtime.sessions)
+    vi.spyOn(runtime.sessions, "put").mockImplementation(async (record, protectedIds) => {
+      if (record.status === "idle") {
+        persisting.resolve()
+        await persistence.promise
+      }
+      await put(record, protectedIds)
+    })
+    const listener = deferred()
+    const settling = deferred()
+    runtime.agent.subscribe(async (event) => {
+      if (event.type === "agent_end") {
+        settling.resolve()
+        await listener.promise
+      }
+    })
+    runtime.agent.streamFunction = () => {
+      const stream = createAssistantMessageEventStream()
+      queueMicrotask(() => {
+        stream.push({ type: "start", partial: assistant("", "pending") })
+        stream.push({ type: "done", reason: "stop", message: assistant("done", "stop") })
+        stream.end()
+      })
+      return stream
+    }
+    const submitted = runtime.submit("hello", "steer", [], [], false)
+    await preparing.promise
+    expect(runtime.isBusy).toBe(true)
+    expect(runtime.isPreparing).toBe(true)
+    preparation.resolve()
+    await persisting.promise
+    expect(runtime.isBusy).toBe(true)
+    persistence.resolve()
+    await settling.promise
+    expect(runtime.isBusy).toBe(true)
+    listener.resolve()
+    await submitted
+    await vi.waitFor(() => expect(runtime.isBusy).toBe(false))
+    await runtime.shutdown()
   })
 
   test("streams lifecycle events in order and forces SSE", async () => {

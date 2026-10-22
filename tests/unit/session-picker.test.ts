@@ -46,6 +46,31 @@ const options = [
 ]
 
 describe("SessionPicker", () => {
+  test("opens programmatically and blocks selection while disabled", () => {
+    const { trigger, select, menu, listbox, picker } = setup()
+    const changed = vi.fn()
+    select.addEventListener("change", changed)
+    picker.setOptions(options, "first")
+    picker.open(1)
+    expect(menu.hidden).toBe(false)
+    expect(listbox.ownerDocument.activeElement).toBe(listbox.children.item(1))
+    picker.setDisabled(true)
+    picker.setOptions(options, "first")
+    picker.open()
+    expect(menu.hidden).toBe(true)
+    expect(trigger.disabled).toBe(true)
+    expect(select.disabled).toBe(true)
+    listbox.querySelectorAll<HTMLButtonElement>("[role='option']").item(1).click()
+    expect(select.value).toBe("first")
+    expect(changed).not.toHaveBeenCalled()
+    picker.setDisabled(false)
+    picker.open()
+    expect(menu.hidden).toBe(false)
+    listbox.querySelectorAll<HTMLButtonElement>("[role='option']").item(1).click()
+    expect(select.value).toBe("second")
+    expect(changed).toHaveBeenCalledOnce()
+  })
+
   test("renders a selected, low-noise session list and exposes full titles", () => {
     const { trigger, triggerLabel, select, menu, listbox, picker } = setup()
     picker.setOptions(options, "second")
