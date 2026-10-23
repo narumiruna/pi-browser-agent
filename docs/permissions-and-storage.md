@@ -2,27 +2,27 @@
 
 ## Manifest permissions
 
-| Permission | Purpose |
-| --- | --- |
-| `activeTab` | Temporary page access after the user invokes the extension. |
-| `contextMenus` | Send the current selection to the Side Panel. |
-| `scripting` | Run fixed bounded operation functions in the current page. |
-| `sidePanel` | Host the agent and user interface. |
-| `storage` | Store settings, credentials, installed skills, and undelivered context-menu selections. |
-| `tabs` | Identify the active tab and its URL when the user switches tabs or windows. |
+| Permission     | Purpose                                                                                 |
+| -------------- | --------------------------------------------------------------------------------------- |
+| `activeTab`    | Temporary page access after the user invokes the extension.                             |
+| `contextMenus` | Send the current selection to the Side Panel.                                           |
+| `scripting`    | Run fixed bounded operation functions in the current page.                              |
+| `sidePanel`    | Host the agent and user interface.                                                      |
+| `storage`      | Store settings, credentials, installed skills, and undelivered context-menu selections. |
+| `tabs`         | Identify the active tab and its URL when the user switches tabs or windows.             |
 
 ## Optional host permissions
 
-| Permission | Purpose |
-| --- | --- |
+| Permission   | Purpose                                                                                                                                            |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `<all_urls>` | Satisfy Chrome's `captureVisibleTab()` requirement after temporary `activeTab` access ends. Requested only from the first screenshot confirmation. |
 
 Chrome describes `<all_urls>` as access to all sites. Pi Browser Agent declares it as optional rather than required, requests it only from the screenshot confirmation's Confirm gesture, and rechecks it before every capture. The runtime continues to target only the active visible HTTP(S) tab in the focused window, reject stale tab contexts, capture only the viewport, and cap the PNG at 3 MB. Denial leaves the confirmation open; revocation causes the next screenshot request to ask again. Screenshot content is sent to the selected model provider and stored in the session transcript. Opening the local annotation editor or attaching its rendered PNG requests no additional Chrome permission; only sending that new composer image shares it with the provider.
 
 ## Optional API permissions
 
-| Permission | Purpose |
-| --- | --- |
+| Permission  | Purpose                                                                                             |
+| ----------- | --------------------------------------------------------------------------------------------------- |
 | `bookmarks` | Search bookmark titles and URLs or read a bounded recent-bookmark list after explicit confirmation. |
 
 `bookmarks` is absent by default. A bookmark tool request first opens Pi Browser Agent's operation confirmation unless the same operation, query, and limit were previously approved under Balanced or Convenient. If access has not been granted, its Confirm button requests the optional permission from the user gesture; denial leaves the operation unapproved. The service worker checks the grant again before every read. Chrome grants the bookmarks API as one capability that can also support writes, but Pi Browser Agent has no create, update, move, remove, tree-read, import, or export runtime method. The production artifact audit rejects bookmark mutation calls.
@@ -42,7 +42,6 @@ MCP uses the existing optional HTTPS host pattern; it adds no required permissio
 The Side Panel owns MCP clients. It checks trusted configuration, endpoint approval, token binding, and Chrome permission before each request. Settings edits, disablement/removal, panel shutdown, and host permission revocation cancel local MCP work. No server connection or interrupted call is restored from a transcript.
 
 Two versioned `chrome.storage.local` keys are restricted to trusted contexts and updated together under a cross-context Web Lock:
-
 - `piBrowserAgentMcpServersV1`: at most eight public server records, including IDs, revisions, exact endpoints, enablement, connection approvals, and whether authentication is configured.
 - `piBrowserAgentMcpTokensV1`: optional bearer tokens bound to a server ID, revision, and endpoint.
 
@@ -64,12 +63,12 @@ Microphone access is a Chrome content permission for the extension origin, not a
 
 ## Storage
 
-| Store | Data | Lifetime |
-| --- | --- | --- |
-| `chrome.storage.local` | Installed skill records (including disabled bodies), provider-scoped API keys or Codex OAuth credential, selected provider/model/thinking level, confirmation mode, interface preferences, instructions, active session ID, app-approved exact host patterns, Convenient approval fingerprints | Until removed, mode changed, or extension data cleared (Convenient fingerprints); settings and other records retain their own lifetimes |
-| `chrome.storage.session` | An undelivered context-menu selection and Balanced approval fingerprints | Browser session (or until manually cleared/mode changed for approval fingerprints) |
-| IndexedDB `pi-browser-agent-sessions` | Versioned complete messages and tool results, including loaded skill bodies, confirmed bookmark titles and URLs, sent selected-element JSON, model state, names, timestamps, embedded original screenshots and sent pasted/annotated image content | Until retention deletion or user clear |
-| Memory | Live agent, partial stream, confirmations, login cancellation, picker token/overlay state, unsent selected-element chips, unsent pasted/annotated image previews, and editable annotation strokes | Side Panel, page, or worker lifetime as applicable |
+| Store                                 | Data                                                                                                                                                                                                                                                                                           | Lifetime                                                                                                                                |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `chrome.storage.local`                | Installed skill records (including disabled bodies), provider-scoped API keys or Codex OAuth credential, selected provider/model/thinking level, confirmation mode, interface preferences, instructions, active session ID, app-approved exact host patterns, Convenient approval fingerprints | Until removed, mode changed, or extension data cleared (Convenient fingerprints); settings and other records retain their own lifetimes |
+| `chrome.storage.session`              | An undelivered context-menu selection and Balanced approval fingerprints                                                                                                                                                                                                                       | Browser session (or until manually cleared/mode changed for approval fingerprints)                                                      |
+| IndexedDB `pi-browser-agent-sessions` | Versioned complete messages and tool results, including loaded skill bodies, confirmed bookmark titles and URLs, sent selected-element JSON, model state, names, timestamps, embedded original screenshots and sent pasted/annotated image content                                             | Until retention deletion or user clear                                                                                                  |
+| Memory                                | Live agent, partial stream, confirmations, login cancellation, picker token/overlay state, unsent selected-element chips, unsent pasted/annotated image previews, and editable annotation strokes                                                                                              | Side Panel, page, or worker lifetime as applicable                                                                                      |
 
 Local extension storage is restricted to trusted contexts. Content injection has no storage API channel and receives only operation parameters. Strict confirms each protected operation; Balanced (new-install default) remembers the same operation and target until Chrome restarts; Convenient remembers them across restarts. Existing installations without a saved mode remain Strict. Approval fingerprints are SHA-256 digests of bounded, canonical action identities, capped at 256 per mode; raw WebMCP arguments, bookmark queries, and full URLs are not kept in the approval ledger. Settings can clear both ledgers; switching modes clears them automatically. Form submissions, downloads, and clicks lacking a stable target always prompt. Chrome-owned permission requests are never cached or suppressed by these modes.
 

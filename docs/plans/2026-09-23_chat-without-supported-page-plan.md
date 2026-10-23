@@ -14,7 +14,6 @@ Let Pi Browser Agent accept prompts on any active tab without weakening its page
 ## Architecture
 
 Keep two distinct concepts:
-
 1. **Conversation availability:** provider authentication and endpoint permission determine whether a prompt can run. No current-page permission is needed for a context-free prompt.
 2. **Page capability:** an observed visible-tab summary for UI (none / eligible HTTP(S) / restricted / local file / PDF or other unreadable), separate from the worker's authoritative `TabContext` for operations. Do not send protected URLs, file paths, or tab titles to the model by default. A URL scheme is only a preliminary classification; permission and actual injection capability are checked at use time.
 

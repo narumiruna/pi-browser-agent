@@ -9,12 +9,10 @@ The completed extension must not require a local pi process, loopback WebSocket,
 ## Context
 
 The existing project has two runtimes:
-
 - a Manifest V3 Chrome extension that owns tab binding, permissions, page operations, and WebMCP integration;
 - a pi extension that owns the agent session and communicates with Chrome over an authenticated loopback WebSocket.
 
 Browser-target bundling spikes established that:
-
 - `pi-ai` provider factories can be bundled for the browser;
 - `pi-agent-core` can be bundled for the browser;
 - `openaiCodexProvider()` can be bundled for the browser;

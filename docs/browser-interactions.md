@@ -31,7 +31,6 @@ browser_find_text({"query":"Ready","selector":"main"})
 ## `browser_wait_for`
 
 Supply exactly one condition:
-
 1. `{selector, state, timeoutMs?}`, where state is `present`, `absent`, `visible`, `hidden`, `enabled`, or `disabled`.
 2. `{text, selector?, timeoutMs?}`, for the same literal rendered-text presence rules as `browser_find_text`.
 
@@ -71,7 +70,6 @@ An already matching supported state returns `changed: false` without confirmatio
 After confirmation, the operation rechecks the same node, state, radio-group identity, metadata, visibility, permission, context, and cancellation. Changed approval-relevant state requires fresh discovery and confirmation. Checkbox/radio payload values are compared privately and never returned. Radio groups bind live member identities and states; if the 2,000-element group-validation scan is incomplete, activation returns `NOT_SUPPORTED`. A change uses one native DOM `click()` activation, not a checked setter plus a second click. This is DOM activation, not trusted native pointer input. Radio activation can uncheck the other group member. Cancelled click default behavior can roll back the tentative state and suppress input/change events.
 
 Every actual activation invalidates all references, even if handlers reverse the state. The result fields are:
-
 - `changed` and `activated`: false for a no-op; true after activation, including a cancelled or reversed change. They do not guarantee the requested final state.
 - `finalStateVerified`: whether a final state check was possible.
 - `requestedReached`: the observed comparison with the requested state, or `null` when unverified.
@@ -87,17 +85,16 @@ browser_set_checked({"snapshotId":"<snapshotId>","ref":"e1","checked":true})
 
 ## `browser_scroll`
 
-| Input | Type | Rule |
-| --- | --- | --- |
-| `direction` | string | Required: `up` or `down`. |
-| `amount` | string | Required: `page`, `half-page`, or `pixels`. |
-| `pixels` | integer | Required only for `amount: "pixels"`; 1–10,000 CSS pixels. Rejected with other amounts. |
-| `snapshotId`, `ref` | strings | Omit both for the viewport. Supply both for a discovered inner container. |
+| Input               | Type    | Rule                                                                                    |
+| ------------------- | ------- | --------------------------------------------------------------------------------------- |
+| `direction`         | string  | Required: `up` or `down`.                                                               |
+| `amount`            | string  | Required: `page`, `half-page`, or `pixels`.                                             |
+| `pixels`            | integer | Required only for `amount: "pixels"`; 1–10,000 CSS pixels. Rejected with other amounts. |
+| `snapshotId`, `ref` | strings | Omit both for the viewport. Supply both for a discovered inner container.               |
 
 A page is the target's visible height: `window.innerHeight` for the viewport or `clientHeight` for a container. A half-page is half that height. Scrolling uses a fixed native `scrollTo` operation with instant behavior, preserves the horizontal position, and clamps the requested vertical position to the target's range. It does not click, focus, or dispatch keyboard events. It needs no action confirmation and cannot request site access in the background.
 
 The result contains:
-
 - `distance`: actual signed vertical CSS pixels moved; negative means up.
 - `position`, `minPosition`, `maxPosition`: resulting vertical position and current range. Ordinary containers start at zero. An inner `column-reverse` flex container has a negative minimum and a maximum of zero; up/down still means physical up/down. The viewport keeps non-negative coordinates even when its root uses reverse flex layout.
 - `atTop`, `atBottom`: current boundaries; bottom uses a one-pixel tolerance for fractional layout. A non-overflowing viewport is at both boundaries.
@@ -126,11 +123,11 @@ browser_list_elements({})
 
 ## `browser_select_option`
 
-| Input | Type | Rule |
-| --- | --- | --- |
-| `snapshotId`, `ref` | strings | Required discovered native `<select>` reference. |
-| `value` | string | Exact option value, at most 256 characters. Empty string is allowed. |
-| `label` | string | Exact native option label, at most 256 characters. |
+| Input               | Type    | Rule                                                                 |
+| ------------------- | ------- | -------------------------------------------------------------------- |
+| `snapshotId`, `ref` | strings | Required discovered native `<select>` reference.                     |
+| `value`             | string  | Exact option value, at most 256 characters. Empty string is allowed. |
+| `label`             | string  | Exact native option label, at most 256 characters.                   |
 
 Supply exactly one of `value` or `label`. A match must identify exactly one option. Missing or duplicate matches return `INVALID_REQUEST`. Non-select targets, multiple selects, or selects with more than 2,000 options return `NOT_SUPPORTED`. Disabled controls, options, and option groups return `PERMISSION_DENIED`.
 
@@ -152,7 +149,6 @@ Wait for confirmation and the result. Then capture or read the page and rediscov
 ## `browser_get_element_details`
 
 Input is exactly `snapshotId` and `ref`. It needs no action confirmation. The result is untrusted page data and includes:
-
 - `name`: the existing bounded DOM-derived accessible-name approximation, up to 256 characters.
 - `role`: bounded explicit role or a native role for supported controls; otherwise `generic`.
 - `visible`: whether a sampled point is currently visible under the existing discovery rules.

@@ -25,7 +25,6 @@ WebMCP remains separate: a web page supplies WebMCP tools through the browser, w
 ## Schema compatibility and limits
 
 Input schemas must have an object root. Input and optional output schemas use an interpreted JSON Schema subset:
-
 - One scalar `type`: object, array, string, number, integer, boolean, or null.
 - Object `properties`, `required`, and Boolean `additionalProperties`.
 - Array `items`, `minItems`, and `maxItems`.
@@ -35,20 +34,20 @@ Input schemas must have an object root. Input and optional output schemas use an
   - References, regex patterns, formats, composition keywords, type unions, and schema-valued additional properties are rejected.
   - No schema code is generated or fetched.
 
-| Boundary | Limit |
-| --- | --- |
-| Configured servers | 8 |
-| Tools | 32 per server and 32 across one run |
-| Discovery pages | 4 per server; repeated cursors fail |
-| Schema | 16 KiB each; 8 nested schema levels |
-| Tool name and description | 64 ASCII name characters; 2,048 description UTF-16 units |
-| Combined MCP declarations | 64 KiB per run |
-| Request body | 16 KiB, including JSON-RPC fields |
-| Response body | 256 KiB of decoded bytes, counted during reading |
-| Tool result | 48 KiB; unsupported or oversized results fail instead of being truncated |
-| JSON data nesting | 16 levels |
-| Operation deadline | 15 seconds for discovery or one call, including response reading |
-| Graceful session cleanup | 2 seconds; one authorized DELETE, with no retry |
+| Boundary                  | Limit                                                                    |
+| ------------------------- | ------------------------------------------------------------------------ |
+| Configured servers        | 8                                                                        |
+| Tools                     | 32 per server and 32 across one run                                      |
+| Discovery pages           | 4 per server; repeated cursors fail                                      |
+| Schema                    | 16 KiB each; 8 nested schema levels                                      |
+| Tool name and description | 64 ASCII name characters; 2,048 description UTF-16 units                 |
+| Combined MCP declarations | 64 KiB per run                                                           |
+| Request body              | 16 KiB, including JSON-RPC fields                                        |
+| Response body             | 256 KiB of decoded bytes, counted during reading                         |
+| Tool result               | 48 KiB; unsupported or oversized results fail instead of being truncated |
+| JSON data nesting         | 16 levels                                                                |
+| Operation deadline        | 15 seconds for discovery or one call, including response reading         |
+| Graceful session cleanup  | 2 seconds; one authorized DELETE, with no retry                          |
 
 ## Ownership and authorization
 
@@ -96,7 +95,6 @@ The first implementation passed the complete suite on Chrome 153. The default Ch
 Review validation covers both browser API formats and the remote MCP boundaries. See [the PR review ledger](reviews/pr-98-review.md) for current checks. Stable-Chrome Side Panel layout, native permission dialogs, and external production MCP services were not manually tested.
 
 Protocol references used for implementation:
-
 - [Official Streamable HTTP specification](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports)
 - [Official lifecycle specification](https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle)
 - [Official TypeScript SDK transport](https://github.com/modelcontextprotocol/typescript-sdk/blob/v1.x/src/client/streamableHttp.ts)

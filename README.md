@@ -18,7 +18,6 @@ npm run build
 ```
 
 Load the production artifact:
-
 1. Open `chrome://extensions`.
 2. Enable **Developer mode**.
 3. Choose **Load unpacked**.
@@ -68,7 +67,6 @@ The agent can read visible text and selection, discover visible controls and scr
 `browser_scroll` moves up/down by a page, half-page, or 1–10,000 pixels without action confirmation. `browser_get_element_details` returns bounded names, roles, state, geometry, and scrollability without field values. `browser_select_option` uses a discovered native single-select reference and an exact value or label; every change requires fresh confirmation because page handlers can submit or navigate. `browser_get_select_options` reads only native option labels, indices, disabled flags, and label-truncation flags, never raw values or selected-state data; it returns at most 50 entries without invalidating references and rejects catalogs above 2,000 options. This label-only catalog is a narrow exception to the form-content exclusion; hidden options and hidden groups remain excluded. Option pagination uses native indices, not returned-entry counts. `browser_set_checked` supports native checkboxes and radio activation (`true` only). Each actual change requires fresh confirmation in all modes and invalidates references; a no-op sends no events and needs no confirmation. If handlers remove the target or navigate, the final state can be unverified: inspect current state and never replay automatically.
 
 `browser_find_text` accepts a literal case-sensitive query (at most 256 Unicode code points), optional selector, and match-ordinal offset. It returns bounded snippets, source UTF-16 offsets, and optional geometry, never mutation references. It does not scroll. Search collapses whitespace within each Text node, does not match across nodes, and scans at most 2,000 nodes/100,000 source UTF-16 units, including excluded text. Source offsets are not stable after DOM changes. New string inputs use JSON Schema code-point counts; source offsets and bounded snippets use UTF-16 units. Search conservatively excludes masked, rounded-overflow-clipped, rotated, skewed, flipped, and 3D-transformed text; it does not interpret arbitrary visual effects. `browser_wait_for` accepts either a selector state or literal text in an optional selector scope, never both. It defaults to 5,000 ms, caps at 10,000 ms, and polls every 250 ms. Waits remain in the current document; context changes/cancellation fail closed and `TIMEOUT` is distinct from access denial. Neither read renews or replaces references. No code or regular expressions are accepted. See [browser interaction schemas and agent examples](docs/browser-interactions.md). Native key presses and hover are not exposed by the current DOM-only bridge.
-
 - Password and file inputs are denied.
 - Form submissions and downloads always prompt; cross-origin links/navigation and WebMCP calls require either fresh confirmation or a matching approval in the selected confirmation mode. No cached approval replays a failed mutation.
 - A request created before navigation or a visible-tab change is rejected as stale. Chat and approved bookmark reads do not require a supported page; a no-page turn cannot use page tools even after a tab switch.
@@ -99,15 +97,15 @@ The conversation interface uses English. During a run, **Send** becomes **Add in
 
 Type `/` at the start of the composer to show commands. Use Arrow keys to select, then Tab or Enter to insert the command. Pointer selection also inserts it. Select **Send**, or press Enter again, to execute. Escape closes the command list before it stops a running response. Shift+Enter still inserts a line break.
 
-| Command | Action |
-| --- | --- |
-| `/new` | Start a new session. |
-| `/resume` | Open the saved-session picker. |
-| `/tree` | Navigate and create branches in this conversation. |
-| `/name [title]` | Rename this session; omit the title to open the name dialog. |
-| `/settings` | Open Settings for this session. |
-| `/login` | Open credential setup. Enter credentials only in its dialogs. |
-| `/logout` | Remove the selected model provider's credential. |
+| Command         | Action                                                        |
+| --------------- | ------------------------------------------------------------- |
+| `/new`          | Start a new session.                                          |
+| `/resume`       | Open the saved-session picker.                                |
+| `/tree`         | Navigate and create branches in this conversation.            |
+| `/name [title]` | Rename this session; omit the title to open the name dialog.  |
+| `/settings`     | Open Settings for this session.                               |
+| `/login`        | Open credential setup. Enter credentials only in its dialogs. |
+| `/logout`       | Remove the selected model provider's credential.              |
 
 Commands run locally, without a model request or current-site access. They require an idle conversation with no attached images or selected elements. They cannot be queued. Unknown commands, unsupported arguments, and multiline command input show a local error and retain the draft. Canceled dialogs also retain it. Only `/name` accepts an argument.
 

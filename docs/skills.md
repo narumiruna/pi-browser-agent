@@ -17,15 +17,16 @@ To replace a skill, select the installed record, select and review the new file,
 
 ```markdown
 ---
+
 name: review-checklist
 description: "Review a change against a short checklist."
 ---
+
 Check the requested scope, tests, and permission boundaries.
 Report failures before optional improvements.
 ```
 
 The filename is case-sensitive: `SKILL.md`. The format is a fixed frontmatter subset, not a general YAML parser:
-
 - Decode UTF-8 with fatal error handling. Invalid byte sequences are rejected, not replaced. An initial UTF-8 byte-order mark is optional.
 - Start with a line containing exactly `---`. Close the frontmatter with another exact `---` line. Use LF or CRLF line endings; do not indent the delimiters.
 - Include exactly one unindented `name: value` and one `description: value`. Their order can differ. Empty lines are allowed. Duplicate or unknown fields are rejected.
@@ -43,14 +44,14 @@ Only this text is imported. No script executes, supporting file opens, link fetc
 
 ## Fixed limits
 
-| Item | Limit and measurement |
-| --- | --- |
-| Selected input | 65,536 UTF-8 bytes, including frontmatter and an optional byte-order mark |
-| Name | 64 UTF-16 code units; the permitted ASCII syntax makes these ordinary characters |
-| Description | 512 UTF-16 code units after scalar decoding |
-| Installed skills | 20 records, including disabled records |
-| Skill store | 524,288 UTF-8 bytes of the serialized JSON `{version:1,records:[...]}` envelope |
-| Enabled catalog | 16,384 UTF-8 bytes of the serialized JSON metadata array; fixed surrounding instructions are excluded |
+| Item                   | Limit and measurement                                                                                                                                             |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Selected input         | 65,536 UTF-8 bytes, including frontmatter and an optional byte-order mark                                                                                         |
+| Name                   | 64 UTF-16 code units; the permitted ASCII syntax makes these ordinary characters                                                                                  |
+| Description            | 512 UTF-16 code units after scalar decoding                                                                                                                       |
+| Installed skills       | 20 records, including disabled records                                                                                                                            |
+| Skill store            | 524,288 UTF-8 bytes of the serialized JSON `{version:1,records:[...]}` envelope                                                                                   |
+| Enabled catalog        | 16,384 UTF-8 bytes of the serialized JSON metadata array; fixed surrounding instructions are excluded                                                             |
 | Loaded content per run | 131,072 UTF-8 bytes in total of successful serialized JSON tool-result text, including its guidance wrapper, ID, name, and body; every repeated load counts again |
 
 Stored metadata and body together also must fit the 65,536-byte content ceiling when read. JSON escaping and envelope overhead can make stored or loaded data larger than the source body. Limits apply before saving or returning content. A failed load returns no new body; previously loaded content remains in the conversation.
@@ -66,7 +67,6 @@ Loaded bodies enter ordinary message history and saved sessions. Later submissio
 ## Storage and recovery
 
 Skills use the trusted `chrome.storage.local` key `piBrowserAgentSkillsV1`, separate from settings and credentials. Its envelope is `{version:1,records:[...]}`; each record has only `{id,name,description,body,enabled}`. IDs are stable UUIDs. Cross-context updates are serialized, and each successful mutation publishes the complete envelope in one write.
-
 - **Invalid file or unsupported metadata:** correct the file and select it again. Nothing is installed until the reviewed import succeeds.
 - **Duplicate name:** use explicit replacement of the intended installed record, or choose a distinct valid name.
 - **Count or storage limit:** delete unused skills or shorten their bodies, then retry. Disabled records still consume storage.
