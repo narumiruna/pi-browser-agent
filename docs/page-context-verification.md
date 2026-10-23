@@ -74,6 +74,8 @@ Independent review checked source and fixture behavior, not only the implementat
 
 An initial full browser run passed 155/167 tests. Assertions were updated for the intended distinct PDF classification, additive outcomes, conservative post-focus uncertainty, and sanitized exceptions. Existing value, event-count, target, and confirmation assertions remain. The final full run passed 167/167 with no retries.
 
+GitHub CI [attempt 1](https://github.com/narumiruna/pi-browser-agent/actions/runs/39904884226/attempts/1) passed unit/integration checks, build, and 166 browser tests, but failed the unchanged Skills import-status test. Its file helper waited only for an enabled input; that input can be enabled while Settings is hidden and asynchronous initialization has not installed its handler. The helper now waits for visibility as well. No Skills application code changed. `npm run test:e2e -- tests/e2e/skills.spec.ts --repeat-each=3 --workers=1` passed all six focused cases after the synchronization change. The PR shows the latest GitHub check result; the failed attempt remains available.
+
 The build passes with two bundle-size warnings: runtime assets exceed the 1 MiB performance budget by 74% and 45%. No dependency or permission was added. The original production trigger and persistence remain unverified, as stated below.
 
 ## Limitations and recovery

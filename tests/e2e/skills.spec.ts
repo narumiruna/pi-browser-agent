@@ -53,6 +53,8 @@ async function records(page: Page): Promise<SkillRecord[]> {
 }
 
 async function selectFile(page: Page, buffer = source(), name = "SKILL.md"): Promise<void> {
+  // Settings stays hidden until its asynchronous initialization installs the file handler.
+  await expect(page.locator("#skills-file-input")).toBeVisible()
   await expect(page.locator("#skills-file-input")).toBeEnabled()
   await page.locator("#skills-file-input").setInputFiles({
     name,
