@@ -3590,9 +3590,58 @@ test("reports rejected element context rather than silently losing the selection
   await page.goto(`http://127.0.0.1:${fixture.port}/`)
   await page.bringToFront()
   tabContext = await waitForCurrentTab(page.url())
-  await controller.locator("#element-picker").click()
-  await expect(page.locator("[data-pi-browser-agent-element-picker]")).toHaveCount(1)
+  await worker.evaluate(() => {
+    const executeScript = chrome.scripting.executeScript.bind(chrome.scripting)
+    const sendMessage = chrome.runtime.sendMessage.bind(chrome.runtime)
+    let releaseStart!: () => void
+    let releaseResult!: () => void
+    const startGate = new Promise<void>((resolve) => {
+      releaseStart = resolve
+    })
+    const resultGate = new Promise<void>((resolve) => {
+      releaseResult = resolve
+    })
+    const state = globalThis as typeof globalThis & {
+      pickerResultGate?: {
+        releaseStart: () => void
+        releaseResult: () => void
+        restore: () => void
+      }
+    }
+    state.pickerResultGate = {
+      releaseStart,
+      releaseResult,
+      restore() {
+        chrome.scripting.executeScript = executeScript
+        chrome.runtime.sendMessage = sendMessage
+        releaseStart()
+        releaseResult()
+        delete state.pickerResultGate
+      },
+    }
+    chrome.scripting.executeScript = (async (injection) => {
+      const result = await executeScript(injection)
+      if ("args" in injection && injection.args?.[0] === "start") await startGate
+      return result
+    }) as typeof chrome.scripting.executeScript
+    chrome.runtime.sendMessage = (async (message: {
+      kind?: string
+      name?: string
+      payload?: { reason?: string }
+    }) => {
+      if (
+        message.kind === "event" &&
+        message.name === "elementPicker.cancelled" &&
+        message.payload?.reason === "invalid-result"
+      ) {
+        await resultGate
+      }
+      return sendMessage(message)
+    }) as typeof chrome.runtime.sendMessage
+  })
   try {
+    await controller.locator("#element-picker").click()
+    await expect(page.locator("[data-pi-browser-agent-element-picker]")).toHaveCount(1)
     await controller.evaluate(
       async (target) => {
         const [injection] = await chrome.scripting.executeScript({
@@ -3621,11 +3670,29 @@ test("reports rejected element context rather than silently losing the selection
       },
       { tabId: tabContext.tabId, url: tabContext.url, epoch: tabContext.epoch },
     )
+    // The result consumed the picker. Deliver the inactive start response before its error event.
+    await worker.evaluate(() =>
+      (
+        globalThis as typeof globalThis & { pickerResultGate?: { releaseStart: () => void } }
+      ).pickerResultGate?.releaseStart(),
+    )
+    await expect(controller.locator("#element-picker")).toHaveAttribute("aria-pressed", "false")
+    await expect(controller.locator("#element-picker")).toBeEnabled()
+    await worker.evaluate(() =>
+      (
+        globalThis as typeof globalThis & { pickerResultGate?: { releaseResult: () => void } }
+      ).pickerResultGate?.releaseResult(),
+    )
     await expect(controller.locator("#error")).toContainText(
       "Could not attach the selected element",
     )
     await expect(controller.locator("#element-picker")).toHaveAttribute("aria-pressed", "false")
   } finally {
+    await worker.evaluate(() =>
+      (
+        globalThis as typeof globalThis & { pickerResultGate?: { restore: () => void } }
+      ).pickerResultGate?.restore(),
+    )
     await request("elementPicker.stop", {}, { tabContext })
   }
 })

@@ -516,7 +516,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
 
   function setPickerActive(active: boolean, clientId?: string): void {
     pickerActive = active
-    pickerClientId = active ? clientId : undefined
+    pickerClientId = clientId
     if (!active) pickerContext = undefined
     elementPickerButton.setAttribute("aria-pressed", String(active))
     elementPickerButton.ariaLabel = active ? "Cancel element selection" : "Select page element"
@@ -753,7 +753,8 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
         !Array.isArray(result) &&
         result.active === true &&
         result.clientId === clientId
-      setPickerActive(active, active ? clientId : undefined)
+      // An inactive start response can precede its result event. Keep the client ID for that event.
+      setPickerActive(active, clientId)
     } catch (error) {
       if (version === pickerStartVersion && !disposed) throw error
     } finally {
