@@ -32,23 +32,23 @@
     "version-packages": "changeset version && node scripts/sync-manifest-version.mjs && npm install --package-lock-only --ignore-scripts"
   },
   "dependencies": {
-    "@earendil-works/pi-agent-core": "^1.3.0",
-    "@earendil-works/pi-ai": "^1.3.0",
+    "@earendil-works/pi-agent-core": "^1.4.0",
+    "@earendil-works/pi-ai": "^1.4.0",
     "@modelcontextprotocol/sdk": "1.32.1",
     "dompurify": "3.4.17",
     "marked": "18.1.1",
-    "typebox": "^1.4.2"
+    "typebox": "^1.4.3"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.15",
+    "@biomejs/biome": "^2.6.2",
     "@changesets/cli": "^3.0.3",
     "@playwright/test": "^1.64.1",
-    "@types/chrome": "^0.3.5",
+    "@types/chrome": "^0.3.6",
     "@types/jsdom": "^30.0.0",
     "@types/node": "^26.6.5",
     "acorn": "^8.19.0",
     "esbuild": "^0.28.2",
-    "extension": "^4.1.33",
+    "extension": "^4.1.35",
     "fake-indexeddb": "^6.2.6",
     "husky": "^9.1.7",
     "jsdom": "^30.1.3",
