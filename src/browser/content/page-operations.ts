@@ -1407,6 +1407,7 @@ export async function executePageOperation(
             throw error
           }
         }
+        // biome-ignore lint/performance/useDomNodeTextContent: Page text must exclude hidden content and preserve rendered whitespace.
         const text = (root?.innerText ?? "").replace(/\n{3,}/g, "\n\n").trim()
         let offset = typeof params.offset === "number" ? params.offset : 0
         if (offset > text.length)

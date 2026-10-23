@@ -5067,11 +5067,12 @@ test("reads a selected page section in bounded chunks without a full-page fallba
       'Shown<span hidden>Secret</span><span style="display:none">CSS secret</span><script>Script secret</script><span>More</span>'
   })
   const boxlessDom = await page.locator("#boxless-read").evaluate((element) => ({
-    innerText: (element as HTMLElement).innerText,
+    // biome-ignore lint/performance/useDomNodeTextContent: Compare rendered text with DOM text to check hidden descendants.
+    renderedText: (element as HTMLElement).innerText,
     textContent: element.textContent,
   }))
   expect(boxlessDom.textContent).toContain("Secret")
-  expect(boxlessDom.innerText).not.toContain("Secret")
+  expect(boxlessDom.renderedText).not.toContain("Secret")
   const boxlessText = await request(
     "page.getVisibleText",
     { selector: "#boxless-read" },

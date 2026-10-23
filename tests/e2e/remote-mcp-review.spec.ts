@@ -163,7 +163,7 @@ test("shows safe local validation messages without any remote request", async ()
       await expect(settings.locator("#mcp-status")).toContainText("16 to 4096")
       await expect(settings.locator("#mcp-token")).toHaveValue("")
     }
-    expect(await settings.locator("body").innerText()).not.toContain("private token with spaces")
+    expect(await settings.locator("body").textContent()).not.toContain("private token with spaces")
     expect(fixture.requests).toHaveLength(0)
   } finally {
     await harness.close()

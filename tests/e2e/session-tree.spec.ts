@@ -397,7 +397,7 @@ test("opening and canceling a legacy tree leaves database v1 and the complete re
     const before = await saved(page)
     expect(before.version).toBe(1)
     expect(before.record.tree).toBeUndefined()
-    const transcript = await page.locator("#transcript").innerText()
+    const transcript = await page.locator("#transcript").textContent()
     for (const cancel of ["escape", "button"]) {
       await openTree(page)
       await expect(row(page, "assistant", "Original answer")).toBeFocused()
@@ -410,7 +410,7 @@ test("opening and canceling a legacy tree leaves database v1 and the complete re
       await expect(dialog(page)).not.toBeVisible()
       await expect(page.locator("#send")).toBeFocused()
       expect(await saved(page)).toEqual(before)
-      expect(await page.locator("#transcript").innerText()).toBe(transcript)
+      expect(await page.locator("#transcript").textContent()).toBe(transcript)
     }
     await expectNoReplay(page)
     expect(mock.requests).toEqual([])
@@ -798,10 +798,10 @@ test("tree keyboard navigation and hostile plain-text labels fit 320px at font 2
       await expect(dialog(page).getByRole("treeitem")).toHaveCount(history.length + 1)
       const label = row(page, "user", "<img src=x")
       await expect(label.locator(".session-tree-label")).toContainText(hostile)
-      expect((await label.locator(".session-tree-label").innerText()).length).toBeLessThanOrEqual(
-        160,
-      )
-      expect(await label.innerText()).not.toContain("\u202e")
+      expect(
+        (await label.locator(".session-tree-label").textContent())?.length,
+      ).toBeLessThanOrEqual(160)
+      expect(await label.textContent()).not.toContain("\u202e")
       await expect(dialog(page).locator("img, script, iframe")).toHaveCount(0)
       expect(
         await page.evaluate(() => (window as Window & { treeInjected?: boolean }).treeInjected),
