@@ -1,5 +1,12 @@
 # pi-browser-agent
 
+## 0.8.1
+
+### Patch Changes
+
+- 7b6e574: Keep element-picker results and errors when they arrive after an inactive startup response.
+- 2154b25: Update browser runtime dependencies and development tools. Resolve Biome findings without changing rendered-text behavior, and preserve changeset YAML headers during formatting.
+
 ## 0.8.0
 
 ### Minor Changes
