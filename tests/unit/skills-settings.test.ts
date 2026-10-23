@@ -139,6 +139,21 @@ async function setup(initial: SkillRecord[] = []) {
 }
 
 describe("Skills settings", () => {
+  test("keeps file selection disabled until initialization attaches its handlers", async () => {
+    const dom = new JSDOM(html)
+    try {
+      const file = dom.window.document.getElementById("skills-file-input") as HTMLInputElement
+      expect(file.disabled).toBe(true)
+    } finally {
+      dom.window.close()
+    }
+
+    const env = await setup()
+    expect(env.file.disabled).toBe(false)
+    await env.choose()
+    expect(env.preview.textContent).toContain("Reviewed body")
+  })
+
   test("uses labeled native keyboard controls and explains disclosure and retention", async () => {
     const env = await setup()
     expect(env.file.type).toBe("file")
