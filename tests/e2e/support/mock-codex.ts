@@ -1,5 +1,26 @@
 export const CODEX_RESPONSES_URL = "https://chatgpt.com/backend-api/codex/responses"
 
+export type CodexRequest = {
+  instructions: string
+  tools?: { name: string }[]
+  input: {
+    type?: string
+    role?: string
+    content?: unknown
+    tools?: { name: string }[]
+  }[]
+}
+
+// Includes historical declarations; removals are sent separately as developer notices.
+export function declaredToolNames(request: CodexRequest | undefined): string[] {
+  return [
+    ...(request?.tools ?? []),
+    ...(request?.input.flatMap((item) =>
+      item.type === "additional_tools" ? (item.tools ?? []) : [],
+    ) ?? []),
+  ].map((tool) => tool.name)
+}
+
 function sseResponse(item: Record<string, unknown>, index: number): string {
   const response = {
     id: `response-${index}`,
