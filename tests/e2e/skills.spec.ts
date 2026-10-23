@@ -4,7 +4,13 @@ import {
   launchExtensionHarness,
   waitForConversationReady,
 } from "./support/extension-harness.js"
-import { CODEX_RESPONSES_URL, finalTextResponse, toolCallResponse } from "./support/mock-codex.js"
+import {
+  CODEX_RESPONSES_URL,
+  type CodexRequest,
+  declaredToolNames,
+  finalTextResponse,
+  toolCallResponse,
+} from "./support/mock-codex.js"
 
 test.setTimeout(120_000)
 
@@ -21,21 +27,6 @@ type SkillRecord = {
   body: string
   enabled: boolean
 }
-type ModelRequest = {
-  instructions: string
-  tools: { name: string }[]
-  input: { type?: string; tools?: { name: string }[]; output?: string }[]
-}
-
-function advertisedTools(request: ModelRequest | undefined): string[] {
-  return [
-    ...(request?.tools ?? []),
-    ...(request?.input.flatMap((item) =>
-      item.type === "additional_tools" ? (item.tools ?? []) : [],
-    ) ?? []),
-  ].map((tool) => tool.name)
-}
-
 function source(body = BODY): Buffer {
   return Buffer.from(
     `---\nname: ${NAME}\ndescription: ${JSON.stringify(DESCRIPTION)}\n---\n${body}`,
@@ -117,10 +108,10 @@ async function send(page: Page, prompt: string, answer: string): Promise<void> {
 test("reviewed skills disclose metadata before model-requested load and retain history after disable/delete", async () => {
   const harness = await launchExtensionHarness()
   try {
-    const requests: ModelRequest[] = []
+    const requests: CodexRequest[] = []
     let id = ""
     await harness.context.route(CODEX_RESPONSES_URL, async (route) => {
-      requests.push(route.request().postDataJSON() as ModelRequest)
+      requests.push(route.request().postDataJSON() as CodexRequest)
       const index = requests.length
       await route.fulfill({
         status: 200,
@@ -157,7 +148,7 @@ test("reviewed skills disclose metadata before model-requested load and retain h
     expect(JSON.stringify(requests[0])).not.toContain("SKILL_BODY_PRIVATE_E2E_MARKER")
     expect(requests[0]?.instructions).not.toContain('"body":')
     // Codex can anchor new declarations in additional_tools rather than top-level tools.
-    expect(advertisedTools(requests[0])).toContain("skills_load")
+    expect(declaredToolNames(requests[0])).toContain("skills_load")
     expect(JSON.stringify(requests[1]?.input)).toContain("SKILL_BODY_PRIVATE_E2E_MARKER")
     expect(JSON.stringify(requests[1]?.input)).toContain("skills_load")
     await expect
@@ -173,7 +164,14 @@ test("reviewed skills disclose metadata before model-requested load and retain h
     expect(requests).toHaveLength(2)
     await harness.fixturePage.bringToFront()
     await send(harness.controller, "Continue without loading skills.", "Skill round 3 complete")
-    expect(advertisedTools(requests[2])).not.toContain("skills_load")
+    expect(requests[2]?.input).toContainEqual(
+      expect.objectContaining({
+        role: "developer",
+        content: expect.stringContaining(
+          "The following tools are no longer available. Do not call them:\n- skills_load",
+        ),
+      }),
+    )
     expect(requests[2]?.instructions).not.toContain(catalog)
     // Removing availability does not redact a previously authorized tool result.
     expect(JSON.stringify(requests[2]?.input)).toContain("SKILL_BODY_PRIVATE_E2E_MARKER")
@@ -195,7 +193,14 @@ test("reviewed skills disclose metadata before model-requested load and retain h
     expect(requests).toHaveLength(3)
     await harness.fixturePage.bringToFront()
     await send(harness.controller, "Continue after skill deletion.", "Skill round 4 complete")
-    expect(advertisedTools(requests[3])).not.toContain("skills_load")
+    expect(requests[3]?.input).toContainEqual(
+      expect.objectContaining({
+        role: "developer",
+        content: expect.stringContaining(
+          "The following tools are no longer available. Do not call them:\n- skills_load",
+        ),
+      }),
+    )
     expect(requests[3]?.instructions).not.toContain(catalog)
     expect(JSON.stringify(requests[3]?.input)).toContain("SKILL_BODY_PRIVATE_E2E_MARKER")
     expect(JSON.stringify(await savedSessions(harness.controller))).toContain(

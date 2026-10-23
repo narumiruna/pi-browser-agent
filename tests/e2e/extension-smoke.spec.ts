@@ -1,6 +1,12 @@
 import { expect, test } from "@playwright/test"
 import { configureMockCodex, launchExtensionHarness } from "./support/extension-harness.js"
-import { CODEX_RESPONSES_URL, finalTextResponse, toolCallResponse } from "./support/mock-codex.js"
+import {
+  CODEX_RESPONSES_URL,
+  type CodexRequest,
+  declaredToolNames,
+  finalTextResponse,
+  toolCallResponse,
+} from "./support/mock-codex.js"
 
 test("discovers and calls a native WebMCP tool in Chrome's isolated extension world", async () => {
   const harness = await launchExtensionHarness({ webMcp: true })
@@ -58,7 +64,7 @@ test("runs the production Side Panel from settings through a mocked browser-tool
   test.setTimeout(60_000)
   const testInfo = test.info()
   const harness = await launchExtensionHarness()
-  const requestBodies: unknown[] = []
+  const requestBodies: CodexRequest[] = []
   const finalAnswer = "The production smoke test read meadow-42 from the visible page."
 
   try {
@@ -90,15 +96,18 @@ test("runs the production Side Panel from settings through a mocked browser-tool
       )
       .toEqual({ family: "monospace", size: "18" })
 
+    const responses = [
+      toolCallResponse(1, "browser_read_page"),
+      toolCallResponse(2, "browser_click", { selector: "#ordinary" }),
+      finalTextResponse(3, finalAnswer),
+    ]
     let responseIndex = 0
     await harness.context.route(CODEX_RESPONSES_URL, async (route) => {
       expect(route.request().method()).toBe("POST")
       expect(route.request().headers().accept).toContain("text/event-stream")
-      requestBodies.push(route.request().postDataJSON())
-      const body =
-        responseIndex++ === 0
-          ? toolCallResponse(1, "browser_read_page")
-          : finalTextResponse(2, finalAnswer)
+      requestBodies.push(route.request().postDataJSON() as CodexRequest)
+      const body = responses[responseIndex++]
+      if (!body) throw new Error(`Unexpected Codex request ${responseIndex}`)
       await route.fulfill({
         status: 200,
         contentType: "text/event-stream",
@@ -127,10 +136,23 @@ test("runs the production Side Panel from settings through a mocked browser-tool
     await expect(harness.controller.locator("#transcript")).toContainText(finalAnswer)
     await expect(harness.controller.locator("#run-status")).toHaveText("Ready")
     await expect(harness.controller.locator("#error")).toBeEmpty()
-    expect(requestBodies).toHaveLength(2)
-    expect(JSON.stringify(requestBodies[0])).toContain("browser_read_page")
-    expect(JSON.stringify(requestBodies[0])).not.toContain("browser_click")
+    expect(requestBodies).toHaveLength(3)
+    expect(declaredToolNames(requestBodies[0])).toContain("browser_read_page")
+    expect(requestBodies[0]?.input).toContainEqual(
+      expect.objectContaining({
+        role: "developer",
+        content: expect.stringContaining(
+          "The following tools are no longer available. Do not call them:\n- browser_click",
+        ),
+      }),
+    )
     expect(JSON.stringify(requestBodies[1])).toContain("meadow-42")
+    expect(requestBodies[2]?.input).toContainEqual(
+      expect.objectContaining({
+        type: "function_call_output",
+        output: expect.stringContaining("Tool browser_click not found"),
+      }),
+    )
     await expect(harness.fixturePage.locator("#result")).toHaveText("idle")
 
     await harness.controller.setViewportSize({ width: 390, height: 844 })

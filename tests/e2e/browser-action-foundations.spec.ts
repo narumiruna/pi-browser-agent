@@ -97,6 +97,7 @@ test("native semantics: option labels and inline rendered text need explicit nor
         hidden: option.hidden,
         disabled: option.disabled || option.parentElement?.hasAttribute("disabled"),
       })),
+      // biome-ignore lint/performance/useDomNodeTextContent: This test checks rendered whitespace and hidden-text behavior.
       text: (document.querySelector("#text") as HTMLElement).innerText,
     }))
     expect(observed).toEqual({

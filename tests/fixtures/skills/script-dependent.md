@@ -1,7 +1,9 @@
 ---
+
 name: analyze-report
 description: Analyze a report with local helper tools.
 ---
+
 # Analyze a report
 
 Run `uv run python scripts/analyze.py report.csv`.

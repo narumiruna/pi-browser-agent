@@ -5,13 +5,11 @@ Pi Browser Agent supports API-key authentication for browser-compatible built-in
 ## Provider setup
 
 Select **Add credential** from the top-right menu or **Configure authentication** in Settings. Both entry points use the same method-first flow:
-
 1. Choose **Sign in with an account** or **Sign in with an API key**.
 2. Choose a provider from the searchable list filtered to that browser-supported method.
 3. Complete the provider-owned prompts or account flow.
 
 Adding a credential does not change the active or pending model selection. Credentials are keyed by provider, so a successful setup replaces that provider's prior API-key or OAuth credential. Cancelling setup, denying an authentication permission, or failing a provider prompt preserves the prior credential.
-
 - For an API-key provider, the provider-owned `pi-ai` prompts write one provider-scoped `api_key` credential to trusted `chrome.storage.local`.
 - OpenAI API keys use the **OpenAI** provider. **OpenAI Codex (legacy)** is a separate provider for ChatGPT Plus/Pro account login and does not accept an API key. The SDK's legacy display label does not change the `openai-codex` provider ID, stored credentials, or browser device flow.
 - Cloudflare prompts also collect the account and gateway identifiers required by its endpoint.

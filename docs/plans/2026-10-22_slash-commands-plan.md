@@ -7,7 +7,6 @@ Add discoverable slash commands to the Side Panel composer. Reuse existing brows
 ## Context
 
 Repository state at plan creation:
-
 - `package.json` includes `pi-agent-core` and `pi-ai`, but not `pi-coding-agent`. Terminal slash-command handling is not part of the current browser integration.
 - `src/browser/sidepanel/conversation-page.ts` owns composer input, Send, queued instructions, authentication preflight, page-access preflight, and existing session/settings actions. `submitPrompt()` currently sends slash-prefixed text through the normal prompt path.
 - `src/browser/agent/runtime.ts` provides `newSession()`, `resumeSession()`, and `renameSession()`. New/resume stop the current agent; resume also checks session ownership. Slash commands must not silently interrupt a run.
@@ -25,15 +24,14 @@ No new package, storage schema, permission, background message, or user configur
 
 ### Command contract
 
-| Command | Behavior |
-| --- | --- |
-| `/new` | Create a session through the existing action and refresh the transcript/session UI. |
-| `/resume` | Open the existing session picker; choosing a session uses the existing resume action. No ID or title argument in this version. |
+| Command         | Behavior                                                                                                                                                   |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/new`          | Create a session through the existing action and refresh the transcript/session UI.                                                                        |
+| `/resume`       | Open the existing session picker; choosing a session uses the existing resume action. No ID or title argument in this version.                             |
 | `/name [title]` | Rename the active session with the supplied title. Without an argument, use the existing name dialog. Preserve runtime title validation and length limits. |
-| `/settings` | Open the existing Settings tab with the active session context. |
-| `/login` | Open the existing authentication-method/provider dialogs. Do not accept credentials or provider arguments in the composer. |
-| `/logout` | Remove the selected model provider's credential through the existing flow. If no credential exists, show a local status without a provider request. |
-
+| `/settings`     | Open the existing Settings tab with the active session context.                                                                                            |
+| `/login`        | Open the existing authentication-method/provider dialogs. Do not accept credentials or provider arguments in the composer.                                 |
+| `/logout`       | Remove the selected model provider's credential through the existing flow. If no credential exists, show a local status without a provider request.        |
 - Recognize a command only when the trimmed composer starts with `/` followed by a command name. Names are lowercase ASCII letters and hyphens, followed by whitespace or the end of input. Treat paths such as `/tmp/file` and slash text elsewhere as ordinary prompts.
 - Reject unknown command names and unsupported arguments locally. Retain the draft and show an error; never fall back to a model request.
 - Support `//` at the start as an explicit literal escape. Remove only the first slash, then use normal prompt submission and permissions. Document that literal text is sent to the model.

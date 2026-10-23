@@ -14,7 +14,6 @@ Let the Pi Browser Agent agent search and inspect a bounded set of Chrome bookma
 - Chrome's `bookmarks` permission covers the full API, including writes. The implementation can be read-only only by exposing and testing no create, update, move, or remove path.
 
 References:
-
 - [Chrome Bookmarks API](https://developer.chrome.com/docs/extensions/reference/api/bookmarks)
 - [Chrome Permissions API](https://developer.chrome.com/docs/extensions/reference/api/permissions)
 

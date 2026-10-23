@@ -12,7 +12,9 @@ import {
 } from "@playwright/test"
 import { waitForConversationReady } from "./support/extension-harness.js"
 import {
+  type CodexRequest,
   CODEX_RESPONSES_URL as codexUrl,
+  declaredToolNames,
   finalTextResponse as finalText,
   toolCallResponse as toolCall,
 } from "./support/mock-codex.js"
@@ -2592,8 +2594,8 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
   await context.route(codexUrl, async (route) => {
     expect(route.request().method()).toBe("POST")
     expect(route.request().headers().accept).toContain("text/event-stream")
-    const body = route.request().postDataJSON() as { tools?: Array<{ name?: string }> }
-    expect(body.tools?.map((tool) => tool.name)).toContain("browser_read_page")
+    const body = route.request().postDataJSON() as CodexRequest
+    expect(declaredToolNames(body)).toContain("browser_read_page")
     if (requestCount === 0) {
       expect(JSON.stringify(body).match(/data:image\/png;base64,/g)).toHaveLength(1)
     }
@@ -4762,8 +4764,8 @@ test("confirms and returns bounded bookmark data through a mocked model call", a
   ]
   let requestCount = 0
   await context.route(codexUrl, async (route) => {
-    const body = route.request().postDataJSON() as { tools?: Array<{ name?: string }> }
-    expect(body.tools?.map((tool) => tool.name)).toContain("browser_search_bookmarks")
+    const body = route.request().postDataJSON() as CodexRequest
+    expect(declaredToolNames(body)).toContain("browser_search_bookmarks")
     const response = responses[requestCount]
     requestCount += 1
     if (!response) throw new Error(`Unexpected bookmark Codex request ${requestCount}`)
@@ -5067,11 +5069,12 @@ test("reads a selected page section in bounded chunks without a full-page fallba
       'Shown<span hidden>Secret</span><span style="display:none">CSS secret</span><script>Script secret</script><span>More</span>'
   })
   const boxlessDom = await page.locator("#boxless-read").evaluate((element) => ({
-    innerText: (element as HTMLElement).innerText,
+    // biome-ignore lint/performance/useDomNodeTextContent: Compare rendered text with DOM text to check hidden descendants.
+    renderedText: (element as HTMLElement).innerText,
     textContent: element.textContent,
   }))
   expect(boxlessDom.textContent).toContain("Secret")
-  expect(boxlessDom.innerText).not.toContain("Secret")
+  expect(boxlessDom.renderedText).not.toContain("Secret")
   const boxlessText = await request(
     "page.getVisibleText",
     { selector: "#boxless-read" },

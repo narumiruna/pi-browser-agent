@@ -58,7 +58,6 @@ Voice input uses Chrome's Web Speech service. Spoken audio may be processed by C
 ## How information is used
 
 Pi Browser Agent uses information only to:
-
 - authenticate requests to a provider selected by the user;
 - generate and display AI responses;
 - provide user-requested page, screenshot, bookmark, voice, skill, and browser-tool features;
@@ -69,7 +68,6 @@ Pi Browser Agent uses information only to:
 ## When information is shared
 
 Pi Browser Agent can share information in these circumstances:
-
 - **Selected AI provider:** When the user sends a prompt or approves a tool operation, Pi Browser Agent sends the provider the information needed for the conversation. Depending on the request, this may include prompts, prior conversation content, the current page URL, visible or selected page content, element descriptions, attached images, approved screenshots, approved bookmark titles and URLs, enabled skill metadata, loaded skill bodies, and tool results. Provider credentials are sent only to the associated provider endpoint for authentication.
 - **OpenAI authentication:** If the user chooses OpenAI Codex account login, Pi Browser Agent communicates with OpenAI's authentication and ChatGPT services to complete and refresh the device authorization flow.
 - **Configured remote MCP server:** Explicit setup or a later submitted run discovers enabled server tools. A confirmed call sends the displayed tool name and arguments to the approved endpoint. Tool metadata and results can also reach the selected AI provider and local transcript. MCP tokens authenticate only to their configured endpoint.
