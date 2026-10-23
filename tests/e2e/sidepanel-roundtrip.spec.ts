@@ -545,7 +545,10 @@ test("excludes filter-transparent references and rechecks visibility before clic
     })
     await expect(
       request("page.type", { ...target("Filtered input"), text: "Never write" }, { tabContext }),
-    ).rejects.toMatchObject({ code: "STALE_CONTEXT" })
+    ).rejects.toMatchObject({
+      code: "ACTION_OUTCOME_UNKNOWN",
+      details: { mutationOutcome: "outcome_unknown" },
+    })
     await expect(page.locator("#filter-fixture")).toHaveAttribute("data-clicks", "1")
     await expect(page.locator("#filter-fixture")).toHaveAttribute("data-inputs", "1")
     await expect(page.locator("#filter-input")).toHaveValue("Visible write")
@@ -649,7 +652,10 @@ for (const mode of ["modal", "popover", "fullscreen"] as const) {
           { snapshotId: snapshot.snapshotId, ref: input.ref, text: "Never write" },
           { tabContext },
         ),
-      ).rejects.toMatchObject({ code: "STALE_CONTEXT" })
+      ).rejects.toMatchObject({
+        code: "ACTION_OUTCOME_UNKNOWN",
+        details: { mutationOutcome: "outcome_unknown" },
+      })
       await expect(page.locator("#top-layer-input")).toHaveValue("Allowed")
       await expect(page.locator("#top-layer-fixture")).toHaveAttribute("data-clicks", "2")
     } finally {
@@ -786,7 +792,10 @@ for (const mode of ["inline", "modal"] as const) {
           { snapshotId: snapshot.snapshotId, ref: input.ref, text: "Never write" },
           { tabContext },
         ),
-      ).rejects.toMatchObject({ code: "STALE_CONTEXT" })
+      ).rejects.toMatchObject({
+        code: "ACTION_OUTCOME_UNKNOWN",
+        details: { mutationOutcome: "outcome_unknown" },
+      })
       await expect(page.locator("#slotted-fixture")).toHaveAttribute("data-clicks", String(allowed))
       await expect(page.locator("#slotted-fixture")).toHaveAttribute("data-inputs", String(allowed))
       await expect(page.locator("#slotted-input")).toHaveValue("Allowed")
@@ -907,7 +916,10 @@ test("filters directly slotted name text and revalidates references after name c
         { snapshotId: snapshot.snapshotId, ref: input.ref, text: "Never write" },
         { tabContext },
       ),
-    ).rejects.toMatchObject({ code: "STALE_CONTEXT" })
+    ).rejects.toMatchObject({
+      code: "ACTION_OUTCOME_UNKNOWN",
+      details: { mutationOutcome: "outcome_unknown" },
+    })
     await expect(page.locator("#direct-input")).toHaveValue("Allowed")
     await expect(page.locator("#direct-text-fixture")).toHaveAttribute(
       "data-clicks",
@@ -999,7 +1011,10 @@ test("rejects oversized shared filter declarations on distinct controls", async 
     })
     await expect(
       request("page.type", { ...target("Oversized input"), text: "Never write" }, { tabContext }),
-    ).rejects.toMatchObject({ code: "STALE_CONTEXT" })
+    ).rejects.toMatchObject({
+      code: "ACTION_OUTCOME_UNKNOWN",
+      details: { mutationOutcome: "outcome_unknown" },
+    })
     await expect(page.locator("#oversized-filter-fixture")).toHaveAttribute("data-clicks", "1")
     await expect(page.locator("#oversized-filter-fixture input")).toHaveValue("Allowed")
   } finally {
@@ -4872,7 +4887,7 @@ test("shows optional screenshot permission denial inside the confirmation dialog
   }
 })
 
-test("preserves non-permission screenshot failures", async () => {
+test("keeps screenshot failures separate from permission denial without raw exceptions", async () => {
   await worker.evaluate(() => {
     const state = globalThis as typeof globalThis & {
       restoreCaptureVisibleTab?: typeof chrome.tabs.captureVisibleTab
@@ -4885,7 +4900,8 @@ test("preserves non-permission screenshot failures", async () => {
   try {
     await expect(request("page.captureVisible", {}, { tabContext })).rejects.toMatchObject({
       code: "INTERNAL_ERROR",
-      message: "Capture rate limit reached",
+      message:
+        "Chrome could not capture the visible tab. Check the intended tab and screenshot permission.",
     })
   } finally {
     await worker.evaluate(() => {

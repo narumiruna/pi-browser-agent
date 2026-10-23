@@ -332,6 +332,63 @@ describe("internal runtime messages", () => {
     await expect(pending).rejects.toMatchObject({ code: "REQUEST_CANCELLED" })
   })
 
+  test.each(["dispatched", "outcome_unknown"])(
+    "preserves an acknowledged %s action after cancellation",
+    async (mutationOutcome) => {
+      const controller = new AbortController()
+      vi.stubGlobal("chrome", {
+        runtime: {
+          sendMessage: vi.fn(async (message: { method: string }) => {
+            if (message.method === "requests.cancel") return { ok: true, result: {} }
+            controller.abort()
+            return { ok: true, result: { clicked: true, mutationOutcome } }
+          }),
+        },
+      })
+      expect(
+        await sendRuntimeRequest(
+          "page.click",
+          { selector: "button" },
+          { signal: controller.signal },
+        ),
+      ).toMatchObject({ mutationOutcome })
+    },
+  )
+
+  test.each(["rejected", "empty"])(
+    "reports %s mutation responses as unknown without replay",
+    async (failure) => {
+      const sendMessage = vi.fn(async () => {
+        if (failure === "rejected") throw new Error("secret-cookie-query")
+        return undefined
+      })
+      vi.stubGlobal("chrome", { runtime: { sendMessage } })
+      await expect(sendRuntimeRequest("page.click", { selector: "button" })).rejects.toMatchObject({
+        code: "ACTION_OUTCOME_UNKNOWN",
+        details: { mutationOutcome: "outcome_unknown", diagnostics: { actionStage: "dispatch" } },
+      })
+      expect(sendMessage).toHaveBeenCalledOnce()
+    },
+  )
+
+  test("does not dispatch an already cancelled mutation", async () => {
+    const sendMessage = vi.fn()
+    vi.stubGlobal("chrome", { runtime: { sendMessage } })
+    const controller = new AbortController()
+    controller.abort()
+    await expect(
+      sendRuntimeRequest(
+        "page.type",
+        { selector: "input", text: "private" },
+        { signal: controller.signal },
+      ),
+    ).rejects.toMatchObject({
+      code: "REQUEST_CANCELLED",
+      details: { mutationOutcome: "not_dispatched" },
+    })
+    expect(sendMessage).not.toHaveBeenCalled()
+  })
+
   test("validates exclusive reference targets without changing selectors", () => {
     const target = { snapshotId: "11111111-1111-1111-1111-111111111111", ref: "e1" }
     for (const method of ["page.click", "page.type"]) {

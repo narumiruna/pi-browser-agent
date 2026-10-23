@@ -556,7 +556,10 @@ for (const replacement of ["successful", "failed"] as const) {
             message.method === "elementPicker.start"
           ) {
             chrome.runtime.sendMessage = original
-            throw new Error("New picker setup failure")
+            return {
+              ok: false,
+              error: { code: "INTERNAL_ERROR", message: "New picker setup failure" },
+            }
           }
           return original(message)
         }) as typeof chrome.runtime.sendMessage

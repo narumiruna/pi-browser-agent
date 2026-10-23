@@ -790,7 +790,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
 
   async function requestRunAccess(hasSelectedElements: boolean): Promise<{
     context?: TabContext
-    usePage: boolean
+    usePage: boolean | "unavailable"
   }> {
     const initial = await refreshTabContext()
     const usePage =
@@ -809,7 +809,10 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
           : "The page changed while access was being granted. Send the prompt again.",
       )
     }
-    return { context: usePage ? current : undefined, usePage }
+    return {
+      context: usePage ? current : undefined,
+      usePage: usePage ? true : runtime.agent.state.isStreaming ? false : "unavailable",
+    }
   }
 
   function microphoneAccessUrl(): string {

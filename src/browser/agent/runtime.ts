@@ -129,6 +129,7 @@ export class BrowserAgentRuntime {
   private skillRun?: SkillRun
   private persistChain: Promise<void> = Promise.resolve()
   private pageToolsEnabled = true
+  private pageContextPolicy: boolean | "unavailable" = true
   private treeNavigating = false
   private treeNavigation?: Promise<void>
   private changingSession = false
@@ -183,7 +184,7 @@ export class BrowserAgentRuntime {
           callbacks.confirm,
           () => this.pageToolsEnabled,
           () => {
-            this.pageToolsEnabled = true
+            if (this.pageContextPolicy !== false) this.pageToolsEnabled = true
           },
         ),
       },
@@ -432,7 +433,7 @@ export class BrowserAgentRuntime {
     streamingBehavior: StreamingBehavior = "steer",
     images: ImageContent[] = [],
     elements: SelectedElementContext[] = [],
-    usePage = true,
+    usePage: boolean | "unavailable" = true,
   ): Promise<SubmissionMode> {
     this.assertNotNavigatingTree()
     if (this.changingSession) throw new Error("Wait for the session change to finish")
@@ -448,7 +449,8 @@ export class BrowserAgentRuntime {
     if (this.preparing) throw new Error("Wait for skill and remote MCP discovery to finish")
     if (!this.agent.state.isStreaming) {
       if (this.shuttingDown) throw new Error("The panel is shutting down")
-      this.pageToolsEnabled = usePage
+      this.pageContextPolicy = usePage
+      this.pageToolsEnabled = usePage === true
       this.preparing = true
       const generation = ++this.preparationGeneration
       const assertPreparing = () => {
@@ -674,7 +676,7 @@ export class BrowserAgentRuntime {
       this.callbacks.confirm,
       () => this.pageToolsEnabled,
       () => {
-        this.pageToolsEnabled = true
+        if (this.pageContextPolicy !== false) this.pageToolsEnabled = true
       },
     ).filter((tool) => enabled.has(tool.name))
   }

@@ -84,7 +84,11 @@ describe("browser action tool execution", () => {
       await tool.execute("second", params, undefined)
       expect(show).toHaveBeenCalledTimes(2)
       for (const args of confirm.mock.calls) expect(args).toHaveLength(3)
-      expect(show).toHaveBeenLastCalledWith("Activate checkbox?", params, undefined)
+      expect(show).toHaveBeenLastCalledWith(
+        "Activate checkbox?",
+        expect.objectContaining(params),
+        undefined,
+      )
       expect(sendMessage).toHaveBeenLastCalledWith(
         expect.objectContaining({
           method: "page.setChecked",
@@ -212,7 +216,7 @@ describe("browser action tool execution", () => {
         name,
         createBrowserTools(vi.fn(), () => false),
       ).execute("id", {}, undefined),
-    ).rejects.toMatchObject({ code: "PERMISSION_DENIED" })
+    ).rejects.toMatchObject({ code: "PAGE_CONTEXT_DISABLED" })
     expect(sendMessage).not.toHaveBeenCalled()
   })
 })

@@ -1,3 +1,4 @@
+import type { MutationOutcome } from "../runtime/action-diagnostics.js"
 import type { ElementSnapshot, JsonObject, JsonValue, TabContext } from "../runtime/types.js"
 
 export type PageOperation =
@@ -17,6 +18,7 @@ export type PageOperation =
 
 export interface PageOperationSuccess {
   ok: true
+  mutationOutcome?: MutationOutcome
   result: JsonValue
 }
 
@@ -67,14 +69,28 @@ export async function executePageOperation(
       "STALE_CONTEXT",
       "Element reference expired or changed; call browser_list_elements again",
     )
-  const success = (result: JsonValue): PageOperationSuccess => ({ ok: true, result })
+  const mutation = ["click", "type", "scroll", "selectOption", "setChecked"].includes(operation)
+  let mutationOutcome: MutationOutcome = "not_dispatched"
+  const success = (result: JsonValue): PageOperationSuccess => ({
+    ok: true,
+    result:
+      mutation && typeof result === "object" && result !== null && !Array.isArray(result)
+        ? { ...result, mutationOutcome }
+        : result,
+  })
   const failure = (
     code: PageOperationFailure["error"]["code"],
     message: string,
     details?: JsonObject,
   ): PageOperationFailure => ({
     ok: false,
-    error: { code, message, ...(details ? { details } : {}) },
+    error: {
+      code,
+      message,
+      ...(details || mutation
+        ? { details: { ...details, ...(mutation ? { mutationOutcome } : {}) } }
+        : {}),
+    },
   })
   const boundedString = (value: unknown, maximum: number, minimum = 0): value is string => {
     if (typeof value !== "string" || value.length > maximum * 2) return false
@@ -886,6 +902,15 @@ export async function executePageOperation(
         )
       }
     }
+    // The worker assertion is asynchronous. Recheck the document after it replies.
+    if (
+      expectedContext !== null &&
+      (location.href !== expectedContext.url || document.visibilityState !== "visible")
+    )
+      return failure(
+        "STALE_CONTEXT",
+        "The page changed before dispatch. Read the intended page again.",
+      )
     switch (operation) {
       case "listElements": {
         if (!snapshot || !expectedContext)
@@ -1178,7 +1203,9 @@ export async function executePageOperation(
         const beforeUrl = location.href
         const beforeType = found.type
         try {
+          mutationOutcome = "outcome_unknown"
           HTMLElement.prototype.click.call(found)
+          mutationOutcome = "dispatched"
         } catch {
           delete isolated.__piBrowserAgentElements
           return success({
@@ -1248,6 +1275,7 @@ export async function executePageOperation(
         const range = Math.max(0, found.scrollHeight - found.clientHeight)
         const min = reversed ? -range : 0
         const max = reversed ? 0 : range
+        mutationOutcome = "outcome_unknown"
         found.scrollTo({
           top: Math.max(
             min,
@@ -1256,6 +1284,7 @@ export async function executePageOperation(
           left: found.scrollLeft,
           behavior: "instant",
         })
+        mutationOutcome = "dispatched"
         delete isolated.__piBrowserAgentElements
         const position = found.scrollTop
         const currentRange = Math.max(0, found.scrollHeight - found.clientHeight)
@@ -1373,10 +1402,12 @@ export async function executePageOperation(
           "selectedIndex",
         )?.set
         if (!setter) return failure("NOT_SUPPORTED", "Native select changes are unavailable")
+        mutationOutcome = "outcome_unknown"
         setter.call(found, option.index)
         delete isolated.__piBrowserAgentElements
         found.dispatchEvent(new Event("input", { bubbles: true }))
         found.dispatchEvent(new Event("change", { bubbles: true }))
+        mutationOutcome = "dispatched"
         return success({ selected: true, ...targetResult(), snapshotInvalidated: true })
       }
       case "getVisibleText": {
@@ -1491,7 +1522,9 @@ export async function executePageOperation(
         if (crossOrigin && !nativeDownload) {
           return success({ clicked: true, navigationAllowed: true, ...targetResult() })
         }
+        mutationOutcome = "outcome_unknown"
         found.click()
+        mutationOutcome = "dispatched"
         return success({ clicked: true, ...targetResult() })
       }
       case "type": {
@@ -1522,10 +1555,13 @@ export async function executePageOperation(
         } else if (!found.isContentEditable) {
           return failure("INVALID_REQUEST", "Selector must target an editable text element")
         }
+        mutationOutcome = "outcome_unknown"
         found.focus()
         // Page focus handlers can change styles; post-focus validation needs a fresh cache.
         blockedFilters = new WeakMap()
         if (
+          (expectedContext !== null &&
+            (location.href !== expectedContext.url || document.visibilityState !== "visible")) ||
           !canType(found) ||
           !isVisible(found, snapshot !== null) ||
           (snapshot && findElement() !== found)
@@ -1536,13 +1572,16 @@ export async function executePageOperation(
         else found.textContent = text
         found.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }))
         found.dispatchEvent(new Event("change", { bubbles: true }))
+        mutationOutcome = "dispatched"
         return success({ ...targetResult(), typed: true })
       }
     }
-  } catch (error) {
+  } catch {
     return failure(
       "INTERNAL_ERROR",
-      error instanceof Error ? error.message : "Page operation failed",
+      mutationOutcome === "outcome_unknown"
+        ? "The page action may have run. Inspect current state before a new action; do not resubmit automatically."
+        : "The page operation failed before dispatch. Read the intended page again before a new request.",
     )
   }
 }

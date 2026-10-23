@@ -1,5 +1,6 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core"
 import { Type } from "typebox"
+import { type ActionStage, isMutationMethod } from "../runtime/action-diagnostics.js"
 import { REQUEST_LIMITS, type RuntimeMethod, sendRuntimeRequest } from "../runtime/messages.js"
 import { classifyPage } from "../runtime/page-capability.js"
 import {
@@ -7,6 +8,7 @@ import {
   type JsonObject,
   type JsonValue,
   RuntimeError,
+  type RuntimeErrorCode,
   type TabContext,
 } from "../runtime/types.js"
 import { type ApprovalScope, stableJson } from "./confirmation-policy.js"
@@ -18,19 +20,137 @@ export type ConfirmationHandler = (
   scope?: ApprovalScope,
 ) => Promise<boolean>
 
-async function currentTabContext(): Promise<TabContext> {
-  const state = await sendRuntimeRequest("app.getState")
-  if (
-    typeof state !== "object" ||
-    state === null ||
-    Array.isArray(state) ||
-    typeof state.tabContext !== "object" ||
-    state.tabContext === null ||
-    Array.isArray(state.tabContext)
-  ) {
-    throw new RuntimeError("TAB_NOT_BOUND", "Open an HTTP or HTTPS page before using browser tools")
+function contextError(
+  code: RuntimeErrorCode,
+  message: string,
+  contextState: string,
+  actionStage: ActionStage = "target_resolution",
+  targetResolutionSource = "app.getState",
+): RuntimeError {
+  return new RuntimeError(code, message, { targetResolutionSource, contextState, actionStage })
+}
+
+async function currentTabContext(
+  signal?: AbortSignal,
+  expectedWindowId?: number,
+): Promise<TabContext> {
+  const state = await sendRuntimeRequest("app.getState", {}, { signal })
+  const value = typeof state === "object" && state !== null && !Array.isArray(state) ? state : {}
+  const page = value.page
+  const kind =
+    typeof page === "object" && page !== null && !Array.isArray(page) ? page.kind : undefined
+  if (value.contextState === "permission_denied") {
+    throw contextError(
+      "PERMISSION_DENIED",
+      "Chrome denied access to the current page. Reload it or check site access before a new action.",
+      "permission_denied",
+    )
   }
-  return state.tabContext as unknown as TabContext
+  if (
+    value.contextState === "unsupported_url" ||
+    (!value.contextState && kind !== undefined && kind !== "web" && kind !== "none")
+  ) {
+    throw contextError(
+      "UNSUPPORTED_URL",
+      "The current page is not supported by browser page tools",
+      "unsupported_url",
+    )
+  }
+  const context = value.tabContext
+  if (
+    value.contextState === "missing" ||
+    typeof context !== "object" ||
+    context === null ||
+    Array.isArray(context) ||
+    !Number.isSafeInteger(context.tabId) ||
+    (context.tabId as number) < 0 ||
+    typeof context.url !== "string" ||
+    !Number.isSafeInteger(context.epoch) ||
+    (context.epoch as number) < 0
+  ) {
+    throw contextError(
+      "TAB_NOT_BOUND",
+      "No focused page context is available. Focus the intended tab before a new action.",
+      "missing",
+    )
+  }
+  if (classifyPage(context.url).kind !== "web") {
+    throw contextError(
+      "UNSUPPORTED_URL",
+      "The current page is not supported by browser page tools",
+      "unsupported_url",
+    )
+  }
+  if (
+    expectedWindowId !== undefined &&
+    value.windowId !== undefined &&
+    value.windowId !== expectedWindowId
+  ) {
+    throw contextError(
+      "STALE_CONTEXT",
+      "The intended window changed before its page context was ready",
+      "available",
+    )
+  }
+  return context as unknown as TabContext
+}
+
+async function getTab(id: number, actionStage: ActionStage): Promise<chrome.tabs.Tab> {
+  try {
+    return await chrome.tabs.get(id)
+  } catch {
+    throw contextError(
+      "TAB_NOT_FOUND",
+      "The target tab was closed or is no longer available",
+      "missing",
+      actionStage,
+      "focused_visible_tab",
+    )
+  }
+}
+
+function sameTarget(left: chrome.tabs.Tab, right: chrome.tabs.Tab): boolean {
+  return left.id === right.id && left.windowId === right.windowId && left.url === right.url
+}
+
+async function focusedVisibleTab(actionStage: ActionStage): Promise<chrome.tabs.Tab> {
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
+  if (tab?.id === undefined) {
+    throw contextError(
+      "TAB_NOT_BOUND",
+      "No focused Chrome tab is available",
+      "missing",
+      actionStage,
+      "focused_visible_tab",
+    )
+  }
+  const window = await chrome.windows.get(tab.windowId)
+  const [latest] = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
+  if (!window.focused || !latest || !sameTarget(tab, latest)) {
+    throw contextError(
+      "STALE_CONTEXT",
+      "The focused tab or window changed. No other target was selected.",
+      "missing",
+      actionStage,
+      "focused_visible_tab",
+    )
+  }
+  return latest
+}
+
+async function assertFocusedTarget(
+  target: chrome.tabs.Tab,
+  actionStage: ActionStage,
+): Promise<void> {
+  if (!sameTarget(target, await focusedVisibleTab(actionStage))) {
+    throw contextError(
+      "STALE_CONTEXT",
+      "The focused tab or window changed. No other target was selected.",
+      "missing",
+      actionStage,
+      "focused_visible_tab",
+    )
+  }
 }
 
 function approvalScope(
@@ -68,30 +188,61 @@ function approvalScope(
   }
 }
 
-async function requestTool(
+async function sendToolRequest(
   method: RuntimeMethod,
   params: JsonObject,
   signal: AbortSignal | undefined,
   confirm: ConfirmationHandler,
   pageEnabled: () => boolean,
-  tabBound = true,
+  tabBound: boolean,
+  resolveContext: (signal?: AbortSignal) => Promise<TabContext>,
 ): Promise<JsonValue> {
   if (tabBound && !pageEnabled()) {
-    throw new RuntimeError("PERMISSION_DENIED", "This turn does not use page context")
+    const error = contextError(
+      "PAGE_CONTEXT_DISABLED",
+      "This turn does not use page context",
+      "disabled",
+      "validation",
+      "turn_policy",
+    )
+    throw new RuntimeError(error.code, error.message, {
+      ...error.details,
+      ...(isMutationMethod(method) ? { mutationOutcome: "not_dispatched" } : {}),
+    })
   }
-  const tabContext = tabBound ? await currentTabContext() : undefined
+  let tabContext: TabContext | undefined
+  try {
+    tabContext = tabBound ? await resolveContext(signal) : undefined
+  } catch (error) {
+    if (!(error instanceof RuntimeError) || !isMutationMethod(method)) throw error
+    throw new RuntimeError(error.code, error.message, {
+      ...error.details,
+      mutationOutcome: "not_dispatched",
+    })
+  }
   const options = tabContext ? { signal, tabContext } : { signal }
   try {
     return await sendRuntimeRequest(method, params, options)
   } catch (error) {
-    if (!(error instanceof RuntimeError) || error.code !== "CONFIRMATION_REQUIRED") throw error
+    if (
+      !(error instanceof RuntimeError) ||
+      error.code !== "CONFIRMATION_REQUIRED" ||
+      (error.details?.mutationOutcome !== undefined &&
+        error.details.mutationOutcome !== "not_dispatched")
+    )
+      throw error
     const scope = approvalScope(method, params, tabContext, error.details)
     if (
       !(await (scope
         ? confirm(error.message, error.details, signal, scope)
         : confirm(error.message, error.details, signal)))
     ) {
-      throw new RuntimeError("PERMISSION_DENIED", "Browser action was declined")
+      throw new RuntimeError("PERMISSION_DENIED", "Browser action was declined", {
+        targetResolutionSource: tabContext ? "request_context" : "tool_preflight",
+        contextState: tabContext ? "available" : "missing",
+        actionStage: "confirmation",
+        ...(isMutationMethod(method) ? { mutationOutcome: "not_dispatched" } : {}),
+      })
     }
     const confirmedOptions = tabContext
       ? { confirmed: true, signal, tabContext }
@@ -159,17 +310,98 @@ export function createBrowserTools(
   pageEnabled: () => boolean = () => true,
   enablePage: () => void = () => undefined,
 ): AgentTool[] {
+  // Keep a dispatched target until the next page read resolves it. A delayed worker
+  // update must not make that read use the previously active or an unrelated tab.
+  let pendingTarget: chrome.tabs.Tab | undefined
+  let targetOutcomeUnknown = false
+  const resolveContext = async (signal?: AbortSignal): Promise<TabContext> => {
+    if (targetOutcomeUnknown) {
+      throw contextError(
+        "ACTION_OUTCOME_UNKNOWN",
+        "The tab action outcome is unknown. Inspect the intended tab before a new action; no other page was used.",
+        "missing",
+      )
+    }
+    if (pendingTarget?.id !== undefined) {
+      const latest = await getTab(pendingTarget.id, "target_resolution")
+      if (!sameTarget(pendingTarget, latest)) {
+        throw contextError(
+          "STALE_CONTEXT",
+          "The selected target changed before its page context was ready",
+          "missing",
+        )
+      }
+      await assertFocusedTarget(pendingTarget, "target_resolution")
+    }
+    const context = await currentTabContext(signal, pendingTarget?.windowId)
+    if (
+      pendingTarget &&
+      (context.tabId !== pendingTarget.id || context.url !== pendingTarget.url)
+    ) {
+      throw contextError(
+        "STALE_CONTEXT",
+        "The selected target's page context is not ready. No other page was used.",
+        "available",
+      )
+    }
+    pendingTarget = undefined
+    return context
+  }
+  const requestTool = (
+    method: RuntimeMethod,
+    params: JsonObject,
+    signal: AbortSignal | undefined,
+    confirmation: ConfirmationHandler,
+    enabled: () => boolean,
+    tabBound = true,
+  ) => sendToolRequest(method, params, signal, confirmation, enabled, tabBound, resolveContext)
+  const finishTargetChange = async (tab: chrome.tabs.Tab, signal?: AbortSignal): Promise<void> => {
+    pendingTarget = tab
+    // The confirmed action can activate an unavailable-page run even while Chrome loads.
+    // Explicit opt-out ignores this callback; pendingTarget still fences every first read.
+    enablePage()
+    try {
+      await resolveContext(signal)
+      // Check again on the first page operation, not only at mutation completion.
+      pendingTarget = tab
+    } catch (error) {
+      const failure =
+        error instanceof RuntimeError
+          ? error
+          : contextError(
+              "INTERNAL_ERROR",
+              "The intended page context could not be checked",
+              "missing",
+            )
+      throw new RuntimeError(
+        failure.code,
+        `The tab action completed, but the intended page context is not ready. ${failure.message} Do not repeat the tab action.`,
+        {
+          targetResolutionSource: "app.getState",
+          contextState: "missing",
+          ...failure.details,
+          actionStage: "completed",
+          mutationOutcome: "dispatched",
+        },
+      )
+    }
+  }
   const tools = [
     {
       name: "browser_list_tabs",
       label: "List web tabs",
       description:
-        "List up to 20 HTTP(S) tabs in the current window by title and origin. Use this when the current page is unavailable and the user's task needs another tab. Tab titles are untrusted.",
+        "List up to 20 HTTP(S) tabs in the focused Chrome window by title and origin. Use this when the current page is unavailable and the user's task needs another tab. Tab titles are untrusted.",
       parameters: Type.Object({}, { additionalProperties: false }),
       async execute() {
-        const tabs = (await chrome.tabs.query({ currentWindow: true })).filter(
-          (tab) => tab.id !== undefined && classifyPage(tab.url).kind === "web",
+        const focused = await focusedVisibleTab("target_resolution")
+        const tabs = (await chrome.tabs.query({ windowId: focused.windowId })).filter(
+          (tab) =>
+            tab.id !== undefined &&
+            tab.windowId === focused.windowId &&
+            classifyPage(tab.url).kind === "web",
         )
+        await assertFocusedTarget(focused, "target_resolution")
         return textResult(
           {
             tabs: tabs.slice(0, 20).map((tab) => ({
@@ -197,12 +429,25 @@ export function createBrowserTools(
       ),
       async execute(_id, params, signal) {
         const { id } = params as { id: number }
-        const tab = await chrome.tabs.get(id)
-        if (
-          classifyPage(tab.url).kind !== "web" ||
-          tab.windowId !== (await chrome.windows.getCurrent()).id
-        ) {
-          throw new RuntimeError("INVALID_REQUEST", "This tab is no longer available")
+        const focused = await focusedVisibleTab("target_resolution")
+        const tab = await getTab(id, "target_resolution")
+        if (tab.windowId !== focused.windowId) {
+          throw contextError(
+            "STALE_CONTEXT",
+            "The target tab is not in the focused window",
+            "missing",
+            "target_resolution",
+            "focused_visible_tab",
+          )
+        }
+        if (classifyPage(tab.url).kind !== "web") {
+          throw contextError(
+            "UNSUPPORTED_URL",
+            "The target page is not supported by browser page tools",
+            "unsupported_url",
+            "target_resolution",
+            "focused_visible_tab",
+          )
         }
         if (
           !(await confirm(
@@ -220,17 +465,38 @@ export function createBrowserTools(
         }
         if (signal?.aborted)
           throw new RuntimeError("REQUEST_CANCELLED", "Browser request was cancelled")
-        const latest = await chrome.tabs.get(id)
-        if (
-          latest.url !== tab.url ||
-          latest.windowId !== tab.windowId ||
-          latest.windowId !== (await chrome.windows.getCurrent()).id
-        ) {
-          throw new RuntimeError("STALE_CONTEXT", "The tab changed before it could be selected")
+        const latest = await getTab(id, "confirmation")
+        if (!sameTarget(tab, latest)) {
+          throw contextError(
+            "STALE_CONTEXT",
+            "The tab changed before it could be selected",
+            "missing",
+            "confirmation",
+            "focused_visible_tab",
+          )
         }
-        await chrome.tabs.update(id, { active: true })
-        enablePage()
-        return textResult({ id, active: true })
+        await assertFocusedTarget(focused, "confirmation")
+        if (signal?.aborted)
+          throw new RuntimeError("REQUEST_CANCELLED", "Browser request was cancelled")
+        pendingTarget = tab
+        targetOutcomeUnknown = false
+        try {
+          await chrome.tabs.update(id, { active: true })
+        } catch {
+          targetOutcomeUnknown = true
+          throw new RuntimeError(
+            "ACTION_OUTCOME_UNKNOWN",
+            "The tab switch outcome is unknown. Inspect the tab before a new action; do not repeat the switch.",
+            {
+              targetResolutionSource: "focused_visible_tab",
+              contextState: "missing",
+              actionStage: "dispatch",
+              mutationOutcome: "outcome_unknown",
+            },
+          )
+        }
+        await finishTargetChange(tab, signal)
+        return textResult({ id, active: true, mutationOutcome: "dispatched" })
       },
     },
     {
@@ -253,6 +519,7 @@ export function createBrowserTools(
         if (destination.username || destination.password) {
           throw new RuntimeError("INVALID_REQUEST", "Enter a URL without credentials")
         }
+        const focused = await focusedVisibleTab("target_resolution")
         if (
           !(await confirm(
             `Open ${destination.href}? A search query in this URL will be sent to the destination.`,
@@ -269,9 +536,47 @@ export function createBrowserTools(
         }
         if (signal?.aborted)
           throw new RuntimeError("REQUEST_CANCELLED", "Browser request was cancelled")
-        const tab = await chrome.tabs.create({ url: destination.href, active: true })
-        enablePage()
-        return textResult({ id: tab.id, opened: true })
+        await assertFocusedTarget(focused, "confirmation")
+        if (signal?.aborted)
+          throw new RuntimeError("REQUEST_CANCELLED", "Browser request was cancelled")
+        let tab: chrome.tabs.Tab
+        targetOutcomeUnknown = true
+        try {
+          tab = await chrome.tabs.create({
+            url: destination.href,
+            active: true,
+            windowId: focused.windowId,
+          })
+        } catch {
+          throw new RuntimeError(
+            "ACTION_OUTCOME_UNKNOWN",
+            "The new tab outcome is unknown. Inspect the tabs before a new action; do not repeat the open action.",
+            {
+              targetResolutionSource: "focused_visible_tab",
+              contextState: "missing",
+              actionStage: "dispatch",
+              mutationOutcome: "outcome_unknown",
+            },
+          )
+        }
+        if (tab.id === undefined) {
+          throw new RuntimeError(
+            "ACTION_OUTCOME_UNKNOWN",
+            "Chrome did not return a new tab target. Do not repeat the open action.",
+            {
+              targetResolutionSource: "focused_visible_tab",
+              contextState: "missing",
+              actionStage: "dispatch",
+              mutationOutcome: "outcome_unknown",
+            },
+          )
+        }
+        targetOutcomeUnknown = false
+        await finishTargetChange(
+          { ...tab, url: destination.href, windowId: focused.windowId },
+          signal,
+        )
+        return textResult({ id: tab.id, opened: true, mutationOutcome: "dispatched" })
       },
     },
     {
@@ -736,9 +1041,15 @@ export function createBrowserTools(
         const request: JsonObject =
           action === "list" ? {} : { name: name ?? "", arguments: toolArguments ?? {} }
         if (!pageEnabled()) {
-          throw new RuntimeError("PERMISSION_DENIED", "This turn does not use page context")
+          throw contextError(
+            "PAGE_CONTEXT_DISABLED",
+            "This turn does not use page context",
+            "disabled",
+            "validation",
+            "turn_policy",
+          )
         }
-        const tabContext = await currentTabContext()
+        const tabContext = await resolveContext(signal)
         const confirmationMessage =
           action === "list"
             ? "List the tools provided by this page through WebMCP?"
@@ -775,7 +1086,54 @@ export function createBrowserTools(
       },
     },
   ] satisfies AgentTool[]
-  return tools
+  return tools.map((tool) => ({
+    ...tool,
+    async execute(requestId, params, signal, onUpdate) {
+      try {
+        const execute: AgentTool["execute"] = tool.execute
+        return await execute(requestId, params, signal, onUpdate)
+      } catch (error) {
+        const failure =
+          error instanceof RuntimeError
+            ? error
+            : contextError(
+                "INTERNAL_ERROR",
+                "The browser target could not be resolved",
+                "missing",
+                "target_resolution",
+                "focused_visible_tab",
+              )
+        // Worker failures already contain diagnostics for the dispatched request.
+        if (failure.details?.diagnostics && !failure.details.actionStage) throw failure
+        const localMutation =
+          !failure.details?.diagnostics &&
+          ([
+            "browser_switch_tab",
+            "browser_open_website",
+            "browser_click",
+            "browser_type",
+            "browser_navigate",
+            "browser_scroll",
+            "browser_select_option",
+            "browser_set_checked",
+          ].includes(tool.name) ||
+            (tool.name === "browser_webmcp" &&
+              typeof params === "object" &&
+              params !== null &&
+              "action" in params &&
+              params.action === "call"))
+        throw new RuntimeError(failure.code, failure.message, {
+          toolName: tool.name,
+          ...(/^[a-zA-Z0-9_-]{1,256}$/.test(requestId) ? { requestId } : {}),
+          targetResolutionSource: "tool_preflight",
+          contextState: "missing",
+          actionStage: "validation",
+          ...(localMutation ? { mutationOutcome: "not_dispatched" } : {}),
+          ...failure.details,
+        })
+      }
+    },
+  }))
 }
 
 // Derive the settings catalog from the actual tool declarations so names cannot drift.

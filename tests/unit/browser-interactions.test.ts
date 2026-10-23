@@ -169,7 +169,7 @@ describe("interaction input schemas and worker validation", () => {
     async (name) => {
       const tool = browserTool(name, () => false)
       await expect(tool.execute("1", reference, undefined)).rejects.toMatchObject({
-        code: "PERMISSION_DENIED",
+        code: "PAGE_CONTEXT_DISABLED",
       })
       expect(chrome.runtime.sendMessage).not.toHaveBeenCalled()
     },
@@ -209,7 +209,11 @@ describe("interaction input schemas and worker validation", () => {
           }),
         )
       } else await expect(pending).rejects.toMatchObject({ code: "PERMISSION_DENIED" })
-      expect(confirm).toHaveBeenCalledExactlyOnceWith("Change option?", reference, undefined)
+      expect(confirm).toHaveBeenCalledExactlyOnceWith(
+        "Change option?",
+        expect.objectContaining(reference),
+        undefined,
+      )
       expect(sendMessage).toHaveBeenCalledTimes(approved ? 3 : 2)
     },
   )

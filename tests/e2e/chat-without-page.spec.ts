@@ -632,7 +632,7 @@ test("fails closed on an extensionless PDF before capturing or picking a page", 
     if (!metadataContext) throw new Error("Missing initial PDF metadata context")
     expect(await send("tabs.getActive", metadataContext)).toMatchObject({
       ok: false,
-      error: { code: "PERMISSION_DENIED" },
+      error: { code: "UNSUPPORTED_URL" },
     })
     await expect.poll(async () => (await getState()).page.kind).toBe("restricted")
 
@@ -644,7 +644,7 @@ test("fails closed on an extensionless PDF before capturing or picking a page", 
     if (!navigationContext) throw new Error("Missing initial PDF navigation context")
     expect(await send("tabs.navigate", navigationContext)).toMatchObject({
       ok: false,
-      error: { code: "PERMISSION_DENIED" },
+      error: { code: "UNSUPPORTED_URL" },
     })
     await expect(navigationTab).toHaveURL(pdfUrl)
     await expect.poll(async () => (await getState()).page.kind).toBe("restricted")
@@ -657,7 +657,7 @@ test("fails closed on an extensionless PDF before capturing or picking a page", 
     if (!readContext) throw new Error("Missing initial PDF read context")
     expect(await send("page.getVisibleText", readContext)).toMatchObject({
       ok: false,
-      error: { code: "PERMISSION_DENIED" },
+      error: { code: "UNSUPPORTED_URL" },
     })
     await expect.poll(async () => (await getState()).page.kind).toBe("restricted")
 
@@ -669,7 +669,7 @@ test("fails closed on an extensionless PDF before capturing or picking a page", 
     if (!screenshotContext) throw new Error("Missing initial PDF tab context")
     expect(await send("page.captureVisible", screenshotContext)).toMatchObject({
       ok: false,
-      error: { code: "PERMISSION_DENIED" },
+      error: { code: "UNSUPPORTED_URL" },
     })
     await expect.poll(async () => (await getState()).page.kind).toBe("restricted")
     await expect(harness.controller.locator("#page-status")).toContainText("cannot read or operate")
@@ -682,7 +682,7 @@ test("fails closed on an extensionless PDF before capturing or picking a page", 
     if (!pickerContext) throw new Error("Missing initial picker tab context")
     expect(await send("elementPicker.start", pickerContext)).toMatchObject({
       ok: false,
-      error: { code: "PERMISSION_DENIED" },
+      error: { code: "UNSUPPORTED_URL" },
     })
     await expect.poll(async () => (await getState()).page.kind).toBe("restricted")
     await expect(harness.controller.locator("#element-picker")).toBeDisabled()

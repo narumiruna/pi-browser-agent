@@ -4,6 +4,86 @@ import { createBrowserTools } from "../../src/browser/agent/browser-tools.js"
 import { SCREENSHOT_HOST_PERMISSION } from "../../src/browser/permissions.js"
 import { MAX_TEXT_RESULT_BYTES } from "../../src/browser/runtime/types.js"
 
+function tabBrowser(initial: chrome.tabs.Tab[]) {
+  const tabs = new Map(initial.map((tab) => [tab.id, tab]))
+  const state: {
+    active: chrome.tabs.Tab | undefined
+    focusedWindowId: number
+    workerState?: unknown
+  } = { active: initial.find((tab) => tab.active) ?? initial[0], focusedWindowId: 1 }
+  const query = vi.fn(async (options: chrome.tabs.QueryInfo) =>
+    options.active
+      ? state.active
+        ? [state.active]
+        : []
+      : [...tabs.values()].filter((tab) => tab.windowId === options.windowId),
+  )
+  const get = vi.fn(async (id: number) => {
+    const tab = tabs.get(id)
+    if (!tab) throw new Error("No tab")
+    return tab
+  })
+  const update = vi.fn(async (id: number) => {
+    const tab = { ...(await get(id)), active: true }
+    tabs.set(id, tab)
+    state.active = tab
+    return tab
+  })
+  const create = vi.fn(async (options: chrome.tabs.CreateProperties) => {
+    const tab = {
+      id: 4,
+      url: options.url,
+      windowId: options.windowId ?? 99,
+      active: true,
+    } as chrome.tabs.Tab
+    tabs.set(4, tab)
+    state.active = tab
+    return tab
+  })
+  const sendMessage = vi.fn(async (message: { method: string }) => ({
+    ok: true,
+    result:
+      message.method === "app.getState"
+        ? (state.workerState ?? {
+            tabContext: { tabId: state.active?.id, url: state.active?.url, epoch: 1 },
+            contextState: "available",
+            windowId: state.active?.windowId,
+          })
+        : { text: "Intended page" },
+  }))
+  const getWindow = vi.fn(async (id: number) => ({ id, focused: id === state.focusedWindowId }))
+  vi.stubGlobal("chrome", {
+    tabs: { query, get, update, create },
+    windows: { get: getWindow },
+    runtime: { sendMessage },
+  })
+  return { state, tabs, query, get, update, create, sendMessage, getWindow }
+}
+
+const activeTab = {
+  id: 1,
+  url: "https://active.test/",
+  windowId: 1,
+  active: true,
+} as chrome.tabs.Tab
+const targetTab = {
+  id: 2,
+  url: "https://target.test/",
+  windowId: 1,
+  active: false,
+} as chrome.tabs.Tab
+
+function browserTool(
+  name: string,
+  confirm = vi.fn(async () => true),
+  enabled = () => true,
+  enablePage = vi.fn(),
+) {
+  const tool = createBrowserTools(confirm, enabled, enablePage).find((item) => item.name === name)
+  if (!tool) throw new Error(name)
+  return tool
+}
+
 afterEach(() => {
   vi.unstubAllGlobals()
 })
@@ -124,6 +204,34 @@ describe("browser agent tools", () => {
     },
   )
 
+  test.each(["dispatched", "outcome_unknown"])(
+    "does not replay a confirmation error after %s",
+    async (mutationOutcome) => {
+      const sendMessage = vi.fn(async (message: { method: string }) =>
+        message.method === "app.getState"
+          ? {
+              ok: true,
+              result: { tabContext: { tabId: 1, url: "https://example.test/", epoch: 1 } },
+            }
+          : {
+              ok: false,
+              error: {
+                code: "CONFIRMATION_REQUIRED",
+                message: "Do not repeat",
+                details: { mutationOutcome },
+              },
+            },
+      )
+      vi.stubGlobal("chrome", { runtime: { sendMessage } })
+      const confirm = vi.fn(async () => true)
+      await expect(
+        browserTool("browser_click", confirm).execute("call", { selector: "button" }, undefined),
+      ).rejects.toMatchObject({ details: { mutationOutcome } })
+      expect(sendMessage).toHaveBeenCalledTimes(2)
+      expect(confirm).not.toHaveBeenCalled()
+    },
+  )
+
   test.each([
     [
       { submit: false, download: false, crossOrigin: true, targetUrl: "https://other.test/next" },
@@ -194,11 +302,10 @@ describe("browser agent tools", () => {
       active: false,
     }
     const restricted = { id: 3, url: "chrome://settings/", title: "Settings", windowId: 1 }
-    const update = vi.fn(async () => ({ ...web, active: true }))
-    vi.stubGlobal("chrome", {
-      tabs: { query: vi.fn(async () => [web, restricted]), get: vi.fn(async () => web), update },
-      windows: { getCurrent: vi.fn(async () => ({ id: 1 })) },
-    })
+    const { update, query } = tabBrowser([
+      web,
+      { ...restricted, active: true },
+    ] as chrome.tabs.Tab[])
     const confirm = vi.fn().mockResolvedValue(false)
     const enablePage = vi.fn()
     const tools = createBrowserTools(confirm, () => false, enablePage)
@@ -214,7 +321,9 @@ describe("browser agent tools", () => {
     expect(update).not.toHaveBeenCalled()
     expect(enablePage).not.toHaveBeenCalled()
     confirm.mockResolvedValue(true)
-    await switchTab.execute("id", { id: 2 }, undefined)
+    await expect(switchTab.execute("id", { id: 2 }, undefined)).resolves.toMatchObject({
+      details: { id: 2, active: true, mutationOutcome: "dispatched" },
+    })
     expect(confirm).toHaveBeenCalledWith(expect.any(String), { targetUrl: web.url }, undefined, {
       operation: "tabs.switch",
       identity: ["2", web.url],
@@ -222,11 +331,13 @@ describe("browser agent tools", () => {
     })
     expect(update).toHaveBeenCalledWith(2, { active: true })
     expect(enablePage).toHaveBeenCalledOnce()
+    expect(query).toHaveBeenCalledWith({ active: true, lastFocusedWindow: true })
+    expect(query).toHaveBeenCalledWith({ windowId: 1 })
+    expect(query).not.toHaveBeenCalledWith({ currentWindow: true })
   })
 
   test("requires confirmation and a safe URL before opening a website", async () => {
-    const create = vi.fn(async () => ({ id: 4 }))
-    vi.stubGlobal("chrome", { tabs: { create } })
+    const { create } = tabBrowser([activeTab])
     const confirm = vi.fn().mockResolvedValue(false)
     const enablePage = vi.fn()
     const tool = createBrowserTools(confirm, () => false, enablePage).find(
@@ -246,9 +357,426 @@ describe("browser agent tools", () => {
     )
     expect(create).not.toHaveBeenCalled()
     confirm.mockResolvedValue(true)
-    await tool.execute("id", { url: "https://example.test/" }, undefined)
-    expect(create).toHaveBeenCalledWith({ url: "https://example.test/", active: true })
+    await expect(
+      tool.execute("id", { url: "https://example.test/" }, undefined),
+    ).resolves.toMatchObject({ details: { id: 4, opened: true, mutationOutcome: "dispatched" } })
+    expect(create).toHaveBeenCalledWith({ url: "https://example.test/", active: true, windowId: 1 })
     expect(enablePage).toHaveBeenCalledOnce()
+  })
+
+  test.each([
+    [
+      { contextState: "missing", tabContext: null, page: { kind: "none" } },
+      "TAB_NOT_BOUND",
+      "missing",
+    ],
+    [{ contextState: "unsupported_url", tabContext: null }, "UNSUPPORTED_URL", "unsupported_url"],
+    [
+      { contextState: "permission_denied", tabContext: null, page: { kind: "restricted" } },
+      "PERMISSION_DENIED",
+      "permission_denied",
+    ],
+    [{ tabContext: null, page: { kind: "restricted" } }, "UNSUPPORTED_URL", "unsupported_url"],
+    [{ tabContext: null, page: { kind: "pdf" } }, "UNSUPPORTED_URL", "unsupported_url"],
+    [{ tabContext: null, page: { kind: "file" } }, "UNSUPPORTED_URL", "unsupported_url"],
+    [
+      { tabContext: { tabId: 1, url: "chrome://settings/", epoch: 0 } },
+      "UNSUPPORTED_URL",
+      "unsupported_url",
+    ],
+  ])("reports unavailable context accurately for %j", async (workerState, code, contextState) => {
+    const { state, sendMessage } = tabBrowser([activeTab])
+    state.workerState = workerState
+    const read = browserTool("browser_read_page")
+    await expect(read.execute("safe-call-id", {}, undefined)).rejects.toMatchObject({
+      code,
+      details: {
+        requestId: "safe-call-id",
+        toolName: "browser_read_page",
+        contextState,
+        targetResolutionSource: "app.getState",
+        actionStage: "target_resolution",
+      },
+    })
+    expect(sendMessage).toHaveBeenCalledOnce()
+    await expect(read.execute("safe-call-id", {}, undefined)).rejects.not.toThrow(
+      "Open an HTTP or HTTPS page",
+    )
+  })
+
+  test("reports disabled context separately without worker access", async () => {
+    const { sendMessage } = tabBrowser([activeTab])
+    await expect(
+      browserTool("browser_read_page", vi.fn(), () => false).execute("call", {}, undefined),
+    ).rejects.toMatchObject({
+      code: "PAGE_CONTEXT_DISABLED",
+      details: {
+        requestId: "call",
+        toolName: "browser_read_page",
+        contextState: "disabled",
+        targetResolutionSource: "turn_policy",
+        actionStage: "validation",
+      },
+    })
+    expect(sendMessage).not.toHaveBeenCalled()
+  })
+
+  test.each(["browser_list_tabs", "browser_switch_tab", "browser_open_website"])(
+    "%s does not fall back when the last-focused window is not focused",
+    async (name) => {
+      const { state, create, update } = tabBrowser([activeTab, targetTab])
+      state.focusedWindowId = 9
+      const confirm = vi.fn(async () => true)
+      await expect(
+        browserTool(name, confirm).execute("call", { id: 2, url: targetTab.url }, undefined),
+      ).rejects.toMatchObject({
+        code: "STALE_CONTEXT",
+        details: { targetResolutionSource: "focused_visible_tab" },
+      })
+      expect(confirm).not.toHaveBeenCalled()
+      expect(create).not.toHaveBeenCalled()
+      expect(update).not.toHaveBeenCalled()
+    },
+  )
+
+  test.each(["browser_switch_tab", "browser_open_website"])(
+    "%s rejects a focused-window change during confirmation",
+    async (name) => {
+      const { state, create, update } = tabBrowser([activeTab, targetTab])
+      const confirm = vi.fn(async () => {
+        state.active = { ...activeTab, windowId: 7 }
+        state.focusedWindowId = 7
+        return true
+      })
+      await expect(
+        browserTool(name, confirm).execute("call", { id: 2, url: targetTab.url }, undefined),
+      ).rejects.toMatchObject({ code: "STALE_CONTEXT", details: { actionStage: "confirmation" } })
+      expect(create).not.toHaveBeenCalled()
+      expect(update).not.toHaveBeenCalled()
+    },
+  )
+
+  test.each(["browser_switch_tab", "browser_open_website"])(
+    "%s rejects an active-tab change during confirmation",
+    async (name) => {
+      const { state, create, update } = tabBrowser([activeTab, targetTab])
+      const confirm = vi.fn(async () => {
+        state.active = targetTab
+        return true
+      })
+      await expect(
+        browserTool(name, confirm).execute("call", { id: 2, url: targetTab.url }, undefined),
+      ).rejects.toMatchObject({ code: "STALE_CONTEXT" })
+      expect(create).not.toHaveBeenCalled()
+      expect(update).not.toHaveBeenCalled()
+    },
+  )
+
+  test.each(["url", "windowId", "closed"])(
+    "switch rejects target %s changes during confirmation",
+    async (change) => {
+      const { tabs, update } = tabBrowser([activeTab, targetTab])
+      const confirm = vi.fn(async () => {
+        if (change === "closed") tabs.delete(2)
+        else
+          tabs.set(2, {
+            ...targetTab,
+            ...(change === "url" ? { url: "https://changed.test/" } : { windowId: 9 }),
+          })
+        return true
+      })
+      await expect(
+        browserTool("browser_switch_tab", confirm).execute("call", { id: 2 }, undefined),
+      ).rejects.toMatchObject({ code: change === "closed" ? "TAB_NOT_FOUND" : "STALE_CONTEXT" })
+      expect(update).not.toHaveBeenCalled()
+    },
+  )
+
+  test.each(["browser_switch_tab", "browser_open_website"])(
+    "%s cancels before dispatch when confirmation loses focus",
+    async (name) => {
+      const { state, create, update } = tabBrowser([activeTab, targetTab])
+      const confirm = vi.fn(async () => {
+        state.focusedWindowId = 9
+        return true
+      })
+      await expect(
+        browserTool(name, confirm).execute("call", { id: 2, url: targetTab.url }, undefined),
+      ).rejects.toMatchObject({
+        code: "STALE_CONTEXT",
+        details: { mutationOutcome: "not_dispatched" },
+      })
+      expect(create).not.toHaveBeenCalled()
+      expect(update).not.toHaveBeenCalled()
+    },
+  )
+
+  test.each(["browser_switch_tab", "browser_open_website"])(
+    "%s does not run after confirmation cancellation",
+    async (name) => {
+      const { create, update } = tabBrowser([activeTab, targetTab])
+      const controller = new AbortController()
+      const confirm = vi.fn(async () => {
+        controller.abort()
+        return true
+      })
+      await expect(
+        browserTool(name, confirm).execute(
+          "call",
+          { id: 2, url: targetTab.url },
+          controller.signal,
+        ),
+      ).rejects.toMatchObject({
+        code: "REQUEST_CANCELLED",
+        details: { mutationOutcome: "not_dispatched" },
+      })
+      expect(create).not.toHaveBeenCalled()
+      expect(update).not.toHaveBeenCalled()
+    },
+  )
+
+  test.each(["browser_switch_tab", "browser_open_website"])(
+    "%s checks cancellation after the final asynchronous focus check",
+    async (name) => {
+      const { query, create, update } = tabBrowser([activeTab, targetTab])
+      const controller = new AbortController()
+      const originalQuery = query.getMockImplementation()
+      if (!originalQuery) throw new Error("Missing query")
+      let activeQueries = 0
+      query.mockImplementation(async (options) => {
+        const result = await originalQuery(options)
+        if (options.active && ++activeQueries === 4) controller.abort()
+        return result
+      })
+      await expect(
+        browserTool(name).execute("call", { id: 2, url: targetTab.url }, controller.signal),
+      ).rejects.toMatchObject({
+        code: "REQUEST_CANCELLED",
+        details: { mutationOutcome: "not_dispatched" },
+      })
+      expect(create).not.toHaveBeenCalled()
+      expect(update).not.toHaveBeenCalled()
+    },
+  )
+
+  test("cancellation after a completed switch does not claim that no action ran", async () => {
+    const { update } = tabBrowser([activeTab, targetTab])
+    const originalUpdate = update.getMockImplementation()
+    if (!originalUpdate) throw new Error("Missing update")
+    const controller = new AbortController()
+    update.mockImplementationOnce(async (id) => {
+      const result = await originalUpdate(id)
+      controller.abort()
+      return result
+    })
+    await expect(
+      browserTool("browser_switch_tab").execute("call", { id: 2 }, controller.signal),
+    ).rejects.toMatchObject({
+      details: {
+        mutationOutcome: "dispatched",
+        actionStage: "completed",
+        toolName: "browser_switch_tab",
+        requestId: "call",
+      },
+    })
+    expect(update).toHaveBeenCalledOnce()
+  })
+
+  test("switch rejects a tab in another window before confirmation", async () => {
+    tabBrowser([activeTab, { ...targetTab, windowId: 9 }])
+    const confirm = vi.fn(async () => true)
+    await expect(
+      browserTool("browser_switch_tab", confirm).execute("call", { id: 2 }, undefined),
+    ).rejects.toMatchObject({ code: "STALE_CONTEXT" })
+    expect(confirm).not.toHaveBeenCalled()
+  })
+
+  test.each(["browser_switch_tab", "browser_open_website"])(
+    "%s makes the intended target ready for the next read",
+    async (name) => {
+      const { sendMessage, create, update } = tabBrowser([activeTab, targetTab])
+      let enabled = false
+      const tools = createBrowserTools(
+        vi.fn(async () => true),
+        () => enabled,
+        () => {
+          enabled = true
+        },
+      )
+      await tools
+        .find((tool) => tool.name === name)
+        ?.execute("call", { id: 2, url: targetTab.url }, undefined)
+      await expect(
+        tools.find((tool) => tool.name === "browser_read_page")?.execute("read", {}, undefined),
+      ).resolves.toMatchObject({ details: { text: "Intended page" } })
+      expect(sendMessage).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          method: "page.getVisibleText",
+          tabContext: {
+            tabId: name === "browser_switch_tab" ? 2 : 4,
+            url: targetTab.url,
+            epoch: 1,
+          },
+        }),
+      )
+      expect(name === "browser_switch_tab" ? update : create).toHaveBeenCalledOnce()
+    },
+  )
+
+  test("an unavailable turn can read its approved pending tab after commit without reopening", async () => {
+    const { state, tabs, create, sendMessage } = tabBrowser([activeTab])
+    create.mockImplementationOnce(async (options) => {
+      const pending = {
+        id: 4,
+        windowId: 1,
+        active: true,
+        url: "about:blank",
+        pendingUrl: options.url,
+      } as chrome.tabs.Tab
+      tabs.set(4, pending)
+      state.active = pending
+      return pending
+    })
+    let enabled = false
+    const tools = createBrowserTools(
+      vi.fn(async () => true),
+      () => enabled,
+      () => {
+        enabled = true
+      },
+    )
+    await expect(
+      tools
+        .find((tool) => tool.name === "browser_open_website")
+        ?.execute("open", { url: targetTab.url }, undefined),
+    ).rejects.toMatchObject({ details: { mutationOutcome: "dispatched" } })
+    expect(enabled).toBe(true)
+    await expect(
+      tools.find((tool) => tool.name === "browser_read_page")?.execute("early-read", {}, undefined),
+    ).rejects.toMatchObject({ code: "STALE_CONTEXT" })
+    expect(sendMessage).not.toHaveBeenCalled()
+    const committed = {
+      ...tabs.get(4),
+      url: targetTab.url,
+      pendingUrl: undefined,
+      status: "complete",
+    } as chrome.tabs.Tab
+    tabs.set(4, committed)
+    state.active = committed
+    await expect(
+      tools.find((tool) => tool.name === "browser_read_page")?.execute("read", {}, undefined),
+    ).resolves.toMatchObject({ details: { text: "Intended page" } })
+    expect(create).toHaveBeenCalledOnce()
+  })
+
+  test.each(["browser_switch_tab", "browser_open_website"])(
+    "%s does not read an old worker target or repeat a completed tab action",
+    async (name) => {
+      const { state, sendMessage, update, create } = tabBrowser([activeTab, targetTab])
+      state.workerState = {
+        tabContext: { tabId: 1, url: activeTab.url, epoch: 0 },
+        contextState: "available",
+      }
+      const tools = createBrowserTools(vi.fn(async () => true))
+      await expect(
+        tools
+          .find((tool) => tool.name === name)
+          ?.execute("call", { id: 2, url: targetTab.url }, undefined),
+      ).rejects.toThrow("tab action completed, but the intended page context is not ready")
+      await expect(
+        tools.find((tool) => tool.name === "browser_read_page")?.execute("read", {}, undefined),
+      ).rejects.toThrow("No other page was used")
+      expect(sendMessage.mock.calls.every(([message]) => message.method === "app.getState")).toBe(
+        true,
+      )
+      expect(name === "browser_switch_tab" ? update : create).toHaveBeenCalledOnce()
+    },
+  )
+
+  test("does not accept worker state from a different window after a switch", async () => {
+    const { state, update } = tabBrowser([activeTab, targetTab])
+    state.workerState = {
+      tabContext: { tabId: 2, url: targetTab.url, epoch: 1 },
+      contextState: "available",
+      windowId: 9,
+    }
+    const enablePage = vi.fn()
+    await expect(
+      browserTool(
+        "browser_switch_tab",
+        vi.fn(async () => true),
+        () => false,
+        enablePage,
+      ).execute("call", { id: 2 }, undefined),
+    ).rejects.toMatchObject({ code: "STALE_CONTEXT", details: { mutationOutcome: "dispatched" } })
+    expect(update).toHaveBeenCalledOnce()
+    expect(enablePage).toHaveBeenCalledOnce()
+  })
+
+  test("a closed selected tab reports TAB_NOT_FOUND before a page read", async () => {
+    const { tabs, sendMessage } = tabBrowser([activeTab, targetTab])
+    const tools = createBrowserTools(vi.fn(async () => true))
+    await tools
+      .find((tool) => tool.name === "browser_switch_tab")
+      ?.execute("switch", { id: 2 }, undefined)
+    sendMessage.mockClear()
+    tabs.delete(2)
+    await expect(
+      tools.find((tool) => tool.name === "browser_read_page")?.execute("read", {}, undefined),
+    ).rejects.toMatchObject({ code: "TAB_NOT_FOUND" })
+    expect(sendMessage).not.toHaveBeenCalled()
+  })
+
+  test("does not read an unrelated target after a successful switch", async () => {
+    const { state, sendMessage } = tabBrowser([activeTab, targetTab])
+    const tools = createBrowserTools(vi.fn(async () => true))
+    await tools
+      .find((tool) => tool.name === "browser_switch_tab")
+      ?.execute("switch", { id: 2 }, undefined)
+    state.active = activeTab
+    sendMessage.mockClear()
+    await expect(
+      tools.find((tool) => tool.name === "browser_read_page")?.execute("read", {}, undefined),
+    ).rejects.toMatchObject({ code: "STALE_CONTEXT" })
+    expect(sendMessage).not.toHaveBeenCalled()
+  })
+
+  test.each(["missing", "unsupported_url", "permission_denied"])(
+    "open reports completed action but %s context without reading another page",
+    async (contextState) => {
+      const { state, create } = tabBrowser([activeTab])
+      state.workerState = { tabContext: null, contextState }
+      const enablePage = vi.fn()
+      await expect(
+        browserTool(
+          "browser_open_website",
+          vi.fn(async () => true),
+          () => false,
+          enablePage,
+        ).execute("call", { url: targetTab.url }, undefined),
+      ).rejects.toThrow("tab action completed, but the intended page context is not ready")
+      expect(create).toHaveBeenCalledOnce()
+      expect(enablePage).toHaveBeenCalledOnce()
+    },
+  )
+
+  test("unknown open outcome blocks unrelated page reads and exposes no raw Chrome error", async () => {
+    const { create, sendMessage } = tabBrowser([activeTab])
+    create.mockRejectedValueOnce(new Error("https://secret.test/?token=secret page text"))
+    const tools = createBrowserTools(vi.fn(async () => true))
+    const action = tools
+      .find((tool) => tool.name === "browser_open_website")
+      ?.execute("call", { url: targetTab.url }, undefined)
+    await expect(action).rejects.toMatchObject({
+      code: "ACTION_OUTCOME_UNKNOWN",
+      details: { requestId: "call", toolName: "browser_open_website", actionStage: "dispatch" },
+    })
+    await expect(action).rejects.not.toThrow("secret")
+    await expect(
+      tools.find((tool) => tool.name === "browser_read_page")?.execute("read", {}, undefined),
+    ).rejects.toMatchObject({ code: "ACTION_OUTCOME_UNKNOWN" })
+    expect(sendMessage).not.toHaveBeenCalled()
+    expect(create).toHaveBeenCalledOnce()
   })
 
   test("confirms optional screenshot access and returns PNG content", async () => {
@@ -288,7 +816,7 @@ describe("browser agent tools", () => {
 
     expect(confirm).toHaveBeenCalledWith(
       "Allow screenshots?",
-      { requiredPermission: SCREENSHOT_HOST_PERMISSION },
+      expect.objectContaining({ requiredPermission: SCREENSHOT_HOST_PERMISSION }),
       undefined,
     )
     expect(sendMessage).toHaveBeenLastCalledWith(
@@ -508,7 +1036,7 @@ describe("browser agent tools", () => {
 
     expect(confirm).toHaveBeenCalledWith(
       "Confirm bookmark read",
-      { requiredPermission: "bookmarks" },
+      expect.objectContaining({ requiredPermission: "bookmarks" }),
       undefined,
       {
         operation: "bookmarks.search",

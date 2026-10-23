@@ -135,6 +135,7 @@ test("viewport scroll reports actual geometry and invalidates references even at
     const target = await discover("Fixture marker")
     const first = await run<ScrollResult>("page.scroll", { direction: "down", amount: "page" })
     expect(first).toEqual({
+      mutationOutcome: "dispatched",
       distance: 700,
       atTop: false,
       atBottom: false,

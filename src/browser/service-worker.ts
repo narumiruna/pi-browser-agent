@@ -14,6 +14,14 @@ import {
   hasScreenshotPermission,
   SCREENSHOT_HOST_PERMISSION,
 } from "./permissions.js"
+import {
+  type ActionStage,
+  actionDiagnostics,
+  contextUnavailableError,
+  isMutationMethod,
+  type MutationOutcome,
+  safeContext,
+} from "./runtime/action-diagnostics.js"
 import { waitForCondition } from "./runtime/condition-wait.js"
 import { ELEMENT_PICKER_LIMITS, parseSelectedElementContext } from "./runtime/element-context.js"
 import { parseRuntimeRequest, type RuntimeEvent, type RuntimeRequest } from "./runtime/messages.js"
@@ -38,10 +46,35 @@ const SELECTION_CONTEXT_MENU_ID = "pi-browser-agent-send-selection"
 const VISIBLE_TAB_FOCUS_RETRY_ATTEMPTS = 5
 const VISIBLE_TAB_FOCUS_RETRY_MS = 50
 const activeRequests = new Map<string, AbortController>()
+const actionStates = new Map<string, { stage: ActionStage; mutationOutcome: MutationOutcome }>()
+
+function actionStage(
+  request: RuntimeRequest,
+  stage: ActionStage,
+  mutationOutcome?: MutationOutcome,
+): void {
+  const state = actionStates.get(request.requestId)
+  if (!state) return
+  state.stage = stage
+  if (mutationOutcome) state.mutationOutcome = mutationOutcome
+}
+
+function assertRequestNotCancelled(request: RuntimeRequest): void {
+  if (activeRequests.get(request.requestId)?.signal.aborted)
+    throw new RuntimeError("REQUEST_CANCELLED", "Browser request was cancelled before dispatch")
+}
+
+function contextState(): string {
+  return boundContext
+    ? "available"
+    : (inaccessibleTab?.reason ?? (visiblePage.kind === "none" ? "missing" : "unsupported_url"))
+}
 let boundContext: TabContext | undefined
 let visiblePage: PageCapability = { kind: "none", title: "" }
-let inaccessibleTab: { id: number; url: string } | undefined
-let observedTab: { id: number; url?: string } | undefined
+let inaccessibleTab:
+  | { id: number; url: string; reason: "permission_denied" | "unsupported_url" }
+  | undefined
+let observedTab: { id: number; url?: string; windowId: number } | undefined
 let elementSnapshot: ElementSnapshot | undefined
 let activeElementPicker:
   | { clientId: string; context: TabContext; expiresAt: number; token: string }
@@ -96,8 +129,11 @@ function setVisiblePage(page: PageCapability): void {
   emitTabChanged()
 }
 
-function markTabInaccessible(context: TabContext): void {
-  inaccessibleTab = { id: context.tabId, url: context.url }
+function markTabInaccessible(
+  context: TabContext,
+  reason: "permission_denied" | "unsupported_url" = "permission_denied",
+): void {
+  inaccessibleTab = { id: context.tabId, url: context.url, reason }
   clearBoundTab({ kind: "restricted", title: visiblePage.title })
 }
 
@@ -161,7 +197,8 @@ function clearBoundTab(page: PageCapability = { kind: "none", title: "" }): void
 
 function setBoundTab(tab: chrome.tabs.Tab | undefined): TabContext | undefined {
   const observedChanged = observedTab?.id !== tab?.id || observedTab?.url !== tab?.url
-  observedTab = tab?.id === undefined ? undefined : { id: tab.id, url: tab.url }
+  observedTab =
+    tab?.id === undefined ? undefined : { id: tab.id, url: tab.url, windowId: tab.windowId }
   if (inaccessibleTab && (inaccessibleTab.id !== tab?.id || inaccessibleTab.url !== tab.url)) {
     inaccessibleTab = undefined
   }
@@ -218,42 +255,29 @@ async function findFocusedVisibleTab(version: number): Promise<chrome.tabs.Tab |
   return null
 }
 
-async function finishVisibleTabSync(
-  version: number,
-  updatedTabId?: number,
-): Promise<TabContext | undefined> {
-  const previous = boundContext
+async function finishVisibleTabSync(version: number): Promise<TabContext | undefined> {
   const tab = await findFocusedVisibleTab(version)
   if (tab === null || version !== visibleTabSyncVersion) {
     return latestVisibleTabContext(version)
   }
-
-  const context = setBoundTab(tab)
-  if (
-    context &&
-    tab?.id === updatedTabId &&
-    previous?.tabId === context.tabId &&
-    previous.url === context.url &&
-    previous.epoch === context.epoch
-  ) {
-    contextEpoch = Math.max(contextEpoch, context.epoch) + 1
-    elementSnapshot = undefined
-    boundContext = { ...context, epoch: contextEpoch }
-    emitTabChanged()
-    return { ...boundContext }
-  }
-  return context
+  return setBoundTab(tab)
 }
 
-function syncVisibleTab(updatedTabId?: number): Promise<TabContext | undefined> {
+function syncVisibleTab(): Promise<TabContext | undefined> {
   const version = ++visibleTabSyncVersion
-  const promise = finishVisibleTabSync(version, updatedTabId)
+  const promise = finishVisibleTabSync(version)
   latestVisibleTabSync = { version, promise }
   return promise
 }
 
-async function syncUpdatedVisibleTab(updatedTabId: number): Promise<void> {
-  await syncVisibleTab(updatedTabId)
+// Record invalidation before an asynchronous lookup can be superseded by another lookup.
+function advanceContextEpoch(): void {
+  contextEpoch = Math.max(contextEpoch, boundContext?.epoch ?? 0) + 1
+  elementSnapshot = undefined
+  if (boundContext) {
+    boundContext = { ...boundContext, epoch: contextEpoch }
+    emitTabChanged()
+  }
 }
 
 async function initialize(): Promise<void> {
@@ -287,7 +311,7 @@ function consumePendingSelection(windowId: number): Promise<JsonValue> {
 async function refreshBoundContext(): Promise<TabContext> {
   const context = await syncVisibleTab()
   if (!context) {
-    throw new RuntimeError("TAB_NOT_BOUND", "Open an HTTP or HTTPS page in the active tab")
+    throw contextUnavailableError(visiblePage.kind, contextState())
   }
   return context
 }
@@ -306,7 +330,7 @@ function throwStaleContext(expected: TabContext, actual?: TabContext): never {
   throw new RuntimeError(
     "STALE_CONTEXT",
     "The visible tab changed or navigated while the browser operation was running",
-    { expected, ...(actual ? { actual } : {}) },
+    { expected: safeContext(expected), ...(actual ? { actual: safeContext(actual) } : {}) },
   )
 }
 
@@ -370,14 +394,14 @@ async function assertCurrentMutationTarget(
     throw new RuntimeError(
       "STALE_CONTEXT",
       "The target tab is no longer active in the focused browser window",
-      { expected, actual: latest },
+      { expected: safeContext(expected), actual: safeContext(latest) },
     )
   }
 }
 
 async function injectionFailure(
   context: TabContext,
-  error: unknown,
+  _error: unknown,
   fallbackMessage = "Chrome denied access to the current tab",
 ): Promise<RuntimeError> {
   const latest = await syncVisibleTab()
@@ -390,10 +414,7 @@ async function injectionFailure(
     throwStaleContext(context, latest)
   }
   markTabInaccessible(context)
-  return new RuntimeError(
-    "PERMISSION_DENIED",
-    error instanceof Error ? error.message : fallbackMessage,
-  )
+  return new RuntimeError("PERMISSION_DENIED", fallbackMessage)
 }
 
 function readDocumentContentType(): string {
@@ -429,8 +450,8 @@ async function assertReadableDocument(context: TabContext, signal?: AbortSignal)
     !contentType ||
     contentType.toLowerCase() === "application/pdf"
   ) {
-    markTabInaccessible(context)
-    throw new RuntimeError("PERMISSION_DENIED", "This page cannot be read or operated")
+    markTabInaccessible(context, "unsupported_url")
+    throw contextUnavailableError(visiblePage.kind, "unsupported_url")
   }
 }
 
@@ -453,8 +474,10 @@ async function runPageOperation(
   trustedLinkTargetUrl: string | null = null,
   probeSignal?: AbortSignal,
 ): Promise<JsonValue> {
+  actionStage(request, "target_resolution")
   const context = await refreshBoundContext()
   assertTabContext(request.tabContext, context)
+  actionStage(request, "validation")
   if (!(await hasHostPermission(context.url))) {
     throw new RuntimeError(
       "PERMISSION_DENIED",
@@ -488,7 +511,9 @@ async function runPageOperation(
     }
     assertTabContext(snapshot.context, context)
   }
+  const mutation = ["click", "type", "scroll", "selectOption", "setChecked"].includes(operation)
   let results: chrome.scripting.InjectionResult<Awaited<ReturnType<typeof executePageOperation>>>[]
+  if (mutation) actionStage(request, "dispatch", "outcome_unknown")
   try {
     results = await chrome.scripting.executeScript({
       target: { tabId: context.tabId },
@@ -505,6 +530,12 @@ async function runPageOperation(
       ],
     })
   } catch (error) {
+    if (mutation) {
+      throw new RuntimeError(
+        "ACTION_OUTCOME_UNKNOWN",
+        "The action may have run, but Chrome did not return its outcome. Inspect the intended page before deciding on a new action. Do not resubmit automatically.",
+      )
+    }
     if (signal?.aborted)
       throw new RuntimeError("REQUEST_CANCELLED", "Browser request was cancelled")
     throw await injectionFailure(context, error)
@@ -512,8 +543,28 @@ async function runPageOperation(
   const outcome = results[0]?.result
   if (!outcome) throw new RuntimeError("INTERNAL_ERROR", "The page operation returned no result")
   if (!outcome.ok) {
-    await revalidateRequestContext(request, context)
+    const reported = outcome.error.details?.mutationOutcome
+    if (
+      mutation &&
+      (reported === "not_dispatched" || reported === "outcome_unknown" || reported === "dispatched")
+    )
+      actionStage(request, reported === "not_dispatched" ? "validation" : "dispatch", reported)
+    if (!mutation || reported === "not_dispatched") await revalidateRequestContext(request, context)
     throw new RuntimeError(outcome.error.code, outcome.error.message, outcome.error.details)
+  }
+  if (
+    mutation &&
+    typeof outcome.result === "object" &&
+    outcome.result !== null &&
+    !Array.isArray(outcome.result)
+  ) {
+    const reported = outcome.result.mutationOutcome
+    if (
+      reported === "not_dispatched" ||
+      reported === "dispatched" ||
+      reported === "outcome_unknown"
+    )
+      actionStage(request, "completed", reported)
   }
   const navigationPending =
     operation === "click" &&
@@ -623,9 +674,13 @@ async function runClick(request: RuntimeRequest<"page.click">): Promise<JsonValu
     result.navigationAllowed === true
   ) {
     const current = await revalidateRequestContext(request, context)
+    assertRequestNotCancelled(request)
+    actionStage(request, "dispatch", "outcome_unknown")
     await chrome.tabs.update(current.tabId, { url: targetUrl.href })
+    actionStage(request, "completed", "dispatched")
     const updated = await syncVisibleTab()
     if (!updated || updated.tabId !== current.tabId) throwStaleContext(current, updated)
+    return { ...result, mutationOutcome: "dispatched" }
   }
   return result
 }
@@ -649,6 +704,9 @@ async function runWebMcp(
     )
   }
   await assertReadableDocument(context)
+  assertRequestNotCancelled(request)
+  const mutation = operation === "webmcp.callTool"
+  if (mutation) actionStage(request, "dispatch", "outcome_unknown")
   let results: chrome.scripting.InjectionResult<
     Awaited<ReturnType<typeof executeWebMcpOperation>>
   >[]
@@ -656,17 +714,29 @@ async function runWebMcp(
     results = await chrome.scripting.executeScript({
       target: { tabId: context.tabId },
       func: executeWebMcpOperation,
-      args: [operation, request.params, request.confirmed ?? false, context],
+      args: [operation, request.params, request.confirmed ?? false, context, request.requestId],
     })
   } catch (error) {
+    if (mutation)
+      throw new RuntimeError(
+        "ACTION_OUTCOME_UNKNOWN",
+        "The WebMCP call may have run. Inspect current state before a new action; do not repeat it automatically.",
+      )
     throw await injectionFailure(context, error, "Chrome denied WebMCP access")
   }
   const outcome = results[0]?.result
   if (!outcome) throw new RuntimeError("INTERNAL_ERROR", "WebMCP returned no result")
   if (!outcome.ok) {
-    await revalidateRequestContext(request, context)
+    const reported = outcome.error.details?.mutationOutcome
+    if (
+      mutation &&
+      (reported === "not_dispatched" || reported === "dispatched" || reported === "outcome_unknown")
+    )
+      actionStage(request, reported === "not_dispatched" ? "validation" : "dispatch", reported)
+    if (!mutation || reported === "not_dispatched") await revalidateRequestContext(request, context)
     throw new RuntimeError(outcome.error.code, outcome.error.message, outcome.error.details)
   }
+  if (mutation) actionStage(request, "completed", outcome.mutationOutcome ?? "dispatched")
   if (operation === "webmcp.listTools") {
     await revalidateRequestContext(request, context)
   }
@@ -711,10 +781,10 @@ async function captureVisible(request: RuntimeRequest<"page.captureVisible">): P
   let dataUrl: string
   try {
     dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" })
-  } catch (error) {
+  } catch {
     throw new RuntimeError(
       "INTERNAL_ERROR",
-      error instanceof Error ? error.message : "Chrome could not capture the visible tab",
+      "Chrome could not capture the visible tab. Check the intended tab and screenshot permission.",
     )
   }
   await revalidateRequestContext(request, context)
@@ -783,10 +853,13 @@ async function navigate(request: RuntimeRequest<"tabs.navigate">): Promise<JsonV
     )
   }
   const current = await revalidateRequestContext(request, context)
+  assertRequestNotCancelled(request)
+  actionStage(request, "dispatch", "outcome_unknown")
   await chrome.tabs.update(current.tabId, { url: targetUrl.href })
+  actionStage(request, "completed", "dispatched")
   const updated = await syncVisibleTab()
   if (!updated || updated.tabId !== current.tabId) throwStaleContext(current, updated)
-  return updated
+  return { ...updated, mutationOutcome: "dispatched" }
 }
 
 function elementPickerPageUrl(value: string): string {
@@ -852,7 +925,7 @@ async function startElementPicker(
           world: "ISOLATED",
           args: ["start", token, context, ELEMENT_PICKER_LIMITS],
         })
-      } catch (error) {
+      } catch {
         injectionFailed = true
         const latest = await syncVisibleTab()
         if (
@@ -870,10 +943,7 @@ async function startElementPicker(
         }
         activeElementPicker = undefined
         markTabInaccessible(context)
-        throw new RuntimeError(
-          "PERMISSION_DENIED",
-          error instanceof Error ? error.message : "Chrome denied access to the current tab",
-        )
+        throw new RuntimeError("PERMISSION_DENIED", "Chrome denied access to the current tab")
       }
       const outcome = results[0]?.result
       if (outcome?.ok && outcome.result.reason === "cancelled") {
@@ -908,10 +978,7 @@ async function startElementPicker(
       if (ownsPicker) activeElementPicker = undefined
       if (!injectionFailed && ownsPicker) await stopInjectedElementPicker(context)
       if (error instanceof RuntimeError) throw error
-      throw new RuntimeError(
-        "PERMISSION_DENIED",
-        error instanceof Error ? error.message : "Chrome denied access to the current tab",
-      )
+      throw new RuntimeError("PERMISSION_DENIED", "Chrome denied access to the current tab")
     }
   } finally {
     if (startingElementPicker === starting) startingElementPicker = undefined
@@ -944,10 +1011,31 @@ async function stopElementPicker(
 async function dispatch(request: RuntimeRequest, signal: AbortSignal): Promise<JsonValue> {
   await initialization
   if (signal.aborted) throw new RuntimeError("REQUEST_CANCELLED", "Browser request was cancelled")
+  if (
+    request.tabContext &&
+    (request.method.startsWith("page.") ||
+      ["tabs.getActive", "tabs.navigate", "webmcp.listTools", "webmcp.callTool"].includes(
+        request.method,
+      ))
+  ) {
+    try {
+      await chrome.tabs.get(request.tabContext.tabId)
+    } catch {
+      throw new RuntimeError(
+        "TAB_NOT_FOUND",
+        "The requested tab was closed. Select the intended tab and start a new request.",
+      )
+    }
+  }
   let result: JsonValue
   switch (request.method) {
     case "app.getState":
-      result = { tabContext: (await syncVisibleTab()) ?? null, page: { ...visiblePage } }
+      result = {
+        tabContext: (await syncVisibleTab()) ?? null,
+        page: { ...visiblePage },
+        contextState: contextState(),
+        ...(observedTab ? { windowId: observedTab.windowId } : {}),
+      }
       break
     case "tabs.getActive":
       result = await getActiveTab(request)
@@ -1041,7 +1129,12 @@ async function dispatch(request: RuntimeRequest, signal: AbortSignal): Promise<J
       throw new Error(`Unhandled runtime request: ${unhandled}`)
     }
   }
-  if (signal.aborted) throw new RuntimeError("REQUEST_CANCELLED", "Browser request was cancelled")
+  if (
+    signal.aborted &&
+    (!isMutationMethod(request.method) ||
+      actionStates.get(request.requestId)?.mutationOutcome === "not_dispatched")
+  )
+    throw new RuntimeError("REQUEST_CANCELLED", "Browser request was cancelled")
   return result
 }
 
@@ -1072,13 +1165,14 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   }
   if (activeElementPicker?.context.tabId === tabId) void stopActiveElementPicker("navigation")
   if (boundContext?.tabId === tabId) {
-    elementSnapshot = undefined
+    advanceContextEpoch()
     waitContextVersion += 1
   }
-  void initialization.then(() => syncUpdatedVisibleTab(tabId)).catch(() => undefined)
+  void initialization.then(() => syncVisibleTab()).catch(() => undefined)
 })
 
 chrome.tabs.onActivated.addListener(() => {
+  advanceContextEpoch()
   waitContextVersion += 1
   pickerShortcut.invalidate()
   elementPickerOperationVersion += 1
@@ -1097,6 +1191,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 })
 
 chrome.windows.onFocusChanged.addListener((windowId) => {
+  advanceContextEpoch()
   waitContextVersion += 1
   pickerShortcut.invalidate()
   elementPickerOperationVersion += 1
@@ -1320,7 +1415,12 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
       .then(() => sendResponse({ ok: true, result: { current: true } }))
       .catch((error) => {
         const runtimeError =
-          error instanceof RuntimeError ? error : new RuntimeError("INTERNAL_ERROR", String(error))
+          error instanceof RuntimeError
+            ? error
+            : new RuntimeError(
+                "INTERNAL_ERROR",
+                "Chrome could not validate the current mutation target. Check the intended tab before a new action.",
+              )
         sendResponse({ ok: false, error: runtimeError.toData() })
       })
     return true
@@ -1343,6 +1443,10 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
   }
 
   const controller = new AbortController()
+  actionStates.set(request.requestId, {
+    stage: "target_resolution",
+    mutationOutcome: "not_dispatched",
+  })
   const reportsProgress = ![
     "elementPicker.start",
     "elementPicker.stop",
@@ -1354,23 +1458,96 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
       emitEvent({
         kind: "event",
         name: "operation.progress",
-        payload: { method: request.method, requestId: request.requestId, status: "started" },
+        payload: {
+          method: request.method,
+          status: "started",
+          ...actionDiagnostics(
+            request,
+            "target_resolution",
+            contextState(),
+            boundContext,
+            observedTab?.windowId,
+          ),
+        },
       })
     }
   }
   void dispatch(request, controller.signal)
-    .then((result) => sendResponse({ ok: true, result }))
+    .then((result) =>
+      sendResponse({
+        ok: true,
+        result,
+        ...(isMutationMethod(request.method)
+          ? {
+              mutationOutcome:
+                actionStates.get(request.requestId)?.mutationOutcome ?? "not_dispatched",
+            }
+          : {}),
+      }),
+    )
     .catch((error) => {
       const runtimeError =
-        error instanceof RuntimeError ? error : new RuntimeError("INTERNAL_ERROR", String(error))
-      sendResponse({ ok: false, error: runtimeError.toData() })
+        error instanceof RuntimeError
+          ? error
+          : new RuntimeError(
+              "INTERNAL_ERROR",
+              "The browser operation failed. Inspect the intended page before a new request.",
+            )
+      if (runtimeError.code === "CONFIRMATION_REQUIRED")
+        actionStage(request, "confirmation", "not_dispatched")
+      const state = actionStates.get(request.requestId)
+      const mutationOutcome = isMutationMethod(request.method)
+        ? (state?.mutationOutcome ?? "not_dispatched")
+        : undefined
+      const uncertain = mutationOutcome === "outcome_unknown"
+      sendResponse({
+        ok: false,
+        error: new RuntimeError(
+          uncertain ? "ACTION_OUTCOME_UNKNOWN" : runtimeError.code,
+          uncertain
+            ? "The action may have run, but its outcome is unknown. Inspect the intended page before deciding on a new action. Do not resubmit automatically."
+            : mutationOutcome === "dispatched"
+              ? "The action was dispatched, but its outcome could not be verified. Inspect current state; do not resubmit automatically."
+              : runtimeError.message,
+          {
+            ...runtimeError.details,
+            ...(mutationOutcome ? { mutationOutcome } : {}),
+            diagnostics: actionDiagnostics(
+              request,
+              state?.stage ?? "target_resolution",
+              runtimeError.code === "PERMISSION_DENIED"
+                ? "permission_denied"
+                : runtimeError.code === "TAB_NOT_FOUND"
+                  ? "missing_tab"
+                  : contextState(),
+              boundContext,
+              observedTab?.windowId,
+            ),
+          },
+        ).toData(),
+      })
     })
     .finally(() => {
+      const state = actionStates.get(request.requestId)
+      actionStates.delete(request.requestId)
       if (activeRequests.delete(request.requestId) && reportsProgress) {
         emitEvent({
           kind: "event",
           name: "operation.progress",
-          payload: { method: request.method, requestId: request.requestId, status: "finished" },
+          payload: {
+            method: request.method,
+            status: "finished",
+            ...actionDiagnostics(
+              request,
+              state?.stage ?? "completed",
+              contextState(),
+              boundContext,
+              observedTab?.windowId,
+            ),
+            ...(isMutationMethod(request.method)
+              ? { mutationOutcome: state?.mutationOutcome ?? "not_dispatched" }
+              : {}),
+          },
         })
       }
     })

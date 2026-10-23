@@ -507,6 +507,84 @@ describe("page operations", () => {
     expect(executeTool).not.toHaveBeenCalled()
   })
 
+  test.each(["click", "type", "scroll", "selectOption", "setChecked"] as const)(
+    "rejects %s if its document becomes hidden during the final assertion",
+    async (operation) => {
+      document.body.innerHTML = '<button type="button">Target</button><input value="unchanged">'
+      const clicked = vi.fn()
+      document.querySelector("button")?.addEventListener("click", clicked)
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" })
+      vi.stubGlobal("chrome", {
+        runtime: {
+          sendMessage: vi.fn(async () => {
+            Object.defineProperty(document, "visibilityState", {
+              configurable: true,
+              value: "hidden",
+            })
+            return { ok: true }
+          }),
+        },
+      })
+      try {
+        expect(
+          await executePageOperation(
+            operation,
+            { selector: "button", text: "never" },
+            true,
+            null,
+            { tabId: 7, url: location.href, epoch: 3 },
+            null,
+            "once",
+          ),
+        ).toMatchObject({
+          ok: false,
+          error: { code: "STALE_CONTEXT", details: { mutationOutcome: "not_dispatched" } },
+        })
+        expect(clicked).not.toHaveBeenCalled()
+        expect(document.querySelector("input")?.value).toBe("unchanged")
+      } finally {
+        Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" })
+      }
+    },
+  )
+
+  test("rejects a WebMCP call if its document becomes hidden during the final assertion", async () => {
+    const executeTool = vi.fn(async () => ({ changed: true }))
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" })
+    Object.defineProperty(document, "modelContext", {
+      configurable: true,
+      value: { getTools: async () => [{ name: "fixture", inputSchema: {} }], executeTool },
+    })
+    vi.stubGlobal("chrome", {
+      runtime: {
+        sendMessage: vi.fn(async () => {
+          Object.defineProperty(document, "visibilityState", {
+            configurable: true,
+            value: "hidden",
+          })
+          return { ok: true }
+        }),
+      },
+    })
+    try {
+      expect(
+        await executeWebMcpOperation(
+          "webmcp.callTool",
+          { name: "fixture", arguments: {} },
+          true,
+          { tabId: 7, url: location.href, epoch: 3 },
+          "once",
+        ),
+      ).toMatchObject({
+        ok: false,
+        error: { code: "STALE_CONTEXT", details: { mutationOutcome: "not_dispatched" } },
+      })
+      expect(executeTool).not.toHaveBeenCalled()
+    } finally {
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" })
+    }
+  })
+
   test("lists the current WebMCP registry after toolchange without caching", async () => {
     let tools = [{ name: "first", description: "First tool", inputSchema: {} }]
     Object.defineProperty(document, "modelContext", {

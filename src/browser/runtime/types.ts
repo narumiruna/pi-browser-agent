@@ -38,6 +38,10 @@ export type RuntimeErrorCode =
   | "REQUEST_CANCELLED"
   | "STALE_CONTEXT"
   | "TAB_NOT_BOUND"
+  | "TAB_NOT_FOUND"
+  | "PAGE_CONTEXT_DISABLED"
+  | "UNSUPPORTED_URL"
+  | "ACTION_OUTCOME_UNKNOWN"
   | "TIMEOUT"
 
 export interface RuntimeErrorData {

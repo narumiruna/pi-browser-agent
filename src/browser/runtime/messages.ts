@@ -1,3 +1,4 @@
+import { actionDiagnostics, isMutationMethod, type MutationOutcome } from "./action-diagnostics.js"
 import type { PageCapability } from "./page-capability.js"
 import {
   type ElementTarget,
@@ -134,7 +135,7 @@ export interface RuntimeEvent {
 }
 
 export type RuntimeResponse =
-  | { ok: true; result: JsonValue }
+  | { ok: true; result: JsonValue; mutationOutcome?: MutationOutcome }
   | { ok: false; error: { code: string; message: string; details?: JsonObject } }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -405,34 +406,84 @@ export async function sendRuntimeRequest(
   options: { confirmed?: boolean; signal?: AbortSignal; tabContext?: TabContext } = {},
 ): Promise<JsonValue> {
   const { signal, ...requestOptions } = options
-  if (signal?.aborted) throw new RuntimeError("REQUEST_CANCELLED", "Browser request was cancelled")
   const request = {
     kind: "request",
     requestId: crypto.randomUUID(),
     method,
     params,
     ...requestOptions,
-  }
+  } as RuntimeRequest
+  const mutation = isMutationMethod(method)
+  const diagnostics = actionDiagnostics(
+    request,
+    "dispatch",
+    options.tabContext ? "available" : "missing",
+    options.tabContext,
+  )
+  if (signal?.aborted)
+    throw new RuntimeError("REQUEST_CANCELLED", "Browser request was cancelled before dispatch", {
+      ...(mutation ? { mutationOutcome: "not_dispatched" } : {}),
+      diagnostics: { ...diagnostics, actionStage: "target_resolution" },
+    })
   const cancel = (): void => {
-    void chrome.runtime.sendMessage({
-      kind: "request",
-      requestId: crypto.randomUUID(),
-      method: "requests.cancel",
-      params: { requestId: request.requestId },
+    void chrome.runtime
+      .sendMessage({
+        kind: "request",
+        requestId: crypto.randomUUID(),
+        method: "requests.cancel",
+        params: { requestId: request.requestId },
+      })
+      .catch(() => undefined)
+  }
+  const unknownOutcome = () =>
+    new RuntimeError(
+      "ACTION_OUTCOME_UNKNOWN",
+      "The action may have run, but the worker response was lost. Inspect the intended page before a new action. Do not resubmit automatically.",
+      { mutationOutcome: "outcome_unknown", diagnostics },
+    )
+  signal?.addEventListener("abort", cancel, { once: true })
+  let response: RuntimeResponse | undefined
+  try {
+    response = (await chrome.runtime.sendMessage(request)) as RuntimeResponse | undefined
+  } catch {
+    if (mutation) throw unknownOutcome()
+    throw new RuntimeError(
+      "INTERNAL_ERROR",
+      "The extension worker did not respond. Start a new read after checking the intended page.",
+      { diagnostics },
+    )
+  } finally {
+    signal?.removeEventListener("abort", cancel)
+  }
+  if (!response) {
+    if (mutation) throw unknownOutcome()
+    throw new RuntimeError("INTERNAL_ERROR", "The extension worker did not respond", {
+      diagnostics,
     })
   }
-  signal?.addEventListener("abort", cancel, { once: true })
-  const response = (await chrome.runtime.sendMessage(request).finally(() => {
-    signal?.removeEventListener("abort", cancel)
-  })) as RuntimeResponse | undefined
-  if (signal?.aborted) throw new RuntimeError("REQUEST_CANCELLED", "Browser request was cancelled")
-  if (!response) throw new RuntimeError("INTERNAL_ERROR", "The extension worker did not respond")
   if (!response.ok) {
     throw new RuntimeError(
       response.error.code as ConstructorParameters<typeof RuntimeError>[0],
       response.error.message,
-      response.error.details,
+      {
+        ...response.error.details,
+        diagnostics: response.error.details?.diagnostics ?? diagnostics,
+      },
     )
+  }
+  const outcome =
+    response.mutationOutcome ??
+    (isRecord(response.result) ? response.result.mutationOutcome : undefined)
+  // Cancellation after acknowledged dispatch must not be reported as proof of no action.
+  if (
+    signal?.aborted &&
+    !(mutation && ["dispatched", "outcome_unknown"].includes(String(outcome)))
+  ) {
+    if (mutation && outcome !== "not_dispatched") throw unknownOutcome()
+    throw new RuntimeError("REQUEST_CANCELLED", "Browser request was cancelled", {
+      ...(mutation ? { mutationOutcome: "not_dispatched" } : {}),
+      diagnostics,
+    })
   }
   return response.result
 }

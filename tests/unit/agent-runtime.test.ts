@@ -168,6 +168,98 @@ describe("browser agent configuration", () => {
     })
   })
 
+  test.each([
+    [false, "browser_switch_tab"],
+    [false, "browser_open_website"],
+    ["unavailable", "browser_switch_tab"],
+    ["unavailable", "browser_open_website"],
+  ] as const)(
+    "preserves %s page policy after approved %s and queued instructions",
+    async (policy, name) => {
+      vi.stubGlobal("indexedDB", new IDBFactory())
+      let active = { id: 1, windowId: 1, url: "chrome://newtab/", active: true } as chrome.tabs.Tab
+      const target = {
+        id: 2,
+        windowId: 1,
+        url: "https://example.test/",
+        active: false,
+      } as chrome.tabs.Tab
+      const sendMessage = vi.fn(async (message: { method: string }) => ({
+        ok: true,
+        result:
+          message.method === "app.getState"
+            ? {
+                tabContext: { tabId: active.id, url: active.url, epoch: 1 },
+                contextState: "available",
+              }
+            : { text: "Target page" },
+      }))
+      const update = vi.fn(async () => {
+        active = { ...target, active: true }
+        return active
+      })
+      const create = vi.fn(async () => {
+        active = { ...target, id: 4, active: true }
+        return active
+      })
+      vi.stubGlobal("chrome", {
+        storage: {
+          local: {
+            get: vi.fn(async () => ({})),
+            set: vi.fn(async () => undefined),
+            remove: vi.fn(async () => undefined),
+          },
+        },
+        runtime: { sendMessage },
+        windows: { get: vi.fn(async () => ({ id: 1, focused: true })) },
+        tabs: {
+          query: vi.fn(async () => [active]),
+          get: vi.fn(async (id: number) => (id === active.id ? active : target)),
+          update,
+          create,
+        },
+      })
+      const runtime = new BrowserAgentRuntime({
+        confirm: vi.fn(async () => true),
+        onAuthEvent: vi.fn(),
+        onAgentEvent: vi.fn(),
+      })
+      await runtime.configuration.updateSettings(DEFAULT_SETTINGS)
+      vi.spyOn(runtime.agent, "prompt").mockResolvedValue()
+      vi.spyOn(runtime.agent, "steer").mockImplementation(() => undefined)
+      vi.spyOn(runtime.agent, "followUp").mockImplementation(() => undefined)
+      await runtime.submit("Find the page", "steer", [], [], policy)
+      expect(runtime.usesPageContext).toBe(false)
+      ;(runtime.agent.state as { isStreaming: boolean }).isStreaming = true
+      await runtime.submit("Queued", "steer", [], [], true)
+      await runtime.submit("Queued unavailable", "followUp", [], [], "unavailable")
+      expect(runtime.usesPageContext).toBe(false)
+      const change = runtime.agent.state.tools.find((tool) => tool.name === name)
+      const read = runtime.agent.state.tools.find((tool) => tool.name === "browser_read_page")
+      if (!change || !read) throw new Error("Missing browser tool")
+      await change.execute("change", { id: 2, url: target.url }, undefined)
+      expect(runtime.usesPageContext).toBe(policy === "unavailable")
+      sendMessage.mockClear()
+      if (policy === false) {
+        await expect(read.execute("read", {}, undefined)).rejects.toMatchObject({
+          code: "PAGE_CONTEXT_DISABLED",
+        })
+        expect(sendMessage).not.toHaveBeenCalled()
+      } else {
+        await expect(read.execute("read", {}, undefined)).resolves.toMatchObject({
+          details: { text: "Target page" },
+        })
+        expect(sendMessage).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            method: "page.getVisibleText",
+            tabContext: { tabId: name === "browser_switch_tab" ? 2 : 4, url: target.url, epoch: 1 },
+          }),
+        )
+      }
+      expect(name === "browser_switch_tab" ? update : create).toHaveBeenCalledOnce()
+    },
+  )
+
   test("reports preparation, final persistence, and awaited listener settlement as busy", async () => {
     vi.stubGlobal("indexedDB", new IDBFactory())
     vi.stubGlobal("chrome", {

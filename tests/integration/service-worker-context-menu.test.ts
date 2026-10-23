@@ -353,7 +353,7 @@ describe("service worker visible-tab targeting", () => {
         expect.objectContaining({ name: "tab.changed", tabContext: undefined }),
       ),
     )
-    await expect(appState("unsupported-state")).resolves.toEqual({
+    await expect(appState("unsupported-state")).resolves.toMatchObject({
       ok: true,
       result: { tabContext: null, page: { kind: "restricted", title: "" } },
     })
@@ -382,7 +382,7 @@ describe("service worker visible-tab targeting", () => {
     activeTab = { id: 8, url: "chrome://settings", windowId: 3 }
     listeners.updated?.(8, { url: activeTab.url }, activeTab)
     await vi.waitFor(async () => {
-      await expect(appState("unsupported-update-state")).resolves.toEqual({
+      await expect(appState("unsupported-update-state")).resolves.toMatchObject({
         ok: true,
         result: { tabContext: null, page: { kind: "restricted", title: "" } },
       })
@@ -507,7 +507,7 @@ describe("service worker visible-tab targeting", () => {
         },
       },
     ])
-    await expect(appState("focus-loss-before-commit")).resolves.toEqual({
+    await expect(appState("focus-loss-before-commit")).resolves.toMatchObject({
       ok: true,
       result: { tabContext: null, page: { kind: "none", title: "" } },
     })
@@ -518,7 +518,7 @@ describe("service worker visible-tab targeting", () => {
     focusedWindowId = -1
     listeners.focusChanged?.(-1)
     await vi.waitFor(async () => {
-      await expect(appState("unfocused-state")).resolves.toEqual({
+      await expect(appState("unfocused-state")).resolves.toMatchObject({
         ok: true,
         result: { tabContext: null, page: { kind: "none", title: "" } },
       })

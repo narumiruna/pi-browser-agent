@@ -3,6 +3,7 @@ import type {
   PageOperationResult,
   PageOperationSuccess,
 } from "../content/page-operations.js"
+import type { MutationOutcome } from "../runtime/action-diagnostics.js"
 import type { JsonObject, JsonValue, TabContext } from "../runtime/types.js"
 
 export type WebMcpOperation = "webmcp.callTool" | "webmcp.listTools"
@@ -16,15 +17,32 @@ export async function executeWebMcpOperation(
   params: JsonObject,
   confirmed: boolean,
   expectedContext: TabContext | null = null,
+  requestId: string | null = null,
 ): Promise<PageOperationResult> {
-  const success = (result: JsonValue): PageOperationSuccess => ({ ok: true, result })
+  let mutationOutcome: MutationOutcome = "not_dispatched"
+  const success = (result: JsonValue): PageOperationSuccess => ({
+    ok: true,
+    result,
+    ...(operation === "webmcp.callTool" ? { mutationOutcome } : {}),
+  })
   const failure = (
     code: PageOperationFailure["error"]["code"],
     message: string,
     details?: JsonObject,
   ): PageOperationFailure => ({
     ok: false,
-    error: { code, message, ...(details ? { details } : {}) },
+    error: {
+      code,
+      message,
+      ...(details || operation === "webmcp.callTool"
+        ? {
+            details: {
+              ...details,
+              ...(operation === "webmcp.callTool" ? { mutationOutcome } : {}),
+            },
+          }
+        : {}),
+    },
   })
   const modelContext = (): {
     getTools?: () => Promise<Record<string, unknown>[]>
@@ -118,25 +136,36 @@ export async function executeWebMcpOperation(
       const assertion = (await chrome.runtime.sendMessage({
         kind: "assert-current-mutation-target",
         tabContext: expectedContext,
-      })) as { ok?: boolean; error?: { message?: string } } | undefined
+        ...(requestId === null ? {} : { requestId }),
+      })) as { ok?: boolean; error?: { code?: string; message?: string } } | undefined
       if (!assertion?.ok) {
         return failure(
-          "STALE_CONTEXT",
+          assertion?.error?.code === "REQUEST_CANCELLED"
+            ? "REQUEST_CANCELLED"
+            : assertion?.error?.code === "PERMISSION_DENIED"
+              ? "PERMISSION_DENIED"
+              : "STALE_CONTEXT",
           assertion?.error?.message ?? "The page is no longer in the focused browser window",
         )
       }
     }
+    const finalStalePage = stalePage()
+    if (finalStalePage) return finalStalePage
     // Native schema shape identifies the input format without probing or retrying a call.
     // Chrome 153 exposes schema text; Chrome 156 exposes an object and ontoolactivated.
     const objectInput =
       (tool.inputSchema !== null && typeof tool.inputSchema === "object") ||
       (tool.inputSchema === undefined && "ontoolactivated" in context)
+    mutationOutcome = "outcome_unknown"
     const result = await context.executeTool(tool, objectInput ? args : JSON.stringify(args))
+    mutationOutcome = "dispatched"
     return success(jsonSafe(result))
-  } catch (error) {
+  } catch {
     return failure(
       "INTERNAL_ERROR",
-      error instanceof Error ? error.message : "WebMCP operation failed",
+      mutationOutcome === "not_dispatched"
+        ? "WebMCP operation failed before dispatch"
+        : "The WebMCP call may have run. Inspect its state before a new action; do not repeat it automatically.",
     )
   }
 }

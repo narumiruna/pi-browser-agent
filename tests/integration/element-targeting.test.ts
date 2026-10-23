@@ -499,15 +499,15 @@ describe("worker injection failures", () => {
           executeScript.mockResolvedValueOnce([{ result: "text/html" }])
         executeScript.mockRejectedValueOnce(error)
 
-        expect(await send(method, params, { confirmed: true })).toEqual({
+        expect(await send(method, params, { confirmed: true })).toMatchObject({
           ok: false,
           error: {
             code: "PERMISSION_DENIED",
             message:
-              error?.message ??
-              (path === "WebMCP"
+              path === "WebMCP"
                 ? "Chrome denied WebMCP access"
-                : "Chrome denied access to the current tab"),
+                : "Chrome denied access to the current tab",
+            details: { diagnostics: { contextState: "permission_denied", toolName: method } },
           },
         })
         expect(await send("app.getState", {}, { tabContext: undefined })).toMatchObject({
@@ -566,14 +566,18 @@ describe("worker injection failures", () => {
         const current = await send("app.getState", {}, { tabContext: undefined })
         if (!current.ok) throw new Error(current.error.message)
         const actual = (current.result as { tabContext: TabContext | null }).tabContext
-        expect(response).toEqual({
+        expect(response).toMatchObject({
           ok: false,
           error: {
             code: "STALE_CONTEXT",
             message: "The visible tab changed or navigated while the browser operation was running",
-            details: { expected, ...(actual ? { actual } : {}) },
+            details: {
+              expected: { tabId: expected.tabId, documentEpoch: expected.epoch },
+              ...(actual ? { actual: { tabId: actual.tabId, documentEpoch: actual.epoch } } : {}),
+            },
           },
         })
+        expect(JSON.stringify(response)).not.toContain(expected.url)
         expect(current).toMatchObject({
           result:
             change === "unsupported page"
@@ -681,6 +685,271 @@ describe("worker element reference lifecycle", () => {
       error: { code: "STALE_CONTEXT" },
     })
     expect(submitted).toHaveBeenCalledOnce()
+  })
+
+  test("recovers the reported read/type/submit/list/switch/open sequence without an unrelated page", async () => {
+    document.body.innerHTML =
+      '<p>Local context fixture</p><form><input id="title"><textarea id="notes"></textarea><button>Save</button></form>'
+    const submitted = vi.fn((event: Event) => event.preventDefault())
+    document.querySelector("form")?.addEventListener("submit", submitted)
+    let pageEnabled = true
+    let interruptSubmit = true
+    const { createBrowserTools } = await import("../../src/browser/agent/browser-tools.js")
+    const tools = createBrowserTools(
+      async (message) => {
+        if (interruptSubmit && message.includes("submit")) {
+          interruptSubmit = false
+          focusChanged(-1)
+        }
+        return true
+      },
+      () => pageEnabled,
+      () => {
+        pageEnabled = true
+      },
+    )
+    const run = async (name: string, params: JsonObject = {}) => {
+      const tool = tools.find((tool) => tool.name === name)
+      if (!tool) throw new Error("Missing fixture tool")
+      return tool.execute("fixture-call", params, undefined)
+    }
+    expect(await run("browser_read_page")).toMatchObject({ details: { url: location.href } })
+    await run("browser_type", { selector: "#title", text: "Local title" })
+    await run("browser_type", { selector: "#notes", text: "Local notes" })
+    await expect(run("browser_click", { selector: "button" })).rejects.toMatchObject({
+      code: "STALE_CONTEXT",
+      details: { mutationOutcome: "not_dispatched" },
+    })
+    expect(submitted).not.toHaveBeenCalled()
+    pageEnabled = false
+    await expect(run("browser_get_active_tab")).rejects.toMatchObject({
+      code: "PAGE_CONTEXT_DISABLED",
+    })
+    expect(await run("browser_list_tabs")).toMatchObject({
+      details: { tabs: [{ id: 1, active: true }] },
+    })
+    vi.mocked(chrome.tabs.update).mockImplementation(async () => tab as chrome.tabs.Tab)
+    expect(await run("browser_switch_tab", { id: 1 })).toMatchObject({
+      details: { active: true, mutationOutcome: "dispatched" },
+    })
+    expect(await run("browser_read_page")).toMatchObject({ details: { url: location.href } })
+    chrome.tabs.create = vi.fn(async () => {
+      tab = { ...tab, id: 2 }
+      activated()
+      return tab as chrome.tabs.Tab
+    }) as typeof chrome.tabs.create
+    expect(await run("browser_open_website", { url: location.href })).toMatchObject({
+      details: { opened: true, mutationOutcome: "dispatched" },
+    })
+    expect(await run("browser_read_page")).toMatchObject({ details: { url: location.href } })
+    expect((document.querySelector("#title") as HTMLInputElement).value).toBe("Local title")
+    expect(submitted).not.toHaveBeenCalled()
+  })
+
+  test.each(["success", "unknown", "unserializable"] as const)(
+    "preserves WebMCP %s outcome through cancellation or response failure",
+    async (mode) => {
+      const executeTool = vi.fn(async () => {
+        if (mode === "unknown") throw new Error("private-tool-data")
+        if (mode === "unserializable") return { saved: true, value: 1n }
+        await send("requests.cancel", { requestId: "webmcp-once" }, { tabContext: undefined })
+        return { saved: true }
+      })
+      Object.defineProperty(document, "modelContext", {
+        configurable: true,
+        value: {
+          getTools: async () => [{ name: "save_fixture", inputSchema: { type: "object" } }],
+          executeTool,
+        },
+      })
+      try {
+        const response = await send(
+          "webmcp.callTool",
+          { name: "save_fixture", arguments: {} },
+          { confirmed: true, requestId: "webmcp-once" },
+        )
+        expect(response).toMatchObject(
+          mode === "success"
+            ? { ok: true, mutationOutcome: "dispatched", result: { saved: true } }
+            : mode === "unserializable"
+              ? {
+                  ok: false,
+                  error: { code: "INTERNAL_ERROR", details: { mutationOutcome: "dispatched" } },
+                }
+              : {
+                  ok: false,
+                  error: {
+                    code: "ACTION_OUTCOME_UNKNOWN",
+                    details: { mutationOutcome: "outcome_unknown" },
+                  },
+                },
+        )
+        expect(JSON.stringify(response)).not.toContain("private-tool-data")
+        if (mode === "unserializable")
+          expect(JSON.stringify(response)).not.toContain("page changed")
+        expect(executeTool).toHaveBeenCalledOnce()
+      } finally {
+        Reflect.deleteProperty(document, "modelContext")
+      }
+    },
+  )
+
+  test("does not navigate after cancellation during the final target lookup", async () => {
+    let lookups = 0
+    vi.mocked(chrome.windows.get).mockImplementation(async () => {
+      if (++lookups === 3)
+        await send("requests.cancel", { requestId: "navigate-once" }, { tabContext: undefined })
+      return { focused: true } as chrome.windows.Window
+    })
+    expect(
+      await send("tabs.navigate", { url: location.href }, { requestId: "navigate-once" }),
+    ).toMatchObject({
+      ok: false,
+      error: { code: "REQUEST_CANCELLED", details: { mutationOutcome: "not_dispatched" } },
+    })
+    expect(chrome.tabs.update).not.toHaveBeenCalled()
+  })
+
+  test("sanitizes raw target-assertion failures before returning them to the page", async () => {
+    const target = await discover()
+    ;(chrome.tabs.get as unknown as Mock<(id: number) => Promise<chrome.tabs.Tab>>)
+      .mockResolvedValueOnce(tab as chrome.tabs.Tab)
+      .mockRejectedValueOnce(new Error("private-token-from-Chrome"))
+    const response = await send("page.click", target)
+    expect(response).toMatchObject({
+      ok: false,
+      error: { details: { mutationOutcome: "not_dispatched" } },
+    })
+    expect(JSON.stringify(response)).not.toContain("private-token-from-Chrome")
+  })
+
+  test("retains dispatched submission outcome when cancellation arrives after execution", async () => {
+    document.body.innerHTML = "<form><button>Submit</button></form>"
+    const submitted = vi.fn((event: Event) => {
+      event.preventDefault()
+      updated(tab.id, { status: "loading" })
+    })
+    document.querySelector("form")?.addEventListener("submit", submitted)
+    const target = await discover()
+    // Confirmed click first inspects the link. Install cancellation on the actual click injection.
+    const original = executeScript.getMockImplementation()
+    executeScript.mockImplementation(async (injection) => {
+      const result = (await original?.(injection)) ?? []
+      if (injection.func.name === "executePageOperation" && injection.args?.[0] === "click")
+        await send("requests.cancel", { requestId: "late-cancel" }, { tabContext: undefined })
+      return result
+    })
+    expect(
+      await send("page.click", target, { confirmed: true, requestId: "late-cancel" }),
+    ).toMatchObject({ ok: true, result: { clicked: true, mutationOutcome: "dispatched" } })
+    expect(submitted).toHaveBeenCalledOnce()
+  })
+
+  test("reports a lost navigation-causing click response as unknown without replay", async () => {
+    const target = await discover()
+    const clicked = vi.fn(() => updated(tab.id, { status: "loading" }))
+    document.querySelector("button")?.addEventListener("click", clicked)
+    afterInjection = async () => {
+      throw new Error("private-page-token-and-form-text")
+    }
+    const result = await send("page.click", target)
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        code: "ACTION_OUTCOME_UNKNOWN",
+        details: {
+          mutationOutcome: "outcome_unknown",
+          diagnostics: { actionStage: "dispatch", toolName: "page.click" },
+        },
+      },
+    })
+    expect(JSON.stringify(result)).not.toContain("private-page-token-and-form-text")
+    expect(clicked).toHaveBeenCalledOnce()
+    await state()
+    expect(await send("page.getVisibleText")).toMatchObject({ ok: true })
+    expect(clicked).toHaveBeenCalledOnce()
+  })
+
+  test("rejects closed tabs distinctly before dispatch", async () => {
+    vi.mocked(chrome.tabs.get).mockRejectedValueOnce(new Error("private closed tab URL"))
+    const clicked = vi.fn()
+    document.querySelector("button")?.addEventListener("click", clicked)
+    expect(await send("page.click", { selector: "button" })).toMatchObject({
+      ok: false,
+      error: { code: "TAB_NOT_FOUND", details: { mutationOutcome: "not_dispatched" } },
+    })
+    expect(clicked).not.toHaveBeenCalled()
+  })
+
+  test.each(["activation", "focus"] as const)(
+    "rejects an old selector after a rapid %s round trip before dispatch",
+    async (event) => {
+      const original = { ...context }
+      if (event === "activation") {
+        activated()
+        activated()
+      } else {
+        focusChanged(-1)
+        focusChanged(1)
+      }
+      await state()
+      const clicked = vi.fn()
+      document.querySelector("button")?.addEventListener("click", clicked)
+      expect(
+        await send("page.click", { selector: "button" }, { tabContext: original }),
+      ).toMatchObject({
+        ok: false,
+        error: { code: "STALE_CONTEXT", details: { mutationOutcome: "not_dispatched" } },
+      })
+      expect(clicked).not.toHaveBeenCalled()
+    },
+  )
+
+  test("keeps action progress free of typed contents", async () => {
+    expect(await send("page.type", { selector: "input", text: "private-form-text" })).toMatchObject(
+      { ok: true, result: { mutationOutcome: "dispatched" } },
+    )
+    await vi.waitFor(() =>
+      expect(emittedEvents).toContainEqual(
+        expect.objectContaining({
+          name: "operation.progress",
+          payload: expect.objectContaining({
+            toolName: "page.type",
+            actionStage: "completed",
+            mutationOutcome: "dispatched",
+            windowId: 1,
+            documentEpoch: 0,
+          }),
+        }),
+      ),
+    )
+    const progress = emittedEvents.filter((event) => event.name === "operation.progress")
+    expect(JSON.stringify(progress)).not.toMatch(/private-form-text|http:|selector/)
+  })
+
+  test("keeps same-URL navigation stale when a newer state lookup supersedes navigation sync", async () => {
+    const original = { ...context }
+    let release: (() => void) | undefined
+    vi.mocked(chrome.tabs.query).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve([tab] as chrome.tabs.Tab[])
+        }),
+    )
+    updated(tab.id, { status: "loading" })
+    await vi.waitFor(() => expect(release).toBeTypeOf("function"))
+    await state()
+    release?.()
+    expect(context.epoch).toBeGreaterThan(original.epoch)
+    const clicked = vi.fn()
+    document.querySelector("button")?.addEventListener("click", clicked)
+    expect(
+      await send("page.click", { selector: "button" }, { tabContext: original, confirmed: true }),
+    ).toMatchObject({
+      ok: false,
+      error: { code: "STALE_CONTEXT" },
+    })
+    expect(clicked).not.toHaveBeenCalled()
   })
 
   test("rejects discovery replaced while its result is returning", async () => {
