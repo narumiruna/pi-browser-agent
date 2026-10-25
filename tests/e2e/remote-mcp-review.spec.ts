@@ -167,7 +167,7 @@ test("shows safe local validation messages without any remote request", async ()
       await settings.locator("#mcp-token").fill(token)
       await settings.locator("#mcp-save").click()
       await expect(settings.locator("#mcp-status")).toContainText("16 to 4096")
-      await expect(settings.locator("#mcp-token")).toHaveValue("")
+      await expect(settings.locator("#mcp-token")).toHaveValue(token)
     }
     expect(await settings.locator("body").textContent()).not.toContain("private token with spaces")
     expect(fixture.requests).toHaveLength(0)
@@ -305,7 +305,10 @@ test("MCP server edits require explicit saves and Cancel keeps saved servers", a
       "Configure up to 8 public HTTPS Streamable HTTP servers. Select New server to add another. A run supports up to 32 tools across all enabled servers.",
     )
     await expect(section).toContainText(
-      "Select Save disconnected to save server edits and disable the server. Server actions save separately from Save settings. Cancel does not undo saved server changes.",
+      "Select Save disconnected to save server edits and disable the server.",
+    )
+    await expect(section).toContainText(
+      "Server actions save separately from Save general settings. Cancel does not undo saved server changes.",
     )
     const readServers = () =>
       harness.controller.evaluate(() => chrome.storage.local.get("piBrowserAgentMcpServersV1"))
@@ -354,7 +357,10 @@ test("MCP server edits require explicit saves and Cancel keeps saved servers", a
     await settings.locator("#mcp-endpoint").fill("https://second.example.com/unsaved")
     expect(await readServers()).toEqual(saved)
     const closed = settings.waitForEvent("close")
-    await settings.getByRole("button", { name: "Cancel", exact: true }).click()
+    await settings.locator("#cancel-settings").click()
+    await expect(settings.locator("#settings-confirm-dialog")).toBeVisible()
+    await expect(settings.locator("#settings-confirm-title")).toHaveText("Discard unsaved changes?")
+    await settings.locator("#settings-confirm-action").click()
     await closed
     expect(await readServers()).toEqual(saved)
 
@@ -377,8 +383,21 @@ test("MCP server edits require explicit saves and Cancel keeps saved servers", a
     }
     await reopened.locator("#mcp-name").fill("Not saved by Save settings")
     await reopened.locator("#mcp-endpoint").fill("https://second.example.com/footer-unsaved")
+    await reopened.locator("#save-settings").click()
+    await expect(reopened.locator("#settings-confirm-dialog")).toBeVisible()
+    await expect(reopened.locator("#settings-confirm-title")).toHaveText(
+      "Unsaved MCP or Skills changes",
+    )
+    await reopened.locator("#settings-confirm-cancel").click()
+    await expect(reopened.locator("#mcp-name")).toHaveValue("Not saved by Save settings")
+    await expect(reopened.locator("#mcp-endpoint")).toHaveValue(
+      "https://second.example.com/footer-unsaved",
+    )
+    expect(await readServers()).toEqual(saved)
+    await reopened.locator("#save-settings").click()
+    await expect(reopened.locator("#settings-confirm-action")).toHaveText("Discard drafts and save")
     const savedAndClosed = reopened.waitForEvent("close")
-    await reopened.getByRole("button", { name: "Save settings", exact: true }).click()
+    await reopened.locator("#settings-confirm-action").click()
     await savedAndClosed
     expect(await readServers()).toEqual(saved)
     expect(harness.pageErrors).toEqual([])
@@ -413,9 +432,17 @@ test("a stale Settings tab cannot replace or remove newer server data or its tok
     await expect(first.locator("#mcp-status")).toContainText("Reload Settings")
     expect(await read()).toEqual(current)
     await first.locator("#mcp-remove").click()
+    await expect(first.locator("#settings-confirm-dialog")).toBeVisible()
+    await expect(first.locator("#settings-confirm-message")).toContainText("Review fixture")
+    await expect(first.locator("#settings-confirm-action")).toHaveText("Remove server and token")
+    await first.locator("#settings-confirm-action").click()
     await expect(first.locator("#mcp-status")).toContainText("Reload Settings")
     expect(await read()).toEqual(current)
     await second.locator("#mcp-remove").click()
+    await expect(second.locator("#settings-confirm-dialog")).toBeVisible()
+    await expect(second.locator("#settings-confirm-message")).toContainText("Newer name")
+    await expect(second.locator("#settings-confirm-action")).toHaveText("Remove server and token")
+    await second.locator("#settings-confirm-action").click()
     await expect(second.locator("#mcp-status")).toContainText("New server")
     const removed = await read()
     expect(removed.piBrowserAgentMcpServersV1).toEqual({ version: 1, servers: [] })

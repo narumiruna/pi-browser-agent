@@ -353,11 +353,6 @@
         </div>
         <!-- biome-ignore lint/a11y/noNoninteractiveTabindex: Tab panels provide keyboard access to their headings and help text. -->
         <div id="settings-panel-tools" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-tools" tabindex="0" hidden>
-          <section class="settings-section" aria-labelledby="tools-title">
-            <h2 id="tools-title">Available tools</h2>
-            <p>All browser tools, including new tools added by updates, are enabled by default. Uncheck tools to disable them. Changes apply to the next run; confirmations and Chrome permissions still apply.</p>
-            <fieldset id="available-tools" class="tool-options" aria-labelledby="tools-title"></fieldset>
-          </section>
           <section class="settings-section" aria-labelledby="confirmation-title">
             <h2 id="confirmation-title">Browser action confirmations</h2>
             <label for="confirmation-mode">Confirmation mode</label>
@@ -370,29 +365,39 @@
             <button type="button" id="clear-confirmation-approvals" class="subtle">Clear remembered approvals</button>
             <p id="confirmation-approvals-status" role="status" aria-live="polite"></p>
           </section>
+          <section class="settings-section" aria-labelledby="tools-title">
+            <h2 id="tools-title">Available tools</h2>
+            <p>All browser tools, including new tools added by updates, are enabled by default. Uncheck tools to disable them. Changes apply to the next run; confirmations and Chrome permissions still apply.</p>
+            <fieldset id="available-tools" class="tool-options" aria-labelledby="tools-title"></fieldset>
+          </section>
         </div>
         <!-- biome-ignore lint/a11y/noNoninteractiveTabindex: Tab panels provide keyboard access to their headings and help text. -->
         <div id="settings-panel-mcp" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-mcp" tabindex="0" hidden>
           <section class="settings-section" aria-labelledby="mcp-title">
             <h2 id="mcp-title">Remote MCP servers</h2>
-            <p>Configure up to 8 public HTTPS Streamable HTTP servers. Select New server to add another. A run supports up to 32 tools across all enabled servers.</p>
-            <p>Select Save disconnected to save server edits and disable the server. Server actions save separately from Save settings. Cancel does not undo saved server changes.</p>
-            <p>Test and enable checks the connection. A successful check enables the server for new runs and shows a tool preview.</p>
-            <p>Each remote tool call requires confirmation in every mode and can have side effects. Tool metadata and results can go to your selected model and saved session.</p>
+            <p>Save server edits separately. Tool data can go to your model and saved session.</p>
             <label for="mcp-server">Server</label>
             <select id="mcp-server"><option value="">New server</option></select>
             <label for="mcp-name">Name</label>
             <input id="mcp-name" maxlength="80" autocomplete="off" />
             <label for="mcp-endpoint">HTTPS endpoint (no query or fragment)</label>
             <input id="mcp-endpoint" type="url" maxlength="2048" autocomplete="off" />
-            <label for="mcp-token">Bearer token (optional; 16 to 4096 characters; blank keeps an existing token at the same endpoint)</label>
-            <input id="mcp-token" type="password" minlength="16" maxlength="4096" autocomplete="off" />
+            <label for="mcp-token">Bearer token (optional)</label>
+            <input id="mcp-token" type="password" minlength="16" maxlength="4096" autocomplete="off" aria-describedby="mcp-token-hint" />
+            <p id="mcp-token-hint" class="field-hint">16 to 4096 characters. Blank keeps an existing token at the same endpoint.</p>
             <label><input id="mcp-clear-token" type="checkbox" />Remove existing token</label>
             <button id="mcp-save" type="button">Save disconnected</button>
             <button id="mcp-connect" type="button">Test and enable</button>
             <button id="mcp-disable" type="button">Disable</button>
             <button id="mcp-remove" type="button">Remove server and token</button>
             <p id="mcp-status" role="status" aria-live="polite"></p>
+            <details class="settings-help">
+              <summary>Server requirements and data sharing</summary>
+              <p>Configure up to 8 public HTTPS Streamable HTTP servers. Select New server to add another. A run supports up to 32 tools across all enabled servers.</p>
+              <p>Select Save disconnected to save server edits and disable the server. Server actions save separately from Save general settings. Cancel does not undo saved server changes.</p>
+              <p>Test and enable checks the connection. A successful check enables the server for new runs and shows a tool preview.</p>
+              <p>Each remote tool call requires confirmation in every mode and can have side effects. Tool metadata and results can go to your selected model and saved session.</p>
+            </details>
             <p>Untrusted MCP tool preview</p>
             <pre id="mcp-tools"></pre>
           </section>
@@ -401,16 +406,7 @@
         <div id="settings-panel-skills" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-skills" tabindex="0" hidden>
           <section class="settings-section" aria-labelledby="skills-title">
             <h2 id="skills-title">Skills</h2>
-            <p>Import one UTF-8 SKILL.md file and review its plain text before saving. Scripts and supporting files are not supported. Static review cannot detect every unsupported dependency.</p>
-            <p>Skills can affect model behavior but cannot override safety rules or grant permissions. Enabled skill names, descriptions, and loaded content are shared with the selected model provider only when you submit a chat message. They can remain in saved session history after you disable or delete a skill.</p>
-            <p>These controls save independently of Save settings and Cancel. Changes apply to the next run, not an active run. Imported and replaced skills start disabled.</p>
-            <label for="skills-list">Installed skill</label>
-            <select id="skills-list"><option value="">Select an installed skill</option></select>
-            <label><input id="skills-enabled" type="checkbox" disabled />Enable selected skill</label>
-            <button id="skills-delete" type="button" disabled>Delete selected skill</button>
-            <p id="skills-installed-preview-label">Installed skill plain-text preview</p>
-            <!-- biome-ignore lint/a11y/noNoninteractiveTabindex: The bounded text preview needs keyboard scrolling. -->
-            <section id="skills-installed-preview" class="skills-preview" tabindex="0" aria-labelledby="skills-installed-preview-label">No installed skill selected.</section>
+            <p>Review a SKILL.md file to import. Imports and replacements start disabled.</p>
             <label for="skills-file-input">SKILL.md (UTF-8 text, at most 64 KiB)</label>
             <input id="skills-file-input" type="file" accept=".md,text/markdown,text/plain" aria-describedby="skills-review-help" disabled />
             <p id="skills-review-help">Review all file content and warnings below. Import adds a new disabled skill. Replace selected skill confirms replacement of the selected installed skill with the reviewed file and disables it.</p>
@@ -422,6 +418,22 @@
               <button id="skills-replace-reviewed" type="button" aria-describedby="skills-review-help" disabled>Replace selected skill</button>
             </div>
             <p id="skills-status" role="status" aria-live="polite" aria-atomic="true"></p>
+            <p id="skills-empty" hidden>No skills installed.</p>
+            <div id="skills-installed-controls" hidden>
+              <label for="skills-list">Installed skill</label>
+              <select id="skills-list"><option value="">Select an installed skill</option></select>
+              <label><input id="skills-enabled" type="checkbox" disabled />Enable selected skill</label>
+              <button id="skills-delete" type="button" disabled>Delete selected skill</button>
+              <p id="skills-installed-preview-label">Installed skill plain-text preview</p>
+              <!-- biome-ignore lint/a11y/noNoninteractiveTabindex: The bounded text preview needs keyboard scrolling. -->
+              <section id="skills-installed-preview" class="skills-preview" tabindex="0" aria-labelledby="skills-installed-preview-label">No installed skill selected.</section>
+            </div>
+            <details class="settings-help">
+              <summary>Skill requirements and data sharing</summary>
+              <p>These controls save independently of Save general settings and Cancel. Changes apply to the next run, not an active run. Imported and replaced skills start disabled.</p>
+              <p>Import one UTF-8 SKILL.md file and review its plain text before saving. Scripts and supporting files are not supported. Static review cannot detect every unsupported dependency.</p>
+              <p>Skills can affect model behavior but cannot override safety rules or grant permissions. Enabled skill names, descriptions, and loaded content are shared with the selected model provider only when you submit a chat message. They can remain in saved session history after you disable or delete a skill.</p>
+            </details>
           </section>
         </div>
         <!-- biome-ignore lint/a11y/noNoninteractiveTabindex: Tab panels provide keyboard access to their headings and help text. -->
@@ -462,7 +474,7 @@
       <footer class="settings-page-actions">
         <p id="settings-error" role="alert"></p>
         <button type="button" id="cancel-settings" class="subtle">Cancel</button>
-        <button type="button" id="save-settings" class="primary">Save settings</button>
+        <button type="button" id="save-settings" class="primary">Save general settings</button>
       </footer>
     </section>
 
@@ -557,6 +569,15 @@
       <div class="dialog-actions">
         <button id="skills-cancel-delete" type="button" class="subtle" autofocus>Cancel</button>
         <button id="skills-confirm-delete" type="button">Delete skill</button>
+      </div>
+    </dialog>
+
+    <dialog id="settings-confirm-dialog" aria-labelledby="settings-confirm-title" aria-describedby="settings-confirm-message">
+      <h2 id="settings-confirm-title">Confirm settings change</h2>
+      <p id="settings-confirm-message"></p>
+      <div class="dialog-actions">
+        <button id="settings-confirm-cancel" type="button" class="subtle" autofocus>Cancel</button>
+        <button id="settings-confirm-action" type="button" class="danger"></button>
       </div>
     </dialog>
 

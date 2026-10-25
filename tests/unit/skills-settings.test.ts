@@ -90,7 +90,7 @@ async function setup(initial: SkillRecord[] = []) {
   })
   const hide = () => dom.window.dispatchEvent(new dom.window.Event("pagehide"))
   environments.push({ dom, hide })
-  await initializeSkillsSettings()
+  const isDirty = await initializeSkillsSettings()
   const file = get<HTMLInputElement>("skills-file-input")
   const select = get<HTMLSelectElement>("skills-list")
   const enabled = get<HTMLInputElement>("skills-enabled")
@@ -135,6 +135,9 @@ async function setup(initial: SkillRecord[] = []) {
     removeListener,
     runtime,
     hide,
+    isDirty,
+    installedControls: get<HTMLElement>("skills-installed-controls"),
+    emptyState: get<HTMLElement>("skills-empty"),
     store: new SkillStore(),
     preview: get<HTMLElement>("skills-preview"),
     installedPreview: get<HTMLElement>("skills-installed-preview"),
@@ -154,8 +157,14 @@ describe("Skills settings", () => {
 
     const env = await setup()
     expect(env.file.disabled).toBe(false)
+    expect(env.isDirty()).toBe(false)
+    expect(env.installedControls.hidden).toBe(true)
+    expect(env.emptyState.hidden).toBe(false)
+    expect(env.emptyState.textContent).toBe("No skills installed.")
     await env.choose()
     expect(env.preview.textContent).toContain("Reviewed body")
+    expect(env.isDirty()).toBe(true)
+    expect(env.installedControls.hidden).toBe(true)
   })
 
   test("uses labeled native keyboard controls and explains disclosure and retention", async () => {
@@ -180,6 +189,13 @@ describe("Skills settings", () => {
     expect(section).toContain("saved session history")
     expect(section).toContain("next run, not an active run")
     expect(section).toContain("save independently")
+    expect(section).toContain("Save general settings")
+    const help = env.file.closest("section")?.querySelector("details")
+    expect(help?.querySelector("summary")?.textContent).toBe("Skill requirements and data sharing")
+    expect(help?.open).toBe(false)
+    expect(help?.textContent).toContain("only when you submit a chat message")
+    expect(env.preview.closest("details")).toBeNull()
+    expect(env.button("skills-import-reviewed").closest("details")).toBeNull()
   })
 
   test("previews malicious HTML and dependency warnings as text before any save", async () => {
@@ -211,6 +227,9 @@ describe("Skills settings", () => {
     expect(env.preview.textContent).toBe("No file reviewed.")
     expect(env.button("skills-import-reviewed").disabled).toBe(true)
     expect(env.status.textContent).toContain("imported disabled")
+    expect(env.installedControls.hidden).toBe(false)
+    expect(env.emptyState.hidden).toBe(true)
+    expect(env.isDirty()).toBe(false)
   })
 
   test("blocks repeated saves and safely refreshes queued storage changes", async () => {
@@ -244,6 +263,8 @@ describe("Skills settings", () => {
     const env = await setup([original])
     env.selectSkill()
     expect(env.installedPreview.textContent).toContain(original.body)
+    expect(env.installedControls.hidden).toBe(false)
+    expect(env.emptyState.hidden).toBe(true)
     env.enabled.focus()
     env.enabled.click()
     await settle()
@@ -283,6 +304,7 @@ describe("Skills settings", () => {
     expect(await env.store.list()).toEqual([original])
     expect(env.status.textContent).toContain("explicit replacement")
     expect(env.preview.textContent).toContain("Do not replace implicitly")
+    expect(env.isDirty()).toBe(true)
   })
 
   test("deletion requires a native dialog confirmation and supports cancellation", async () => {
@@ -308,6 +330,9 @@ describe("Skills settings", () => {
     expect(await env.store.list()).toEqual([])
     expect(env.select.value).toBe("")
     expect(env.status.textContent).toContain("Previous session history is retained")
+    expect(env.installedControls.hidden).toBe(true)
+    expect(env.emptyState.hidden).toBe(false)
+    expect(env.document.activeElement).toBe(env.file)
   })
 
   test.each([
@@ -328,6 +353,7 @@ describe("Skills settings", () => {
     await env.choose("<img src=x onerror=alert(1)>")
     expect(env.button("skills-import-reviewed").disabled).toBe(true)
     expect(env.preview.textContent).toBe("No file reviewed.")
+    expect(env.isDirty()).toBe(false)
     expect(env.status.textContent).toContain("frontmatter")
     expect(env.status.children).toHaveLength(0)
     expect(await env.store.list()).toEqual([original])
@@ -424,6 +450,9 @@ describe("Skills settings", () => {
     await settle()
     expect(env.select.value).toBe("")
     expect(env.enabled.disabled).toBe(true)
+    expect(env.installedControls.hidden).toBe(true)
+    expect(env.emptyState.hidden).toBe(false)
+    expect(env.isDirty()).toBe(true)
   })
 
   test("rejects a stale replacement even before the external change event arrives", async () => {
@@ -453,15 +482,18 @@ describe("Skills settings", () => {
       await pending
       await save(values)
     })
+    expect(env.isDirty()).toBe(false)
     env.enabled.click()
     expect(env.enabled.checked).toBe(true)
     expect(env.enabled.disabled).toBe(true)
+    expect(env.isDirty()).toBe(true)
     await settle()
     expect(env.enabled.checked).toBe(true)
     release()
     await settle()
     expect(env.enabled.checked).toBe(true)
     expect(env.enabled.disabled).toBe(false)
+    expect(env.isDirty()).toBe(false)
     expect(await env.store.list()).toEqual([{ ...original, enabled: true }])
   })
 
@@ -517,7 +549,9 @@ describe("Skills settings", () => {
     })
     Object.defineProperty(env.file, "files", { value: [chosen] })
     env.file.dispatchEvent(new env.dom.window.Event("change"))
+    expect(env.isDirty()).toBe(true)
     env.hide()
+    expect(env.isDirty()).toBe(false)
     finish?.(new TextEncoder().encode(source()).buffer)
     await settle()
     expect(env.preview.textContent).toBe("No file reviewed.")

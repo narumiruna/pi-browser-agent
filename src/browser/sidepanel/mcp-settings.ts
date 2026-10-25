@@ -10,10 +10,13 @@ import {
   setMcpConnection,
 } from "../mcp/store.js"
 import { hasApprovedHostPermission, requestHostPermission } from "../permissions.js"
+import type { ConfirmSettingsAction } from "./settings-confirmation.js"
 import { element } from "./ui.js"
 
-/** MCP changes save independently; tokens never populate form fields or preview output. */
-export async function initializeMcpSettings(): Promise<void> {
+/** MCP changes save independently; stored tokens never populate form fields or previews. */
+export async function initializeMcpSettings(
+  confirm: ConfirmSettingsAction,
+): Promise<() => boolean> {
   const select = element<HTMLSelectElement>("mcp-server")
   const name = element<HTMLInputElement>("mcp-name")
   const endpoint = element<HTMLInputElement>("mcp-endpoint")
@@ -29,22 +32,27 @@ export async function initializeMcpSettings(): Promise<void> {
   let connection: McpConnection | undefined
   let busy = false
   let disposed = false
+  let activeId = ""
+  let saving = false
 
-  function updateControls(): void {
-    const server = servers.find((s) => s.id === select.value)
-    const dirty =
-      !server ||
-      name.value.trim() !== server.name ||
-      endpoint.value !== server.endpoint ||
+  function hasDraft(): boolean {
+    const server = servers.find((s) => s.id === activeId)
+    return (
+      name.value !== (server?.name ?? "") ||
+      endpoint.value !== (server?.endpoint ?? "") ||
       Boolean(token.value) ||
       clearToken.checked
-    connect.disabled = busy || dirty
+    )
+  }
+  function updateControls(): void {
+    const server = servers.find((s) => s.id === activeId)
+    connect.disabled = busy || !server || hasDraft()
     disable.disabled = remove.disabled = busy || !server
     save.disabled = select.disabled = busy
     for (const input of [name, endpoint, token, clearToken]) input.disabled = busy
   }
   function fill(): void {
-    const server = servers.find((s) => s.id === select.value)
+    const server = servers.find((s) => s.id === activeId)
     name.value = server?.name ?? ""
     endpoint.value = server?.endpoint ?? ""
     token.value = ""
@@ -57,18 +65,21 @@ export async function initializeMcpSettings(): Promise<void> {
       : "New server"
     updateControls()
   }
-  async function refresh(id = select.value): Promise<void> {
+  async function refresh(id = activeId): Promise<void> {
     servers = await listMcpServers()
     if (disposed) return
     select.replaceChildren(
       new Option("New server", ""),
       ...servers.map((s) => new Option(s.name, s.id)),
     )
-    select.value = servers.some((s) => s.id === id) ? id : ""
+    activeId = servers.some((s) => s.id === id) ? id : ""
+    select.value = activeId
     fill()
   }
   async function perform(action: () => Promise<void>): Promise<void> {
     if (busy || disposed) return
+    const previousStatus = status.textContent
+    const previousFocus = document.activeElement as HTMLElement | null
     busy = true
     updateControls()
     status.textContent = "Working…"
@@ -79,32 +90,67 @@ export async function initializeMcpSettings(): Promise<void> {
     } finally {
       busy = false
       if (!disposed) {
+        if (status.textContent === "Working…") status.textContent = previousStatus
         updateControls()
+        if (
+          previousFocus?.isConnected &&
+          !previousFocus.closest("[hidden]") &&
+          !previousFocus.hasAttribute("disabled")
+        )
+          previousFocus.focus()
       }
     }
   }
-  select.addEventListener("change", fill)
+  select.addEventListener("change", () => {
+    const nextId = select.value
+    // The browser has already changed the select, but the fields still belong to activeId.
+    select.value = activeId
+    if (busy || disposed || nextId === activeId) return
+    if (!hasDraft()) {
+      activeId = nextId
+      select.value = activeId
+      fill()
+      return
+    }
+    void perform(async () => {
+      const server = servers.find((s) => s.id === activeId)
+      const discard = await confirm({
+        title: "Discard MCP changes?",
+        message: `Discard unsaved changes to ${server ? `“${server.name}”` : "the new server"}?`,
+        confirmLabel: "Discard changes",
+      })
+      if (!discard || disposed) return
+      activeId = nextId
+      select.value = activeId
+      fill()
+    })
+  })
   for (const input of [name, endpoint, token, clearToken])
     input.addEventListener("input", updateControls)
   save.addEventListener("click", () => {
+    if (busy || disposed) return
     const input = {
-      id: select.value || undefined,
-      revision: servers.find((server) => server.id === select.value)?.revision,
+      id: activeId || undefined,
+      revision: servers.find((server) => server.id === activeId)?.revision,
       name: name.value,
       endpoint: endpoint.value,
       token: clearToken.checked ? "" : token.value || undefined,
     }
-    token.value = ""
     void perform(async () => {
-      const server = await saveMcpServer(input)
-      await refresh(server.id)
-      status.textContent =
-        "Saved disconnected. Select Test and enable to make tools available for new runs."
+      saving = true
+      try {
+        const server = await saveMcpServer(input)
+        await refresh(server.id)
+        status.textContent =
+          "Saved disconnected. Select Test and enable to make tools available for new runs."
+      } finally {
+        saving = false
+      }
     })
   })
   connect.addEventListener("click", () => {
-    const server = servers.find((s) => s.id === select.value)
-    if (!server || busy || connect.disabled) return
+    const server = servers.find((s) => s.id === activeId)
+    if (!server || busy || disposed || connect.disabled) return
     // Chrome's optional permission request must start in this click gesture.
     const permission = requestHostPermission(server.endpoint)
     void perform(async () => {
@@ -137,18 +183,34 @@ export async function initializeMcpSettings(): Promise<void> {
     "click",
     () =>
       void perform(async () => {
-        const server = servers.find((item) => item.id === select.value)
+        const server = servers.find((item) => item.id === activeId)
         if (!server) return
+        if (
+          hasDraft() &&
+          !(await confirm({
+            title: "Discard MCP changes and disable?",
+            message: `Discard unsaved changes to “${server.name}” and disable the saved server?`,
+            confirmLabel: "Discard and disable",
+          }))
+        )
+          return
+        if (disposed) return
         await setMcpConnection(server.id, false, server.revision)
-        await refresh()
+        await refresh(server.id)
       }),
   )
   remove.addEventListener(
     "click",
     () =>
       void perform(async () => {
-        const server = servers.find((item) => item.id === select.value)
+        const server = servers.find((item) => item.id === activeId)
         if (!server) return
+        const confirmed = await confirm({
+          title: "Remove MCP server and token?",
+          message: `Remove “${server.name}”? Its stored token will be deleted.${hasDraft() ? " Unsaved changes will be discarded." : ""}`,
+          confirmLabel: "Remove server and token",
+        })
+        if (!confirmed || disposed) return
         await removeMcpServer(server.id, server.revision)
         await refresh("")
       }),
@@ -194,4 +256,5 @@ export async function initializeMcpSettings(): Promise<void> {
     { once: true },
   )
   await refresh()
+  return () => saving || hasDraft()
 }
