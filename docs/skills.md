@@ -4,14 +4,14 @@ Skills are reviewed, text-only task guidance. Import a single `SKILL.md` in **Se
 
 ## Import and use
 
-1. Select one UTF-8 file named exactly `SKILL.md` with the Skills file picker. Only the selected file is read.
-2. Review the name, description, complete body, and compatibility warnings in the plain-text preview. Selection and preview do not install the skill.
+1. Open **Settings → Skills**. The installed native list precedes import/review and shows each name, description, and **Enabled**/**Disabled** state. Select a row for its installed plain-text preview and enable/delete controls.
+2. Select one UTF-8 file named exactly `SKILL.md` with the Skills file picker. Only the selected file is read. Only a valid review reveals the file's plain-text preview and import actions. Review the name, description, complete body, and compatibility warnings; selection and preview do not install the skill.
 3. Select **Import reviewed skill**. The new record starts disabled. Select it from the installed list and enable it only if its content is safe to share.
 4. Submit a chat request. Enabled metadata becomes available to the model; the model can call `skills_load({id})` to read a relevant skill body. There is no separate skill slash command. Skills also work without a readable page, but do not enable page tools.
 
-Skill controls save immediately, independently of the general Settings form. File selection, preview, import, replacement, and enablement make no model request. A run snapshots enabled records at its start. Changes made during that run apply to the next run; they do not replace its active content.
+Skill actions save independently of **Save general settings**; file selection and review remain unsaved until import or replacement. The persistent footer identifies an unimported review separately from general changes and MCP edits. General Save and exit actions protect that review; Cancel does not undo saved skill actions. Pending skill operations block general Save, Back, and Cancel. File selection, preview, import, replacement, and enablement make no model request or new permission grant. A run snapshots enabled records at its start. Changes made during that run apply to the next run; they do not replace its active content.
 
-To replace a skill, select the installed record, select and review the new file, then select **Replace selected skill**. Replacement is explicit, preserves the installed ID, and starts disabled. A duplicate name cannot be imported as another record. To delete, select the record, select **Delete selected skill**, and confirm the named record. Cancel leaves it unchanged.
+To replace a skill, explicitly select the installed target, select and review the new file, then select **Replace selected skill**. This action appears only with a valid review and selected installed target. Replacement is explicit, preserves the installed ID, and starts disabled. A duplicate name cannot be imported as another record. To delete, select the record, select **Delete selected skill**, and confirm the named record. Cancel leaves it unchanged.
 
 ## Supported format
 

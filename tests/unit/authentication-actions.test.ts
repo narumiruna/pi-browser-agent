@@ -2,8 +2,13 @@ import type { AuthType } from "@earendil-works/pi-ai"
 import { JSDOM } from "jsdom"
 import { afterEach, describe, expect, test, vi } from "vitest"
 import { AUTH_ORIGINS, OPENAI_PROVIDER_ID } from "../../src/browser/auth/codex-oauth.js"
-import type { BrowserConfiguration, ProviderSummary } from "../../src/browser/configuration.js"
-import { requestHostPermissions } from "../../src/browser/permissions.js"
+import { CREDENTIALS_KEY } from "../../src/browser/auth/credential-store.js"
+import type {
+  AuthStatus,
+  BrowserConfiguration,
+  ProviderSummary,
+} from "../../src/browser/configuration.js"
+import { hasHostPermissions, requestHostPermissions } from "../../src/browser/permissions.js"
 import { AuthenticationController } from "../../src/browser/sidepanel/authentication.js"
 
 vi.mock("../../src/browser/permissions.js", () => ({
@@ -39,6 +44,7 @@ function setup(mode: "conversation" | "settings" = "conversation") {
     <button id="login"></button><button id="logout"></button>
     <button id="refresh-token"></button><button id="configure-provider"></button>
     <output id="auth-status"></output>
+    <p id="settings-auth-status" role="status" aria-live="polite"></p>
     <dialog id="auth-method-dialog">
       <button id="account-auth-method"></button><button id="api-key-auth-method"></button>
     </dialog>
@@ -75,6 +81,7 @@ function setup(mode: "conversation" | "settings" = "conversation") {
     this.open = false
     this.dispatchEvent(new dom.window.Event("close"))
   }
+  vi.mocked(hasHostPermissions).mockResolvedValue(true)
   vi.mocked(requestHostPermissions).mockResolvedValue(true)
   const configuration = {
     isChangingAuth: false,
@@ -86,6 +93,9 @@ function setup(mode: "conversation" | "settings" = "conversation") {
     authStatus: vi.fn<BrowserConfiguration["authStatus"]>().mockResolvedValue({ loggedIn: false }),
     login: vi.fn<BrowserConfiguration["login"]>().mockResolvedValue(undefined),
     logout: vi.fn<BrowserConfiguration["logout"]>().mockResolvedValue(undefined),
+    invalidateCredential: vi
+      .fn<BrowserConfiguration["invalidateCredential"]>()
+      .mockResolvedValue(undefined),
     credentials: {
       read: vi
         .fn<BrowserConfiguration["credentials"]["read"]>()
@@ -96,11 +106,13 @@ function setup(mode: "conversation" | "settings" = "conversation") {
   const updateError = vi.fn()
   const onProvidersChanged = vi.fn()
   const onStatus = vi.fn()
+  const onStateChanged = vi.fn()
   const controller = new AuthenticationController({
     configuration: configuration as unknown as BrowserConfiguration,
     currentProviderId,
     updateError,
     onProvidersChanged,
+    onStateChanged,
     onStatus,
     mode,
   })
@@ -126,7 +138,9 @@ function setup(mode: "conversation" | "settings" = "conversation") {
     currentProviderId,
     updateError,
     onProvidersChanged,
+    onStateChanged,
     onStatus,
+    status: dom.window.document.getElementById("settings-auth-status") as HTMLElement,
     dialog,
     button,
     chooseProvider,
@@ -406,9 +420,242 @@ describe("awaitable authentication actions", () => {
       expect(ui.updateError).toHaveBeenCalledWith()
       if (buttonId !== "logout") await ui.chooseProvider()
 
-      await vi.waitFor(() => expect(ui.updateError).toHaveBeenCalledWith(error))
+      await vi.waitFor(() =>
+        expect(ui.updateError).toHaveBeenCalledWith(
+          buttonId === "configure-provider"
+            ? new Error("Authentication is unavailable. Try again.")
+            : error,
+        ),
+      )
       expect(ui.controller.isBusy).toBe(false)
       expect(ui.button(buttonId).disabled).toBe(false)
     },
   )
+})
+
+describe("Settings credential status", () => {
+  test.each([
+    ["anthropic", { loggedIn: false }, "Anthropic credential missing", "Add credential"],
+    [
+      "anthropic",
+      { loggedIn: true, type: "api_key" },
+      "Anthropic credential configured — API key",
+      "Update credential",
+    ],
+    [
+      OPENAI_PROVIDER_ID,
+      { loggedIn: true, type: "oauth" },
+      "OpenAI credential configured — Account",
+      "Update credential",
+    ],
+  ] as const)(
+    "shows only status and method for %s: %j",
+    async (providerId, status, text, label) => {
+      const ui = setup("settings")
+      ui.currentProviderId.mockReturnValue(providerId)
+      ui.configuration.authStatus.mockResolvedValue(status)
+
+      await ui.controller.refresh()
+
+      expect(ui.status.textContent).toBe(text)
+      expect(ui.status.dataset.loggedIn).toBe(String(status.loggedIn))
+      expect(ui.button("configure-provider").textContent).toBe(label)
+      expect(ui.configuration.credentials.read).not.toHaveBeenCalled()
+      expect(ui.configuration.login).not.toHaveBeenCalled()
+      expect(requestHostPermissions).not.toHaveBeenCalled()
+      expect(ui.onStateChanged).toHaveBeenCalledOnce()
+      expect(ui.dom.window.document.getElementById("auth-status")?.textContent).toBe("")
+    },
+  )
+
+  test("clears configured status and reports a fixed error when status lookup fails", async () => {
+    const ui = setup("settings")
+    ui.configuration.authStatus.mockResolvedValue({ loggedIn: true, type: "api_key" })
+    await ui.controller.refresh()
+    ui.configuration.authStatus.mockRejectedValue(new Error("secret-provider-response"))
+
+    await ui.controller.refresh()
+
+    expect(ui.status.textContent).toBe("Credential status unavailable. Try again.")
+    expect(ui.status.dataset.loggedIn).toBe("false")
+    expect(ui.button("configure-provider").textContent).toBe("Add credential")
+    expect(ui.updateError).toHaveBeenLastCalledWith(
+      new Error("Authentication is unavailable. Try again."),
+    )
+    expect(ui.dom.window.document.body.textContent).not.toContain("secret-provider-response")
+  })
+
+  test("clears status for an unavailable selected provider", async () => {
+    const ui = setup("settings")
+    ui.configuration.authStatus.mockResolvedValue({ loggedIn: true, type: "api_key" })
+    await ui.controller.refresh()
+    ui.currentProviderId.mockReturnValue("unavailable")
+    await ui.controller.refresh()
+    expect(ui.status.textContent).toBe("Credential status unavailable. Try again.")
+    expect(ui.status.dataset.loggedIn).toBe("false")
+    expect(ui.configuration.authStatus).toHaveBeenCalledOnce()
+  })
+
+  test.each(["success", "error"])("ignores stale %s after a provider change", async (result) => {
+    const ui = setup("settings")
+    let resolveStatus: ((status: AuthStatus) => void) | undefined
+    let rejectStatus: ((error: Error) => void) | undefined
+    ui.configuration.authStatus.mockImplementationOnce(
+      () =>
+        new Promise<AuthStatus>((resolve, reject) => {
+          resolveStatus = resolve
+          rejectStatus = reject
+        }),
+    )
+    const stale = ui.controller.refresh()
+    ui.currentProviderId.mockReturnValue(OPENAI_PROVIDER_ID)
+    ui.configuration.authStatus.mockResolvedValue({ loggedIn: true, type: "oauth" })
+    await ui.controller.refresh()
+    ui.updateError.mockClear()
+    if (result === "success") resolveStatus?.({ loggedIn: false })
+    else rejectStatus?.(new Error("stale-secret"))
+    await stale
+
+    expect(ui.status.textContent).toBe("OpenAI credential configured — Account")
+    expect(ui.status.dataset.loggedIn).toBe("true")
+    expect(ui.button("configure-provider").textContent).toBe("Update credential")
+    expect(ui.updateError).not.toHaveBeenCalled()
+  })
+
+  test("ignores older refreshes for the same provider", async () => {
+    const ui = setup("settings")
+    let finish: ((status: AuthStatus) => void) | undefined
+    ui.configuration.authStatus.mockImplementationOnce(
+      () => new Promise<AuthStatus>((resolve) => (finish = resolve)),
+    )
+    const stale = ui.controller.refresh()
+    ui.configuration.authStatus.mockResolvedValue({ loggedIn: true, type: "api_key" })
+    await ui.controller.refresh()
+    finish?.({ loggedIn: false })
+    await stale
+    expect(ui.status.textContent).toBe("Anthropic credential configured — API key")
+  })
+
+  test("retains the configured credential status when setup is canceled or fails", async () => {
+    const ui = setup("settings")
+    ui.configuration.authStatus.mockResolvedValue({ loggedIn: true, type: "api_key" })
+    await ui.controller.refresh()
+    ui.onStateChanged.mockClear()
+    const canceled = ui.controller.configure()
+    expect(ui.onStateChanged).toHaveBeenCalledOnce()
+    expect(ui.controller.isBusy).toBe(true)
+    ui.dialog("auth-method-dialog").close("cancel")
+    await expect(canceled).resolves.toBe(false)
+    expect(ui.onStateChanged).toHaveBeenCalledTimes(2)
+    expect(ui.controller.isBusy).toBe(false)
+    expect(ui.status.textContent).toBe("Anthropic credential configured — API key")
+
+    ui.configuration.login.mockRejectedValue(new Error("secret-login-error"))
+    ui.button("configure-provider").click()
+    await ui.chooseProvider()
+    await vi.waitFor(() => expect(ui.controller.isBusy).toBe(false))
+    expect(ui.status.textContent).toBe("Anthropic credential configured — API key")
+    expect(ui.updateError).toHaveBeenLastCalledWith(
+      new Error("Authentication is unavailable. Try again."),
+    )
+    expect(ui.onProvidersChanged).not.toHaveBeenCalled()
+    expect(ui.dom.window.document.body.textContent).not.toContain("secret-login-error")
+  })
+
+  test("refreshes after setup without changing the selected provider", async () => {
+    const ui = setup("settings")
+    ui.currentProviderId.mockReturnValue(OPENAI_PROVIDER_ID)
+    const action = ui.controller.configure()
+    ui.dialog("auth-method-dialog").close("oauth")
+    await vi.waitFor(() => expect(ui.dialog("auth-provider-dialog").open).toBe(true))
+    expect(
+      (ui.dom.window.document.getElementById("auth-provider") as HTMLSelectElement).value,
+    ).toBe(OPENAI_PROVIDER_ID)
+    ui.configuration.authStatus.mockResolvedValue({ loggedIn: true, type: "oauth" })
+    ui.dialog("auth-provider-dialog").close("confirm")
+    await expect(action).resolves.toBe(true)
+    expect(ui.currentProviderId()).toBe(OPENAI_PROVIDER_ID)
+    expect(ui.status.textContent).toBe("OpenAI credential configured — Account")
+    expect(ui.onStateChanged).toHaveBeenCalledTimes(3)
+  })
+
+  test("does not forward raw authentication progress or info in Settings", () => {
+    const ui = setup("settings")
+    ui.controller.onAuthEvent({ type: "progress", message: "secret-progress" })
+    ui.controller.onAuthEvent({ type: "info", message: "secret-info" })
+    expect(ui.onStatus).not.toHaveBeenCalled()
+    expect(ui.status.textContent).toBe("")
+  })
+
+  test("updates status after cross-context credential changes only in local storage", async () => {
+    const ui = setup("settings")
+    const onChanged = vi.mocked(chrome.storage.onChanged.addListener).mock.calls[0]?.[0]
+    if (!onChanged) throw new Error("Missing storage listener")
+    onChanged({ [CREDENTIALS_KEY]: {} }, "session")
+    onChanged({ unrelated: {} }, "local")
+    expect(ui.configuration.authStatus).not.toHaveBeenCalled()
+    onChanged({ [CREDENTIALS_KEY]: {} }, "local")
+    await vi.waitFor(() => expect(ui.status.textContent).toBe("Anthropic credential missing"))
+    ui.configuration.authStatus.mockResolvedValue({ loggedIn: true, type: "api_key" })
+    onChanged({ [CREDENTIALS_KEY]: {} }, "local")
+    await vi.waitFor(() =>
+      expect(ui.status.textContent).toBe("Anthropic credential configured — API key"),
+    )
+    expect(requestHostPermissions).not.toHaveBeenCalled()
+  })
+
+  test("invalidates a Codex credential when its permission is absent", async () => {
+    const ui = setup("settings")
+    ui.currentProviderId.mockReturnValue(OPENAI_PROVIDER_ID)
+    ui.configuration.authStatus.mockResolvedValue({ loggedIn: true, type: "oauth" })
+    vi.mocked(hasHostPermissions).mockResolvedValue(false)
+    await ui.controller.refresh()
+    expect(ui.configuration.invalidateCredential).toHaveBeenCalledWith(OPENAI_PROVIDER_ID)
+    expect(ui.status.textContent).toBe("OpenAI credential missing")
+    expect(ui.button("configure-provider").textContent).toBe("Add credential")
+    expect(requestHostPermissions).not.toHaveBeenCalled()
+  })
+
+  test("refreshes and reports fixed text after authentication permission revocation", async () => {
+    const ui = setup("settings")
+    ui.currentProviderId.mockReturnValue(OPENAI_PROVIDER_ID)
+    ui.configuration.authStatus.mockResolvedValueOnce({ loggedIn: true, type: "oauth" })
+    await ui.controller.refresh()
+    const onRemoved = vi.mocked(chrome.permissions.onRemoved.addListener).mock.calls[0]?.[0]
+    if (!onRemoved) throw new Error("Missing permission listener")
+    onRemoved({ origins: [AUTH_ORIGINS[0]] })
+    await vi.waitFor(() => expect(ui.status.textContent).toBe("OpenAI credential missing"))
+    expect(ui.configuration.invalidateCredential).toHaveBeenCalledWith(OPENAI_PROVIDER_ID)
+    expect(ui.updateError).toHaveBeenLastCalledWith(
+      new Error("Authentication is unavailable. Try again."),
+    )
+    expect(requestHostPermissions).not.toHaveBeenCalled()
+  })
+
+  test("clears configured status even if credential invalidation fails after revocation", async () => {
+    const ui = setup("settings")
+    ui.currentProviderId.mockReturnValue(OPENAI_PROVIDER_ID)
+    ui.configuration.authStatus.mockResolvedValue({ loggedIn: true, type: "oauth" })
+    await ui.controller.refresh()
+    ui.configuration.invalidateCredential.mockRejectedValue(new Error("secret-storage-error"))
+    const onRemoved = vi.mocked(chrome.permissions.onRemoved.addListener).mock.calls[0]?.[0]
+    if (!onRemoved) throw new Error("Missing permission listener")
+    onRemoved({ origins: [AUTH_ORIGINS[0]] })
+    expect(ui.status.textContent).toBe("Credential status unavailable. Try again.")
+    expect(ui.status.dataset.loggedIn).toBe("false")
+    expect(ui.button("configure-provider").textContent).toBe("Add credential")
+    await vi.waitFor(() =>
+      expect(ui.updateError).toHaveBeenLastCalledWith(
+        new Error("Authentication is unavailable. Try again."),
+      ),
+    )
+  })
+
+  test("notifies busy-state observers before and after logout", async () => {
+    const ui = setup()
+    const observed: boolean[] = []
+    ui.onStateChanged.mockImplementation(() => observed.push(ui.controller.isBusy))
+    await expect(ui.controller.logout()).resolves.toBe(true)
+    expect(observed).toEqual([true, true, false])
+  })
 })

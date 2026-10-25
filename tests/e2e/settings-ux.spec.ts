@@ -45,6 +45,14 @@ async function reviewSkill(page: Page): Promise<void> {
   await expect(page.locator("#skills-import-reviewed")).toBeEnabled()
 }
 
+async function selectedServerId(page: Page): Promise<string> {
+  const id = await page
+    .locator('#mcp-servers button[data-server-id][aria-pressed="true"]')
+    .getAttribute("data-server-id")
+  if (!id) throw new Error("Missing selected MCP server ID")
+  return id
+}
+
 async function saveServer(page: Page, name: string, endpoint = ENDPOINT): Promise<string> {
   await selectTab(page, "MCP")
   await page.locator("#mcp-name").fill(name)
@@ -52,7 +60,7 @@ async function saveServer(page: Page, name: string, endpoint = ENDPOINT): Promis
   await page.locator("#mcp-token").fill(TOKEN)
   await page.locator("#mcp-save").click()
   await expect(page.locator("#mcp-status")).toContainText("Saved disconnected")
-  return page.locator("#mcp-server").inputValue()
+  return selectedServerId(page)
 }
 
 test("a valid token survives missing Name validation and is stored after correction", async () => {
@@ -76,7 +84,7 @@ test("a valid token survives missing Name validation and is stored after correct
     await page.locator("#mcp-save").click()
     await expect(page.locator("#mcp-status")).toContainText("Saved disconnected")
     await expect(page.locator("#mcp-token")).toHaveValue("")
-    const id = await page.locator("#mcp-server").inputValue()
+    const id = await selectedServerId(page)
     expect(await readStorage(harness)).toMatchObject({
       piBrowserAgentMcpServersV1: {
         servers: [{ id, name: "Corrected server", hasToken: true, enabled: false }],
@@ -137,11 +145,16 @@ test("general save preserves MCP and Skills drafts on Cancel, then explicitly di
     }
     const reopened = await openSettings(harness)
     await selectTab(reopened, "MCP")
-    await reopened.locator("#mcp-server").selectOption({ label: "Saved independently" })
+    await reopened
+      .locator("#mcp-servers")
+      .getByRole("button", { name: `Saved independently ${ENDPOINT} Disabled`, exact: true })
+      .click()
     await expect(reopened.locator("#mcp-name")).toHaveValue("Saved independently")
     await expect(reopened.locator("#mcp-token")).toHaveValue("")
     await selectTab(reopened, "Skills")
-    await expect(reopened.locator("#skills-import-reviewed")).toBeDisabled()
+    await expect(reopened.locator("#skills-review")).toBeHidden()
+    await expect(reopened.locator("#skills-import-reviewed")).toBeHidden()
+    await expect(reopened.locator("#skills-replace-reviewed")).toBeHidden()
     expect(harness.pageErrors).toEqual([])
   } finally {
     await harness.close()
@@ -283,6 +296,11 @@ for (const draft of ["MCP", "Skills"] as const) {
       } else {
         await reviewSkill(page)
       }
+      await expect(page.locator("#save-settings")).toBeDisabled()
+      await expect(page.locator("#settings-save-status")).toHaveText("No unsaved general changes")
+      await expect(page.locator("#settings-draft-status")).toHaveText(
+        draft === "MCP" ? "Server edits not saved" : "Skill review not imported",
+      )
       await page.locator("#cancel-settings").click()
       await expectConfirmation(page, "Discard unsaved changes?")
       await page.locator("#settings-confirm-cancel").click()
@@ -354,37 +372,43 @@ test("server-switch Cancel restores selection and preserves fields and replaceme
   try {
     const page = await openSettings(harness)
     const firstId = await saveServer(page, "First saved server")
-    await page.locator("#mcp-server").selectOption("")
+    await page.locator("#mcp-new").click()
     await expect(page.locator("#settings-confirm-dialog")).toBeHidden()
     const secondId = await saveServer(page, "Second saved server", `${ENDPOINT}/second`)
-    await page.locator("#mcp-server").selectOption(firstId)
+    const first = page.locator(`#mcp-servers button[data-server-id="${firstId}"]`)
+    const second = page.locator(`#mcp-servers button[data-server-id="${secondId}"]`)
+    await first.click()
     const saved = await readStorage(harness)
     await page.locator("#mcp-name").fill("Draft first name")
     await page.locator("#mcp-endpoint").fill(`${ENDPOINT}/replacement`)
     await page.locator("#mcp-token").fill("replacement-token-for-first")
-    await page.locator("#mcp-server").focus()
-    await page.locator("#mcp-server").selectOption(secondId)
+    await second.click()
     await expectConfirmation(page, "Discard MCP changes?")
     await expect(page.locator("#settings-confirm-message")).toContainText("First saved server")
-    await expect(page.locator("#mcp-server")).toHaveValue(firstId)
+    await expect(first).toHaveAttribute("aria-pressed", "true")
+    await expect(second).toHaveAttribute("aria-pressed", "false")
     await page.locator("#settings-confirm-cancel").click()
-    await expect(page.locator("#mcp-server")).toBeEnabled()
-    await expect(page.locator("#mcp-server")).toBeFocused()
-    await expect(page.locator("#mcp-server")).toHaveValue(firstId)
+    await expect(second).toBeEnabled()
+    await expect(second).toBeFocused()
+    await expect(first).toHaveAttribute("aria-pressed", "true")
+    expect(await selectedServerId(page)).toBe(firstId)
     await expect(page.locator("#mcp-name")).toHaveValue("Draft first name")
     await expect(page.locator("#mcp-endpoint")).toHaveValue(`${ENDPOINT}/replacement`)
     await expect(page.locator("#mcp-token")).toHaveValue("replacement-token-for-first")
     expect(await readStorage(harness)).toEqual(saved)
-    await page.locator("#mcp-server").selectOption(secondId)
+    await second.click()
     await expectConfirmation(page, "Discard MCP changes?")
     await page.locator("#settings-confirm-action").click()
-    await expect(page.locator("#mcp-server")).toHaveValue(secondId)
+    await expect(second).toHaveAttribute("aria-pressed", "true")
+    await expect(first).toHaveAttribute("aria-pressed", "false")
+    expect(await selectedServerId(page)).toBe(secondId)
     await expect(page.locator("#mcp-name")).toHaveValue("Second saved server")
     await expect(page.locator("#mcp-endpoint")).toHaveValue(`${ENDPOINT}/second`)
     await expect(page.locator("#mcp-token")).toHaveValue("")
     expect(await readStorage(harness)).toEqual(saved)
-    await page.locator("#mcp-server").selectOption("")
-    await page.locator("#mcp-server").selectOption(firstId)
+    await page.locator("#mcp-new").click()
+    await expect(page.locator("#mcp-new")).toHaveAttribute("aria-pressed", "true")
+    await first.click()
     await expect(page.locator("#settings-confirm-dialog")).toBeHidden()
     await expect(page.locator("#mcp-name")).toHaveValue("First saved server")
     expect(harness.pageErrors).toEqual([])
@@ -515,13 +539,13 @@ for (const colorScheme of ["light", "dark"] as const) {
       })
       await expect
         .soft(
-          page.locator("#mcp-server"),
-          `Initial MCP server bounds: ${JSON.stringify(await page.locator("#mcp-server").boundingBox())}`,
+          page.locator("#mcp-new"),
+          `Initial MCP New server bounds: ${JSON.stringify(await page.locator("#mcp-new").boundingBox())}`,
         )
         .toBeInViewport()
       const mcpHelp = page.locator("#settings-panel-mcp details")
       await expect(mcpHelp).not.toHaveAttribute("open", "")
-      for (const id of ["mcp-server", "mcp-name", "mcp-endpoint", "mcp-token", "mcp-save"]) {
+      for (const id of ["mcp-new", "mcp-name", "mcp-endpoint", "mcp-token", "mcp-save"]) {
         const control = page.locator(`#${id}`)
         await expectBefore(control, mcpHelp)
         await control.scrollIntoViewIfNeeded()
@@ -543,19 +567,39 @@ for (const colorScheme of ["light", "dark"] as const) {
       await expect(page.locator("#skills-installed-controls")).toBeHidden()
       const skillsHelp = page.locator("#settings-panel-skills details")
       await expect(skillsHelp).not.toHaveAttribute("open", "")
+      await expect(page.locator("#skills-review")).toBeHidden()
+      await expect(page.locator("#skills-import-reviewed")).toBeHidden()
+      await expect(page.locator("#skills-replace-reviewed")).toBeHidden()
+      await expectBefore(page.locator("#skills-empty"), page.locator("#skills-file-input"))
       await expectBefore(page.locator("#skills-file-input"), skillsHelp)
-      await expectBefore(page.locator("#skills-import-reviewed"), skillsHelp)
       await page.locator("#skills-file-input").scrollIntoViewIfNeeded()
       await expect(page.locator("#skills-file-input")).toBeInViewport()
       await page.screenshot({
         path: test.info().outputPath(`settings-skills-${colorScheme}-320.png`),
       })
       await reviewSkill(page)
+      await expectBefore(page.locator("#skills-import-reviewed"), skillsHelp)
+      await expect(page.locator("#skills-replace-reviewed")).toBeHidden()
+      await page.locator("#skills-import-reviewed").scrollIntoViewIfNeeded()
+      await expect(page.locator("#skills-import-reviewed")).toBeInViewport()
       await page.locator("#skills-import-reviewed").click()
       await expect(page.locator("#skills-status")).toContainText("Skill imported disabled")
       await expect(page.locator("#skills-empty")).toBeHidden()
+      const installed = page.locator("#skills-list").getByRole("button", {
+        name: "settings-ux-review Local Settings review Disabled",
+        exact: true,
+      })
+      await expect(installed).toBeFocused()
+      await installed.click()
+      await expect(installed).toHaveAttribute("aria-pressed", "true")
       await expect(page.locator("#skills-installed-controls")).toBeVisible()
-      await expectBefore(page.locator("#skills-import-reviewed"), page.locator("#skills-list"))
+      await expect(page.locator("#skills-enabled")).not.toBeChecked()
+      await expectBefore(page.locator("#skills-list"), page.locator("#skills-file-input"))
+      await expect(page.locator("#skills-review")).toBeHidden()
+      await reviewSkill(page)
+      await expectBefore(page.locator("#skills-list"), page.locator("#skills-review"))
+      await expectBefore(page.locator("#skills-import-reviewed"), skillsHelp)
+      await expect(page.locator("#skills-replace-reviewed")).toBeVisible()
       for (const name of ["Tools", "MCP", "Skills"]) {
         await selectTab(page, name)
         await expect(page.locator("#save-settings")).toBeInViewport()

@@ -4,7 +4,7 @@ Pi Browser Agent supports API-key authentication for browser-compatible built-in
 
 ## Provider setup
 
-Select **Add credential** from the top-right menu or **Configure authentication** in Settings. Both entry points use the same method-first flow:
+Select **Add credential** in the top-right menu or in **Settings → Model**. Settings shows **Update credential** when configured. Both entry points use the same method-first flow:
 1. Choose **Sign in with an account** or **Sign in with an API key**.
 2. Choose a provider from the searchable list filtered to that browser-supported method.
 3. Complete the provider-owned prompts or account flow.
@@ -18,6 +18,14 @@ Adding a credential does not change the active or pending model selection. Crede
 - Google Vertex AI exposes its API-key path. Filesystem-based ADC and service-account-file flows are unavailable in a browser.
 
 OpenAI Codex is currently the only provider under **Sign in with an account**. Pi Browser Agent does not expose other provider OAuth implementations because those `pi-ai` flows intentionally load Node-only callback-server or PKCE modules. Amazon Bedrock is also unavailable because its adapter intentionally loads a Node-only AWS SDK module.
+
+## Settings status and model choices
+
+The Model panel shows whether the selected provider's credential is missing or configured, with **Account** or **API key** for a configured credential. This status describes stored configuration, not a live model-request test or proof that the next request will succeed. Status refreshes after setup, provider selection, credential changes in another extension context, and Codex permission revocation. Values remain hidden. **Add credential** and **Update credential** reuse the setup flow; there is no new Settings removal action.
+
+Credential changes save independently of general settings. Cancel does not undo them. Pending setup blocks general Save, Back, and Cancel; cancelling setup preserves the model draft and prior credential.
+
+Thinking choices use SDK `getSupportedThinkingLevels()` intersected with the existing non-off stored levels (Minimal, Low, Medium, High, Extra high, Maximum). If no stored level applies, the control is disabled as **Not applicable**: the saved preference is retained, thinking apply stays unset, and a model change can still save. An explicit model/thinking change with an unsupported choice requires local correction. Unrelated general saves do not rewrite the saved thinking preference; no `off` value is added to storage.
 
 ## OpenAI Codex device flow
 

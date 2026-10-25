@@ -90,9 +90,18 @@ async function setup(initial: SkillRecord[] = []) {
   })
   const hide = () => dom.window.dispatchEvent(new dom.window.Event("pagehide"))
   environments.push({ dom, hide })
-  const isDirty = await initializeSkillsSettings()
+  const onStateChange = vi.fn()
+  const state = await initializeSkillsSettings(onStateChange)
   const file = get<HTMLInputElement>("skills-file-input")
-  const select = get<HTMLSelectElement>("skills-list")
+  const list = get<HTMLUListElement>("skills-list")
+  const selectionButton = (value = id) => {
+    const button = Array.from(list.querySelectorAll("button")).find(
+      (button) => button.dataset.skillId === value,
+    )
+    if (!button) throw new Error(`Missing skill button: ${value}`)
+    return button
+  }
+  const selectedButton = () => list.querySelector<HTMLButtonElement>('[aria-pressed="true"]')
   const enabled = get<HTMLInputElement>("skills-enabled")
   const button = (name: string) => get<HTMLButtonElement>(name)
   const choose = async (
@@ -113,16 +122,15 @@ async function setup(initial: SkillRecord[] = []) {
     await settle()
     return read
   }
-  const selectSkill = (value = id) => {
-    select.value = value
-    select.dispatchEvent(new dom.window.Event("change"))
-  }
+  const selectSkill = (value = id) => selectionButton(value).click()
   return {
     dom,
     document,
     get,
     file,
-    select,
+    list,
+    selectionButton,
+    selectedButton,
     enabled,
     button,
     choose,
@@ -135,7 +143,10 @@ async function setup(initial: SkillRecord[] = []) {
     removeListener,
     runtime,
     hide,
-    isDirty,
+    state,
+    onStateChange,
+    review: get<HTMLElement>("skills-review"),
+    selectedName: get<HTMLElement>("skills-selected-name"),
     installedControls: get<HTMLElement>("skills-installed-controls"),
     emptyState: get<HTMLElement>("skills-empty"),
     store: new SkillStore(),
@@ -157,13 +168,17 @@ describe("Skills settings", () => {
 
     const env = await setup()
     expect(env.file.disabled).toBe(false)
-    expect(env.isDirty()).toBe(false)
+    expect(env.state.hasDraft()).toBe(false)
+    expect(env.state.isBusy()).toBe(false)
+    expect(env.review.hidden).toBe(true)
+    expect(env.list.children).toHaveLength(0)
     expect(env.installedControls.hidden).toBe(true)
     expect(env.emptyState.hidden).toBe(false)
-    expect(env.emptyState.textContent).toBe("No skills installed.")
+    expect(env.emptyState.textContent).toContain("No skills installed.")
     await env.choose()
     expect(env.preview.textContent).toContain("Reviewed body")
-    expect(env.isDirty()).toBe(true)
+    expect(env.state.hasDraft()).toBe(true)
+    expect(env.review.hidden).toBe(false)
     expect(env.installedControls.hidden).toBe(true)
   })
 
@@ -172,15 +187,17 @@ describe("Skills settings", () => {
     expect(env.file.type).toBe("file")
     expect(env.file.multiple).toBe(false)
     expect(env.file.accept).toContain(".md")
-    expect(env.select.tagName).toBe("SELECT")
+    expect(env.list.tagName).toBe("UL")
+    expect(env.list.getAttribute("aria-label")).toBe("Installed skills")
+    expect(env.list.querySelector("select")).toBeNull()
     expect(env.enabled.type).toBe("checkbox")
     expect(env.file.labels?.length).toBe(1)
-    expect(env.select.labels?.length).toBe(1)
     expect(env.enabled.labels?.length).toBe(1)
     expect(env.status.getAttribute("role")).toBe("status")
     expect(env.preview.tabIndex).toBe(0)
-    env.preview.focus()
-    expect(env.document.activeElement).toBe(env.preview)
+    env.file.focus()
+    expect(env.document.activeElement).toBe(env.file)
+    expect(env.file.tabIndex).toBe(0)
     for (const name of ["skills-import-reviewed", "skills-replace-reviewed", "skills-delete"])
       expect(env.button(name).disabled).toBe(true)
     const section = env.file.closest("section")?.textContent
@@ -196,6 +213,123 @@ describe("Skills settings", () => {
     expect(help?.textContent).toContain("only when you submit a chat message")
     expect(env.preview.closest("details")).toBeNull()
     expect(env.button("skills-import-reviewed").closest("details")).toBeNull()
+    await env.choose()
+    env.preview.focus()
+    expect(env.document.activeElement).toBe(env.preview)
+  })
+
+  test("lists installed names, descriptions, and states without selecting a record", async () => {
+    const second = {
+      ...original,
+      id: "00000000-0000-4000-8000-000000000002",
+      name: "other",
+      enabled: true,
+    }
+    const env = await setup([original, second])
+    expect(env.list.children).toHaveLength(2)
+    expect(env.installedControls.hidden).toBe(true)
+    expect(env.selectedButton()).toBeNull()
+    for (const record of [original, second]) {
+      const button = env.selectionButton(record.id)
+      expect(button.parentElement?.tagName).toBe("LI")
+      expect(button.type).toBe("button")
+      expect(button.tabIndex).toBe(0)
+      expect(button.getAttribute("aria-pressed")).toBe("false")
+      expect(button.textContent).toContain(record.name)
+      expect(button.textContent).toContain(record.description)
+      expect(button.textContent).toContain(record.enabled ? "Enabled" : "Disabled")
+    }
+    env.selectionButton().focus()
+    env.selectionButton().click()
+    expect(env.document.activeElement).toBe(env.selectionButton())
+    expect(env.selectedName.textContent).toBe(original.name)
+    expect(env.installedControls.hidden).toBe(false)
+    env.selectSkill(second.id)
+    expect(env.selectionButton().getAttribute("aria-pressed")).toBe("false")
+    expect(env.selectedButton()).toBe(env.selectionButton(second.id))
+    expect(env.enabled.checked).toBe(true)
+    expect(env.list.hidden).toBe(false)
+    expect(env.state.hasDraft()).toBe(false)
+    expect(env.storage.set).not.toHaveBeenCalled()
+  })
+
+  test("keeps full long metadata visible through the installed-record limit", async () => {
+    const records = Array.from({ length: SKILL_LIMITS.installed }, (_, index) => ({
+      ...original,
+      id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+      name: `skill-${index}-${"x".repeat(50)}`,
+      description: "d".repeat(SKILL_LIMITS.description),
+    }))
+    const env = await setup(records)
+    expect(env.list.children).toHaveLength(SKILL_LIMITS.installed)
+    for (const record of records) {
+      const button = env.selectionButton(record.id)
+      expect(button.querySelector("strong")?.textContent).toBe(record.name)
+      expect(button.querySelector("small")?.textContent).toBe(record.description)
+    }
+  })
+
+  test("shows replacement only after valid review with an explicit installed target", async () => {
+    const env = await setup([original])
+    expect(env.review.hidden).toBe(true)
+    expect(env.button("skills-import-reviewed").hidden).toBe(true)
+    expect(env.button("skills-replace-reviewed").hidden).toBe(true)
+    env.selectSkill()
+    expect(env.review.hidden).toBe(true)
+    expect(env.button("skills-replace-reviewed").hidden).toBe(true)
+    await env.choose()
+    expect(env.review.hidden).toBe(false)
+    expect(env.button("skills-import-reviewed").hidden).toBe(false)
+    expect(env.button("skills-replace-reviewed").hidden).toBe(false)
+    expect(env.selectedName.textContent).toBe(original.name)
+    await env.choose("invalid")
+    expect(env.review.hidden).toBe(true)
+    expect(env.button("skills-replace-reviewed").hidden).toBe(true)
+    expect(env.selectedButton()).toBe(env.selectionButton())
+  })
+
+  test("preserves selected buttons and keyboard focus across storage refresh", async () => {
+    const env = await setup([original])
+    env.selectSkill()
+    const button = env.selectionButton()
+    button.focus()
+    env.data[SKILLS_STORAGE_KEY] = {
+      version: 1,
+      records: [{ ...original, description: "Updated description", enabled: true }],
+    }
+    env.notify({ [SKILLS_STORAGE_KEY]: {} })
+    await settle()
+    expect(env.selectionButton()).toBe(button)
+    expect(env.selectedButton()).toBe(button)
+    expect(env.document.activeElement).toBe(button)
+    expect(button.textContent).toContain("Updated description")
+    expect(env.enabled.checked).toBe(true)
+    env.file.focus()
+    env.notify({ [SKILLS_STORAGE_KEY]: {} })
+    await settle()
+    expect(env.document.activeElement).toBe(env.file)
+  })
+
+  test("does not take focus back when it moves during an asynchronous refresh", async () => {
+    const env = await setup([original])
+    env.selectSkill()
+    env.selectionButton().focus()
+    let release!: () => void
+    const pending = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const get = env.storage.get.getMockImplementation()
+    env.storage.get.mockImplementationOnce(async (key) => {
+      await pending
+      return (await get?.(key)) ?? {}
+    })
+    env.notify({ [SKILLS_STORAGE_KEY]: {} })
+    const other = env.get<HTMLButtonElement>("settings-tab-appearance")
+    other.focus()
+    release()
+    await settle()
+    expect(env.document.activeElement).toBe(other)
+    expect(env.selectedButton()).toBe(env.selectionButton())
   })
 
   test("previews malicious HTML and dependency warnings as text before any save", async () => {
@@ -221,15 +355,18 @@ describe("Skills settings", () => {
     env.button("skills-import-reviewed").click()
     await settle()
     expect(await env.store.list()).toMatchObject([{ name: "new-skill", enabled: false }])
-    expect(env.select.value).toBe("")
-    expect(env.document.activeElement).toBe(env.select)
+    const installed = (await env.store.list())[0]
+    expect(env.selectedButton()?.dataset.skillId).toBe(installed?.id)
+    expect(env.document.activeElement).toBe(env.selectedButton())
+    expect(env.enabled.checked).toBe(false)
+    expect(env.review.hidden).toBe(true)
     expect(env.file.value).toBe("")
     expect(env.preview.textContent).toBe("No file reviewed.")
     expect(env.button("skills-import-reviewed").disabled).toBe(true)
     expect(env.status.textContent).toContain("imported disabled")
     expect(env.installedControls.hidden).toBe(false)
     expect(env.emptyState.hidden).toBe(true)
-    expect(env.isDirty()).toBe(false)
+    expect(env.state.hasDraft()).toBe(false)
   })
 
   test("blocks repeated saves and safely refreshes queued storage changes", async () => {
@@ -247,7 +384,8 @@ describe("Skills settings", () => {
     env.button("skills-import-reviewed").click()
     env.button("skills-import-reviewed").click()
     expect(env.file.disabled).toBe(true)
-    expect(env.select.disabled).toBe(true)
+    expect(env.state.isBusy()).toBe(true)
+    expect(env.state.hasDraft()).toBe(true)
     expect(env.button("skills-import-reviewed").disabled).toBe(true)
     env.notify({ [SKILLS_STORAGE_KEY]: {} })
     release?.()
@@ -255,8 +393,9 @@ describe("Skills settings", () => {
     expect(await env.store.list()).toHaveLength(1)
     expect(env.storage.set).toHaveBeenCalledOnce()
     expect(env.status.textContent).toContain("imported disabled")
-    expect(env.select.disabled).toBe(false)
-    expect(env.document.activeElement).toBe(env.select)
+    expect(env.state.isBusy()).toBe(false)
+    expect(env.state.hasDraft()).toBe(false)
+    expect(env.document.activeElement).toBe(env.selectedButton())
   })
 
   test("previews an installed skill and saves enable/disable independently", async () => {
@@ -271,7 +410,7 @@ describe("Skills settings", () => {
     expect((await env.store.list())[0]?.enabled).toBe(true)
     expect(env.enabled.checked).toBe(true)
     expect(env.document.activeElement).toBe(env.enabled)
-    expect(env.select.value).toBe(id)
+    expect(env.selectedButton()?.dataset.skillId).toBe(id)
     env.enabled.click()
     await settle()
     expect((await env.store.list())[0]?.enabled).toBe(false)
@@ -291,8 +430,40 @@ describe("Skills settings", () => {
     expect(await env.store.list()).toMatchObject([
       { id, name: "replacement", body: "New reviewed content", enabled: false },
     ])
-    expect(env.select.value).toBe("")
+    expect(env.selectedButton()?.dataset.skillId).toBe(id)
+    expect(env.document.activeElement).toBe(env.selectionButton())
+    expect(env.review.hidden).toBe(true)
+    expect(env.enabled.checked).toBe(false)
     expect(env.preview.textContent).toBe("No file reviewed.")
+  })
+
+  test("replacement changes only the explicitly selected target", async () => {
+    const second = {
+      ...original,
+      id: "00000000-0000-4000-8000-000000000002",
+      name: "second-skill",
+      enabled: true,
+    }
+    const env = await setup([original, second])
+    env.selectSkill()
+    await env.choose(source("replacement", "Replacement body"))
+    env.selectSkill(second.id)
+    expect(env.selectedName.textContent).toBe(second.name)
+    expect(env.button("skills-replace-reviewed").hidden).toBe(false)
+    env.button("skills-replace-reviewed").click()
+    await settle()
+    expect(await env.store.list()).toEqual([
+      original,
+      {
+        id: second.id,
+        name: "replacement",
+        description: "A useful skill",
+        body: "Replacement body",
+        enabled: false,
+      },
+    ])
+    expect(env.selectedButton()?.dataset.skillId).toBe(second.id)
+    expect(env.enabled.checked).toBe(false)
   })
 
   test("a duplicate import never implicitly replaces an existing record", async () => {
@@ -304,7 +475,7 @@ describe("Skills settings", () => {
     expect(await env.store.list()).toEqual([original])
     expect(env.status.textContent).toContain("explicit replacement")
     expect(env.preview.textContent).toContain("Do not replace implicitly")
-    expect(env.isDirty()).toBe(true)
+    expect(env.state.hasDraft()).toBe(true)
   })
 
   test("deletion requires a native dialog confirmation and supports cancellation", async () => {
@@ -328,7 +499,8 @@ describe("Skills settings", () => {
     env.button("skills-confirm-delete").click()
     await settle()
     expect(await env.store.list()).toEqual([])
-    expect(env.select.value).toBe("")
+    expect(env.selectedButton()).toBeNull()
+    expect(env.list.children).toHaveLength(0)
     expect(env.status.textContent).toContain("Previous session history is retained")
     expect(env.installedControls.hidden).toBe(true)
     expect(env.emptyState.hidden).toBe(false)
@@ -353,7 +525,8 @@ describe("Skills settings", () => {
     await env.choose("<img src=x onerror=alert(1)>")
     expect(env.button("skills-import-reviewed").disabled).toBe(true)
     expect(env.preview.textContent).toBe("No file reviewed.")
-    expect(env.isDirty()).toBe(false)
+    expect(env.state.hasDraft()).toBe(false)
+    expect(env.review.hidden).toBe(true)
     expect(env.status.textContent).toContain("frontmatter")
     expect(env.status.children).toHaveLength(0)
     expect(await env.store.list()).toEqual([original])
@@ -422,10 +595,13 @@ describe("Skills settings", () => {
       expect(await env.store.list()).toEqual([original])
       expect(env.status.textContent).toBe("Storage failed <img src=x>")
       expect(env.status.children).toHaveLength(0)
-      expect(env.select.disabled).toBe(false)
+      expect(env.selectionButton().disabled).toBe(false)
+      expect(env.state.isBusy()).toBe(false)
       expect(env.enabled.checked).toBe(false)
       if (action === "import" || action === "replace") {
         expect(env.preview.textContent).toContain("Reviewed body")
+        expect(env.review.hidden).toBe(false)
+        expect(env.state.hasDraft()).toBe(true)
         expect(env.button(`skills-${action}-reviewed`).disabled).toBe(false)
       }
     },
@@ -448,11 +624,12 @@ describe("Skills settings", () => {
     env.data[SKILLS_STORAGE_KEY] = { version: 1, records: [] }
     env.notify({ [SKILLS_STORAGE_KEY]: {} })
     await settle()
-    expect(env.select.value).toBe("")
+    expect(env.selectedButton()).toBeNull()
+    expect(env.button("skills-replace-reviewed").hidden).toBe(true)
     expect(env.enabled.disabled).toBe(true)
     expect(env.installedControls.hidden).toBe(true)
     expect(env.emptyState.hidden).toBe(false)
-    expect(env.isDirty()).toBe(true)
+    expect(env.state.hasDraft()).toBe(true)
   })
 
   test("rejects a stale replacement even before the external change event arrives", async () => {
@@ -465,7 +642,8 @@ describe("Skills settings", () => {
     await settle()
     expect(await env.store.list()).toEqual([changed])
     expect(env.status.textContent).toContain("changed")
-    expect(env.select.value).toBe("")
+    expect(env.selectedButton()).toBeNull()
+    expect(env.button("skills-replace-reviewed").hidden).toBe(true)
     expect(env.preview.textContent).toContain("Reviewed body")
   })
 
@@ -482,19 +660,46 @@ describe("Skills settings", () => {
       await pending
       await save(values)
     })
-    expect(env.isDirty()).toBe(false)
+    expect(env.state.hasDraft()).toBe(false)
+    env.onStateChange.mockClear()
     env.enabled.click()
     expect(env.enabled.checked).toBe(true)
     expect(env.enabled.disabled).toBe(true)
-    expect(env.isDirty()).toBe(true)
+    expect(env.state.hasDraft()).toBe(false)
+    expect(env.state.isBusy()).toBe(true)
+    expect(env.onStateChange).toHaveBeenCalled()
     await settle()
     expect(env.enabled.checked).toBe(true)
     release()
     await settle()
     expect(env.enabled.checked).toBe(true)
     expect(env.enabled.disabled).toBe(false)
-    expect(env.isDirty()).toBe(false)
+    expect(env.state.hasDraft()).toBe(false)
+    expect(env.state.isBusy()).toBe(false)
     expect(await env.store.list()).toEqual([{ ...original, enabled: true }])
+  })
+
+  test("does not take keyboard focus back after an enable write and queued refresh", async () => {
+    const env = await setup([original])
+    env.selectSkill()
+    let release!: () => void
+    const pending = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const save = env.storage.set.getMockImplementation()
+    env.storage.set.mockImplementationOnce(async (values) => {
+      await pending
+      await save?.(values)
+    })
+    env.enabled.focus()
+    env.enabled.click()
+    const other = env.get<HTMLButtonElement>("settings-tab-appearance")
+    other.focus()
+    release()
+    await settle()
+    expect(env.document.activeElement).toBe(other)
+    expect(env.enabled.checked).toBe(true)
+    expect(env.selectedButton()?.dataset.skillId).toBe(id)
   })
 
   test.each(["enable", "replace", "delete"])(
@@ -537,6 +742,33 @@ describe("Skills settings", () => {
     expect(env.storage.get).toHaveBeenCalledTimes(reads)
   })
 
+  test("reports file reading as busy, not as an unreviewed draft", async () => {
+    const env = await setup()
+    const states: { hasDraft: boolean; isBusy: boolean }[] = []
+    env.onStateChange.mockImplementation(() => {
+      states.push({ hasDraft: env.state.hasDraft(), isBusy: env.state.isBusy() })
+    })
+    let finish!: (value: ArrayBuffer) => void
+    const chosen = new env.dom.window.File([source()], "SKILL.md")
+    Object.defineProperty(chosen, "arrayBuffer", {
+      value: () =>
+        new Promise<ArrayBuffer>((resolve) => {
+          finish = resolve
+        }),
+    })
+    Object.defineProperty(env.file, "files", { value: [chosen] })
+    env.file.dispatchEvent(new env.dom.window.Event("change"))
+    expect(env.state.hasDraft()).toBe(false)
+    expect(env.state.isBusy()).toBe(true)
+    expect(env.review.hidden).toBe(true)
+    finish(new TextEncoder().encode(source()).buffer)
+    await settle()
+    expect(env.state.hasDraft()).toBe(true)
+    expect(env.state.isBusy()).toBe(false)
+    expect(states).toContainEqual({ hasDraft: false, isBusy: true })
+    expect(states.at(-1)).toEqual({ hasDraft: true, isBusy: false })
+  })
+
   test("does not finish a file review after pagehide", async () => {
     const env = await setup()
     let finish: ((value: ArrayBuffer) => void) | undefined
@@ -549,9 +781,11 @@ describe("Skills settings", () => {
     })
     Object.defineProperty(env.file, "files", { value: [chosen] })
     env.file.dispatchEvent(new env.dom.window.Event("change"))
-    expect(env.isDirty()).toBe(true)
+    expect(env.state.hasDraft()).toBe(false)
+    expect(env.state.isBusy()).toBe(true)
     env.hide()
-    expect(env.isDirty()).toBe(false)
+    expect(env.state.hasDraft()).toBe(false)
+    expect(env.state.isBusy()).toBe(false)
     finish?.(new TextEncoder().encode(source()).buffer)
     await settle()
     expect(env.preview.textContent).toBe("No file reviewed.")
@@ -570,8 +804,9 @@ describe("Skills settings", () => {
     env.notify({ [SKILLS_STORAGE_KEY]: {} })
     await settle()
     env.selectSkill()
-    expect(env.select.options[1]?.textContent).toContain("<img src=x>")
-    expect(env.select.querySelector("img")).toBeNull()
+    expect(env.selectionButton().textContent).toContain("<img src=x>")
+    expect(env.selectionButton().textContent).toContain("<svg onload=alert(1)>")
+    expect(env.list.querySelector("img, svg, script")).toBeNull()
     expect(env.installedPreview.textContent).toContain("<svg onload=alert(1)>")
     expect(env.installedPreview.children).toHaveLength(0)
     expect(env.installedPreview.textContent?.length).toBeLessThan(SKILL_LIMITS.inputBytes + 200)

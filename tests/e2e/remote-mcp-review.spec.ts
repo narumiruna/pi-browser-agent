@@ -157,16 +157,22 @@ test("shows safe local validation messages without any remote request", async ()
     await settings.getByRole("tab", { name: "MCP", exact: true }).click()
     await settings.locator("#mcp-endpoint").fill(fixture.endpoint)
     await settings.locator("#mcp-save").click()
-    await expect(settings.locator("#mcp-status")).toContainText("server name")
+    await expect(settings.locator("#mcp-name-error")).toContainText("server name")
+    await expect(settings.locator("#mcp-name")).toBeFocused()
+    await expect(settings.locator("#mcp-name")).toHaveAttribute("aria-invalid", "true")
     await settings.locator("#mcp-name").fill("Valid name")
+    await expect(settings.locator("#mcp-name-error")).toBeHidden()
     await settings.locator("#mcp-endpoint").fill("http://mcp.example.com/mcp")
     await settings.locator("#mcp-save").click()
-    await expect(settings.locator("#mcp-status")).toContainText("public HTTPS")
+    await expect(settings.locator("#mcp-endpoint-error")).toContainText("public HTTPS")
+    await expect(settings.locator("#mcp-endpoint")).toBeFocused()
     await settings.locator("#mcp-endpoint").fill(fixture.endpoint)
+    await expect(settings.locator("#mcp-endpoint-error")).toBeHidden()
     for (const token of ["a", "private token with spaces"]) {
       await settings.locator("#mcp-token").fill(token)
       await settings.locator("#mcp-save").click()
-      await expect(settings.locator("#mcp-status")).toContainText("16 to 4096")
+      await expect(settings.locator("#mcp-token-error")).toContainText("16 to 4096")
+      await expect(settings.locator("#mcp-token")).toBeFocused()
       await expect(settings.locator("#mcp-token")).toHaveValue(token)
     }
     expect(await settings.locator("body").textContent()).not.toContain("private token with spaces")
@@ -318,8 +324,10 @@ test("MCP server edits require explicit saves and Cancel keeps saved servers", a
     expect(await readServers()).toEqual(initial)
     await settings.getByRole("button", { name: "Save disconnected", exact: true }).click()
     await expect(settings.locator("#mcp-status")).toContainText("Saved disconnected")
-    const firstId = await settings.locator("#mcp-server").inputValue()
-    expect(firstId).not.toBe("")
+    const firstId = await settings
+      .locator('#mcp-servers button[aria-pressed="true"]')
+      .getAttribute("data-server-id")
+    expect(firstId).toBeTruthy()
     const firstSaved = await readServers()
     expect(firstSaved).toMatchObject({
       piBrowserAgentMcpServersV1: {
@@ -339,16 +347,18 @@ test("MCP server edits require explicit saves and Cancel keeps saved servers", a
     expect(await readServers()).toEqual(firstSaved)
     await settings.getByRole("button", { name: "Save disconnected", exact: true }).click()
     await expect(settings.locator("#mcp-status")).toContainText("Saved disconnected")
-    await settings.locator("#mcp-server").selectOption({ label: "New server" })
+    await settings.getByRole("button", { name: "New server", exact: true }).click()
     await expect(settings.locator("#mcp-name")).toHaveValue("")
     await settings.locator("#mcp-name").fill("Second server")
     await settings.locator("#mcp-endpoint").fill("https://second.example.com/mcp")
     await settings.getByRole("button", { name: "Save disconnected", exact: true }).click()
     await expect(settings.locator("#mcp-status")).toContainText("Saved disconnected")
-    const secondId = await settings.locator("#mcp-server").inputValue()
+    const secondId = await settings
+      .locator('#mcp-servers button[aria-pressed="true"]')
+      .getAttribute("data-server-id")
+    expect(secondId).toBeTruthy()
     expect(secondId).not.toBe(firstId)
-    await expect(settings.locator("#mcp-server option")).toHaveText([
-      "New server",
+    await expect(settings.locator("#mcp-servers button")).toContainText([
       "Updated first server",
       "Second server",
     ])
@@ -367,8 +377,7 @@ test("MCP server edits require explicit saves and Cancel keeps saved servers", a
     const reopened = await harness.context.newPage()
     await reopened.goto(`${harness.controller.url()}?view=settings`)
     await reopened.getByRole("tab", { name: "MCP", exact: true }).click()
-    await expect(reopened.locator("#mcp-server option")).toHaveText([
-      "New server",
+    await expect(reopened.locator("#mcp-servers button")).toContainText([
       "Updated first server",
       "Second server",
     ])
@@ -376,13 +385,16 @@ test("MCP server edits require explicit saves and Cancel keeps saved servers", a
       [firstId, "Updated first server", "https://first.example.com/updated"],
       [secondId, "Second server", "https://second.example.com/mcp"],
     ] as const) {
-      await reopened.locator("#mcp-server").selectOption(id)
+      await reopened.locator(`#mcp-servers button[data-server-id="${id}"]`).click()
       await expect(reopened.locator("#mcp-name")).toHaveValue(name)
       await expect(reopened.locator("#mcp-endpoint")).toHaveValue(endpoint)
       await expect(reopened.locator("#mcp-status")).toHaveText("Disabled")
     }
     await reopened.locator("#mcp-name").fill("Not saved by Save settings")
     await reopened.locator("#mcp-endpoint").fill("https://second.example.com/footer-unsaved")
+    await reopened.getByRole("tab", { name: "Instructions", exact: true }).click()
+    await reopened.locator("#agent-instructions").fill("General settings draft")
+    await reopened.getByRole("tab", { name: "MCP", exact: true }).click()
     await reopened.locator("#save-settings").click()
     await expect(reopened.locator("#settings-confirm-dialog")).toBeVisible()
     await expect(reopened.locator("#settings-confirm-title")).toHaveText(
@@ -413,11 +425,13 @@ test("a stale Settings tab cannot replace or remove newer server data or its tok
     const first = await harness.context.newPage()
     await first.goto(`${harness.controller.url()}?view=settings`)
     await saveServer(first, fixture.endpoint)
-    const id = await first.locator("#mcp-server").inputValue()
+    const id = await first
+      .locator('#mcp-servers button[aria-pressed="true"]')
+      .getAttribute("data-server-id")
     const second = await harness.context.newPage()
     await second.goto(`${harness.controller.url()}?view=settings`)
     await second.getByRole("tab", { name: "MCP", exact: true }).click()
-    await second.locator("#mcp-server").selectOption(id)
+    await second.locator(`#mcp-servers button[data-server-id="${id}"]`).click()
     await second.locator("#mcp-name").fill("Newer name")
     await second.locator("#mcp-endpoint").fill(`${fixture.endpoint}/new`)
     await second.locator("#mcp-token").fill("replacement-token-value")
@@ -428,6 +442,7 @@ test("a stale Settings tab cannot replace or remove newer server data or its tok
         chrome.storage.local.get(["piBrowserAgentMcpServersV1", "piBrowserAgentMcpTokensV1"]),
       )
     const current = await read()
+    await first.locator("#mcp-name").fill("Stale edit")
     await first.locator("#mcp-save").click()
     await expect(first.locator("#mcp-status")).toContainText("Reload Settings")
     expect(await read()).toEqual(current)

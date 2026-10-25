@@ -217,7 +217,12 @@
     </footer>
 
     <section id="settings-page" class="settings-page" aria-labelledby="settings-title" hidden>
+      <div class="settings-layout">
       <header class="settings-page-header">
+        <div>
+          <p class="settings-eyebrow">Pi Browser Agent</p>
+          <h1 id="settings-title">Settings</h1>
+        </div>
         <button
           type="button"
           id="close-settings"
@@ -229,7 +234,6 @@
             <path d="M13.5 7.5h-12M6.5 2.5l-5 5 5 5" />
           </svg>
         </button>
-        <h1 id="settings-title">Settings</h1>
       </header>
       <div id="settings-tabs" class="settings-tabs" role="tablist" aria-label="Settings sections">
         <button
@@ -240,7 +244,7 @@
           aria-controls="settings-panel-model"
           aria-selected="true"
           tabindex="0"
-        >Model</button>
+        ><svg class="radix-icon" viewBox="0 0 15 15" aria-hidden="true"><path d="M7.5 1.5v3m0 6v3m-6-6h3m6 0h3M3 3l2 2m5 5 2 2m0-9-2 2m-5 5-2 2"/><circle cx="7.5" cy="7.5" r="3"/></svg>Model</button>
         <button
           id="settings-tab-tools"
           class="settings-tab"
@@ -249,7 +253,7 @@
           aria-controls="settings-panel-tools"
           aria-selected="false"
           tabindex="-1"
-        >Tools</button>
+        ><svg class="radix-icon" viewBox="0 0 15 15" aria-hidden="true"><path d="m2 12 5-5m-4-5a4 4 0 0 0 5 5l5 5-1 1-5-5a4 4 0 0 1-5-5l2 2 2-2Z"/></svg>Tools</button>
         <button
           id="settings-tab-mcp"
           class="settings-tab"
@@ -258,7 +262,7 @@
           aria-controls="settings-panel-mcp"
           aria-selected="false"
           tabindex="-1"
-        >MCP</button>
+        ><svg class="radix-icon" viewBox="0 0 15 15" aria-hidden="true"><rect x="1.5" y="2.5" width="12" height="4" rx="1"/><rect x="1.5" y="8.5" width="12" height="4" rx="1"/><path d="M4 4.5h1m-1 6h1"/></svg>MCP</button>
         <button
           id="settings-tab-skills"
           class="settings-tab"
@@ -267,7 +271,7 @@
           aria-controls="settings-panel-skills"
           aria-selected="false"
           tabindex="-1"
-        >Skills</button>
+        ><svg class="radix-icon" viewBox="0 0 15 15" aria-hidden="true"><path d="m7.5 1 2 4.5L14 7.5l-4.5 2-2 4.5-2-4.5L1 7.5l4.5-2Z"/></svg>Skills</button>
         <button
           id="settings-tab-appearance"
           class="settings-tab"
@@ -276,7 +280,7 @@
           aria-controls="settings-panel-appearance"
           aria-selected="false"
           tabindex="-1"
-        >Appearance</button>
+        ><svg class="radix-icon" viewBox="0 0 15 15" aria-hidden="true"><circle cx="7.5" cy="7.5" r="6"/><path d="M7.5 1.5v12"/></svg>Appearance</button>
         <button
           id="settings-tab-instructions"
           class="settings-tab"
@@ -285,7 +289,7 @@
           aria-controls="settings-panel-instructions"
           aria-selected="false"
           tabindex="-1"
-        >Instructions</button>
+        ><svg class="radix-icon" viewBox="0 0 15 15" aria-hidden="true"><path d="M3 1.5h6l3 3v9H3Zm6 0v3h3M5 7h5m-5 3h5"/></svg>Instructions</button>
       </div>
       <main class="settings-content">
         <!-- biome-ignore lint/a11y/noNoninteractiveTabindex: Tab panels provide keyboard access to their headings and help text. -->
@@ -322,6 +326,7 @@
                 role="combobox"
                 aria-autocomplete="list"
                 aria-controls="model-options"
+                aria-describedby="model-capabilities model-error"
                 aria-expanded="false"
                 autocomplete="off"
                 data-placeholder="Search models"
@@ -336,8 +341,9 @@
               ></div>
             </div>
             <p id="model-capabilities" class="field-hint"></p>
+            <p id="model-error" class="field-error" hidden></p>
             <label for="thinking-level">Thinking level</label>
-            <select id="thinking-level">
+            <select id="thinking-level" aria-describedby="thinking-level-hint thinking-level-error">
               <option value="minimal">Minimal</option>
               <option value="low">Low</option>
               <option value="medium">Medium</option>
@@ -345,25 +351,34 @@
               <option value="xhigh">Extra high</option>
               <option value="max">Maximum</option>
             </select>
-            <p class="field-hint">Higher levels may use more tokens; model support varies.</p>
-            <button type="button" id="configure-provider" class="subtle">
-              Configure authentication
-            </button>
+            <p id="thinking-level-hint" class="field-hint">Higher levels may use more tokens; model support varies.</p>
+            <p id="thinking-level-error" class="field-error" hidden></p>
+            <div class="authentication-summary">
+              <strong>Authentication</strong>
+              <p id="settings-auth-status" role="status" aria-live="polite">Checking credential status…</p>
+              <button type="button" id="configure-provider">Add credential</button>
+              <p class="field-hint">Credential changes save separately. Saved credentials have not been tested with a model request.</p>
+            </div>
           </section>
         </div>
         <!-- biome-ignore lint/a11y/noNoninteractiveTabindex: Tab panels provide keyboard access to their headings and help text. -->
         <div id="settings-panel-tools" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-tools" tabindex="0" hidden>
           <section class="settings-section" aria-labelledby="confirmation-title">
             <h2 id="confirmation-title">Browser action confirmations</h2>
-            <label for="confirmation-mode">Confirmation mode</label>
-            <select id="confirmation-mode">
-              <option value="strict">Strict — never reuse approvals</option>
-              <option value="balanced">Balanced — remember until Chrome restarts</option>
-              <option value="convenient">Convenient — remember across restarts</option>
-            </select>
-            <p class="field-hint">Approvals apply only to the same action and target. Changed WebMCP arguments, bookmark queries, or destinations ask again. Submits and downloads always ask. Chrome permission prompts are separate.</p>
-            <button type="button" id="clear-confirmation-approvals" class="subtle">Clear remembered approvals</button>
-            <p id="confirmation-approvals-status" role="status" aria-live="polite"></p>
+            <p>Choose how long to remember an approval for the same action and target.</p>
+            <fieldset id="confirmation-mode" class="confirmation-options">
+              <legend>Confirmation mode</legend>
+              <label class="confirmation-option"><input type="radio" name="confirmation-mode" value="strict" /><span><strong>Strict</strong><small>Never reuse approvals.</small></span></label>
+              <label class="confirmation-option"><input type="radio" name="confirmation-mode" value="balanced" /><span><strong>Balanced</strong><small>Remember until Chrome restarts.</small></span></label>
+              <label class="confirmation-option"><input type="radio" name="confirmation-mode" value="convenient" /><span><strong>Convenient</strong><small>Remember across restarts until cleared.</small></span></label>
+            </fieldset>
+            <p class="field-hint">Changed WebMCP arguments, bookmark queries, or destinations ask again. Chrome permissions and safety checks remain separate.</p>
+            <details class="settings-help"><summary>Actions that always require confirmation</summary><p>Submits, downloads, native option selections, actual checkbox/radio changes, and clicks without a stable target always ask. Remote MCP calls require fresh confirmation in every mode.</p></details>
+            <div class="settings-danger-zone">
+              <button type="button" id="clear-confirmation-approvals">Clear remembered approvals</button>
+              <p class="field-hint">Clearing takes effect immediately. Cancel does not restore approvals.</p>
+              <p id="confirmation-approvals-status" role="status" aria-live="polite"></p>
+            </div>
           </section>
           <section class="settings-section" aria-labelledby="tools-title">
             <h2 id="tools-title">Available tools</h2>
@@ -375,22 +390,35 @@
         <div id="settings-panel-mcp" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-mcp" tabindex="0" hidden>
           <section class="settings-section" aria-labelledby="mcp-title">
             <h2 id="mcp-title">Remote MCP servers</h2>
-            <p>Save server edits separately. Tool data can go to your model and saved session.</p>
-            <label for="mcp-server">Server</label>
-            <select id="mcp-server"><option value="">New server</option></select>
+            <p>Connect browser-compatible remote tools.</p>
+            <ul id="mcp-servers" class="resource-list" aria-label="Saved MCP servers"></ul>
+            <p id="mcp-empty">No servers configured.</p>
+            <button id="mcp-new" type="button">New server</button>
+            <div class="resource-editor">
+            <h3 id="mcp-editor-title">New server</h3>
             <label for="mcp-name">Name</label>
-            <input id="mcp-name" maxlength="80" autocomplete="off" />
+            <input id="mcp-name" maxlength="80" autocomplete="off" aria-describedby="mcp-name-error" />
+            <p id="mcp-name-error" class="field-error" hidden></p>
             <label for="mcp-endpoint">HTTPS endpoint (no query or fragment)</label>
-            <input id="mcp-endpoint" type="url" maxlength="2048" autocomplete="off" />
+            <input id="mcp-endpoint" type="url" maxlength="2048" autocomplete="off" aria-describedby="mcp-endpoint-error" />
+            <p id="mcp-endpoint-error" class="field-error" hidden></p>
             <label for="mcp-token">Bearer token (optional)</label>
-            <input id="mcp-token" type="password" minlength="16" maxlength="4096" autocomplete="off" aria-describedby="mcp-token-hint" />
+            <input id="mcp-token" type="password" minlength="16" maxlength="4096" autocomplete="off" aria-describedby="mcp-token-hint mcp-token-error" />
             <p id="mcp-token-hint" class="field-hint">16 to 4096 characters. Blank keeps an existing token at the same endpoint.</p>
-            <label><input id="mcp-clear-token" type="checkbox" />Remove existing token</label>
-            <button id="mcp-save" type="button">Save disconnected</button>
-            <button id="mcp-connect" type="button">Test and enable</button>
-            <button id="mcp-disable" type="button">Disable</button>
-            <button id="mcp-remove" type="button">Remove server and token</button>
+            <p id="mcp-token-error" class="field-error" hidden></p>
+            <label class="check-field"><input id="mcp-clear-token" type="checkbox" />Remove existing token</label>
+            <p class="settings-scope">Server actions save separately. Cancel does not undo saved changes. Tool data can go to your model and saved session.</p>
+            <div class="settings-actions">
+              <button id="mcp-save" type="button" class="primary">Save disconnected</button>
+              <button id="mcp-connect" type="button">Test and enable</button>
+              <button id="mcp-disable" type="button">Disable</button>
+            </div>
+            <p id="mcp-action-hint" class="field-hint">Save server edits before testing the connection.</p>
             <p id="mcp-status" role="status" aria-live="polite"></p>
+            <div id="mcp-danger-zone" class="settings-danger-zone" hidden>
+              <button id="mcp-remove" type="button" class="danger">Remove server and token</button>
+            </div>
+            </div>
             <details class="settings-help">
               <summary>Server requirements and data sharing</summary>
               <p>Configure up to 8 public HTTPS Streamable HTTP servers. Select New server to add another. A run supports up to 32 tools across all enabled servers.</p>
@@ -406,28 +434,37 @@
         <div id="settings-panel-skills" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-skills" tabindex="0" hidden>
           <section class="settings-section" aria-labelledby="skills-title">
             <h2 id="skills-title">Skills</h2>
-            <p>Review a SKILL.md file to import. Imports and replacements start disabled.</p>
-            <label for="skills-file-input">SKILL.md (UTF-8 text, at most 64 KiB)</label>
-            <input id="skills-file-input" type="file" accept=".md,text/markdown,text/plain" aria-describedby="skills-review-help" disabled />
-            <p id="skills-review-help">Review all file content and warnings below. Import adds a new disabled skill. Replace selected skill confirms replacement of the selected installed skill with the reviewed file and disables it.</p>
-            <p id="skills-preview-label">File plain-text preview and compatibility warnings</p>
-            <!-- biome-ignore lint/a11y/noNoninteractiveTabindex: The bounded text preview needs keyboard scrolling. -->
-            <section id="skills-preview" class="skills-preview" tabindex="0" aria-labelledby="skills-preview-label">No file reviewed.</section>
-            <div class="skills-actions">
-              <button id="skills-import-reviewed" type="button" disabled>Import reviewed skill</button>
-              <button id="skills-replace-reviewed" type="button" aria-describedby="skills-review-help" disabled>Replace selected skill</button>
-            </div>
-            <p id="skills-status" role="status" aria-live="polite" aria-atomic="true"></p>
+            <p>Review before import.</p>
+            <h3 id="skills-installed-title">Installed skills</h3>
             <p id="skills-empty" hidden>No skills installed.</p>
-            <div id="skills-installed-controls" hidden>
-              <label for="skills-list">Installed skill</label>
-              <select id="skills-list"><option value="">Select an installed skill</option></select>
-              <label><input id="skills-enabled" type="checkbox" disabled />Enable selected skill</label>
-              <button id="skills-delete" type="button" disabled>Delete selected skill</button>
+            <ul id="skills-list" class="resource-list" aria-label="Installed skills"></ul>
+            <div id="skills-installed-controls" class="resource-editor" hidden>
+              <h3 id="skills-selected-name">Selected skill</h3>
+              <label class="check-field"><input id="skills-enabled" type="checkbox" disabled />Enable selected skill</label>
               <p id="skills-installed-preview-label">Installed skill plain-text preview</p>
               <!-- biome-ignore lint/a11y/noNoninteractiveTabindex: The bounded text preview needs keyboard scrolling. -->
               <section id="skills-installed-preview" class="skills-preview" tabindex="0" aria-labelledby="skills-installed-preview-label">No installed skill selected.</section>
+              <div class="settings-danger-zone">
+                <button id="skills-delete" type="button" class="danger" disabled>Delete selected skill</button>
+              </div>
             </div>
+            <div id="skills-import-editor" class="resource-editor">
+            <h3 id="skills-import-title">Import or replace</h3>
+            <label for="skills-file-input">SKILL.md file</label>
+            <input id="skills-file-input" type="file" accept=".md,text/markdown,text/plain" aria-describedby="skills-review-help" disabled />
+            <p id="skills-review-help">UTF-8 text, at most 64 KiB. Review all file content and warnings below. Import adds a new disabled skill. Replace selected skill confirms replacement of the selected installed skill with the reviewed file and disables it.</p>
+            <div id="skills-review" hidden>
+            <p id="skills-preview-label">File plain-text preview and compatibility warnings</p>
+            <!-- biome-ignore lint/a11y/noNoninteractiveTabindex: The bounded text preview needs keyboard scrolling. -->
+            <section id="skills-preview" class="skills-preview" tabindex="0" aria-labelledby="skills-preview-label">No file reviewed.</section>
+            <p class="settings-scope">Skill actions save separately. Cancel does not undo saved changes. Imports and replacements start disabled.</p>
+            <div class="skills-actions">
+              <button id="skills-import-reviewed" type="button" class="primary" disabled>Import reviewed skill</button>
+              <button id="skills-replace-reviewed" type="button" aria-describedby="skills-review-help" disabled>Replace selected skill</button>
+            </div>
+            </div>
+            </div>
+            <p id="skills-status" role="status" aria-live="polite" aria-atomic="true"></p>
             <details class="settings-help">
               <summary>Skill requirements and data sharing</summary>
               <p>These controls save independently of Save general settings and Cancel. Changes apply to the next run, not an active run. Imported and replaced skills start disabled.</p>
@@ -440,9 +477,9 @@
         <div id="settings-panel-appearance" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-appearance" tabindex="0" hidden>
           <section class="settings-section" aria-labelledby="appearance-title">
             <h2 id="appearance-title">Appearance</h2>
-            <p>Choose the font and text size used throughout the interface.</p>
+            <p id="appearance-description">Choose the font and text size used throughout the interface. Preview changes before saving.</p>
             <label for="font-family">Font</label>
-            <select id="font-family">
+            <select id="font-family" aria-describedby="appearance-description">
               <option value="system">System default</option>
               <option value="sans">Sans serif</option>
               <option value="serif">Serif</option>
@@ -450,13 +487,22 @@
             </select>
             <label for="font-size">Font size</label>
             <div class="font-size-control">
-              <input id="font-size" type="range" min="12" max="24" step="1" value="16" />
+              <input id="font-size" aria-describedby="appearance-description" type="range" min="12" max="24" step="1" value="16" />
               <output id="font-size-value" for="font-size" aria-live="polite">16 px</output>
             </div>
             <div class="font-size-limits" aria-hidden="true">
               <span>12 px</span>
               <span>24 px</span>
             </div>
+          </section>
+          <section class="settings-section" aria-labelledby="appearance-preview-title">
+            <h2 id="appearance-preview-title">Conversation preview</h2>
+            <p>Sample content only. Nothing is sent or saved.</p>
+            <section id="appearance-preview" class="appearance-preview" aria-label="Sample conversation">
+              <div class="message user">Summarize this page.</div>
+              <div class="message assistant"><p><strong>Page summary</strong></p><p>This is how answers, lists, and code will look with your selected font.</p><ul><li>Clear headings</li><li>Readable details</li></ul><pre><code>const title = "Sample page"</code></pre></div>
+              <div class="preview-tool-result"><span class="state-badge">Tool result</span><p>Read page · Sample content received.</p></div>
+            </section>
           </section>
         </div>
         <!-- biome-ignore lint/a11y/noNoninteractiveTabindex: Tab panels provide keyboard access to their headings and help text. -->
@@ -465,17 +511,26 @@
             <h2 id="instructions-title">Instructions</h2>
             <p>These instructions apply to the next run.</p>
             <label for="system-prompt">System prompt</label>
-            <textarea id="system-prompt" rows="6"></textarea>
+            <textarea id="system-prompt" rows="6" aria-describedby="system-prompt-hint"></textarea>
+            <p id="system-prompt-hint" class="field-hint">Set the assistant's general role and behavior.</p>
             <label for="agent-instructions">AGENTS-style instructions</label>
-            <textarea id="agent-instructions" rows="6"></textarea>
+            <textarea id="agent-instructions" rows="6" aria-describedby="agent-instructions-hint"></textarea>
+            <p id="agent-instructions-hint" class="field-hint">Add task guidance. These instructions cannot grant browser permissions.</p>
           </section>
         </div>
       </main>
       <footer class="settings-page-actions">
         <p id="settings-error" role="alert"></p>
-        <button type="button" id="cancel-settings" class="subtle">Cancel</button>
-        <button type="button" id="save-settings" class="primary">Save general settings</button>
+        <div class="settings-save-summary" role="status" aria-live="polite" aria-atomic="true">
+          <p id="settings-save-status">No unsaved general changes</p>
+          <p id="settings-draft-status"></p>
+        </div>
+        <div class="settings-action-buttons">
+          <button type="button" id="cancel-settings" class="subtle">Cancel</button>
+          <button type="button" id="save-settings" class="primary">Save general settings</button>
+        </div>
       </footer>
+      </div>
     </section>
 
     <section

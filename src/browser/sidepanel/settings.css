@@ -1,0 +1,583 @@
+.settings-page {
+  min-width: 0;
+  min-height: 0;
+  background:
+    radial-gradient(ellipse at top right, var(--accent-soft), transparent 42rem), var(--background);
+}
+
+.settings-layout {
+  display: grid;
+  grid-template-columns: 192px minmax(0, 720px);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  column-gap: 24px;
+  justify-content: center;
+  width: min(100%, 1080px);
+  height: 100%;
+  min-height: 0;
+  padding: 24px;
+  margin-inline: auto;
+}
+
+.settings-page [hidden] {
+  display: none;
+}
+
+.settings-page-header {
+  display: flex;
+  grid-column: 2;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 24px;
+}
+
+.settings-eyebrow {
+  margin: 0 0 4px;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.settings-page-header h1 {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 650;
+  line-height: 1.2;
+  letter-spacing: -0.035em;
+}
+
+.settings-tabs {
+  display: flex;
+  grid-column: 1;
+  grid-row: 1 / -1;
+  flex-direction: column;
+  align-self: start;
+  gap: 4px;
+  min-width: 0;
+  padding: 0;
+}
+
+.settings-tab {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-color: transparent;
+  color: var(--text-muted);
+  background: transparent;
+  font-size: 0.875rem;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.settings-tab[aria-selected="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: 650;
+}
+
+.settings-panel {
+  min-width: 0;
+}
+
+.settings-content {
+  grid-column: 2;
+  min-width: 0;
+  min-height: 0;
+  padding: 3px 3px 24px;
+  margin: -3px -3px 0;
+  overflow-y: auto;
+  scroll-padding-block: 16px;
+}
+
+.settings-section {
+  min-width: 0;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: 0 2px 3px rgb(0 0 0 / 2%);
+}
+
+.settings-panel > .settings-section + .settings-section {
+  margin-top: 16px;
+}
+
+.settings-section h2 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.settings-section h3 {
+  margin: 0 0 12px;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.settings-section p {
+  margin: 8px 0 16px;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.settings-content label,
+.settings-content legend {
+  display: block;
+  margin: 24px 0 8px;
+  padding: 0;
+  font-size: 0.875rem;
+  font-weight: 550;
+}
+
+.settings-content input:not([type="checkbox"], [type="radio"], [type="range"]),
+.settings-content select,
+.settings-content textarea {
+  width: 100%;
+  min-width: 0;
+  border-color: var(--control-border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.settings-page button,
+.settings-content input:not([type="checkbox"], [type="radio"]),
+.settings-content select,
+.settings-help summary,
+.settings-content .check-field {
+  min-height: 44px;
+}
+
+.settings-page button {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.settings-content input[type="checkbox"],
+.settings-content input[type="radio"] {
+  flex: 0 0 auto;
+  min-height: 0;
+  margin: 0;
+  accent-color: var(--primary-fill);
+}
+
+.settings-content .check-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-block: 16px;
+  cursor: pointer;
+}
+
+.settings-content .field-hint {
+  margin: 8px 0 0;
+  font-size: 0.8125rem;
+}
+
+.settings-content .field-error {
+  color: var(--danger);
+  font-size: 0.8125rem;
+}
+
+.settings-content [aria-invalid="true"] {
+  border-color: var(--danger);
+}
+
+.settings-scope,
+.authentication-summary {
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-subtle);
+}
+
+.settings-section .settings-scope {
+  font-size: 0.8125rem;
+}
+
+.authentication-summary {
+  margin-top: 24px;
+}
+
+.authentication-summary p {
+  margin: 4px 0 12px;
+}
+
+.settings-help {
+  margin-top: 24px;
+  border-top: 1px solid var(--border);
+}
+
+.settings-help summary {
+  display: list-item;
+  align-content: center;
+  padding-block: 12px;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.settings-help p:last-child {
+  margin-bottom: 0;
+}
+
+.settings-actions,
+.skills-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-block: 16px;
+}
+
+.settings-danger-zone {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.resource-list {
+  display: grid;
+  gap: 8px;
+  padding: 0;
+  margin: 16px 0;
+  list-style: none;
+}
+
+.resource-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 12px;
+  text-align: left;
+}
+
+.resource-item[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.resource-item-text {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  overflow-wrap: anywhere;
+}
+
+.resource-item-text small {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+
+.state-badge {
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  background: var(--surface);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+#settings-panel-skills:has(#skills-list:empty) #skills-installed-title,
+#settings-panel-skills:has(#skills-list:empty) #skills-import-title {
+  display: none;
+}
+
+#settings-panel-skills:has(#skills-list:empty) #skills-import-editor {
+  padding-top: 0;
+  margin-top: 0;
+  border-top: 0;
+}
+
+.resource-editor {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+}
+
+#mcp-tools,
+.skills-preview {
+  max-height: 280px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: auto;
+  color: var(--text-muted);
+  background: var(--surface-subtle);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+#skills-status,
+#skills-delete-name {
+  overflow-wrap: anywhere;
+}
+
+.font-size-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+#font-size {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  accent-color: var(--primary-fill);
+  background: transparent;
+  cursor: pointer;
+}
+
+#font-size-value {
+  min-width: 4rem;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.font-size-limits {
+  display: flex;
+  justify-content: space-between;
+  margin-right: calc(4rem + 12px);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.settings-page-actions {
+  display: grid;
+  grid-column: 2;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.settings-save-summary {
+  min-width: 0;
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.settings-save-summary p {
+  margin: 0;
+}
+
+#settings-draft-status {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.settings-action-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.settings-action-buttons button {
+  font-size: 0.875rem;
+  overflow-wrap: normal;
+}
+
+#cancel-settings {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+#settings-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--danger);
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+#settings-error:empty {
+  display: none;
+}
+
+.settings-page .icon-button {
+  min-width: 44px;
+}
+
+.tool-options,
+.tool-group,
+.confirmation-options {
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+
+.tool-group + .tool-group {
+  margin-top: 24px;
+}
+
+.settings-content .tool-group legend {
+  margin-block: 0 8px;
+  color: var(--text-muted);
+}
+
+.tool-option {
+  padding: 8px 0 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-content .tool-option .check-field {
+  margin: 0;
+}
+
+.tool-option small,
+.confirmation-option small {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  font-weight: 400;
+}
+
+.tool-technical {
+  margin-left: 24px;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.tool-technical summary {
+  align-content: center;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.settings-content .confirmation-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 12px 16px;
+  margin: 0 0 8px;
+  border: 1px solid var(--control-border);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.confirmation-option:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.confirmation-option:has(input:focus-visible) {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.appearance-preview {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--background);
+  overflow-wrap: anywhere;
+}
+
+.appearance-preview .message {
+  margin-bottom: 16px;
+}
+
+.appearance-preview pre {
+  max-width: 100%;
+  padding: 12px;
+  border-radius: 8px;
+  overflow: auto;
+  background: var(--surface-subtle);
+}
+
+.appearance-preview .message p,
+.appearance-preview .preview-tool-result p {
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.preview-tool-result {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+@media (max-width: 799px) {
+  .settings-layout {
+    grid-template-columns: minmax(0, 720px);
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    padding: 16px 12px;
+  }
+
+  .settings-page-header,
+  .settings-content,
+  .settings-page-actions {
+    grid-column: 1;
+  }
+
+  .settings-page-header {
+    padding-bottom: 16px;
+  }
+
+  .settings-tabs {
+    grid-column: 1;
+    grid-row: 2;
+    flex-direction: row;
+    gap: 4px;
+    padding: 3px;
+    margin: -3px -3px 16px;
+    overflow-x: auto;
+    scroll-padding-inline: 8px;
+  }
+
+  .settings-tabs::after {
+    content: "";
+    flex: 0 0 8px;
+  }
+
+  .settings-tab {
+    flex: 0 0 auto;
+  }
+
+  .settings-section {
+    padding: 16px;
+  }
+
+  .settings-page-actions {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    padding-top: 12px;
+  }
+
+  .settings-action-buttons button.primary {
+    flex: 1 1 auto;
+  }
+}
+
+@media (max-width: 360px) {
+  .settings-page-header h1 {
+    font-size: 1.35rem;
+  }
+
+  .settings-eyebrow {
+    display: none;
+  }
+
+  .settings-tab svg {
+    display: none;
+  }
+}

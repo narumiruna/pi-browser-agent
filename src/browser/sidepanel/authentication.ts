@@ -21,6 +21,7 @@ type AuthenticationOptions = {
   currentProviderId: () => string
   updateError: (error?: unknown) => void
   onProvidersChanged?: () => void
+  onStateChanged?: () => void
   onStatus?: (text: string) => void
   mode: "conversation" | "settings"
 }
@@ -73,6 +74,7 @@ export class AuthenticationController {
       this.statusOutput = element<HTMLElement>("auth-status")
     } else {
       this.configureButton = element<HTMLButtonElement>("configure-provider")
+      this.statusOutput = element<HTMLElement>("settings-auth-status")
     }
 
     for (const [buttonId, returnValue] of [
@@ -97,7 +99,7 @@ export class AuthenticationController {
     const configure = (): void => {
       void run(async () => {
         await this.configure()
-      }, options.updateError)
+      }, this.updateError)
     }
     this.loginButton?.addEventListener("click", configure)
     this.configureButton?.addEventListener("click", configure)
@@ -107,14 +109,14 @@ export class AuthenticationController {
       void run(async () => {
         await options.configuration.refreshCredential(options.currentProviderId())
         await this.refresh()
-      }, options.updateError).finally(() => {
+      }, this.updateError).finally(() => {
         if (this.refreshButton) this.refreshButton.disabled = false
       })
     })
     this.logoutButton?.addEventListener("click", () => {
       void run(async () => {
         await this.logout()
-      }, options.updateError)
+      }, this.updateError)
     })
 
     chrome.permissions.onRemoved.addListener((permissions) => {
@@ -125,11 +127,15 @@ export class AuthenticationController {
       )
         return
       this.controller?.abort()
+      if (options.mode === "settings" && options.currentProviderId() === OPENAI_PROVIDER_ID) {
+        ++this.refreshRequest
+        this.showUnavailableStatus()
+      }
       void run(async () => {
         await options.configuration.invalidateCredential(OPENAI_PROVIDER_ID)
         await this.refresh()
         throw new Error("OpenAI host access was revoked. Log in again to continue.")
-      }, options.updateError)
+      }, this.updateError)
     })
 
     chrome.storage.onChanged.addListener((changes, areaName) => {
@@ -143,7 +149,10 @@ export class AuthenticationController {
       element<HTMLOutputElement>("device-code").textContent = event.userCode
       const dialog = element<HTMLDialogElement>("login-dialog")
       if (!dialog.open) dialog.showModal()
-    } else if (event.type === "progress" || event.type === "info") {
+    } else if (
+      this.options.mode === "conversation" &&
+      (event.type === "progress" || event.type === "info")
+    ) {
       this.options.onStatus?.(event.message)
     }
   }
@@ -171,15 +180,20 @@ export class AuthenticationController {
       this.loginButton.textContent = "Add credential"
     }
     if (this.configureButton) {
-      this.configureButton.textContent = "Configure authentication"
-      this.configureButton.disabled = this.configuring || !configurable
-    }
-    if (!provider) {
-      this.options.updateError()
-      return
+      this.configureButton.textContent = "Add credential"
+      this.configureButton.disabled = this.isBusy || !configurable
+      if (this.statusOutput) {
+        this.statusOutput.textContent = "Checking credential status…"
+        this.statusOutput.dataset.loggedIn = "false"
+      }
     }
 
     try {
+      if (!provider) {
+        this.showUnavailableStatus()
+        this.updateError()
+        return
+      }
       let status = await this.options.configuration.authStatus(providerId)
       if (
         providerId === OPENAI_PROVIDER_ID &&
@@ -191,23 +205,56 @@ export class AuthenticationController {
       }
       if (request !== this.refreshRequest || this.options.currentProviderId() !== providerId) return
 
-      this.options.updateError()
+      this.updateError()
       if (this.logoutButton) this.logoutButton.hidden = !status.loggedIn
       if (this.refreshButton) {
         this.refreshButton.hidden = !status.loggedIn || status.type !== "oauth"
       }
       if (this.statusOutput) {
-        this.statusOutput.textContent = status.loggedIn
-          ? `${provider.name} configured with ${status.type === "oauth" ? "an account" : "an API key"}`
-          : `${provider.name} not configured`
+        this.statusOutput.textContent =
+          this.options.mode === "settings"
+            ? status.loggedIn
+              ? `${provider.name} credential configured — ${status.type === "oauth" ? "Account" : "API key"}`
+              : `${provider.name} credential missing`
+            : status.loggedIn
+              ? `${provider.name} configured with ${status.type === "oauth" ? "an account" : "an API key"}`
+              : `${provider.name} not configured`
         this.statusOutput.dataset.loggedIn = String(status.loggedIn)
       }
-      if (this.configureButton) this.configureButton.disabled = this.configuring
+      if (this.configureButton) {
+        this.configureButton.textContent = status.loggedIn ? "Update credential" : "Add credential"
+        this.configureButton.disabled = this.isBusy || !configurable
+      }
     } catch (error) {
       if (request === this.refreshRequest && this.options.currentProviderId() === providerId) {
-        this.options.updateError(error)
+        this.showUnavailableStatus()
+        this.updateError(error)
       }
+    } finally {
+      this.options.onStateChanged?.()
     }
+  }
+
+  private readonly updateError = (error?: unknown): void => {
+    if (error === undefined) {
+      this.options.updateError()
+      return
+    }
+    this.options.updateError(
+      this.options.mode === "settings"
+        ? new Error("Authentication is unavailable. Try again.")
+        : error,
+    )
+  }
+
+  private showUnavailableStatus(): void {
+    if (this.statusOutput) {
+      this.statusOutput.textContent = "Credential status unavailable. Try again."
+      this.statusOutput.dataset.loggedIn = "false"
+    }
+    if (this.configureButton) this.configureButton.textContent = "Add credential"
+    if (this.logoutButton) this.logoutButton.hidden = true
+    if (this.refreshButton) this.refreshButton.hidden = true
   }
 
   async configure(guard?: () => void): Promise<boolean> {
@@ -215,6 +262,7 @@ export class AuthenticationController {
     this.configuring = true
     if (this.loginButton) this.loginButton.disabled = true
     if (this.configureButton) this.configureButton.disabled = true
+    this.options.onStateChanged?.()
 
     try {
       const preferredProviderId = this.options.currentProviderId()
@@ -270,6 +318,7 @@ export class AuthenticationController {
           .getProviders()
           .some((provider) => provider.authMethods.length > 0)
       }
+      this.options.onStateChanged?.()
     }
   }
 
@@ -277,6 +326,7 @@ export class AuthenticationController {
     if (this.isBusy) return false
     this.loggingOut = true
     if (this.logoutButton) this.logoutButton.disabled = true
+    this.options.onStateChanged?.()
     try {
       const providerId = this.options.currentProviderId()
       const credential = await this.options.configuration.credentials.read(providerId)
@@ -297,6 +347,7 @@ export class AuthenticationController {
     } finally {
       this.loggingOut = false
       if (this.logoutButton) this.logoutButton.disabled = false
+      this.options.onStateChanged?.()
     }
   }
 

@@ -1,10 +1,19 @@
-import type { Api, AuthEvent, AuthPrompt, AuthType, Model } from "@earendil-works/pi-ai"
+import type { ThinkingLevel } from "@earendil-works/pi-agent-core"
+import {
+  type Api,
+  type AuthEvent,
+  type AuthPrompt,
+  type AuthType,
+  getSupportedThinkingLevels,
+  type Model,
+} from "@earendil-works/pi-ai"
 import { OPENAI_PROVIDER_ID } from "./auth/codex-oauth.js"
 import { ChromeCredentialStore } from "./auth/credential-store.js"
 import { createBrowserModels, modelEndpointUrls } from "./auth/provider.js"
 import {
   type AppSettings,
   getSettings,
+  isThinkingLevel,
   restrictLocalStorageToTrustedContexts,
   saveSettings,
 } from "./storage.js"
@@ -26,6 +35,7 @@ export interface ModelSummary {
   id: string
   name: string
   reasoning: boolean
+  thinkingLevels: ThinkingLevel[]
   imageInput: boolean
 }
 
@@ -111,6 +121,7 @@ export class BrowserConfiguration {
       id: model.id,
       name: model.name,
       reasoning: model.reasoning,
+      thinkingLevels: getSupportedThinkingLevels(model).filter(isThinkingLevel),
       imageInput: model.input.includes("image"),
     }))
   }

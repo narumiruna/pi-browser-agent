@@ -51,7 +51,7 @@ for (const sse of [false, true]) {
       expect(fixture.requests).toHaveLength(0)
       await expect(settings.locator("#mcp-token")).toHaveValue("")
       await settings.locator("#mcp-endpoint").fill(`${fixture.endpoint}/unsaved`)
-      await expect(connect).toBeDisabled()
+      await expect(connect).toBeHidden()
       await settings.locator("#mcp-endpoint").fill(fixture.endpoint)
       await connect.focus()
       await connect.press("Enter")
@@ -69,9 +69,11 @@ for (const sse of [false, true]) {
           .locator(".settings-content")
           .evaluate((node) => node.scrollWidth <= node.clientWidth),
       ).toBe(true)
-      const serverId = await settings.locator("#mcp-server").inputValue()
-      await settings.locator("#mcp-server").selectOption({ label: "New server" })
-      await settings.locator("#mcp-server").selectOption(serverId)
+      const serverId = await settings
+        .locator('#mcp-servers button[aria-pressed="true"]')
+        .getAttribute("data-server-id")
+      await settings.getByRole("button", { name: "New server", exact: true }).click()
+      await settings.locator(`#mcp-servers button[data-server-id="${serverId}"]`).click()
       await expect(settings.locator("#mcp-status")).toHaveText(
         "Enabled for new runs; each call requires confirmation",
       )
