@@ -781,7 +781,11 @@ for (const mode of ["strict", "balanced", "convenient"] as const) {
       const settings = await harness.context.newPage()
       await settings.goto(`${harness.controller.url()}?view=settings`)
       await settings.getByRole("tab", { name: "Tools", exact: true }).click()
-      await settings.locator("#confirmation-mode").selectOption(mode)
+      await settings.locator(`input[name="confirmation-mode"][value="${mode}"]`).check()
+      if (mode === "balanced") {
+        await settings.getByRole("tab", { name: "Instructions", exact: true }).click()
+        await settings.locator("#agent-instructions").fill("Keep default confirmation mode.")
+      }
       const closed = settings.waitForEvent("close")
       await settings.locator("#save-settings").click()
       await closed

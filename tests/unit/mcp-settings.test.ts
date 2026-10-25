@@ -35,7 +35,7 @@ async function settle(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0))
 }
 
-async function setup(count = 0) {
+async function setup(count = 0, enabled = false) {
   const env = mcpEnvironment()
   const request = vi.spyOn(permissions, "requestHostPermission").mockResolvedValue(true)
   vi.spyOn(permissions, "hasApprovedHostPermission").mockResolvedValue(true)
@@ -44,8 +44,13 @@ async function setup(count = 0) {
   const fetch = vi.fn().mockRejectedValue(new Error("Unexpected network request"))
   vi.stubGlobal("fetch", fetch)
   const servers: store.McpServer[] = []
-  for (const name of ["Alpha", "Beta"].slice(0, count)) {
-    servers.push(await store.saveMcpServer({ name, endpoint, token: "stored-token-value" }))
+  for (let index = 0; index < count; index++) {
+    const server = await store.saveMcpServer({
+      name: ["Alpha", "Beta"][index] ?? `Server ${index + 1}`,
+      endpoint,
+      token: "stored-token-value",
+    })
+    servers.push(enabled ? await store.setMcpConnection(server.id, true, server.revision) : server)
   }
   env.local.set.mockClear()
   const dom = new JSDOM(html)
@@ -53,7 +58,6 @@ async function setup(count = 0) {
   const document = dom.window.document
   vi.stubGlobal("window", dom.window)
   vi.stubGlobal("document", document)
-  vi.stubGlobal("Option", dom.window.Option)
   const get = <T extends HTMLElement>(id: string): T => {
     const value = document.getElementById(id)
     if (!value) throw new Error(`Missing test element: ${id}`)
@@ -63,16 +67,24 @@ async function setup(count = 0) {
   get<HTMLElement>("settings-panel-model").hidden = true
   get<HTMLElement>("settings-panel-mcp").hidden = false
   const confirm = vi.fn<ConfirmSettingsAction>().mockResolvedValue(false)
-  const isDirty = await initializeMcpSettings(confirm)
-  const select = get<HTMLSelectElement>("mcp-server")
+  const changed = vi.fn()
+  const state = await initializeMcpSettings(confirm, changed)
+  const list = get<HTMLUListElement>("mcp-servers")
+  const selectedId = () =>
+    list.querySelector<HTMLButtonElement>('[aria-pressed="true"]')?.dataset.serverId ?? ""
+  const serverButton = (id: string): HTMLButtonElement => {
+    const button = list.querySelector<HTMLButtonElement>(`button[data-server-id="${id}"]`)
+    if (!button) throw new Error(`Missing server button: ${id}`)
+    return button
+  }
   const name = get<HTMLInputElement>("mcp-name")
   const address = get<HTMLInputElement>("mcp-endpoint")
   const token = get<HTMLInputElement>("mcp-token")
   const clearToken = get<HTMLInputElement>("mcp-clear-token")
   const button = (id: string) => get<HTMLButtonElement>(`mcp-${id}`)
   const choose = (id: string) => {
-    select.value = id
-    select.dispatchEvent(new dom.window.Event("change"))
+    if (id) serverButton(id).click()
+    else button("new").click()
   }
   const input = (field: HTMLInputElement, value: string) => {
     field.value = value
@@ -90,8 +102,12 @@ async function setup(count = 0) {
     document,
     servers,
     confirm,
-    isDirty,
-    select,
+    isDirty: state.hasDraft,
+    state,
+    changed,
+    list,
+    selectedId,
+    serverButton,
     name,
     endpoint: address,
     token,
@@ -108,6 +124,221 @@ async function setup(count = 0) {
 }
 
 describe("MCP settings", () => {
+  test.each([0, 1, 2, 8])("renders %i saved servers as native list buttons", async (count) => {
+    const env = await setup(count)
+    expect(env.list.tagName).toBe("UL")
+    expect(env.list.children).toHaveLength(count)
+    expect(env.document.getElementById("mcp-server")).toBeNull()
+    expect(env.document.getElementById("mcp-empty")?.hidden).toBe(count > 0)
+    expect(env.button("new").disabled).toBe(count === 8)
+    for (const server of env.servers) {
+      const button = env.serverButton(server.id)
+      expect(button.type).toBe("button")
+      expect(button.parentElement?.tagName).toBe("LI")
+      expect(button.textContent).toContain(server.name)
+      expect(button.textContent).toContain(server.endpoint)
+      expect(button.textContent).toContain("Disabled")
+      button.focus()
+      env.choose(server.id)
+      expect(button.getAttribute("aria-pressed")).toBe("true")
+      expect(env.list.querySelectorAll('[aria-pressed="true"]')).toHaveLength(1)
+      expect(env.document.activeElement).toBe(button)
+      expect(env.name.value).toBe(server.name)
+      expect(env.token.value).toBe("")
+    }
+    if (count === 8) {
+      env.input(env.name, "Edited eighth server")
+      expect(env.button("save").disabled).toBe(false)
+      expect(env.document.getElementById("mcp-action-hint")?.textContent).toContain("Save")
+    }
+    expect(env.confirm).not.toHaveBeenCalled()
+    expect(env.request).not.toHaveBeenCalled()
+    expect(env.fetch).not.toHaveBeenCalled()
+  })
+
+  test("shows the eight-server limit without permitting a ninth save", async () => {
+    const env = await setup(8)
+    expect(env.document.getElementById("mcp-action-hint")?.textContent).toContain("eight-server")
+    env.input(env.name, "Ninth server")
+    env.input(env.endpoint, endpoint)
+    expect(env.button("save").disabled).toBe(true)
+    env.button("save").click()
+    expect(env.local.set).not.toHaveBeenCalled()
+    expect(await store.listMcpServers()).toHaveLength(8)
+  })
+
+  test("renders long untrusted names and endpoints as text without active markup", async () => {
+    const env = await setup()
+    const name = `<img src=x onerror=alert(1)>${"x".repeat(50)}`
+    const address = `${endpoint}/${"long-path-".repeat(180)}`
+    env.input(env.name, name)
+    env.input(env.endpoint, address)
+    env.button("save").click()
+    await settle()
+    const server = serverAt(await store.listMcpServers(), 0)
+    expect(env.serverButton(server.id).textContent).toContain(name)
+    expect(env.serverButton(server.id).textContent).toContain(address)
+    expect(env.document.getElementById("mcp-editor-title")?.textContent).toBe(`Edit ${name}`)
+    expect(env.list.querySelector("img, script, a")).toBeNull()
+    expect(env.fetch).not.toHaveBeenCalled()
+  })
+
+  test("exposes only applicable actions and keeps saved actions independent", async () => {
+    const env = await setup(1)
+    expect(env.button("save").classList.contains("primary")).toBe(true)
+    expect(env.button("connect").hidden).toBe(true)
+    expect(env.button("disable").hidden).toBe(true)
+    expect(env.document.getElementById("mcp-danger-zone")?.hidden).toBe(true)
+    const server = serverAt(env.servers, 0)
+    env.choose(server.id)
+    expect(env.button("save").disabled).toBe(true)
+    expect(env.button("save").classList.contains("primary")).toBe(false)
+    expect(env.button("connect").hidden).toBe(false)
+    expect(env.button("connect").classList.contains("primary")).toBe(true)
+    expect(env.document.getElementById("mcp-danger-zone")?.hidden).toBe(false)
+    env.button("save").click()
+    env.button("disable").click()
+    expect(env.local.set).not.toHaveBeenCalled()
+    env.input(env.name, "Edited")
+    expect(env.button("save").disabled).toBe(false)
+    expect(env.button("connect").hidden).toBe(true)
+    env.button("save").click()
+    await settle()
+    expect(env.request).not.toHaveBeenCalled()
+    expect(env.discover).not.toHaveBeenCalled()
+    env.button("connect").click()
+    await settle()
+    expect(env.button("disable").hidden).toBe(false)
+    expect(env.serverButton(server.id).textContent).toContain("Enabled")
+    expect(env.document.getElementById("mcp-action-hint")?.textContent).toContain(
+      "not a live connection",
+    )
+  })
+
+  test("restores lost Save and Disable focus to the next action", async () => {
+    const env = await setup(1)
+    env.choose(serverAt(env.servers, 0).id)
+    env.input(env.name, "Edited")
+    env.button("save").focus()
+    env.button("save").click()
+    await settle()
+    expect(env.document.activeElement).toBe(env.button("connect"))
+    env.button("connect").click()
+    await settle()
+    env.button("disable").focus()
+    env.button("disable").click()
+    await settle()
+    expect(env.button("disable").hidden).toBe(true)
+    expect(env.document.activeElement).toBe(env.button("connect"))
+  })
+
+  test("does not take focus back after a user moves away during discovery", async () => {
+    const env = await setup(1)
+    env.choose(serverAt(env.servers, 0).id)
+    let release!: () => void
+    env.discover.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve([])
+        }),
+    )
+    env.button("connect").focus()
+    env.button("connect").click()
+    await settle()
+    const elsewhere = env.document.getElementById("settings-tab-model")
+    if (!elsewhere) throw new Error("Missing navigation target")
+    elsewhere.focus()
+    release()
+    await settle()
+    expect(env.document.activeElement).toBe(elsewhere)
+    expect(env.state.isBusy()).toBe(false)
+  })
+
+  test("reports a pristine connection test as busy, not as a draft, and does not replay failure", async () => {
+    const env = await setup(1)
+    env.choose(serverAt(env.servers, 0).id)
+    let fail!: (error: Error) => void
+    env.discover.mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          fail = reject
+        }),
+    )
+    const transitions: boolean[] = []
+    env.changed.mockImplementation(() => transitions.push(env.state.isBusy()))
+    env.button("connect").click()
+    expect(env.status.textContent).toContain("Testing")
+    expect(env.state.isBusy()).toBe(true)
+    expect(env.state.hasDraft()).toBe(false)
+    expect(env.button("remove").disabled).toBe(true)
+    await settle()
+    fail(new Error(secret))
+    await settle()
+    expect(env.state.isBusy()).toBe(false)
+    expect(env.state.hasDraft()).toBe(false)
+    expect(env.status.textContent).toBe(MCP_FAILURE)
+    expect(env.button("connect").disabled).toBe(false)
+    expect(env.button("disable").hidden).toBe(true)
+    expect(transitions[0]).toBe(true)
+    expect(transitions.at(-1)).toBe(false)
+    expect(env.discover).toHaveBeenCalledOnce()
+    expect(await store.listMcpServers()).toMatchObject([{ enabled: false, approved: false }])
+    expect(env.document.body.textContent).not.toContain(secret)
+  })
+
+  test.each(["short", "private token with spaces"])(
+    "associates safe token validation and retains %s",
+    async (value) => {
+      const env = await setup()
+      env.input(env.name, "Valid name")
+      env.input(env.endpoint, endpoint)
+      env.input(env.token, value)
+      env.button("save").focus()
+      env.button("save").click()
+      await settle()
+      const error = env.document.getElementById("mcp-token-error")
+      expect(error?.hidden).toBe(false)
+      expect(error?.textContent).toContain("16 to 4096")
+      expect(env.token.getAttribute("aria-describedby")).toContain("mcp-token-error")
+      expect(env.token.getAttribute("aria-invalid")).toBe("true")
+      expect(env.document.activeElement).toBe(env.token)
+      expect(env.token.value).toBe(value)
+      expect(env.local.set).not.toHaveBeenCalled()
+      expect(env.document.body.textContent).not.toContain(value)
+      env.input(env.token, secret)
+      expect(error?.hidden).toBe(true)
+      expect(env.token.hasAttribute("aria-invalid")).toBe(false)
+      env.button("save").click()
+      await settle()
+      expect(env.state.hasDraft()).toBe(false)
+      expect(env.token.value).toBe("")
+    },
+  )
+
+  test("preserves or explicitly clears a token, but never transfers it to another endpoint", async () => {
+    const env = await setup(1)
+    const server = serverAt(env.servers, 0)
+    env.choose(server.id)
+    env.input(env.name, "Renamed")
+    env.button("save").click()
+    await settle()
+    expect(await store.listMcpServers()).toMatchObject([{ hasToken: true }])
+    env.clearToken.checked = true
+    env.clearToken.dispatchEvent(new env.dom.window.Event("input"))
+    env.button("save").click()
+    await settle()
+    expect(await store.listMcpServers()).toMatchObject([{ hasToken: false }])
+    env.input(env.token, secret)
+    env.button("save").click()
+    await settle()
+    env.input(env.endpoint, `${endpoint}/changed`)
+    env.button("save").click()
+    await settle()
+    expect(await store.listMcpServers()).toMatchObject([{ hasToken: false }])
+    expect(env.data[store.MCP_TOKENS_KEY]).toEqual({ version: 1, tokens: {} })
+    expect(env.request).not.toHaveBeenCalled()
+  })
+
   test("treats an untouched blank New server form as clean", async () => {
     const env = await setup(1)
     expect(env.isDirty()).toBe(false)
@@ -151,8 +382,16 @@ describe("MCP settings", () => {
       expect(env.local.set).not.toHaveBeenCalled()
       expect(env.status.textContent).not.toContain(secret)
       expect(env.status.textContent).toContain(invalid === "name" ? "name" : "endpoint")
+      const field = invalid === "name" ? env.name : env.endpoint
+      const error = env.document.getElementById(`${field.id}-error`)
+      expect(error?.hidden).toBe(false)
+      expect(field.getAttribute("aria-describedby")).toContain(`${field.id}-error`)
+      expect(field.getAttribute("aria-invalid")).toBe("true")
+      expect(env.document.activeElement).toBe(field)
       env.input(env.name, "New server")
       env.input(env.endpoint, endpoint)
+      expect(error?.hidden).toBe(true)
+      expect(field.hasAttribute("aria-invalid")).toBe(false)
       env.button("save").click()
       await settle()
       expect(await store.listMcpServers()).toMatchObject([{ name: "New server", hasToken: true }])
@@ -178,9 +417,15 @@ describe("MCP settings", () => {
     expect(env.token.value).toBe("")
   })
 
-  test("reports even an unchanged local save as dirty while its write is pending", async () => {
+  test("reports a save as busy without inventing a draft after the write completes", async () => {
     const env = await setup(1)
     env.choose(serverAt(env.servers, 0).id)
+    expect(env.button("save").disabled).toBe(true)
+    env.input(env.name, "Updated")
+    const changes: { busy: boolean; draft: boolean }[] = []
+    env.changed.mockImplementation(() => {
+      changes.push({ busy: env.state.isBusy(), draft: env.state.hasDraft() })
+    })
     let finish!: () => void
     const pending = new Promise<void>((resolve) => {
       finish = resolve
@@ -192,10 +437,16 @@ describe("MCP settings", () => {
     })
     env.button("save").click()
     expect(env.isDirty()).toBe(true)
-    expect(env.select.disabled).toBe(true)
+    expect(env.state.isBusy()).toBe(true)
+    expect(env.button("new").disabled).toBe(true)
+    expect(env.serverButton(serverAt(env.servers, 0).id).disabled).toBe(true)
     finish()
     await settle()
     expect(env.isDirty()).toBe(false)
+    expect(env.state.isBusy()).toBe(false)
+    expect(changes).toContainEqual({ busy: true, draft: true })
+    expect(changes).toContainEqual({ busy: true, draft: false })
+    expect(changes.at(-1)).toEqual({ busy: false, draft: false })
   })
 
   test.each(["saved", "new"])(
@@ -218,23 +469,25 @@ describe("MCP settings", () => {
           }),
       )
       env.choose(serverAt(env.servers, 1).id)
-      expect(env.select.value).toBe(previousId)
+      expect(env.selectedId()).toBe(previousId)
       expect(env.fields()).toEqual(draft)
-      expect(env.select.disabled).toBe(true)
+      expect(env.state.isBusy()).toBe(true)
+      expect(env.serverButton(serverAt(env.servers, 1).id).disabled).toBe(true)
       // Even a synthetic second change cannot open another confirmation or change the target.
       env.choose("")
-      expect(env.select.value).toBe(previousId)
+      expect(env.selectedId()).toBe(previousId)
       expect(env.confirm).toHaveBeenCalledOnce()
       answer(false)
       await settle()
       expect(env.status.textContent).toBe(previousStatus)
-      expect(env.select.value).toBe(previousId)
+      expect(env.selectedId()).toBe(previousId)
       expect(env.fields()).toEqual(draft)
       expect(env.isDirty()).toBe(true)
+      expect(env.state.isBusy()).toBe(false)
       env.confirm.mockResolvedValueOnce(true)
       env.choose(serverAt(env.servers, 1).id)
       await settle()
-      expect(env.select.value).toBe(serverAt(env.servers, 1).id)
+      expect(env.selectedId()).toBe(serverAt(env.servers, 1).id)
       expect(env.fields()).toEqual({ name: "Beta", endpoint, token: "", clearToken: false })
       expect(env.isDirty()).toBe(false)
       expect(env.local.set).not.toHaveBeenCalled()
@@ -266,7 +519,7 @@ describe("MCP settings", () => {
     expect(remove).toHaveBeenCalledWith(server.id, server.revision)
     expect(await store.listMcpServers()).toEqual([])
     expect(env.data[store.MCP_TOKENS_KEY]).toEqual({ version: 1, tokens: {} })
-    expect(env.select.value).toBe("")
+    expect(env.selectedId()).toBe("")
     expect(env.token.value).toBe("")
     expect(env.isDirty()).toBe(false)
   })
@@ -293,11 +546,11 @@ describe("MCP settings", () => {
     expect(JSON.stringify(env.data[store.MCP_TOKENS_KEY])).toContain("stored-token-value")
     expect(env.status.textContent).toContain("changed")
     expect(env.token.value).toBe(secret)
-    expect(env.select.disabled).toBe(false)
+    expect(env.serverButton(server.id).disabled).toBe(false)
   })
 
   test("requires an explicit draft discard before Disable refreshes the form", async () => {
-    const env = await setup(1)
+    const env = await setup(1, true)
     const server = serverAt(env.servers, 0)
     env.choose(server.id)
     env.input(env.name, "Draft name")
@@ -331,6 +584,77 @@ describe("MCP settings", () => {
     await settle()
     expect(env.discover).toHaveBeenCalledOnce()
     expect(env.fetch).not.toHaveBeenCalled()
+  })
+
+  test("notifies busy state during a pristine removal confirmation without reporting a draft", async () => {
+    const env = await setup(1)
+    env.choose(serverAt(env.servers, 0).id)
+    let answer!: (confirmed: boolean) => void
+    env.confirm.mockImplementationOnce(
+      () =>
+        new Promise<boolean>((resolve) => {
+          answer = resolve
+        }),
+    )
+    const transitions: boolean[] = []
+    env.changed.mockImplementation(() => transitions.push(env.state.isBusy()))
+    env.button("remove").click()
+    expect(env.state.isBusy()).toBe(true)
+    expect(env.state.hasDraft()).toBe(false)
+    expect(env.button("save").disabled).toBe(true)
+    expect(env.button("remove").disabled).toBe(true)
+    answer(false)
+    await settle()
+    expect(transitions).toEqual([true, false])
+    expect(env.state.hasDraft()).toBe(false)
+    expect(env.local.set).not.toHaveBeenCalled()
+  })
+
+  test("does not enable an old preview after an external revision change", async () => {
+    const env = await setup(1)
+    const server = serverAt(env.servers, 0)
+    env.choose(server.id)
+    let finish!: (tools: never[]) => void
+    env.discover.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        }),
+    )
+    const close = vi.spyOn(McpConnection.prototype, "close")
+    env.button("connect").click()
+    await settle()
+    const current = serverAt(await store.listMcpServers(), 0)
+    const changed = await store.saveMcpServer({ ...current, name: "External edit" })
+    expect(close).toHaveBeenCalled()
+    finish([])
+    await settle()
+    expect(await store.listMcpServers()).toEqual([changed])
+    expect(env.status.textContent).toContain("changed")
+    expect(env.discover).toHaveBeenCalledOnce()
+    expect(env.document.getElementById("mcp-tools")?.textContent).toBe("")
+  })
+
+  test("does not connect after pagehide while host approval is pending", async () => {
+    const env = await setup(1)
+    env.choose(serverAt(env.servers, 0).id)
+    let answer!: (allowed: boolean) => void
+    env.request.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve
+        }),
+    )
+    env.button("connect").click()
+    expect(env.state.isBusy()).toBe(true)
+    env.dom.window.dispatchEvent(new env.dom.window.Event("pagehide"))
+    expect(env.state.isBusy()).toBe(false)
+    answer(true)
+    await settle()
+    expect(env.discover).not.toHaveBeenCalled()
+    expect(env.local.set).not.toHaveBeenCalled()
+    expect(env.storageListeners.size).toBe(0)
+    expect(env.permissionListeners.size).toBe(0)
   })
 
   test("does not discard or delete after pagehide while confirmation is pending", async () => {

@@ -60,8 +60,14 @@ for (const [mode, promptsAgain, promptsAfterRestart] of [
       const settingsTab = await harness.context.newPage()
       await settingsTab.goto(`${harness.controller.url()}?view=settings`)
       await settingsTab.getByRole("tab", { name: "Tools", exact: true }).click()
-      await expect(settingsTab.locator("#confirmation-mode")).toHaveValue("balanced")
-      await settingsTab.locator("#confirmation-mode").selectOption(mode)
+      await expect(
+        settingsTab.locator('input[name="confirmation-mode"][value="balanced"]'),
+      ).toBeChecked()
+      await settingsTab.locator(`input[name="confirmation-mode"][value="${mode}"]`).check()
+      if (mode === "balanced") {
+        await settingsTab.getByRole("tab", { name: "Instructions", exact: true }).click()
+        await settingsTab.locator("#agent-instructions").fill("Keep default confirmation mode.")
+      }
       const settingsClosed = settingsTab.waitForEvent("close")
       await settingsTab.locator("#save-settings").click()
       await settingsClosed
@@ -117,7 +123,7 @@ for (const [mode, promptsAgain, promptsAfterRestart] of [
           const modeTab = await harness.context.newPage()
           await modeTab.goto(`${harness.controller.url()}?view=settings`)
           await modeTab.getByRole("tab", { name: "Tools", exact: true }).click()
-          await modeTab.locator("#confirmation-mode").selectOption(nextMode)
+          await modeTab.locator(`input[name="confirmation-mode"][value="${nextMode}"]`).check()
           const closed = modeTab.waitForEvent("close")
           await modeTab.locator("#save-settings").click()
           await closed

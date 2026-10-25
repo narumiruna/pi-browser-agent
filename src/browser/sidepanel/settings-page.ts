@@ -1,5 +1,4 @@
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core"
-import { BROWSER_TOOL_OPTIONS } from "../agent/browser-tools.js"
 import { clearConfirmationApprovals } from "../agent/confirmation-policy.js"
 import { BrowserConfiguration } from "../configuration.js"
 import type { RuntimeEvent } from "../runtime/messages.js"
@@ -18,8 +17,9 @@ import { initializeMcpSettings } from "./mcp-settings.js"
 import { SearchableSelect } from "./searchable-select.js"
 import { initializeSettingsConfirmation } from "./settings-confirmation.js"
 import { initializeSettingsTabs } from "./settings-tabs.js"
+import { renderToolOptions } from "./settings-tools.js"
 import { initializeSkillsSettings } from "./skills-settings.js"
-import { applyAppearance, element, run, setErrorOutput } from "./ui.js"
+import { applyAppearance, element, run, type SettingsSectionState, setErrorOutput } from "./ui.js"
 
 export async function initializeSettingsPage(params: URLSearchParams): Promise<void> {
   const settingsContextId = params.get("source") ?? crypto.randomUUID()
@@ -39,24 +39,16 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
   const modelSelect = element<HTMLSelectElement>("model")
   const modelCapabilities = element<HTMLElement>("model-capabilities")
   const thinkingLevelSelect = element<HTMLSelectElement>("thinking-level")
-  const confirmationModeSelect = element<HTMLSelectElement>("confirmation-mode")
-  const toolsContainer = element<HTMLElement>("available-tools")
-  const toolCheckboxes = BROWSER_TOOL_OPTIONS.map((tool) => {
-    const label = document.createElement("label")
-    label.className = "tool-option"
-    const checkbox = document.createElement("input")
-    checkbox.type = "checkbox"
-    checkbox.value = tool.name
-    const text = document.createElement("span")
-    text.textContent = tool.label
-    const name = document.createElement("small")
-    name.textContent = tool.name
-    text.append(name)
-    label.append(checkbox, text)
-    label.title = tool.description
-    toolsContainer.append(label)
-    return checkbox
-  })
+  const confirmationModes = [
+    ...page.querySelectorAll<HTMLInputElement>('input[name="confirmation-mode"]'),
+  ]
+  const toolCheckboxes = renderToolOptions(element<HTMLElement>("available-tools"))
+  const cancelButton = element<HTMLButtonElement>("cancel-settings")
+  const saveStatus = element<HTMLElement>("settings-save-status")
+  const draftStatus = element<HTMLElement>("settings-draft-status")
+  const thinkingHint = element<HTMLElement>("thinking-level-hint")
+  const thinkingError = element<HTMLElement>("thinking-level-error")
+  const modelError = element<HTMLElement>("model-error")
   const confirmationStatus = element<HTMLElement>("confirmation-approvals-status")
   const fontFamilySelect = element<HTMLSelectElement>("font-family")
   const fontSizeInput = element<HTMLInputElement>("font-size")
@@ -83,8 +75,10 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
   let savedFormState = ""
   let allowClosing = false
   let savingGeneral = false
-  let hasMcpDraft = () => false
-  let hasSkillDraft = () => false
+  let ready = false
+  let clearingApprovals = false
+  let mcpState: SettingsSectionState = { hasDraft: () => false, isBusy: () => false }
+  let skillState: SettingsSectionState = { hasDraft: () => false, isBusy: () => false }
   const confirmSettingsAction = initializeSettingsConfirmation()
   let authentication: AuthenticationController | undefined
   const configuration = new BrowserConfiguration((event) => authentication?.onAuthEvent(event))
@@ -101,16 +95,63 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
     )
   }
 
-  function updateModelCapabilities(): void {
-    const model = configuration
+  function selectedModel() {
+    return configuration
       .getModels(providerSelect.value)
-      .find((candidate) => candidate.id === modelSelect.value)
+      .find((model) => model.id === modelSelect.value)
+  }
+
+  function updateThinkingControls(preferred = thinkingLevelSelect.value): void {
+    const levels = selectedModel()?.thinkingLevels ?? []
+    const desired = preferred || configuration.appSettings.thinkingLevel
+    const needsExplicitChoice =
+      settingsModelChanged &&
+      !settingsThinkingChanged &&
+      levels.length > 0 &&
+      !levels.includes(configuration.appSettings.thinkingLevel)
+    const options = levels.map(
+      (level) =>
+        new Option(
+          level === "xhigh"
+            ? "Extra high"
+            : level === "max"
+              ? "Maximum"
+              : level.charAt(0).toUpperCase() + level.slice(1),
+          level,
+        ),
+    )
+    if (levels.length === 0) {
+      options.push(new Option("Not applicable", desired))
+      thinkingHint.textContent =
+        "This model does not use a thinking level. Your saved preference is retained."
+    } else {
+      if (needsExplicitChoice || !levels.some((level) => level === desired)) {
+        const placeholder = new Option("Choose a supported level", "")
+        placeholder.disabled = true
+        options.unshift(placeholder)
+      }
+      thinkingHint.textContent =
+        "Choose a supported level. Higher levels may use more tokens. Unrelated saves keep your saved preference."
+    }
+    thinkingLevelSelect.replaceChildren(...options)
+    thinkingLevelSelect.value =
+      !needsExplicitChoice && options.some((option) => option.value === desired) ? desired : ""
+    thinkingLevelSelect.disabled = levels.length === 0
+    thinkingLevelSelect.removeAttribute("aria-invalid")
+    thinkingError.hidden = true
+  }
+
+  function updateModelCapabilities(): void {
+    const model = selectedModel()
     modelCapabilities.textContent = model
       ? [
           model.reasoning ? "Reasoning" : "No reasoning",
           model.imageInput ? "Image input" : "Text input",
         ].join(" · ")
-      : ""
+      : "No models available. Add a credential to load this provider's catalog."
+    modelError.hidden = true
+    element<HTMLInputElement>("model-search").removeAttribute("aria-invalid")
+    updateThinkingControls()
   }
 
   function renderModelOptions(providerId: string, preferredId?: string): void {
@@ -136,9 +177,9 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
   }
 
   function selectedConfirmationMode(): ConfirmationMode {
-    if (!isConfirmationMode(confirmationModeSelect.value))
-      throw new Error("Choose a valid confirmation mode")
-    return confirmationModeSelect.value
+    const value = confirmationModes.find((radio) => radio.checked)?.value
+    if (!isConfirmationMode(value)) throw new Error("Choose a valid confirmation mode")
+    return value
   }
 
   function selectedFontFamily(): FontFamily {
@@ -162,7 +203,7 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
       providerSelect.value,
       modelSelect.value,
       thinkingLevelSelect.value,
-      confirmationModeSelect.value,
+      confirmationModes.find((radio) => radio.checked)?.value,
       toolCheckboxes.map((checkbox) => checkbox.checked),
       fontFamilySelect.value,
       fontSizeInput.value,
@@ -171,19 +212,84 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
     ])
   }
 
-  function hasUnsavedChanges(): boolean {
+  function hasGeneralChanges(): boolean {
+    return generalFormState() !== savedFormState || settingsModelChanged || settingsThinkingChanged
+  }
+
+  function isActionBusy(): boolean {
     return (
-      savingGeneral || generalFormState() !== savedFormState || hasMcpDraft() || hasSkillDraft()
+      savingGeneral ||
+      clearingApprovals ||
+      mcpState.isBusy() ||
+      skillState.isBusy() ||
+      Boolean(authentication?.isBusy)
     )
   }
 
+  function updateSaveState(): void {
+    const busy = isActionBusy()
+    saveButton.disabled = !ready || busy || !hasGeneralChanges()
+    closeButton.disabled = cancelButton.disabled = busy
+    saveStatus.textContent = savingGeneral
+      ? "Saving general settings…"
+      : busy
+        ? "Separate action in progress…"
+        : hasGeneralChanges()
+          ? "Unsaved general changes"
+          : "No unsaved general changes"
+    draftStatus.textContent = [
+      mcpState.hasDraft() ? "Server edits not saved" : "",
+      skillState.hasDraft() ? "Skill review not imported" : "",
+    ]
+      .filter(Boolean)
+      .join(" · ")
+  }
+
+  function hasUnsavedChanges(): boolean {
+    return isActionBusy() || hasGeneralChanges() || mcpState.hasDraft() || skillState.hasDraft()
+  }
+
+  function validateGeneralChanges(): HTMLElement | undefined {
+    if (settingsModelChanged && !modelSelect.value) {
+      modelError.textContent = "Add a credential and choose a model before saving this selection."
+      modelError.hidden = false
+      element<HTMLInputElement>("model-search").setAttribute("aria-invalid", "true")
+      element<HTMLButtonElement>("settings-tab-model").click()
+      return element<HTMLButtonElement>("configure-provider")
+    }
+    const levels = selectedModel()?.thinkingLevels ?? []
+    const persistedLevel = settingsThinkingChanged
+      ? thinkingLevelSelect.value
+      : configuration.appSettings.thinkingLevel
+    const invalidPersistedLevel =
+      settingsModelChanged && levels.length > 0 && !levels.some((level) => level === persistedLevel)
+    if (
+      levels.length > 0 &&
+      (invalidPersistedLevel ||
+        ((settingsModelChanged || settingsThinkingChanged) &&
+          !levels.some((level) => level === thinkingLevelSelect.value)))
+    ) {
+      if (invalidPersistedLevel) updateThinkingControls(persistedLevel)
+      thinkingError.textContent = "Choose a thinking level supported by this model."
+      thinkingError.hidden = false
+      thinkingLevelSelect.setAttribute("aria-invalid", "true")
+      element<HTMLButtonElement>("settings-tab-model").click()
+      return thinkingLevelSelect
+    }
+    return undefined
+  }
+
   function populateSettings(): void {
+    settingsModelChanged = false
+    settingsThinkingChanged = false
     renderModelControls(initialSelection.provider, initialSelection.id)
-    thinkingLevelSelect.value =
+    updateThinkingControls(
       initialThinkingLevel && isThinkingLevel(initialThinkingLevel)
         ? initialThinkingLevel
-        : configuration.appSettings.thinkingLevel
-    confirmationModeSelect.value = configuration.appSettings.confirmationMode
+        : configuration.appSettings.thinkingLevel,
+    )
+    for (const radio of confirmationModes)
+      radio.checked = radio.value === configuration.appSettings.confirmationMode
     const enabledTools = new Set(configuration.appSettings.enabledTools)
     for (const checkbox of toolCheckboxes) checkbox.checked = enabledTools.has(checkbox.value)
     fontFamilySelect.value = configuration.appSettings.fontFamily
@@ -191,8 +297,6 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
     fontSizeOutput.value = `${configuration.appSettings.fontSize} px`
     systemPrompt.value = configuration.appSettings.systemPrompt
     agentInstructions.value = configuration.appSettings.agentInstructions
-    settingsModelChanged = false
-    settingsThinkingChanged = false
     savedFormState = generalFormState()
   }
 
@@ -209,7 +313,7 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
   }
 
   async function discardSettingsChanges(): Promise<void> {
-    if (savingGeneral || allowClosing) return
+    if (isActionBusy() || allowClosing) return
     if (
       hasUnsavedChanges() &&
       !(await confirmSettingsAction({
@@ -230,11 +334,13 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
     currentProviderId: () => providerSelect.value,
     updateError: setError,
     mode: "settings",
+    onStateChanged: updateSaveState,
     onProvidersChanged: () => {
       const providerId = providerSelect.value
       const modelId = modelSelect.value
       renderProviderOptions(providerId)
       renderModelOptions(providerId, modelId)
+      updateSaveState()
     },
   })
 
@@ -242,32 +348,44 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
     settingsModelChanged = true
     renderModelOptions(providerSelect.value)
     void authentication?.refresh()
+    updateSaveState()
   })
   modelSelect.addEventListener("change", () => {
     settingsModelChanged = true
     updateModelCapabilities()
+    updateSaveState()
   })
   thinkingLevelSelect.addEventListener("change", () => {
-    settingsThinkingChanged = true
+    settingsThinkingChanged = !thinkingLevelSelect.disabled
+    thinkingError.hidden = true
+    thinkingLevelSelect.removeAttribute("aria-invalid")
+    updateSaveState()
   })
   fontSizeInput.addEventListener("input", previewAppearance)
   fontFamilySelect.addEventListener("change", previewAppearance)
   element<HTMLButtonElement>("clear-confirmation-approvals").addEventListener("click", () => {
+    if (isActionBusy()) return
+    clearingApprovals = true
+    updateSaveState()
     void run(async () => {
-      await clearConfirmationApprovals()
-      confirmationStatus.textContent = "Remembered approvals cleared"
+      try {
+        await clearConfirmationApprovals()
+        confirmationStatus.textContent = "Remembered approvals cleared"
+      } finally {
+        clearingApprovals = false
+        updateSaveState()
+      }
     }, setError)
   })
   closeButton.addEventListener("click", () => void run(discardSettingsChanges, setError))
-  element<HTMLButtonElement>("cancel-settings").addEventListener(
-    "click",
-    () => void run(discardSettingsChanges, setError),
-  )
+  cancelButton.addEventListener("click", () => void run(discardSettingsChanges, setError))
+  page.addEventListener("input", updateSaveState)
+  page.addEventListener("change", updateSaveState)
   saveButton.addEventListener("click", () => {
-    if (savingGeneral || allowClosing) return
+    if (isActionBusy() || allowClosing || !hasGeneralChanges()) return
     void run(async () => {
       if (
-        (hasMcpDraft() || hasSkillDraft()) &&
+        (mcpState.hasDraft() || skillState.hasDraft()) &&
         !(await confirmSettingsAction({
           title: "Unsaved MCP or Skills changes",
           message:
@@ -276,17 +394,27 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
         }))
       )
         return
-      if (savingGeneral || allowClosing) return
+      if (isActionBusy() || allowClosing) return
+      const invalidControl = validateGeneralChanges()
+      if (invalidControl) {
+        invalidControl.focus()
+        return
+      }
+      let validationFocus: HTMLElement | undefined
       savingGeneral = true
+      updateSaveState()
       page.inert = true
       page.setAttribute("aria-busy", "true")
       saveButton.textContent = "Saving…"
       try {
         const applyModelToActiveSession = settingsModelChanged
-        const applyThinkingToActiveSession = settingsThinkingChanged
         let providerId = providerSelect.value
         let modelId = modelSelect.value
         await configuration.syncSettings()
+        validationFocus = validateGeneralChanges()
+        if (validationFocus) return
+        const applyThinkingToActiveSession =
+          settingsThinkingChanged && (selectedModel()?.thinkingLevels.length ?? 0) > 0
         if (!applyModelToActiveSession) {
           providerId = configuration.appSettings.modelProvider
           modelId = configuration.appSettings.modelId
@@ -331,7 +459,8 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
           page.inert = false
           page.removeAttribute("aria-busy")
           saveButton.textContent = "Save general settings"
-          saveButton.focus()
+          updateSaveState()
+          ;(validationFocus ?? saveButton).focus()
         }
       }
     }, setError)
@@ -339,7 +468,7 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
   document.addEventListener("keydown", (event) => {
     if (
       event.key !== "Escape" ||
-      savingGeneral ||
+      isActionBusy() ||
       allowClosing ||
       document.querySelector("dialog[open]") !== null
     )
@@ -353,11 +482,13 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
   document.body.dataset.view = "settings"
   initialSelection = await configuration.initialize(initialModel)
   populateSettings()
-  hasMcpDraft = await initializeMcpSettings(confirmSettingsAction)
-  hasSkillDraft = await initializeSkillsSettings()
+  mcpState = await initializeMcpSettings(confirmSettingsAction, updateSaveState)
+  skillState = await initializeSkillsSettings(updateSaveState)
   applyAppearance(configuration.appSettings.fontFamily, configuration.appSettings.fontSize)
   initializeSettingsTabs(page)
   page.hidden = false
+  ready = true
+  updateSaveState()
   window.addEventListener("beforeunload", (event) => {
     if (allowClosing || !hasUnsavedChanges()) return
     event.preventDefault()

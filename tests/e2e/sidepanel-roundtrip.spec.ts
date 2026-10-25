@@ -1420,6 +1420,7 @@ test("loads the Side Panel without uncaught errors", async () => {
   await controller.setViewportSize({ width: 360, height: 200 })
   expect(await controller.evaluate(() => document.documentElement.scrollHeight)).toBe(200)
   expect(await controller.evaluate(() => window.scrollY)).toBe(0)
+  await expect(controller.locator("#composer-hint")).toBeHidden()
   await expect(controller.locator("#prompt")).toBeVisible()
   await expect(controller.locator("#send")).toBeVisible()
   await controller.setViewportSize(viewport)
@@ -1675,7 +1676,10 @@ test("opens Settings in a full browser tab and persists the selected interface f
   await settingsTab.getByRole("tab", { name: "Model", exact: true }).click()
   const configureProvider = settingsTab.locator("#configure-provider")
   const initialModelId = await settingsTab.locator("#model").inputValue()
-  await expect(configureProvider).toHaveText("Configure authentication")
+  await expect(configureProvider).toHaveText("Add credential")
+  await expect(settingsTab.locator("#settings-auth-status")).toHaveText(
+    "OpenAI Codex (legacy) credential missing",
+  )
   await settingsTab.evaluate(() => {
     const originalGet = chrome.storage.local.get
     chrome.storage.local.get = (async () => {
@@ -1684,9 +1688,13 @@ test("opens Settings in a full browser tab and persists the selected interface f
     }) as typeof chrome.storage.local.get
   })
   await settingsTab.locator("#provider").dispatchEvent("change")
-  await expect(settingsError).toHaveText("Test auth status failed")
+  await expect(settingsError).toHaveText("Authentication is unavailable. Try again.")
+  await expect(settingsTab.locator("#settings-auth-status")).toHaveText(
+    "Credential status unavailable. Try again.",
+  )
+  await expect(settingsTab.locator("body")).not.toContainText("Test auth status failed")
   await expect(configureProvider).toBeEnabled()
-  await expect(configureProvider).toHaveText("Configure authentication")
+  await expect(configureProvider).toHaveText("Add credential")
   await settingsTab.locator("#provider").dispatchEvent("change")
   await expect(settingsError).toBeEmpty()
 
@@ -1791,7 +1799,7 @@ test("opens Settings in a full browser tab and persists the selected interface f
     state.providerLoginGate?.release(false)
     delete state.providerLoginGate
   })
-  await expect(settingsError).toHaveText("OpenAI host access is required for login")
+  await expect(settingsError).toHaveText("Authentication is unavailable. Try again.")
   await expect(configureProvider).toBeEnabled()
   await expect
     .poll(() =>
@@ -2454,7 +2462,10 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
   await controller.locator("#open-settings").click()
   const settingsTab = await settingsTabPromise
   const configureProvider = settingsTab.locator("#configure-provider")
-  await expect(configureProvider).toHaveText("Configure authentication")
+  await expect(configureProvider).toHaveText("Update credential")
+  await expect(settingsTab.locator("#settings-auth-status")).toHaveText(
+    "OpenAI Codex (legacy) credential configured — Account",
+  )
 
   await controller.evaluate(() => {
     const originalGet = chrome.storage.local.get
@@ -2502,7 +2513,10 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
   })
 
   await settingsTab.evaluate(async () => chrome.storage.local.remove("piBrowserAgentCredentialsV1"))
-  await expect(configureProvider).toHaveText("Configure authentication")
+  await expect(configureProvider).toHaveText("Add credential")
+  await expect(settingsTab.locator("#settings-auth-status")).toHaveText(
+    "OpenAI Codex (legacy) credential missing",
+  )
   await expect(controller.locator("#auth-status")).toHaveText(
     "OpenAI Codex (legacy) not configured",
   )
@@ -2534,7 +2548,12 @@ test("runs mocked model tool calls from the Side Panel through the current tab",
       piBrowserAgentCredentialsV1: { "openai-codex": credential },
     })
   }, credential)
-  await expect(configureProvider).toHaveText("Configure authentication")
+  await expect(configureProvider).toHaveText("Update credential")
+  await expect(settingsTab.locator("#settings-auth-status")).toHaveText(
+    "OpenAI Codex (legacy) credential configured — Account",
+  )
+  await expect(settingsTab.locator("body")).not.toContainText(credential.access)
+  await expect(settingsTab.locator("body")).not.toContainText(credential.refresh)
   await expect(controller.locator("#auth-status")).toHaveText(
     "OpenAI Codex (legacy) configured with an account",
   )

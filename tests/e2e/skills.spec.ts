@@ -72,7 +72,11 @@ async function importSkill(page: Page): Promise<SkillRecord> {
   })
   const record = installed[0]
   if (!record) throw new Error("Imported skill was not stored")
-  await page.locator("#skills-list").selectOption(record.id)
+  const selection = page.locator(`#skills-list button[data-skill-id="${record.id}"]`)
+  await expect(selection).toHaveAttribute("aria-pressed", "true")
+  await expect(selection).toBeFocused()
+  await expect(page.locator("#skills-review")).toBeHidden()
+  await expect(page.locator("#skills-installed-controls")).toBeVisible()
   return record
 }
 
@@ -251,6 +255,11 @@ test("skill validation and explicit replacement are local and clearing sessions 
     await settings.locator("#skills-replace-reviewed").click()
     await expect(settings.locator("#skills-status")).toContainText("replaced and disabled")
     expect(await records(settings)).toEqual([{ ...original, body: replacement, enabled: false }])
+    await expect(
+      settings.locator(`#skills-list button[data-skill-id="${original.id}"]`),
+    ).toHaveAttribute("aria-pressed", "true")
+    await expect(settings.locator("#skills-enabled")).not.toBeChecked()
+    await expect(settings.locator("#skills-review")).toBeHidden()
 
     const session = await harness.controller.locator("#sessions").inputValue()
     await harness.controller.locator("#account-menu-trigger").click()

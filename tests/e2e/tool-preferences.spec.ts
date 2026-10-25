@@ -33,22 +33,33 @@ test("enables additions after a legacy upgrade and preserves a new-tool opt-out 
       "Choose the provider and model for this session and new conversations.",
     )
     await settings.getByRole("tab", { name: "Tools", exact: true }).click()
-    await expect(settings.locator('#confirmation-mode option[value="strict"]')).toHaveText(
-      "Strict — never reuse approvals",
-    )
-    for (const [tool, summary] of [
-      ["browser_search_bookmarks", "Search Chrome bookmark titles and URLs."],
-      ["browser_get_recent_bookmarks", "Read recently added Chrome bookmarks."],
-    ]) {
+    for (const [mode, lifetime] of [
+      ["strict", "Never reuse approvals."],
+      ["balanced", "Remember until Chrome restarts."],
+      ["convenient", "Remember across restarts until cleared."],
+    ] as const) {
       await expect(
-        settings
-          .locator("#available-tools label")
-          .filter({ has: settings.locator(`input[value="${tool}"]`) }),
-      ).toHaveAttribute(
-        "title",
-        `${summary} Bookmark reads require approval. Your confirmation mode can reuse approval for identical arguments. Results are untrusted.`,
+        settings.locator("#confirmation-mode label").filter({
+          has: settings.locator(`input[value="${mode}"]`),
+        }),
+      ).toContainText(lifetime)
+    }
+    for (const [tool, summary] of [
+      ["browser_search_bookmarks", "Search bookmark titles and URLs."],
+      ["browser_get_recent_bookmarks", "Read recently added bookmarks."],
+    ] as const) {
+      const description = settings.locator(`#tool-description-${tool}`)
+      await expect(description).toBeVisible()
+      await expect(description).toContainText(summary)
+      await expect(settings.locator(".tool-group").filter({ has: description })).toHaveAttribute(
+        "aria-describedby",
+        "bookmark-tools-help",
       )
     }
+    await expect(settings.locator("#bookmark-tools-help")).toBeVisible()
+    await expect(settings.locator("#bookmark-tools-help")).toHaveText(
+      "Bookmark reads require approval. Your confirmation mode can reuse approval for identical arguments. Results are untrusted.",
+    )
     const checkedTool = settings.locator('#available-tools input[value="browser_set_checked"]')
     await expect(checkedTool).toBeChecked()
     await expect(settings.locator("#available-tools input:not(:checked)")).toHaveCount(0)
