@@ -750,7 +750,9 @@ test("rejects commands during remote MCP preparation and finalization without re
     }, harness.extensionId)
     await permissions.close()
     await settings.locator("#mcp-connect").click()
-    await expect(settings.locator("#mcp-status")).toContainText("Connected and enabled")
+    await expect(settings.locator("#mcp-status")).toContainText(
+      "Enabled for new runs. Tool metadata and results can go to the selected model.",
+    )
     await settings.close()
     await protectedPage(harness)
     await harness.controller.evaluate((endpoint) => {

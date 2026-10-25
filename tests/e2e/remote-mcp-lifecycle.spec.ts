@@ -42,7 +42,9 @@ test("Stop cancels discovery before any model request and permits a later new ru
     await saveServer(settings, fixture.endpoint)
     await grantMcpHost(harness.context, harness.extensionId)
     await settings.locator("#mcp-connect").click()
-    await expect(settings.locator("#mcp-status")).toContainText("Connected and enabled")
+    await expect(settings.locator("#mcp-status")).toContainText(
+      "Enabled for new runs. Tool metadata and results can go to the selected model.",
+    )
     let modelRequests = 0
     await harness.context.route(CODEX_RESPONSES_URL, async (route) => {
       modelRequests++
@@ -88,7 +90,9 @@ test("optional MCP host permission can be granted and revoked in Chrome", async 
     await saveServer(settings, fixture.endpoint)
     await grantMcpHost(harness.context, harness.extensionId)
     await settings.locator("#mcp-connect").click()
-    await expect(settings.locator("#mcp-status")).toContainText("Connected and enabled")
+    await expect(settings.locator("#mcp-status")).toContainText(
+      "Enabled for new runs. Tool metadata and results can go to the selected model.",
+    )
     expect(
       await settings.evaluate(() =>
         chrome.permissions.remove({ origins: ["https://mcp.e2e.example.com/*"] }),
@@ -125,7 +129,9 @@ for (const change of [
       await saveServer(settings, fixture.endpoint)
       await grantMcpHost(harness.context, harness.extensionId)
       await settings.locator("#mcp-connect").click()
-      await expect(settings.locator("#mcp-status")).toContainText("Connected and enabled")
+      await expect(settings.locator("#mcp-status")).toContainText(
+        "Enabled for new runs. Tool metadata and results can go to the selected model.",
+      )
       let index = 0
       const modelBodies: string[] = []
       await harness.context.route(CODEX_RESPONSES_URL, async (route) => {

@@ -44,14 +44,19 @@ for (const sse of [false, true]) {
       await settings.locator("#mcp-token").fill(TOKEN)
       await settings.locator("#mcp-save").click()
       await expect(settings.locator("#mcp-status")).toContainText("Saved disconnected")
+      await expect(settings.locator("#mcp-status")).toContainText("Test and enable")
+      const connect = settings.getByRole("button", { name: "Test and enable", exact: true })
+      await expect(connect).toBeEnabled()
       expect(fixture.requests).toHaveLength(0)
       await expect(settings.locator("#mcp-token")).toHaveValue("")
       await settings.locator("#mcp-endpoint").fill(`${fixture.endpoint}/unsaved`)
-      await expect(settings.locator("#mcp-connect")).toBeDisabled()
+      await expect(connect).toBeDisabled()
       await settings.locator("#mcp-endpoint").fill(fixture.endpoint)
-      await settings.locator("#mcp-connect").focus()
-      await settings.locator("#mcp-connect").press("Enter")
-      await expect(settings.locator("#mcp-status")).toContainText("Connected and enabled")
+      await connect.focus()
+      await connect.press("Enter")
+      await expect(settings.locator("#mcp-status")).toHaveText(
+        "Enabled for new runs. Tool metadata and results can go to the selected model.",
+      )
       await expect(settings.locator("#mcp-tools")).toContainText("<script>bad()</script>")
       expect(await settings.locator("#mcp-tools script").count()).toBe(0)
       await settings.setViewportSize({ width: 320, height: 800 })
@@ -63,6 +68,12 @@ for (const sse of [false, true]) {
           .locator(".settings-content")
           .evaluate((node) => node.scrollWidth <= node.clientWidth),
       ).toBe(true)
+      const serverId = await settings.locator("#mcp-server").inputValue()
+      await settings.locator("#mcp-server").selectOption({ label: "New server" })
+      await settings.locator("#mcp-server").selectOption(serverId)
+      await expect(settings.locator("#mcp-status")).toHaveText(
+        "Enabled for new runs; each call requires confirmation",
+      )
       const initialized = fixture.requests.find(
         (r) => r.message?.method === "notifications/initialized",
       )

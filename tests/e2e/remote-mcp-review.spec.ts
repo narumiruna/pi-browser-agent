@@ -25,7 +25,9 @@ test("keeps text, images, and element chips after discovery fails; sends them on
     await settings.goto(`${harness.controller.url()}?view=settings`)
     await saveServer(settings, fixture.endpoint)
     await settings.locator("#mcp-connect").click()
-    await expect(settings.locator("#mcp-status")).toContainText("Connected and enabled")
+    await expect(settings.locator("#mcp-status")).toContainText(
+      "Enabled for new runs. Tool metadata and results can go to the selected model.",
+    )
     await settings.close()
     await harness.fixturePage.bringToFront()
     const target = await harness.fixturePage.locator("#marker").boundingBox()
@@ -102,7 +104,9 @@ test("keeps text edited during discovery after the original prompt is accepted",
     await settings.goto(`${harness.controller.url()}?view=settings`)
     await saveServer(settings, fixture.endpoint)
     await settings.locator("#mcp-connect").click()
-    await expect(settings.locator("#mcp-status")).toContainText("Connected and enabled")
+    await expect(settings.locator("#mcp-status")).toContainText(
+      "Enabled for new runs. Tool metadata and results can go to the selected model.",
+    )
     await settings.close()
     const gate = new Promise<void>((resolve) => {
       release = resolve
@@ -262,7 +266,9 @@ for (const success of [true, false]) {
       fixture.state.status = success ? 200 : 503
       release()
       await expect(settings.locator("#mcp-status")).toContainText(
-        success ? "Connected and enabled" : "MCP request failed",
+        success
+          ? "Enabled for new runs. Tool metadata and results can go to the selected model."
+          : "MCP request failed",
       )
       expect(await record()).toMatchObject({ enabled: success, approved: success })
       const before = fixture.requests.length
@@ -285,6 +291,97 @@ for (const success of [true, false]) {
     }
   })
 }
+
+test("MCP server edits require explicit saves and Cancel keeps saved servers", async () => {
+  const harness = await launchExtensionHarness()
+  try {
+    const settings = await harness.context.newPage()
+    await settings.goto(`${harness.controller.url()}?view=settings`)
+    const section = settings.locator('section[aria-labelledby="mcp-title"]')
+    await expect(section).toContainText(
+      "Configure up to 8 public HTTPS Streamable HTTP servers. Select New server to add another. A run supports up to 32 tools across all enabled servers.",
+    )
+    await expect(section).toContainText(
+      "Select Save disconnected to save server edits and disable the server. Server actions save separately from Save settings. Cancel does not undo saved server changes.",
+    )
+    const readServers = () =>
+      harness.controller.evaluate(() => chrome.storage.local.get("piBrowserAgentMcpServersV1"))
+    const initial = await readServers()
+    await settings.locator("#mcp-name").fill("First server")
+    await settings.locator("#mcp-endpoint").fill("https://first.example.com/mcp")
+    expect(await readServers()).toEqual(initial)
+    await settings.getByRole("button", { name: "Save disconnected", exact: true }).click()
+    await expect(settings.locator("#mcp-status")).toContainText("Saved disconnected")
+    const firstId = await settings.locator("#mcp-server").inputValue()
+    expect(firstId).not.toBe("")
+    const firstSaved = await readServers()
+    expect(firstSaved).toMatchObject({
+      piBrowserAgentMcpServersV1: {
+        servers: [
+          {
+            id: firstId,
+            name: "First server",
+            endpoint: "https://first.example.com/mcp",
+            enabled: false,
+          },
+        ],
+      },
+    })
+
+    await settings.locator("#mcp-name").fill("Updated first server")
+    await settings.locator("#mcp-endpoint").fill("https://first.example.com/updated")
+    expect(await readServers()).toEqual(firstSaved)
+    await settings.getByRole("button", { name: "Save disconnected", exact: true }).click()
+    await expect(settings.locator("#mcp-status")).toContainText("Saved disconnected")
+    await settings.locator("#mcp-server").selectOption({ label: "New server" })
+    await expect(settings.locator("#mcp-name")).toHaveValue("")
+    await settings.locator("#mcp-name").fill("Second server")
+    await settings.locator("#mcp-endpoint").fill("https://second.example.com/mcp")
+    await settings.getByRole("button", { name: "Save disconnected", exact: true }).click()
+    await expect(settings.locator("#mcp-status")).toContainText("Saved disconnected")
+    const secondId = await settings.locator("#mcp-server").inputValue()
+    expect(secondId).not.toBe(firstId)
+    await expect(settings.locator("#mcp-server option")).toHaveText([
+      "New server",
+      "Updated first server",
+      "Second server",
+    ])
+    const saved = await readServers()
+    await settings.locator("#mcp-name").fill("Unsaved second server")
+    await settings.locator("#mcp-endpoint").fill("https://second.example.com/unsaved")
+    expect(await readServers()).toEqual(saved)
+    const closed = settings.waitForEvent("close")
+    await settings.getByRole("button", { name: "Cancel", exact: true }).click()
+    await closed
+    expect(await readServers()).toEqual(saved)
+
+    const reopened = await harness.context.newPage()
+    await reopened.goto(`${harness.controller.url()}?view=settings`)
+    await expect(reopened.locator("#mcp-server option")).toHaveText([
+      "New server",
+      "Updated first server",
+      "Second server",
+    ])
+    for (const [id, name, endpoint] of [
+      [firstId, "Updated first server", "https://first.example.com/updated"],
+      [secondId, "Second server", "https://second.example.com/mcp"],
+    ] as const) {
+      await reopened.locator("#mcp-server").selectOption(id)
+      await expect(reopened.locator("#mcp-name")).toHaveValue(name)
+      await expect(reopened.locator("#mcp-endpoint")).toHaveValue(endpoint)
+      await expect(reopened.locator("#mcp-status")).toHaveText("Disabled")
+    }
+    await reopened.locator("#mcp-name").fill("Not saved by Save settings")
+    await reopened.locator("#mcp-endpoint").fill("https://second.example.com/footer-unsaved")
+    const savedAndClosed = reopened.waitForEvent("close")
+    await reopened.getByRole("button", { name: "Save settings", exact: true }).click()
+    await savedAndClosed
+    expect(await readServers()).toEqual(saved)
+    expect(harness.pageErrors).toEqual([])
+  } finally {
+    await harness.close()
+  }
+})
 
 test("a stale Settings tab cannot replace or remove newer server data or its token", async () => {
   const fixture = await startMcpFixture()

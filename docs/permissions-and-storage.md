@@ -37,7 +37,7 @@ The extension CSP permits HTTP(S) connections so a user-selected built-in provid
 
 ## Remote MCP permissions and storage
 
-MCP uses the existing optional HTTPS host pattern; it adds no required permission. **Connect and preview** is the only MCP host-request gesture. Authorization also requires a stored connection approval for the full normalized endpoint and its configuration revision. A screenshot grant alone cannot approve a server. Chrome's hostname patterns do not include a port or path; MCP checks both independently on every request.
+MCP uses the existing optional HTTPS host pattern; it adds no required permission. **Test and enable** is the only MCP host-request gesture. Authorization also requires a stored connection approval for the full normalized endpoint and its configuration revision. A screenshot grant alone cannot approve a server. Chrome's hostname patterns do not include a port or path; MCP checks both independently on every request.
 
 The Side Panel owns MCP clients. It checks trusted configuration, endpoint approval, token binding, and Chrome permission before each request. Settings edits, disablement/removal, panel shutdown, and host permission revocation cancel local MCP work. No server connection or interrupted call is restored from a transcript.
 

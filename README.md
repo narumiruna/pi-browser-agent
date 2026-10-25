@@ -46,7 +46,9 @@ Pi Browser Agent registers the browser-compatible built-in `pi-ai` providers and
 
 ## Remote MCP
 
-Open **Settings → Remote MCP servers** to add a public HTTPS Streamable HTTP endpoint and an optional bearer token. Select **Save disconnected**, then **Connect and preview** to approve the exact endpoint and enable its tools. These controls save immediately, independently of other settings.
+Open **Settings → Remote MCP servers** to add a public HTTPS Streamable HTTP endpoint and an optional bearer token. Select **Save disconnected** to save edits with the server disabled. Then select **Test and enable** to approve the exact endpoint and test the connection. A successful test enables its tools for new runs and shows a plain-text preview. Server actions save separately from **Save settings**; **Cancel** does not undo saved server changes.
+
+Configure up to 8 servers. Select **New server** to add another. A run supports up to 32 tools across all enabled servers.
 
 MCP tools also work without a readable page. Every call requires fresh confirmation in every confirmation mode. Arguments go to the configured server; tool metadata and results can go to the selected model provider and saved session. Cookies, redirects, OAuth, stdio, local bridges, resources, and non-text result blocks are not supported. Closing the panel or changing server settings cancels local work; interrupted calls are never replayed automatically. Cancellation cannot undo server-side effects.
 

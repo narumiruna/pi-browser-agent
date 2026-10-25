@@ -52,8 +52,8 @@ export async function initializeMcpSettings(): Promise<void> {
     preview.textContent = ""
     status.textContent = server
       ? server.enabled
-        ? "Enabled; each call requires confirmation"
-        : "Disconnected"
+        ? "Enabled for new runs; each call requires confirmation"
+        : "Disabled"
       : "New server"
     updateControls()
   }
@@ -98,7 +98,8 @@ export async function initializeMcpSettings(): Promise<void> {
     void perform(async () => {
       const server = await saveMcpServer(input)
       await refresh(server.id)
-      status.textContent = "Saved disconnected. Select Connect and preview to enable."
+      status.textContent =
+        "Saved disconnected. Select Test and enable to make tools available for new runs."
     })
   })
   connect.addEventListener("click", () => {
@@ -122,7 +123,7 @@ export async function initializeMcpSettings(): Promise<void> {
           tools.map((tool) => `${tool.name}\n${tool.description ?? ""}`).join("\n\n") ||
           "No tools returned"
         status.textContent =
-          "Connected and enabled. Tool metadata and results can go to the selected model."
+          "Enabled for new runs. Tool metadata and results can go to the selected model."
       } catch (error) {
         await refresh(server.id)
         throw error instanceof McpConfigurationError ? error : new Error(MCP_FAILURE)
