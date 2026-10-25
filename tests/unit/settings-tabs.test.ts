@@ -7,7 +7,7 @@ const html = readFileSync(
   new URL("../../src/browser/sidepanel/index.html", import.meta.url),
   "utf8",
 )
-const names = ["Model", "Browser", "MCP", "Skills", "Appearance", "Instructions"]
+const names = ["Model", "Tools", "MCP", "Skills", "Appearance", "Instructions"]
 const environments: JSDOM[] = []
 
 afterEach(() => {
@@ -60,14 +60,14 @@ describe("Settings tabs", () => {
       env.tab(name).click()
       expectActive(env, name)
     }
-    env.tab("Browser").click()
-    expect(env.panel("Browser").querySelector("#available-tools")).not.toBeNull()
-    expect(env.panel("Browser").querySelector("#confirmation-mode")).not.toBeNull()
+    env.tab("Tools").click()
+    expect(env.panel("Tools").querySelector("#available-tools")).not.toBeNull()
+    expect(env.panel("Tools").querySelector("#confirmation-mode")).not.toBeNull()
   })
 
   test.each([
-    ["Model", "ArrowRight", "Browser"],
-    ["Browser", "ArrowLeft", "Model"],
+    ["Model", "ArrowRight", "Tools"],
+    ["Tools", "ArrowLeft", "Model"],
     ["Model", "ArrowLeft", "Instructions"],
     ["Instructions", "ArrowRight", "Model"],
     ["Skills", "Home", "Model"],
@@ -132,7 +132,7 @@ describe("Settings tabs", () => {
     const content = env.page.querySelector<HTMLElement>(".settings-content")
     if (!content) throw new Error("Missing Settings content")
     content.scrollTop = 500
-    env.tab("Browser").click()
+    env.tab("Tools").click()
     expect(content.scrollTop).toBe(0)
     content.scrollTop = 300
     env.tab("MCP").click()
