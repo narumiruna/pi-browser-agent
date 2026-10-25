@@ -37,9 +37,9 @@ If an OAuth access token is near expiry, refresh occurs inside `CredentialStore.
 
 ## Remote MCP authentication
 
-Remote MCP has separate configuration and token stores; it never uses provider credentials. **Settings → Remote MCP servers** accepts a public HTTPS endpoint and an optional bearer token. **Connect and preview** requests Chrome host access from its click gesture and approves the exact endpoint, including its port and path. All tool calls require a separate fresh confirmation.
+Remote MCP has separate configuration and token stores; it never uses provider credentials. **Settings → Remote MCP servers** accepts a public HTTPS endpoint and an optional bearer token. **Test and enable** requests Chrome host access from its click gesture and approves the exact endpoint, including its port and path. A successful connection test enables the server for new runs. All tool calls require a separate fresh confirmation.
 
-A blank token field preserves an existing token only at an unchanged endpoint. **Remove existing token** explicitly removes it. Endpoint changes clear the old token, and all edits disconnect the server until it is explicitly reconnected. Invalid or missing token records fail closed instead of falling back to unauthenticated access. Requests omit cookies, reject redirects, and perform no OAuth or automatic auth discovery. Authentication failures expose a fixed error, never server error text.
+A blank token field preserves an existing token only at an unchanged endpoint. **Remove existing token** explicitly removes it. Saved endpoint changes clear the old token. Saving edits disables the server until **Test and enable** succeeds again. Invalid or missing token records fail closed instead of falling back to unauthenticated access. Requests omit cookies, reject redirects, and perform no OAuth or automatic auth discovery. Authentication failures expose a fixed error, never server error text.
 
 Disablement retains the token but cancels current MCP work. Removal deletes the server, token, and connection approval. Chrome permission revocation blocks requests and cancels local MCP work, but retains stored authentication. See [remote MCP](mcp.md) for limits and recovery.
 

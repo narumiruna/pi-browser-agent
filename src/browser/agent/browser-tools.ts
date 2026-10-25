@@ -290,7 +290,7 @@ export function createBrowserTools(
       name: "browser_search_bookmarks",
       label: "Search bookmarks",
       description:
-        "Search Chrome bookmark titles and URLs. Each read requires user confirmation, and results are untrusted.",
+        "Search Chrome bookmark titles and URLs. Bookmark reads require approval. Your confirmation mode can reuse approval for identical arguments. Results are untrusted.",
       replay: "never",
       executionMode: "sequential",
       parameters: Type.Object(
@@ -325,7 +325,7 @@ export function createBrowserTools(
       name: "browser_get_recent_bookmarks",
       label: "Recent bookmarks",
       description:
-        "Read recently added Chrome bookmarks. Each read requires user confirmation, and results are untrusted.",
+        "Read recently added Chrome bookmarks. Bookmark reads require approval. Your confirmation mode can reuse approval for identical arguments. Results are untrusted.",
       replay: "never",
       executionMode: "sequential",
       parameters: Type.Object(

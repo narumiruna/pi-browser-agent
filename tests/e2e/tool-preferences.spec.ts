@@ -29,6 +29,25 @@ test("enables additions after a legacy upgrade and preserves a new-tool opt-out 
 
     const settings = await harness.context.newPage()
     await settings.goto(`${harness.controller.url()}?view=settings`)
+    await expect(settings.locator('section[aria-labelledby="model-title"] p').first()).toHaveText(
+      "Choose the provider and model for this session and new conversations.",
+    )
+    await expect(settings.locator('#confirmation-mode option[value="strict"]')).toHaveText(
+      "Strict — never reuse approvals",
+    )
+    for (const [tool, summary] of [
+      ["browser_search_bookmarks", "Search Chrome bookmark titles and URLs."],
+      ["browser_get_recent_bookmarks", "Read recently added Chrome bookmarks."],
+    ]) {
+      await expect(
+        settings
+          .locator("#available-tools label")
+          .filter({ has: settings.locator(`input[value="${tool}"]`) }),
+      ).toHaveAttribute(
+        "title",
+        `${summary} Bookmark reads require approval. Your confirmation mode can reuse approval for identical arguments. Results are untrusted.`,
+      )
+    }
     const checkedTool = settings.locator('#available-tools input[value="browser_set_checked"]')
     await expect(checkedTool).toBeChecked()
     await expect(settings.locator("#available-tools input:not(:checked)")).toHaveCount(0)
