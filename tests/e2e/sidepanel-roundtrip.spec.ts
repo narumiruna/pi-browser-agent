@@ -1663,8 +1663,16 @@ test("opens Settings in a full browser tab and persists the selected interface f
   expect(new URL(settingsTab.url()).searchParams.get("view")).toBe("settings")
   await expect(settingsPage).toBeVisible()
   await expect(accountDisclosure).toHaveJSProperty("open", false)
+  await expect(settingsTab.getByRole("tab", { name: "Model", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  )
+  await expect(settingsTab.getByRole("tabpanel", { name: "Model", exact: true })).toBeVisible()
+  await settingsTab.getByRole("tab", { name: "Appearance", exact: true }).click()
   await expect(settingsPage.getByRole("heading", { name: "Appearance" })).toBeVisible()
+  await settingsTab.getByRole("tab", { name: "Instructions", exact: true }).click()
   await expect(settingsPage.getByRole("heading", { name: "Instructions" })).toBeVisible()
+  await settingsTab.getByRole("tab", { name: "Model", exact: true }).click()
   const configureProvider = settingsTab.locator("#configure-provider")
   const initialModelId = await settingsTab.locator("#model").inputValue()
   await expect(configureProvider).toHaveText("Configure authentication")
@@ -1812,6 +1820,7 @@ test("opens Settings in a full browser tab and persists the selected interface f
   await expect(controller.locator("#sessions option")).toHaveCount(sessionCount)
   await expect(settingsTab.locator("#thinking-level")).toHaveValue("medium")
   await settingsTab.locator("#thinking-level").selectOption("high")
+  await settingsTab.getByRole("tab", { name: "Appearance", exact: true }).click()
   await settingsTab.locator("#font-family").selectOption("serif")
   const fontSizeSlider = settingsTab.locator("#font-size")
   await expect(fontSizeSlider).toHaveAttribute("min", "12")
@@ -1887,8 +1896,9 @@ test("opens Settings in a full browser tab and persists the selected interface f
   const reopenedSettingsTabPromise = context.waitForEvent("page")
   await controller.locator("#open-settings").click()
   const reopenedSettingsTab = await reopenedSettingsTabPromise
-  await expect(reopenedSettingsTab.locator("#font-family")).toHaveValue("serif")
   await expect(reopenedSettingsTab.locator("#thinking-level")).toHaveValue("high")
+  await reopenedSettingsTab.getByRole("tab", { name: "Appearance", exact: true }).click()
+  await expect(reopenedSettingsTab.locator("#font-family")).toHaveValue("serif")
   const reopenedFontSizeSlider = reopenedSettingsTab.locator("#font-size")
   await expect(reopenedFontSizeSlider).toHaveValue("19")
   await expect
@@ -1898,7 +1908,9 @@ test("opens Settings in a full browser tab and persists the selected interface f
     .poll(() => controller.evaluate(() => document.documentElement.dataset.fontSize))
     .toBe("19")
 
+  await reopenedSettingsTab.getByRole("tab", { name: "Model", exact: true }).click()
   await reopenedSettingsTab.locator("#thinking-level").selectOption("medium")
+  await reopenedSettingsTab.getByRole("tab", { name: "Appearance", exact: true }).click()
   await reopenedSettingsTab.locator("#font-family").selectOption("system")
   await reopenedFontSizeSlider.focus()
   await reopenedFontSizeSlider.press("Home")
@@ -2078,6 +2090,7 @@ test("synchronizes provider controls when a new session restores the latest mode
   await controller.locator("#new-session").click()
   await expect.poll(() => sessionSelect.inputValue()).not.toBe(restoredSessionId)
 
+  await restoredSessionSettingsTab.getByRole("tab", { name: "Appearance", exact: true }).click()
   await restoredSessionSettingsTab.locator("#font-family").selectOption("serif")
   const restoredSessionSettingsTabClosed = restoredSessionSettingsTab.waitForEvent("close")
   await restoredSessionSettingsTab.locator("#save-settings").click()
@@ -2097,6 +2110,7 @@ test("synchronizes provider controls when a new session restores the latest mode
   const restoreModelSearch = restoreSettingsTab.locator("#model-search")
   await restoreModelSearch.fill("gpt-5.6-terra")
   await restoreModelSearch.press("Enter")
+  await restoreSettingsTab.getByRole("tab", { name: "Appearance", exact: true }).click()
   await restoreSettingsTab.locator("#font-family").selectOption("system")
   const restoreSettingsTabClosed = restoreSettingsTab.waitForEvent("close")
   await restoreSettingsTab.locator("#save-settings").click()

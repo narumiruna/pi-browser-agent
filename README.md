@@ -44,9 +44,15 @@ Voice input uses Chrome's Web Speech service in the browser language. Spoken aud
 
 Pi Browser Agent registers the browser-compatible built-in `pi-ai` providers and their tool-capable chat model catalogs. Credential setup first selects an authentication method and then shows only providers that support that method in Chrome. API-key authentication is available for browser-compatible providers; OpenAI Codex is currently the only account-login choice and uses the browser device flow. Adding a credential does not change the selected model. Radius models load after configuration. Amazon Bedrock is excluded because its `pi-ai` adapter intentionally loads a Node-only AWS SDK module. Other provider OAuth implementations are Node-only, so Pi Browser Agent exposes only their API-key path. Image-generation providers are separate from chat agents and are not exposed.
 
+## Settings
+
+Settings groups controls into **Model**, **Browser**, **MCP**, **Skills**, **Appearance**, and **Instructions** tabs. Browser contains browser tools and action confirmations. Use Left/Right Arrow or Home/End while a tab has focus. On narrow windows, the tab bar scrolls horizontally.
+
+Switching tabs keeps unsaved edits. **Save settings** saves general settings from all tabs. **Cancel** discards those edits. MCP and Skills controls save separately; **Cancel** does not undo those saved changes.
+
 ## Remote MCP
 
-Open **Settings → Remote MCP servers** to add a public HTTPS Streamable HTTP endpoint and an optional bearer token. Select **Save disconnected** to save edits with the server disabled. Then select **Test and enable** to approve the exact endpoint and test the connection. A successful test enables its tools for new runs and shows a plain-text preview. Server actions save separately from **Save settings**; **Cancel** does not undo saved server changes.
+Open **Settings → MCP** to add a public HTTPS Streamable HTTP endpoint and an optional bearer token. Select **Save disconnected** to save edits with the server disabled. Then select **Test and enable** to approve the exact endpoint and test the connection. A successful test enables its tools for new runs and shows a plain-text preview. Server actions save separately from **Save settings**; **Cancel** does not undo saved server changes.
 
 Configure up to 8 servers. Select **New server** to add another. A run supports up to 32 tools across all enabled servers.
 
@@ -123,7 +129,7 @@ The Side Panel supports creating, resuming, renaming, and deleting sessions. Com
 
 Open **Account and settings** (the fixed avatar button in the top-right) and choose **Settings** to open settings in a full browser tab. The same structured menu contains credential, site-access, and conversation actions, with credential removal separated at the bottom. The settings page lets you choose a provider, model, thinking level (Minimal through Maximum), interface font, and a text size from 12 to 24 px using a slider. Save or close the page to return to the previous tab; the Side Panel conversation remains open. The selected model and thinking level are saved in each session, while the latest selections are used for new sessions. Explicitly changing either in Settings updates the opener's active session after any running response finishes. Settings persist across Side Panel and Chrome restarts. The system prompt and AGENTS-style instructions are also editable and apply to the next run. The extension does not discover instructions from the local filesystem.
 
-All built-in browser tools are enabled by default, including tools added by updates. Use **Settings → Available tools** to disable individual tools. Saved choices apply to the next run; confirmations and Chrome permissions still apply. On upgrade from the older enabled-tool list, the original 14 tools keep their saved choices and later additions are enabled. If you previously disabled one of those later additions, disable it again and save.
+All built-in browser tools are enabled by default, including tools added by updates. Use **Settings → Browser → Available tools** to disable individual tools. Saved choices apply to the next run; confirmations and Chrome permissions still apply. On upgrade from the older enabled-tool list, the original 14 tools keep their saved choices and later additions are enabled. If you previously disabled one of those later additions, disable it again and save.
 
 ## Development
 

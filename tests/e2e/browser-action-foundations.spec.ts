@@ -780,6 +780,7 @@ for (const mode of ["strict", "balanced", "convenient"] as const) {
       await configureMockCodex(harness)
       const settings = await harness.context.newPage()
       await settings.goto(`${harness.controller.url()}?view=settings`)
+      await settings.getByRole("tab", { name: "Browser", exact: true }).click()
       await settings.locator("#confirmation-mode").selectOption(mode)
       const closed = settings.waitForEvent("close")
       await settings.locator("#save-settings").click()

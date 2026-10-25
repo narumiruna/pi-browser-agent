@@ -125,6 +125,7 @@ test("reviewed skills disclose metadata before model-requested load and retain h
     await configureMockCodex(harness)
     const settings = await harness.context.newPage()
     await settings.goto(`${harness.controller.url()}?view=settings`)
+    await settings.getByRole("tab", { name: "Skills", exact: true }).click()
     const installed = await importSkill(settings)
     id = installed.id
     expect(requests).toHaveLength(0)
@@ -223,6 +224,7 @@ test("skill validation and explicit replacement are local and clearing sessions 
     await configureMockCodex(harness)
     const settings = await harness.context.newPage()
     await settings.goto(`${harness.controller.url()}?view=settings`)
+    await settings.getByRole("tab", { name: "Skills", exact: true }).click()
     await selectFile(settings, source(), "skill.md")
     await expect(settings.locator("#skills-status")).toContainText("named SKILL.md")
     await expect(settings.locator("#skills-import-reviewed")).toBeDisabled()
