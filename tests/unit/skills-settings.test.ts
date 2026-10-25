@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs"
 import { JSDOM } from "jsdom"
 import { afterEach, describe, expect, test, vi } from "vitest"
+import { initializeSettingsTabs } from "../../src/browser/sidepanel/settings-tabs.js"
 import { initializeSkillsSettings } from "../../src/browser/sidepanel/skills-settings.js"
 import { SKILL_LIMITS } from "../../src/browser/skills/format.js"
 import { SKILLS_STORAGE_KEY, type SkillRecord, SkillStore } from "../../src/browser/skills/store.js"
@@ -48,7 +49,10 @@ async function setup(initial: SkillRecord[] = []) {
     if (!element) throw new Error(`Missing test element: ${name}`)
     return element as T
   }
-  get<HTMLElement>("settings-page").hidden = false
+  const settingsPage = get<HTMLElement>("settings-page")
+  settingsPage.hidden = false
+  initializeSettingsTabs(settingsPage)
+  get<HTMLButtonElement>("settings-tab-skills").click()
   const data: Record<string, unknown> = {
     [SKILLS_STORAGE_KEY]: { version: 1, records: structuredClone(initial) },
   }

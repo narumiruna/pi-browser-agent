@@ -78,9 +78,11 @@ test("runs the production Side Panel from settings through a mocked browser-tool
     await harness.controller.locator("#open-settings").click()
     const settingsTab = await settingsTabPromise
     await expect(settingsTab).toHaveTitle("Settings · Pi Browser Agent")
+    await settingsTab.getByRole("tab", { name: "Browser", exact: true }).click()
     const clickTool = settingsTab.locator('#available-tools input[value="browser_click"]')
     await expect(clickTool).toBeChecked()
     await clickTool.uncheck()
+    await settingsTab.getByRole("tab", { name: "Appearance", exact: true }).click()
     await settingsTab.locator("#font-family").selectOption("monospace")
     await settingsTab.locator("#font-size").fill("18")
     await expect(settingsTab.locator("#font-size-value")).toHaveText("18 px")
@@ -173,6 +175,7 @@ test("runs the production Side Panel from settings through a mocked browser-tool
     await expect(harness.controller.locator("#sessions option")).toHaveCount(1)
     const savedSettingsTab = await harness.context.newPage()
     await savedSettingsTab.goto(`${harness.controller.url()}?view=settings`)
+    await savedSettingsTab.getByRole("tab", { name: "Browser", exact: true }).click()
     await expect(
       savedSettingsTab.locator('#available-tools input[value="browser_click"]'),
     ).not.toBeChecked()

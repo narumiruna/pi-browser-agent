@@ -32,6 +32,7 @@ test("enables additions after a legacy upgrade and preserves a new-tool opt-out 
     await expect(settings.locator('section[aria-labelledby="model-title"] p').first()).toHaveText(
       "Choose the provider and model for this session and new conversations.",
     )
+    await settings.getByRole("tab", { name: "Browser", exact: true }).click()
     await expect(settings.locator('#confirmation-mode option[value="strict"]')).toHaveText(
       "Strict — never reuse approvals",
     )
@@ -64,6 +65,7 @@ test("enables additions after a legacy upgrade and preserves a new-tool opt-out 
     await harness.restart()
     const savedSettings = await harness.context.newPage()
     await savedSettings.goto(`${harness.controller.url()}?view=settings`)
+    await savedSettings.getByRole("tab", { name: "Browser", exact: true }).click()
     await expect(
       savedSettings.locator('#available-tools input[value="browser_set_checked"]'),
     ).not.toBeChecked()

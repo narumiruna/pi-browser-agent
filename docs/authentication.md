@@ -37,7 +37,7 @@ If an OAuth access token is near expiry, refresh occurs inside `CredentialStore.
 
 ## Remote MCP authentication
 
-Remote MCP has separate configuration and token stores; it never uses provider credentials. **Settings → Remote MCP servers** accepts a public HTTPS endpoint and an optional bearer token. **Test and enable** requests Chrome host access from its click gesture and approves the exact endpoint, including its port and path. A successful connection test enables the server for new runs. All tool calls require a separate fresh confirmation.
+Remote MCP has separate configuration and token stores; it never uses provider credentials. **Settings → MCP** accepts a public HTTPS endpoint and an optional bearer token. **Test and enable** requests Chrome host access from its click gesture and approves the exact endpoint, including its port and path. A successful connection test enables the server for new runs. All tool calls require a separate fresh confirmation.
 
 A blank token field preserves an existing token only at an unchanged endpoint. **Remove existing token** explicitly removes it. Saved endpoint changes clear the old token. Saving edits disables the server until **Test and enable** succeeds again. Invalid or missing token records fail closed instead of falling back to unauthenticated access. Requests omit cookies, reject redirects, and perform no OAuth or automatic auth discovery. Authentication failures expose a fixed error, never server error text.
 

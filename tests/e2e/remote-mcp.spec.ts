@@ -39,6 +39,7 @@ for (const sse of [false, true]) {
       ])
       const settings = await harness.context.newPage()
       await settings.goto(`${harness.controller.url()}?view=settings`)
+      await settings.getByRole("tab", { name: "MCP", exact: true }).click()
       await settings.locator("#mcp-name").fill("Fixture")
       await settings.locator("#mcp-endpoint").fill(fixture.endpoint)
       await settings.locator("#mcp-token").fill(TOKEN)
@@ -185,6 +186,7 @@ test("remote MCP rejects redirects and server origin denial without credential f
   try {
     const settings = await harness.context.newPage()
     await settings.goto(`${harness.controller.url()}?view=settings`)
+    await settings.getByRole("tab", { name: "MCP", exact: true }).click()
     await settings.locator("#mcp-name").fill("Fixture")
     await settings.locator("#mcp-endpoint").fill(fixture.endpoint)
     await settings.locator("#mcp-token").fill(TOKEN)

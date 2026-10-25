@@ -39,6 +39,7 @@ test("Stop cancels discovery before any model request and permits a later new ru
     await configureMockCodex(harness)
     const settings = await harness.context.newPage()
     await settings.goto(`${harness.controller.url()}?view=settings`)
+    await settings.getByRole("tab", { name: "MCP", exact: true }).click()
     await saveServer(settings, fixture.endpoint)
     await grantMcpHost(harness.context, harness.extensionId)
     await settings.locator("#mcp-connect").click()
@@ -87,6 +88,7 @@ test("optional MCP host permission can be granted and revoked in Chrome", async 
   try {
     const settings = await harness.context.newPage()
     await settings.goto(`${harness.controller.url()}?view=settings`)
+    await settings.getByRole("tab", { name: "MCP", exact: true }).click()
     await saveServer(settings, fixture.endpoint)
     await grantMcpHost(harness.context, harness.extensionId)
     await settings.locator("#mcp-connect").click()
@@ -126,6 +128,7 @@ for (const change of [
       await configureMockCodex(harness)
       const settings = await harness.context.newPage()
       await settings.goto(`${harness.controller.url()}?view=settings`)
+      await settings.getByRole("tab", { name: "MCP", exact: true }).click()
       await saveServer(settings, fixture.endpoint)
       await grantMcpHost(harness.context, harness.extensionId)
       await settings.locator("#mcp-connect").click()

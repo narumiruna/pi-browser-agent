@@ -16,6 +16,7 @@ import {
 import { AuthenticationController } from "./authentication.js"
 import { initializeMcpSettings } from "./mcp-settings.js"
 import { SearchableSelect } from "./searchable-select.js"
+import { initializeSettingsTabs } from "./settings-tabs.js"
 import { initializeSkillsSettings } from "./skills-settings.js"
 import { applyAppearance, element, run, setErrorOutput } from "./ui.js"
 
@@ -277,6 +278,7 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
   await initializeMcpSettings()
   await initializeSkillsSettings()
   applyAppearance(configuration.appSettings.fontFamily, configuration.appSettings.fontSize)
+  initializeSettingsTabs(page)
   page.hidden = false
   await authentication.refresh()
   closeButton.focus()

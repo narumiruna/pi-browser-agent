@@ -59,6 +59,7 @@ for (const [mode, promptsAgain, promptsAfterRestart] of [
       await configureMockCodex(harness)
       const settingsTab = await harness.context.newPage()
       await settingsTab.goto(`${harness.controller.url()}?view=settings`)
+      await settingsTab.getByRole("tab", { name: "Browser", exact: true }).click()
       await expect(settingsTab.locator("#confirmation-mode")).toHaveValue("balanced")
       await settingsTab.locator("#confirmation-mode").selectOption(mode)
       const settingsClosed = settingsTab.waitForEvent("close")
@@ -104,6 +105,7 @@ for (const [mode, promptsAgain, promptsAfterRestart] of [
       if (mode === "convenient") {
         const revocationTab = await harness.context.newPage()
         await revocationTab.goto(`${harness.controller.url()}?view=settings`)
+        await revocationTab.getByRole("tab", { name: "Browser", exact: true }).click()
         await revocationTab.locator("#clear-confirmation-approvals").click()
         await expect(revocationTab.locator("#confirmation-approvals-status")).toHaveText(
           "Remembered approvals cleared",
@@ -114,6 +116,7 @@ for (const [mode, promptsAgain, promptsAfterRestart] of [
         for (const nextMode of ["strict", "convenient"]) {
           const modeTab = await harness.context.newPage()
           await modeTab.goto(`${harness.controller.url()}?view=settings`)
+          await modeTab.getByRole("tab", { name: "Browser", exact: true }).click()
           await modeTab.locator("#confirmation-mode").selectOption(nextMode)
           const closed = modeTab.waitForEvent("close")
           await modeTab.locator("#save-settings").click()

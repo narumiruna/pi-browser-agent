@@ -6,6 +6,7 @@ import { CODEX_RESPONSES_URL, finalTextResponse } from "./support/mock-codex.js"
 test.setTimeout(120_000)
 
 async function saveServer(page: Page, endpoint: string): Promise<void> {
+  await page.getByRole("tab", { name: "MCP", exact: true }).click()
   await page.locator("#mcp-name").fill("Review fixture")
   await page.locator("#mcp-endpoint").fill(endpoint)
   await page.locator("#mcp-token").fill("review-private-token")
@@ -153,6 +154,7 @@ test("shows safe local validation messages without any remote request", async ()
   try {
     const settings = await harness.context.newPage()
     await settings.goto(`${harness.controller.url()}?view=settings`)
+    await settings.getByRole("tab", { name: "MCP", exact: true }).click()
     await settings.locator("#mcp-endpoint").fill(fixture.endpoint)
     await settings.locator("#mcp-save").click()
     await expect(settings.locator("#mcp-status")).toContainText("server name")
@@ -297,6 +299,7 @@ test("MCP server edits require explicit saves and Cancel keeps saved servers", a
   try {
     const settings = await harness.context.newPage()
     await settings.goto(`${harness.controller.url()}?view=settings`)
+    await settings.getByRole("tab", { name: "MCP", exact: true }).click()
     const section = settings.locator('section[aria-labelledby="mcp-title"]')
     await expect(section).toContainText(
       "Configure up to 8 public HTTPS Streamable HTTP servers. Select New server to add another. A run supports up to 32 tools across all enabled servers.",
@@ -357,6 +360,7 @@ test("MCP server edits require explicit saves and Cancel keeps saved servers", a
 
     const reopened = await harness.context.newPage()
     await reopened.goto(`${harness.controller.url()}?view=settings`)
+    await reopened.getByRole("tab", { name: "MCP", exact: true }).click()
     await expect(reopened.locator("#mcp-server option")).toHaveText([
       "New server",
       "Updated first server",
@@ -393,6 +397,7 @@ test("a stale Settings tab cannot replace or remove newer server data or its tok
     const id = await first.locator("#mcp-server").inputValue()
     const second = await harness.context.newPage()
     await second.goto(`${harness.controller.url()}?view=settings`)
+    await second.getByRole("tab", { name: "MCP", exact: true }).click()
     await second.locator("#mcp-server").selectOption(id)
     await second.locator("#mcp-name").fill("Newer name")
     await second.locator("#mcp-endpoint").fill(`${fixture.endpoint}/new`)

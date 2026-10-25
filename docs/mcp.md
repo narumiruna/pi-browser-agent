@@ -2,7 +2,7 @@
 
 ## Setup and use
 
-1. Open **Settings → Remote MCP servers**.
+1. Open **Settings → MCP**.
 2. Enter a name, a public HTTPS Streamable HTTP endpoint, and an optional bearer token of 16 to 4096 characters without spaces. Shorter tokens are rejected before storage or a connection. Replace or remove any older short token in Settings. Do not put credentials in the URL. Query strings and fragments are not supported.
 3. Select **Save disconnected** to save server edits with the server disabled. Field edits do not save automatically. Server actions save separately from **Save settings**. **Cancel** does not undo saved server changes.
 4. Select **Test and enable** to approve that exact endpoint and request Chrome host access. The server stays disabled during the connection test. Successful discovery and cleanup automatically enable it for new runs and show a plain-text tool preview. A failed test leaves it disabled. The test can discover tools and close its session, but cannot call a tool.
