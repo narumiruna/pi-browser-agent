@@ -48,17 +48,19 @@ Pi Browser Agent registers the browser-compatible built-in `pi-ai` providers and
 
 Settings groups controls into **Model**, **Tools**, **MCP**, **Skills**, **Appearance**, and **Instructions** tabs. Tools contains browser tools and action confirmations. Use Left/Right Arrow or Home/End while a tab has focus. On narrow windows, the tab bar scrolls horizontally.
 
-Switching tabs keeps unsaved edits. **Save settings** saves general settings from all tabs. **Cancel** discards those edits. MCP and Skills controls save separately; **Cancel** does not undo those saved changes.
+Switching tabs keeps unsaved edits. **Save general settings** saves general controls from all tabs. If MCP edits or reviewed skill content are pending, it asks before discarding those drafts. Back, Escape, and **Cancel** also ask before discarding unsaved changes. Browser reload and close use Chrome's unsaved-change warning. MCP and Skills controls save separately; discarding drafts does not undo those saved changes.
+
+Confirmation mode appears before the tool list. MCP and Skills show their primary controls before expandable requirements and data-sharing help. Font family and text size preview immediately in Settings; discarding changes restores the saved appearance.
 
 ## Remote MCP
 
-Open **Settings → MCP** to add a public HTTPS Streamable HTTP endpoint and an optional bearer token. Select **Save disconnected** to save edits with the server disabled. Then select **Test and enable** to approve the exact endpoint and test the connection. A successful test enables its tools for new runs and shows a plain-text preview. Server actions save separately from **Save settings**; **Cancel** does not undo saved server changes.
+Open **Settings → MCP** to add a public HTTPS Streamable HTTP endpoint and an optional bearer token. Select **Save disconnected** to save edits with the server disabled. Then select **Test and enable** to approve the exact endpoint and test the connection. A successful test enables its tools for new runs and shows a plain-text preview. Server actions save separately from **Save general settings**; **Cancel** does not undo saved server changes.
 
 Configure up to 8 servers. Select **New server** to add another. A run supports up to 32 tools across all enabled servers.
 
 MCP tools also work without a readable page. Every call requires fresh confirmation in every confirmation mode. Arguments go to the configured server; tool metadata and results can go to the selected model provider and saved session. Cookies, redirects, OAuth, stdio, local bridges, resources, and non-text result blocks are not supported. Closing the panel or changing server settings cancels local work; interrupted calls are never replayed automatically. Cancellation cannot undo server-side effects.
 
-Use **Disable** to stop a server, or **Remove server and token** to delete its configuration and token. See [remote MCP support and limits](docs/mcp.md). Remote MCP is separate from page-provided WebMCP.
+Use **Disable** to stop a server, or **Remove server and token** to confirm deletion of its configuration and token. See [remote MCP support and limits](docs/mcp.md). Remote MCP is separate from page-provided WebMCP.
 
 ## Browser skills
 

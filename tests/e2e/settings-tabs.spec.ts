@@ -32,7 +32,9 @@ test("Settings tabs support mouse selection, roving focus, and keyboard navigati
     for (const name of names) {
       await page.getByRole("tab", { name, exact: true }).click()
       await expectActive(page, name)
-      await expect(page.getByRole("button", { name: "Save settings", exact: true })).toBeVisible()
+      await expect(
+        page.getByRole("button", { name: "Save general settings", exact: true }),
+      ).toBeVisible()
       await expect(page.getByRole("button", { name: "Cancel", exact: true })).toBeVisible()
     }
     await page.getByRole("tab", { name: "Model", exact: true }).click()
@@ -61,7 +63,7 @@ test("Settings tabs support mouse selection, roving focus, and keyboard navigati
   }
 })
 
-test("tab navigation keeps drafts and Save settings saves controls from every tab", async () => {
+test("tab navigation keeps drafts and Save general settings saves controls from every tab", async () => {
   const harness = await launchExtensionHarness()
   try {
     const page = await openSettings(harness)
@@ -89,8 +91,20 @@ test("tab navigation keeps drafts and Save settings saves controls from every ta
     await page.getByRole("tab", { name: "MCP", exact: true }).click()
     await expect(page.locator("#mcp-name")).toHaveValue("Unsaved server")
     expect(await read()).toEqual(initial)
+    await page.getByRole("button", { name: "Save general settings", exact: true }).click()
+    await expect(page.locator("#settings-confirm-dialog")).toBeVisible()
+    await expect(page.locator("#settings-confirm-title")).toHaveText(
+      "Unsaved MCP or Skills changes",
+    )
+    await expect(page.locator("#settings-confirm-cancel")).toBeFocused()
+    await page.locator("#settings-confirm-cancel").click()
+    await expect(page.locator("#settings-confirm-dialog")).toBeHidden()
+    await expect(page.locator("#mcp-name")).toHaveValue("Unsaved server")
+    expect(await read()).toEqual(initial)
+    await page.getByRole("button", { name: "Save general settings", exact: true }).click()
+    await expect(page.locator("#settings-confirm-action")).toHaveText("Discard drafts and save")
     const closed = page.waitForEvent("close")
-    await page.getByRole("button", { name: "Save settings", exact: true }).click()
+    await page.locator("#settings-confirm-action").click()
     await closed
     const saved = await read()
     expect(saved).toMatchObject({
@@ -167,7 +181,10 @@ test("tab changes preserve skill review and Cancel keeps independent MCP and ski
     await expect(page.locator("#mcp-status")).toContainText("Saved disconnected")
     await page.getByRole("tab", { name: "Model", exact: true }).click()
     const closed = page.waitForEvent("close")
-    await page.getByRole("button", { name: "Cancel", exact: true }).click()
+    await page.locator("#cancel-settings").click()
+    await expect(page.locator("#settings-confirm-dialog")).toBeVisible()
+    await expect(page.locator("#settings-confirm-title")).toHaveText("Discard unsaved changes?")
+    await page.locator("#settings-confirm-action").click()
     await closed
     const saved = await read()
     expect(saved.piBrowserAgentSettings).toEqual(initial.piBrowserAgentSettings)
@@ -225,7 +242,7 @@ for (const colorScheme of ["light", "dark"] as const) {
             .evaluate((content) => content.scrollWidth <= content.clientWidth),
         ).toBe(true)
         await expect(
-          page.getByRole("button", { name: "Save settings", exact: true }),
+          page.getByRole("button", { name: "Save general settings", exact: true }),
         ).toBeInViewport()
         await expect(page.getByRole("button", { name: "Cancel", exact: true })).toBeInViewport()
       }

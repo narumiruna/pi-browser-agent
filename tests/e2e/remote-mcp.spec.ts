@@ -204,6 +204,10 @@ test("remote MCP rejects redirects and server origin denial without credential f
     await expect(settings.locator("#mcp-status")).toContainText("MCP request failed")
     expect(await settings.locator("body").textContent()).not.toContain(TOKEN)
     await settings.locator("#mcp-remove").click()
+    await expect(settings.locator("#settings-confirm-dialog")).toBeVisible()
+    await expect(settings.locator("#settings-confirm-message")).toContainText("Fixture")
+    await expect(settings.locator("#settings-confirm-action")).toHaveText("Remove server and token")
+    await settings.locator("#settings-confirm-action").click()
     await expect(settings.locator("#mcp-status")).toContainText("New server")
     expect(
       await settings.evaluate(

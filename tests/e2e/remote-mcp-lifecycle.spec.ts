@@ -174,6 +174,14 @@ for (const change of [
           break
         case "remove-in-flight":
           await settings.locator("#mcp-remove").click()
+          await expect(settings.locator("#settings-confirm-dialog")).toBeVisible()
+          await expect(settings.locator("#settings-confirm-message")).toContainText(
+            "Lifecycle fixture",
+          )
+          await expect(settings.locator("#settings-confirm-action")).toHaveText(
+            "Remove server and token",
+          )
+          await settings.locator("#settings-confirm-action").click()
           break
         case "close-in-flight":
           await harness.controller.close()

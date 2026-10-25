@@ -2,10 +2,12 @@ import { type ParsedSkill, parseSkill, SKILL_LIMITS } from "../skills/format.js"
 import { SKILLS_STORAGE_KEY, type SkillRecord, SkillStore } from "../skills/store.js"
 import { element, setErrorOutput } from "./ui.js"
 
-/** Skill controls save independently of the general Settings form. */
-export async function initializeSkillsSettings(): Promise<void> {
+/** Skill controls save independently. Report unsaved reviews and pending operations. */
+export async function initializeSkillsSettings(): Promise<() => boolean> {
   const store = new SkillStore()
   const select = element<HTMLSelectElement>("skills-list")
+  const installedControls = element<HTMLElement>("skills-installed-controls")
+  const emptyState = element<HTMLElement>("skills-empty")
   const file = element<HTMLInputElement>("skills-file-input")
   const installedPreview = element<HTMLElement>("skills-installed-preview")
   const preview = element<HTMLElement>("skills-preview")
@@ -36,6 +38,8 @@ export async function initializeSkillsSettings(): Promise<void> {
 
   function updateControls(): void {
     const record = selected()
+    installedControls.hidden = records.length === 0
+    emptyState.hidden = records.length !== 0
     select.disabled = file.disabled = busy
     enabled.disabled = deleteButton.disabled = busy || !record
     if (!busy) enabled.checked = record?.enabled ?? false
@@ -229,7 +233,7 @@ export async function initializeSkillsSettings(): Promise<void> {
       if (disposed) return
       clearReview()
       await refresh("")
-      focusAfterSave = select
+      focusAfterSave = records.length ? select : file
       status.textContent = "Skill deleted. Previous session history is retained."
     })
   })
@@ -257,4 +261,5 @@ export async function initializeSkillsSettings(): Promise<void> {
     await refresh("")
     if (!disposed) status.textContent = "Skills save independently. Imported skills start disabled."
   })
+  return () => !disposed && (busy || reviewed !== undefined)
 }

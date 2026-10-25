@@ -16,6 +16,7 @@ import {
 import { AuthenticationController } from "./authentication.js"
 import { initializeMcpSettings } from "./mcp-settings.js"
 import { SearchableSelect } from "./searchable-select.js"
+import { initializeSettingsConfirmation } from "./settings-confirmation.js"
 import { initializeSettingsTabs } from "./settings-tabs.js"
 import { initializeSkillsSettings } from "./skills-settings.js"
 import { applyAppearance, element, run, setErrorOutput } from "./ui.js"
@@ -33,6 +34,7 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
   const errorOutput = element<HTMLElement>("settings-error")
   const page = element<HTMLElement>("settings-page")
   const closeButton = element<HTMLButtonElement>("close-settings")
+  const saveButton = element<HTMLButtonElement>("save-settings")
   const providerSelect = element<HTMLSelectElement>("provider")
   const modelSelect = element<HTMLSelectElement>("model")
   const modelCapabilities = element<HTMLElement>("model-capabilities")
@@ -78,6 +80,12 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
   const setError = (error?: unknown): void => setErrorOutput(errorOutput, error)
   let settingsModelChanged = false
   let settingsThinkingChanged = false
+  let savedFormState = ""
+  let allowClosing = false
+  let savingGeneral = false
+  let hasMcpDraft = () => false
+  let hasSkillDraft = () => false
+  const confirmSettingsAction = initializeSettingsConfirmation()
   let authentication: AuthenticationController | undefined
   const configuration = new BrowserConfiguration((event) => authentication?.onAuthEvent(event))
   let initialSelection = configuration.defaultModel
@@ -143,10 +151,30 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
     return Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, value))
   }
 
-  function applyFontSize(fontSize: number): void {
-    document.documentElement.dataset.fontSize = String(fontSize)
-    document.documentElement.style.setProperty("--app-font-size", `${fontSize}px`)
+  function previewAppearance(): void {
+    const fontSize = selectedFontSize()
+    applyAppearance(selectedFontFamily(), fontSize)
     fontSizeOutput.value = `${fontSize} px`
+  }
+
+  function generalFormState(): string {
+    return JSON.stringify([
+      providerSelect.value,
+      modelSelect.value,
+      thinkingLevelSelect.value,
+      confirmationModeSelect.value,
+      toolCheckboxes.map((checkbox) => checkbox.checked),
+      fontFamilySelect.value,
+      fontSizeInput.value,
+      systemPrompt.value,
+      agentInstructions.value,
+    ])
+  }
+
+  function hasUnsavedChanges(): boolean {
+    return (
+      savingGeneral || generalFormState() !== savedFormState || hasMcpDraft() || hasSkillDraft()
+    )
   }
 
   function populateSettings(): void {
@@ -165,9 +193,11 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
     agentInstructions.value = configuration.appSettings.agentInstructions
     settingsModelChanged = false
     settingsThinkingChanged = false
+    savedFormState = generalFormState()
   }
 
   function closeSettingsPage(): void {
+    allowClosing = true
     void chrome.tabs
       .getCurrent()
       .then(async (tab) => {
@@ -178,7 +208,18 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
       .finally(() => window.close())
   }
 
-  function discardSettingsChanges(): void {
+  async function discardSettingsChanges(): Promise<void> {
+    if (savingGeneral || allowClosing) return
+    if (
+      hasUnsavedChanges() &&
+      !(await confirmSettingsAction({
+        title: "Discard unsaved changes?",
+        message:
+          "Unsaved general settings, MCP edits, and reviewed skill content will be discarded. Saved MCP and Skills changes will remain.",
+        confirmLabel: "Discard changes",
+      }))
+    )
+      return
     populateSettings()
     applyAppearance(configuration.appSettings.fontFamily, configuration.appSettings.fontSize)
     closeSettingsPage()
@@ -209,65 +250,102 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
   thinkingLevelSelect.addEventListener("change", () => {
     settingsThinkingChanged = true
   })
-  fontSizeInput.addEventListener("input", () => applyFontSize(selectedFontSize()))
+  fontSizeInput.addEventListener("input", previewAppearance)
+  fontFamilySelect.addEventListener("change", previewAppearance)
   element<HTMLButtonElement>("clear-confirmation-approvals").addEventListener("click", () => {
     void run(async () => {
       await clearConfirmationApprovals()
       confirmationStatus.textContent = "Remembered approvals cleared"
     }, setError)
   })
-  closeButton.addEventListener("click", discardSettingsChanges)
-  element<HTMLButtonElement>("cancel-settings").addEventListener("click", discardSettingsChanges)
-  element<HTMLButtonElement>("save-settings").addEventListener("click", () => {
+  closeButton.addEventListener("click", () => void run(discardSettingsChanges, setError))
+  element<HTMLButtonElement>("cancel-settings").addEventListener(
+    "click",
+    () => void run(discardSettingsChanges, setError),
+  )
+  saveButton.addEventListener("click", () => {
+    if (savingGeneral || allowClosing) return
     void run(async () => {
-      const applyModelToActiveSession = settingsModelChanged
-      const applyThinkingToActiveSession = settingsThinkingChanged
-      let providerId = providerSelect.value
-      let modelId = modelSelect.value
-      await configuration.syncSettings()
-      if (!applyModelToActiveSession) {
-        providerId = configuration.appSettings.modelProvider
-        modelId = configuration.appSettings.modelId
-      }
-      if (!modelId) throw new Error("Configure the selected provider and choose a model")
+      if (
+        (hasMcpDraft() || hasSkillDraft()) &&
+        !(await confirmSettingsAction({
+          title: "Unsaved MCP or Skills changes",
+          message:
+            "Save general settings does not save MCP edits or import a reviewed skill. Use their save controls first, or discard those drafts and continue.",
+          confirmLabel: "Discard drafts and save",
+        }))
+      )
+        return
+      if (savingGeneral || allowClosing) return
+      savingGeneral = true
+      page.inert = true
+      page.setAttribute("aria-busy", "true")
+      saveButton.textContent = "Saving…"
+      try {
+        const applyModelToActiveSession = settingsModelChanged
+        const applyThinkingToActiveSession = settingsThinkingChanged
+        let providerId = providerSelect.value
+        let modelId = modelSelect.value
+        await configuration.syncSettings()
+        if (!applyModelToActiveSession) {
+          providerId = configuration.appSettings.modelProvider
+          modelId = configuration.appSettings.modelId
+        }
+        if (!modelId) throw new Error("Configure the selected provider and choose a model")
 
-      const fontFamily = selectedFontFamily()
-      const fontSize = selectedFontSize()
-      const confirmationMode = selectedConfirmationMode()
-      if (confirmationMode !== configuration.appSettings.confirmationMode) {
-        await clearConfirmationApprovals()
+        const fontFamily = selectedFontFamily()
+        const fontSize = selectedFontSize()
+        const confirmationMode = selectedConfirmationMode()
+        if (confirmationMode !== configuration.appSettings.confirmationMode) {
+          await clearConfirmationApprovals()
+        }
+        await configuration.updateSettings({
+          confirmationMode,
+          enabledTools: toolCheckboxes
+            .filter((checkbox) => checkbox.checked)
+            .map((checkbox) => checkbox.value),
+          systemPrompt: systemPrompt.value,
+          agentInstructions: agentInstructions.value,
+          fontFamily,
+          fontSize,
+          modelProvider: providerId,
+          modelId,
+          thinkingLevel: applyThinkingToActiveSession
+            ? selectedThinkingLevel()
+            : configuration.appSettings.thinkingLevel,
+        })
+        savedFormState = generalFormState()
+        await chrome.runtime
+          .sendMessage({
+            kind: "event",
+            name: "settings.saved",
+            payload: { settingsContextId, applyModelToActiveSession, applyThinkingToActiveSession },
+          } satisfies RuntimeEvent)
+          .catch(() => undefined)
+        applyAppearance(fontFamily, fontSize)
+        await authentication?.refresh()
+        closeSettingsPage()
+      } finally {
+        savingGeneral = false
+        if (!allowClosing) {
+          page.inert = false
+          page.removeAttribute("aria-busy")
+          saveButton.textContent = "Save general settings"
+          saveButton.focus()
+        }
       }
-      await configuration.updateSettings({
-        confirmationMode,
-        enabledTools: toolCheckboxes
-          .filter((checkbox) => checkbox.checked)
-          .map((checkbox) => checkbox.value),
-        systemPrompt: systemPrompt.value,
-        agentInstructions: agentInstructions.value,
-        fontFamily,
-        fontSize,
-        modelProvider: providerId,
-        modelId,
-        thinkingLevel: applyThinkingToActiveSession
-          ? selectedThinkingLevel()
-          : configuration.appSettings.thinkingLevel,
-      })
-      await chrome.runtime
-        .sendMessage({
-          kind: "event",
-          name: "settings.saved",
-          payload: { settingsContextId, applyModelToActiveSession, applyThinkingToActiveSession },
-        } satisfies RuntimeEvent)
-        .catch(() => undefined)
-      applyAppearance(fontFamily, fontSize)
-      await authentication?.refresh()
-      closeSettingsPage()
     }, setError)
   })
   document.addEventListener("keydown", (event) => {
-    if (event.key !== "Escape" || document.querySelector("dialog[open]") !== null) return
+    if (
+      event.key !== "Escape" ||
+      savingGeneral ||
+      allowClosing ||
+      document.querySelector("dialog[open]") !== null
+    )
+      return
     event.preventDefault()
-    discardSettingsChanges()
+    void run(discardSettingsChanges, setError)
   })
   window.addEventListener("pagehide", () => authentication?.abort())
 
@@ -275,11 +353,16 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
   document.body.dataset.view = "settings"
   initialSelection = await configuration.initialize(initialModel)
   populateSettings()
-  await initializeMcpSettings()
-  await initializeSkillsSettings()
+  hasMcpDraft = await initializeMcpSettings(confirmSettingsAction)
+  hasSkillDraft = await initializeSkillsSettings()
   applyAppearance(configuration.appSettings.fontFamily, configuration.appSettings.fontSize)
   initializeSettingsTabs(page)
   page.hidden = false
+  window.addEventListener("beforeunload", (event) => {
+    if (allowClosing || !hasUnsavedChanges()) return
+    event.preventDefault()
+    event.returnValue = ""
+  })
   await authentication.refresh()
   closeButton.focus()
 }
