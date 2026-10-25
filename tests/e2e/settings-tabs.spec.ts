@@ -1,7 +1,7 @@
 import { expect, type Page, test } from "@playwright/test"
 import { type ExtensionHarness, launchExtensionHarness } from "./support/extension-harness.js"
 
-const names = ["Model", "Browser", "MCP", "Skills", "Appearance", "Instructions"] as const
+const names = ["Model", "Tools", "MCP", "Skills", "Appearance", "Instructions"] as const
 
 async function openSettings(harness: ExtensionHarness): Promise<Page> {
   const page = await harness.context.newPage()
@@ -42,7 +42,7 @@ test("Settings tabs support mouse selection, roving focus, and keyboard navigati
     await page.keyboard.press("ArrowRight")
     await expectActive(page, "Model")
     await page.keyboard.press("ArrowRight")
-    await expectActive(page, "Browser")
+    await expectActive(page, "Tools")
     await expect(page.getByRole("heading", { name: "Available tools", exact: true })).toBeVisible()
     await expect(
       page.getByRole("heading", { name: "Browser action confirmations", exact: true }),
@@ -74,7 +74,7 @@ test("tab navigation keeps drafts and Save settings saves controls from every ta
     await page.getByRole("tab", { name: "Instructions", exact: true }).click()
     await page.locator("#system-prompt").fill("Cross-tab system instructions")
     await page.locator("#agent-instructions").fill("Cross-tab agent instructions")
-    await page.getByRole("tab", { name: "Browser", exact: true }).click()
+    await page.getByRole("tab", { name: "Tools", exact: true }).click()
     await page.locator('#available-tools input[value="browser_click"]').uncheck()
     await page.locator("#confirmation-mode").selectOption("strict")
     await page.getByRole("tab", { name: "Appearance", exact: true }).click()
@@ -107,7 +107,7 @@ test("tab navigation keeps drafts and Save settings saves controls from every ta
     expect(saved.piBrowserAgentMcpServersV1).toEqual(initial.piBrowserAgentMcpServersV1)
     const reopened = await openSettings(harness)
     await expect(reopened.locator("#thinking-level")).toHaveValue("high")
-    await reopened.getByRole("tab", { name: "Browser", exact: true }).click()
+    await reopened.getByRole("tab", { name: "Tools", exact: true }).click()
     await expect(
       reopened.locator('#available-tools input[value="browser_click"]'),
     ).not.toBeChecked()
