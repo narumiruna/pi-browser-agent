@@ -9,6 +9,8 @@ interface TestTab {
 
 interface ListenerMap {
   installed?: () => void
+  startup?: () => void
+  storageChanged?: (changes: Record<string, chrome.storage.StorageChange>, area: string) => void
   activated?: (activeInfo: { tabId: number; windowId: number }) => void
   updated?: (
     tabId: number,
@@ -32,6 +34,7 @@ afterEach(() => {
 describe("service worker visible-tab targeting", () => {
   test("tracks the visible page, rejects stale contexts, and persists a sent selection", async () => {
     const listeners: ListenerMap = {}
+    vi.stubGlobal("navigator", { languages: ["zh-TW"], language: "zh-TW" })
     const local: Record<string, unknown> = {
       piBrowserAgentApprovedHostPermissions: [
         "https://destination.test/*",
@@ -39,7 +42,7 @@ describe("service worker visible-tab targeting", () => {
       ],
     }
     const session: Record<string, unknown> = {}
-    const create = vi.fn()
+    const create = vi.fn((_options: unknown, callback?: () => void) => callback?.())
     const open = vi.fn(async () => undefined)
     const sendMessage = vi.fn(async (_message: unknown) => {
       throw new Error("No Side Panel receiver")
@@ -87,6 +90,12 @@ describe("service worker visible-tab targeting", () => {
     vi.stubGlobal("chrome", {
       commands: { onCommand: { addListener: vi.fn() } },
       storage: {
+        onChanged: {
+          addListener: vi.fn(
+            (listener: NonNullable<ListenerMap["storageChanged"]>) =>
+              (listeners.storageChanged = listener),
+          ),
+        },
         local: {
           get: vi.fn(async (key: string) => ({ [key]: local[key] })),
           set: vi.fn(async (items: Record<string, unknown>) => Object.assign(local, items)),
@@ -114,6 +123,7 @@ describe("service worker visible-tab targeting", () => {
         onInstalled: {
           addListener: vi.fn((listener: () => void) => (listeners.installed = listener)),
         },
+        onStartup: { addListener: vi.fn((listener: () => void) => (listeners.startup = listener)) },
         onMessage: {
           addListener: vi.fn(
             (listener: NonNullable<ListenerMap["runtimeMessage"]>) =>
@@ -677,10 +687,64 @@ describe("service worker visible-tab targeting", () => {
       })
     })
 
+    // Worker initialization creates the menu without requiring installation/update.
+    await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(1))
+    expect(create).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        id: "pi-browser-agent-send-selection",
+        title: "Send selection to Pi Browser Agent",
+        contexts: ["selection"],
+      }),
+      expect.any(Function),
+    )
     listeners.installed?.()
-    expect(create).toHaveBeenCalledTimes(1)
-    expect(create).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "pi-browser-agent-send-selection", contexts: ["selection"] }),
+    await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(2))
+    const { translate } = await import("../../src/browser/i18n/index.js")
+    local.piBrowserAgentSettings = { language: "ja" }
+    listeners.storageChanged?.(
+      { piBrowserAgentSettings: { oldValue: { language: "en" }, newValue: { language: "ja" } } },
+      "local",
+    )
+    await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(3))
+    expect(create).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        id: "pi-browser-agent-send-selection",
+        title: translate("ja", "Send selection to Pi Browser Agent"),
+        contexts: ["selection"],
+      }),
+      expect.any(Function),
+    )
+    listeners.startup?.()
+    await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(4))
+    // Unrelated settings and non-local changes cannot request permissions or rebuild the menu.
+    listeners.storageChanged?.(
+      {
+        piBrowserAgentSettings: {
+          oldValue: { language: "ja" },
+          newValue: { language: "ja", fontSize: 18 },
+        },
+      },
+      "local",
+    )
+    listeners.storageChanged?.(
+      { piBrowserAgentSettings: { newValue: { language: "en" } } },
+      "session",
+    )
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(create).toHaveBeenCalledTimes(4)
+    local.piBrowserAgentSettings = { language: "auto" }
+    listeners.storageChanged?.(
+      { piBrowserAgentSettings: { oldValue: { language: "ja" }, newValue: { language: "auto" } } },
+      "local",
+    )
+    await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(5))
+    expect(create).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        id: "pi-browser-agent-send-selection",
+        title: translate("zh-TW", "Send selection to Pi Browser Agent"),
+        contexts: ["selection"],
+      }),
+      expect.any(Function),
     )
 
     const takeSelection = (requestId: string, windowId: number): Promise<unknown> =>

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Pi Browser Agent</title>
   </head>
-  <body data-state="idle" data-view="conversation">
+  <body data-state="idle" data-view="conversation" data-conversation-ready="false">
     <header class="app-header">
       <div class="header-row">
         <section class="session-row" aria-label="Conversations">
@@ -169,7 +169,7 @@
               class="icon-button element-picker-button"
               aria-label="Select page element"
               aria-pressed="false"
-              title="選取網頁元素"
+              title="Select page element"
             >
               <svg class="radix-icon" viewBox="0 0 15 15" aria-hidden="true">
                 <path d="M2 1.5v10l2.7-2.7 2 4.2 1.8-.9-2-4.1H10L2 1.5Z" />
@@ -478,6 +478,9 @@
           <section class="settings-section" aria-labelledby="appearance-title">
             <h2 id="appearance-title">Appearance</h2>
             <p id="appearance-description">Choose the font and text size used throughout the interface. Preview changes before saving.</p>
+            <label for="language">Language</label>
+            <select id="language" aria-describedby="language-help"></select>
+            <p id="language-help" class="field-hint">Language changes apply after saving. Follow browser uses your preferred browser languages. English is the fallback.</p>
             <label for="font-family">Font</label>
             <select id="font-family" aria-describedby="appearance-description">
               <option value="system">System default</option>

@@ -1515,6 +1515,17 @@ dialog {
   box-shadow: 0 20px 60px rgb(0 0 0 / 28%);
 }
 
+dialog h2 {
+  overflow-wrap: anywhere;
+}
+
+dialog button {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
 dialog::backdrop {
   background: rgb(12 13 18 / 48%);
   backdrop-filter: blur(3px);
@@ -1679,6 +1690,11 @@ dialog p {
   font-weight: 650;
 }
 
+#confirm-message {
+  max-height: 55vh;
+  overflow: auto;
+}
+
 #confirm-error {
   color: var(--danger);
   font-size: 0.875rem;
@@ -1689,12 +1705,9 @@ dialog p {
 }
 
 .dialog-actions {
+  flex-wrap: wrap;
   justify-content: flex-end;
   margin-top: 16px;
-}
-
-#settings-confirm-dialog .dialog-actions {
-  flex-wrap: wrap;
 }
 
 #device-code {

@@ -1,0 +1,11 @@
+{
+  "description": {
+    "message": "आप जो पेज देख रहे हैं, उसके लिए Chrome में चलने वाला AI सहायक।"
+  },
+  "actionTitle": {
+    "message": "Pi Browser Agent खोलें"
+  },
+  "pickerCommand": {
+    "message": "Pi Browser Agent खोलें और पेज का कोई तत्व चुनें"
+  }
+}

@@ -1,7 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Pi Browser Agent",
-  "description": "A Chrome-native AI assistant for the page you are viewing.",
+  "description": "__MSG_description__",
+  "default_locale": "en",
   "version": "0.8.1",
   "minimum_chrome_version": "116",
   "icons": {
@@ -24,7 +25,7 @@
     "type": "module"
   },
   "action": {
-    "default_title": "Open Pi Browser Agent",
+    "default_title": "__MSG_actionTitle__",
     "default_icon": {
       "16": "icons/icon-16.png",
       "32": "icons/icon-32.png"
@@ -36,7 +37,7 @@
         "default": "Ctrl+Shift+E",
         "mac": "Command+Shift+E"
       },
-      "description": "Open Pi Browser Agent and select a page element"
+      "description": "__MSG_pickerCommand__"
     }
   },
   "side_panel": {

@@ -1,3 +1,4 @@
+import { t, translateKnownMessage } from "../i18n/index.js"
 import { McpConnection } from "../mcp/client.js"
 import { MCP_FAILURE, MCP_LIMITS, McpConfigurationError } from "../mcp/policy.js"
 import {
@@ -39,6 +40,12 @@ export async function initializeMcpSettings(
   let busy = false
   let disposed = false
   let activeId = ""
+  let statusVersion = 0
+
+  function setStatus(text: string | null): void {
+    ++statusVersion
+    status.textContent = text
+  }
 
   function clearError(input: HTMLInputElement): void {
     const error = element<HTMLElement>(`${input.id}-error`)
@@ -92,14 +99,18 @@ export async function initializeMcpSettings(
     }
     for (const input of [name, endpoint, token, clearToken]) input.disabled = busy
     hint.textContent = busy
-      ? "Wait for the current server action to finish."
+      ? t("Wait for the current server action to finish.")
       : limitReached
-        ? "The eight-server limit is reached. Select a saved server to edit or remove it."
+        ? t("The eight-server limit is reached. Select a saved server to edit or remove it.")
         : !server || draft
-          ? "Save server edits disconnected before testing. Saving does not request host access."
+          ? t("Save server edits disconnected before testing. Saving does not request host access.")
           : server.enabled
-            ? "Enabled for new runs, not a live connection. Test again only to check the saved endpoint."
-            : "Test and enable requests host access and checks the saved endpoint. No tool is called."
+            ? t(
+                "Enabled for new runs, not a live connection. Test again only to check the saved endpoint.",
+              )
+            : t(
+                "Test and enable requests host access and checks the saved endpoint. No tool is called.",
+              )
     onStateChange()
   }
   function renderList(): void {
@@ -119,7 +130,7 @@ export async function initializeMcpSettings(
         text.append(label, address)
         const state = document.createElement("span")
         state.className = "state-badge"
-        state.textContent = server.enabled ? "Enabled" : "Disabled"
+        state.textContent = server.enabled ? t("Enabled") : t("Disabled")
         button.append(text, state)
         button.addEventListener("click", () => choose(server.id))
         item.append(button)
@@ -136,12 +147,14 @@ export async function initializeMcpSettings(
     clearToken.checked = false
     preview.textContent = ""
     for (const input of [name, endpoint, token]) clearError(input)
-    title.textContent = server ? `Edit ${server.name}` : "New server"
-    status.textContent = server
-      ? server.enabled
-        ? "Enabled for new runs; each call requires confirmation"
-        : "Disabled"
-      : "New server"
+    title.textContent = server ? t("Edit {name}", { name: server.name }) : t("New server")
+    setStatus(
+      server
+        ? server.enabled
+          ? t("Enabled for new runs; each call requires confirmation")
+          : t("Disabled")
+        : t("New server"),
+    )
     updateControls()
   }
   async function refresh(id = activeId): Promise<void> {
@@ -154,7 +167,7 @@ export async function initializeMcpSettings(
   async function perform(
     action: () => Promise<void>,
     validate = false,
-    progress = "Working…",
+    progress = t("Working…"),
   ): Promise<void> {
     if (busy || disposed) return
     const previousStatus = status.textContent
@@ -162,17 +175,24 @@ export async function initializeMcpSettings(
     let invalidField: HTMLInputElement | undefined
     busy = true
     updateControls()
-    status.textContent = progress
+    setStatus(progress)
+    const progressVersion = statusVersion
     try {
       await action()
     } catch (error) {
       if (disposed) return
-      status.textContent = error instanceof McpConfigurationError ? error.message : MCP_FAILURE
+      setStatus(
+        error instanceof McpConfigurationError
+          ? translateKnownMessage(error.message)
+          : t(
+              "MCP request failed or was interrupted. Remote execution may be unknown. Review the server before making a new call; no call was retried.",
+            ),
+      )
       if (validate && error instanceof McpConfigurationError) {
         invalidField = validationField(error.message)
         if (invalidField) {
           const localError = element<HTMLElement>(`${invalidField.id}-error`)
-          localError.textContent = error.message
+          localError.textContent = translateKnownMessage(error.message)
           localError.hidden = false
           invalidField.setAttribute("aria-invalid", "true")
         }
@@ -180,7 +200,7 @@ export async function initializeMcpSettings(
     } finally {
       busy = false
       if (!disposed) {
-        if (status.textContent === progress) status.textContent = previousStatus
+        if (statusVersion === progressVersion) setStatus(previousStatus)
         updateControls()
         // A closed confirmation can leave focus on its now-hidden Cancel button.
         const focused = document.activeElement
@@ -214,9 +234,11 @@ export async function initializeMcpSettings(
     void perform(async () => {
       const server = servers.find((s) => s.id === activeId)
       const discard = await confirm({
-        title: "Discard MCP changes?",
-        message: `Discard unsaved changes to ${server ? `“${server.name}”` : "the new server"}?`,
-        confirmLabel: "Discard changes",
+        title: t("Discard MCP changes?"),
+        message: server
+          ? t("Discard unsaved changes to “{name}”?", { name: server.name })
+          : t("Discard unsaved changes to the new server?"),
+        confirmLabel: t("Discard changes"),
       })
       if (!discard || disposed) return
       activeId = nextId
@@ -231,13 +253,15 @@ export async function initializeMcpSettings(
       if (input === clearToken) clearError(token)
       else clearError(input)
       preview.textContent = ""
-      status.textContent = hasDraft()
-        ? "Unsaved MCP edits. Select Save disconnected."
-        : servers.find((server) => server.id === activeId)?.enabled
-          ? "Enabled for new runs; each call requires confirmation"
-          : activeId
-            ? "Disabled"
-            : "New server"
+      setStatus(
+        hasDraft()
+          ? t("Unsaved MCP edits. Select Save disconnected.")
+          : servers.find((server) => server.id === activeId)?.enabled
+            ? t("Enabled for new runs; each call requires confirmation")
+            : activeId
+              ? t("Disabled")
+              : t("New server"),
+      )
       updateControls()
     })
   save.addEventListener("click", () => {
@@ -255,11 +279,12 @@ export async function initializeMcpSettings(
         const server = await saveMcpServer(input)
         await refresh(server.id)
         if (!disposed)
-          status.textContent =
-            "Saved disconnected. Select Test and enable to make tools available for new runs."
+          setStatus(
+            t("Saved disconnected. Select Test and enable to make tools available for new runs."),
+          )
       },
       true,
-      "Saving disconnected…",
+      t("Saving disconnected…"),
     )
   })
   connect.addEventListener("click", () => {
@@ -282,9 +307,10 @@ export async function initializeMcpSettings(
           await refresh(server.id)
           preview.textContent =
             tools.map((tool) => `${tool.name}\n${tool.description ?? ""}`).join("\n\n") ||
-            "No tools returned"
-          status.textContent =
-            "Enabled for new runs. Tool metadata and results can go to the selected model."
+            t("No tools returned")
+          setStatus(
+            t("Enabled for new runs. Tool metadata and results can go to the selected model."),
+          )
         } catch (error) {
           await refresh(server.id)
           throw error instanceof McpConfigurationError ? error : new Error(MCP_FAILURE)
@@ -294,7 +320,7 @@ export async function initializeMcpSettings(
         }
       },
       false,
-      "Testing saved endpoint…",
+      t("Testing saved endpoint…"),
     )
   })
   disable.addEventListener(
@@ -306,9 +332,11 @@ export async function initializeMcpSettings(
         if (
           hasDraft() &&
           !(await confirm({
-            title: "Discard MCP changes and disable?",
-            message: `Discard unsaved changes to “${server.name}” and disable the saved server?`,
-            confirmLabel: "Discard and disable",
+            title: t("Discard MCP changes and disable?"),
+            message: t("Discard unsaved changes to “{name}” and disable the saved server?", {
+              name: server.name,
+            }),
+            confirmLabel: t("Discard and disable"),
           }))
         )
           return
@@ -324,9 +352,14 @@ export async function initializeMcpSettings(
         const server = servers.find((item) => item.id === activeId)
         if (!server) return
         const confirmed = await confirm({
-          title: "Remove MCP server and token?",
-          message: `Remove “${server.name}”? Its stored token will be deleted.${hasDraft() ? " Unsaved changes will be discarded." : ""}`,
-          confirmLabel: "Remove server and token",
+          title: t("Remove MCP server and token?"),
+          message: hasDraft()
+            ? t(
+                "Remove “{name}”? Its stored token will be deleted. Unsaved changes will be discarded.",
+                { name: server.name },
+              )
+            : t("Remove “{name}”? Its stored token will be deleted.", { name: server.name }),
+          confirmLabel: t("Remove server and token"),
         })
         if (!confirmed || disposed) return
         await removeMcpServer(server.id, server.revision)

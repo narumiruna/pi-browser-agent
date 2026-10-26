@@ -1,0 +1,11 @@
+{
+  "description": {
+    "message": "Een AI-assistent in Chrome voor de pagina die u bekijkt."
+  },
+  "actionTitle": {
+    "message": "Pi Browser Agent openen"
+  },
+  "pickerCommand": {
+    "message": "Open Pi Browser Agent en selecteer een pagina-element"
+  }
+}

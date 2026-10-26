@@ -1,5 +1,6 @@
 import { JSDOM } from "jsdom"
-import { describe, expect, test, vi } from "vitest"
+import { afterEach, describe, expect, test, vi } from "vitest"
+import { setLanguagePreference, t } from "../../src/browser/i18n/index.js"
 import { SlashCommandMenu } from "../../src/browser/sidepanel/slash-command-menu.js"
 import { SLASH_COMMANDS } from "../../src/browser/sidepanel/slash-commands.js"
 
@@ -40,7 +41,36 @@ function setup() {
   return { dom, document, input, listbox, outside, onInput, menu, draft, key, names, activeName }
 }
 
+afterEach(() => setLanguagePreference("en"))
+
 describe("SlashCommandMenu", () => {
+  test("localizes descriptions and announcements but inserts original command tokens", () => {
+    setLanguagePreference("ja")
+    const { input, listbox, document, draft, key, menu } = setup()
+    draft("/n")
+    key("ArrowDown")
+    const descriptions = () =>
+      [...listbox.querySelectorAll(".slash-command-description")].map((el) => el.textContent)
+    expect(listbox.getAttribute("aria-label")).toBe(t("Slash commands"))
+    expect(descriptions()).toEqual([t("Start a new session"), t("Rename the current session")])
+    expect(descriptions()[0]).not.toBe(SLASH_COMMANDS[0].description)
+    expect(document.querySelector("#commands-status")?.textContent).toBe(
+      t("Command list open. {count} commands available.", { count: 2 }),
+    )
+    setLanguagePreference("de")
+    menu.update()
+    expect(listbox.getAttribute("aria-label")).toBe(t("Slash commands"))
+    expect(descriptions()).toEqual([t("Start a new session"), t("Rename the current session")])
+    expect(input.value).toBe("/n")
+    expect(document.activeElement).toBe(input)
+    key("Tab")
+    expect(input.value).toBe("/name ")
+    expect(document.querySelector("#commands-status")?.textContent).toBe(t("Command list closed."))
+    setLanguagePreference("ja")
+    menu.update()
+    expect(document.querySelector("#commands-status")?.textContent).toBe(t("Command list closed."))
+  })
+
   test("opens for a slash, renders the shared definitions, and keeps focus in the textarea", () => {
     const { input, listbox, document, draft, names } = setup()
     expect(listbox.hidden).toBe(true)

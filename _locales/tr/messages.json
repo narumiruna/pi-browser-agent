@@ -1,0 +1,11 @@
+{
+  "description": {
+    "message": "Görüntülediğiniz sayfa için Chrome ile bütünleşik bir yapay zekâ asistanı."
+  },
+  "actionTitle": {
+    "message": "Pi Browser Agent'ı aç"
+  },
+  "pickerCommand": {
+    "message": "Pi Browser Agent'ı aç ve bir sayfa öğesi seç"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "description": {
+    "message": "Asisten AI bawaan Chrome untuk halaman yang sedang Anda lihat."
+  },
+  "actionTitle": {
+    "message": "Buka Pi Browser Agent"
+  },
+  "pickerCommand": {
+    "message": "Buka Pi Browser Agent dan pilih elemen halaman"
+  }
+}

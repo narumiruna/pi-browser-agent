@@ -7,6 +7,8 @@ import {
 import { executePageOperation, type PageOperation } from "./content/page-operations.js"
 import { assertTabContext } from "./content/tab-context.js"
 import { installElementPickerShortcut } from "./element-picker-shortcut.js"
+import { CONTEXT_MENU_TITLES } from "./i18n/context-menu.js"
+import { languagePreferenceFromSettings, resolveLocale } from "./i18n/locales.js"
 import {
   BOOKMARKS_PERMISSION,
   hasBookmarkPermission,
@@ -29,6 +31,7 @@ import {
 } from "./runtime/types.js"
 import {
   restrictLocalStorageToTrustedContexts,
+  SETTINGS_KEY,
   savePendingSelection,
   takePendingSelection,
 } from "./storage.js"
@@ -1045,15 +1048,47 @@ async function dispatch(request: RuntimeRequest, signal: AbortSignal): Promise<J
   return result
 }
 
+let selectionMenuUpdate: Promise<void> = Promise.resolve()
+function refreshSelectionMenu(): void {
+  // Serialize startup, installation, and saved-language changes so older reads cannot win.
+  selectionMenuUpdate = selectionMenuUpdate
+    .catch(() => undefined)
+    .then(async () => {
+      const stored = await chrome.storage.local.get(SETTINGS_KEY)
+      const locale = resolveLocale(languagePreferenceFromSettings(stored[SETTINGS_KEY]))
+      const title = CONTEXT_MENU_TITLES[locale]
+      await new Promise<void>((resolve) => {
+        chrome.contextMenus.removeAll(() => {
+          chrome.contextMenus.create(
+            {
+              id: SELECTION_CONTEXT_MENU_ID,
+              title,
+              contexts: ["selection"],
+            },
+            () => {
+              // Consume API errors without exposing diagnostics or interrupting worker startup.
+              void chrome.runtime.lastError
+              resolve()
+            },
+          )
+        })
+      })
+    })
+    .catch(() => undefined)
+}
+
+void initialization.then(() => refreshSelectionMenu()).catch(() => undefined)
+chrome.runtime.onStartup?.addListener(refreshSelectionMenu)
+chrome.storage.onChanged?.addListener((changes, area) => {
+  if (area !== "local" || !(SETTINGS_KEY in changes)) return
+  const change = changes[SETTINGS_KEY]
+  const language = (value: unknown): unknown =>
+    value && typeof value === "object" && "language" in value ? value.language : undefined
+  if (language(change?.oldValue) !== language(change?.newValue)) refreshSelectionMenu()
+})
 chrome.runtime.onInstalled.addListener(() => {
   void chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
-  chrome.contextMenus.removeAll(() => {
-    chrome.contextMenus.create({
-      id: SELECTION_CONTEXT_MENU_ID,
-      title: "Send selection to Pi Browser Agent",
-      contexts: ["selection"],
-    })
-  })
+  refreshSelectionMenu()
 })
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {

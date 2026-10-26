@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs"
 import { JSDOM } from "jsdom"
 import { afterEach, describe, expect, test, vi } from "vitest"
+import * as i18n from "../../src/browser/i18n/index.js"
 import { McpConnection } from "../../src/browser/mcp/client.js"
 import { MCP_FAILURE } from "../../src/browser/mcp/policy.js"
 import * as store from "../../src/browser/mcp/store.js"
@@ -124,6 +125,40 @@ async function setup(count = 0, enabled = false) {
 }
 
 describe("MCP settings", () => {
+  test("classifies original fixed validation errors before translating field presentation", async () => {
+    const env = await setup()
+    vi.spyOn(i18n, "translateKnownMessage").mockImplementation((message) => `Localized: ${message}`)
+    env.input(env.name, "")
+    env.input(env.endpoint, endpoint)
+    env.button("save").click()
+    await vi.waitFor(() => expect(env.name.getAttribute("aria-invalid")).toBe("true"))
+    expect(env.document.getElementById("mcp-name-error")?.textContent).toBe(
+      "Localized: Enter an MCP server name of at most 80 characters",
+    )
+    expect(env.status.textContent).toBe(
+      "Localized: Enter an MCP server name of at most 80 characters",
+    )
+    expect(env.token.value).toBe("")
+    expect(env.request).not.toHaveBeenCalled()
+  })
+
+  test("does not infer progress state from translated display text", async () => {
+    const env = await setup()
+    env.input(env.name, "New server")
+    env.input(env.endpoint, endpoint)
+    vi.spyOn(i18n, "t").mockImplementation((key) => {
+      if (
+        key === "Saving disconnected…" ||
+        key === "Saved disconnected. Select Test and enable to make tools available for new runs."
+      )
+        return "Same translated progress and result"
+      return key
+    })
+    env.button("save").click()
+    await vi.waitFor(() => expect(env.isDirty()).toBe(false))
+    expect(env.status.textContent).toBe("Same translated progress and result")
+  })
+
   test.each([0, 1, 2, 8])("renders %i saved servers as native list buttons", async (count) => {
     const env = await setup(count)
     expect(env.list.tagName).toBe("UL")

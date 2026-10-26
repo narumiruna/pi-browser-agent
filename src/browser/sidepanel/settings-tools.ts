@@ -1,4 +1,29 @@
 import { BROWSER_TOOL_OPTIONS } from "../agent/browser-tools.js"
+import { t } from "../i18n/index.js"
+
+const TOOL_LABELS = {
+  browser_list_tabs: "List web tabs",
+  browser_switch_tab: "Switch web tab",
+  browser_open_website: "Open website",
+  browser_get_active_tab: "Browser active tab",
+  browser_search_bookmarks: "Search bookmarks",
+  browser_get_recent_bookmarks: "Recent bookmarks",
+  browser_read_page: "Read page",
+  browser_list_elements: "List visible elements",
+  browser_find_text: "Find page text",
+  browser_wait_for: "Wait for page condition",
+  browser_get_selection: "Read selection",
+  browser_capture_visible: "Capture viewport",
+  browser_scroll: "Scroll page or container",
+  browser_select_option: "Select native option",
+  browser_set_checked: "Set checked state",
+  browser_get_select_options: "Read native select options",
+  browser_get_element_details: "Inspect element details",
+  browser_click: "Click element",
+  browser_type: "Type text",
+  browser_navigate: "Navigate",
+  browser_webmcp: "WebMCP",
+} as const
 
 export const TOOL_GROUPS = [
   {
@@ -35,6 +60,7 @@ export const TOOL_GROUPS = [
     ],
   },
   {
+    id: "bookmarks",
     name: "Bookmarks",
     tools: [
       ["browser_search_bookmarks", "Search bookmark titles and URLs."],
@@ -54,14 +80,15 @@ export function renderToolOptions(container: HTMLElement): HTMLInputElement[] {
     const fieldset = document.createElement("fieldset")
     fieldset.className = "tool-group"
     const legend = document.createElement("legend")
-    legend.textContent = group.name
+    legend.textContent = t(group.name)
     fieldset.append(legend)
-    if (group.name === "Bookmarks") {
+    if ("id" in group && group.id === "bookmarks") {
       const help = document.createElement("p")
       help.id = "bookmark-tools-help"
       help.className = "field-hint"
-      help.textContent =
-        "Bookmark reads require approval. Your confirmation mode can reuse approval for identical arguments. Results are untrusted."
+      help.textContent = t(
+        "Bookmark reads require approval. Your confirmation mode can reuse approval for identical arguments. Results are untrusted.",
+      )
       fieldset.setAttribute("aria-describedby", help.id)
       fieldset.append(help)
     }
@@ -78,16 +105,16 @@ export function renderToolOptions(container: HTMLElement): HTMLInputElement[] {
       checkbox.setAttribute("aria-describedby", `tool-description-${name}`)
       const text = document.createElement("span")
       const title = document.createElement("strong")
-      title.textContent = tool.label
+      title.textContent = t(TOOL_LABELS[name])
       const note = document.createElement("small")
       note.id = `tool-description-${name}`
-      note.textContent = description
+      note.textContent = t(description)
       text.append(title, note)
       label.append(checkbox, text)
       const details = document.createElement("details")
       details.className = "tool-technical"
       const summary = document.createElement("summary")
-      summary.textContent = "Technical name"
+      summary.textContent = t("Technical name")
       const code = document.createElement("code")
       code.textContent = name
       details.append(summary, code)

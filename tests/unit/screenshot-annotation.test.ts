@@ -1,4 +1,6 @@
-import { describe, expect, test, vi } from "vitest"
+import { JSDOM } from "jsdom"
+import { afterEach, describe, expect, test, vi } from "vitest"
+import { setLanguagePreference, t } from "../../src/browser/i18n/index.js"
 import {
   ANNOTATION_LIMITS,
   AnnotationHistory,
@@ -6,6 +8,7 @@ import {
   canvasPng,
   canvasPoint,
   pngDimensions,
+  ScreenshotAnnotationController,
 } from "../../src/browser/sidepanel/screenshot-annotation.js"
 
 function pngHeader(width: number, height: number): string {
@@ -18,7 +21,69 @@ function pngHeader(width: number, height: number): string {
   return btoa(String.fromCharCode(...bytes))
 }
 
+afterEach(() => {
+  setLanguagePreference("en")
+  vi.unstubAllGlobals()
+})
+
 describe("screenshot annotation", () => {
+  test("localizes fixed validation and export errors without changing geometry", async () => {
+    setLanguagePreference("ja")
+    expect(() => annotationCanvasSize(0, 10)).toThrow(
+      t("The screenshot dimensions are too large to annotate safely"),
+    )
+    expect(t("The screenshot dimensions are too large to annotate safely")).not.toBe(
+      "The screenshot dimensions are too large to annotate safely",
+    )
+    const canvas = { toBlob: (callback: BlobCallback) => callback(null) } as HTMLCanvasElement
+    await expect(canvasPng(canvas)).rejects.toThrow(
+      t("Chrome could not export the annotated screenshot"),
+    )
+    expect(annotationCanvasSize(1280, 720)).toEqual({ width: 1280, height: 720 })
+  })
+
+  test("renders localized local errors and redacts arbitrary browser diagnostics", async () => {
+    const dom = new JSDOM(`
+      <dialog id="screenshot-annotation-dialog">
+        <canvas id="screenshot-annotation-canvas"></canvas>
+        <input id="annotation-pen-width">
+        <button id="annotation-undo"></button><button id="annotation-clear"></button>
+        <button id="annotation-attach"></button><button id="annotation-cancel"></button>
+        <p id="annotation-error"></p>
+      </dialog>
+    `)
+    const { document } = dom.window
+    vi.stubGlobal("document", document)
+    vi.stubGlobal("HTMLElement", dom.window.HTMLElement)
+    vi.stubGlobal(
+      "Image",
+      class {
+        src = ""
+        decode = async () => {
+          throw new Error("Decode failed Bearer secret")
+        }
+      },
+    )
+    const dialog = document.querySelector("dialog") as HTMLDialogElement
+    dialog.showModal = () => {
+      dialog.open = true
+    }
+    setLanguagePreference("ja")
+    const onAttach = vi.fn()
+    const controller = new ScreenshotAnnotationController({ onAttach })
+    const image = { type: "image" as const, data: pngHeader(10, 10), mimeType: "image/jpeg" }
+    await controller.open(image)
+    expect(document.querySelector("#annotation-error")?.textContent).toBe(
+      t("Only viewport PNG screenshots can be annotated"),
+    )
+    await controller.open({ ...image, mimeType: "image/png" })
+    expect(document.querySelector("#annotation-error")?.textContent).toBe(
+      "Decode failed Bearer [REDACTED]",
+    )
+    expect(onAttach).not.toHaveBeenCalled()
+    dom.window.close()
+  })
+
   test("parses PNG dimensions and rejects malformed headers", () => {
     expect(pngDimensions(pngHeader(1280, 720))).toEqual({ width: 1280, height: 720 })
     expect(pngDimensions(btoa("not a png header value"))).toBeUndefined()

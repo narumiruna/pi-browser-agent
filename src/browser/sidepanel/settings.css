@@ -39,12 +39,17 @@
   letter-spacing: 0.04em;
 }
 
+.settings-page-header > div {
+  min-width: 0;
+}
+
 .settings-page-header h1 {
   margin: 0;
   font-size: 1.75rem;
   font-weight: 650;
   line-height: 1.2;
   letter-spacing: -0.035em;
+  overflow-wrap: anywhere;
 }
 
 .settings-tabs {
@@ -382,6 +387,8 @@
 
 .settings-action-buttons {
   display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
 }

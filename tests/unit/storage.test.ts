@@ -14,6 +14,65 @@ afterEach(() => {
 })
 
 describe("browser storage", () => {
+  test("an Azure migration re-reads inside the settings lock instead of overwriting a newer language save", async () => {
+    const values: Record<string, unknown> = {
+      piBrowserAgentSettings: {
+        ...DEFAULT_SETTINGS,
+        modelProvider: "azure-openai-responses",
+        language: "en",
+      },
+    }
+    let release: (() => void) | undefined
+    const initialRead = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let reads = 0
+    const get = vi.fn(async (key: string) => {
+      const snapshot = structuredClone(values[key])
+      if (++reads === 1) await initialRead
+      return { [key]: snapshot }
+    })
+    const set = vi.fn(async (items: Record<string, unknown>) => Object.assign(values, items))
+    vi.stubGlobal("chrome", { storage: { local: { get, set } } })
+    const migration = getSettings()
+    await vi.waitFor(() => expect(get).toHaveBeenCalledOnce())
+    await saveSettings({ ...DEFAULT_SETTINGS, modelProvider: "azure", language: "ja" })
+    release?.()
+    await expect(migration).resolves.toMatchObject({ modelProvider: "azure", language: "ja" })
+    expect(set).toHaveBeenCalledOnce()
+    expect(values.piBrowserAgentSettings).toMatchObject({ modelProvider: "azure", language: "ja" })
+  })
+
+  test("merges untouched language inside the serialized commit, after earlier writers finish", async () => {
+    const values: Record<string, unknown> = {}
+    let release: (() => void) | undefined
+    const firstWrite = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let writes = 0
+    const set = vi.fn(async (items: Record<string, unknown>) => {
+      if (++writes === 1) await firstWrite
+      Object.assign(values, items)
+    })
+    vi.stubGlobal("chrome", {
+      storage: {
+        local: {
+          get: vi.fn(async (key: string) => ({ [key]: values[key] })),
+          set,
+        },
+      },
+    })
+    const languageSave = saveSettings({ ...DEFAULT_SETTINGS, language: "ja" })
+    const unrelatedSave = saveSettings({ ...DEFAULT_SETTINGS, fontSize: 19 }, true)
+    await vi.waitFor(() => expect(set).toHaveBeenCalledTimes(1))
+    release?.()
+    await languageSave
+    await expect(unrelatedSave).resolves.toMatchObject({ language: "ja", fontSize: 19 })
+    await expect(getSettings()).resolves.toMatchObject({ language: "ja", fontSize: 19 })
+    await saveSettings({ ...DEFAULT_SETTINGS, language: "pt-BR" })
+    await expect(getSettings()).resolves.toMatchObject({ language: "pt-BR" })
+  })
+
   test("persists validated appearance and thinking preferences and migrates older settings", async () => {
     const values: Record<string, unknown> = {}
     vi.stubGlobal("chrome", {
@@ -45,6 +104,7 @@ describe("browser storage", () => {
       agentInstructions: "Older instructions",
     }
     await expect(getSettings()).resolves.toEqual({
+      language: "en",
       systemPrompt: "Older prompt",
       agentInstructions: "Older instructions",
       fontFamily: "system",

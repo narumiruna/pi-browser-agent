@@ -1,9 +1,14 @@
 import { ELEMENT_PICKER_COMMAND, ELEMENT_PICKER_PORT } from "../element-picker-shortcut.js"
+import { t } from "../i18n/index.js"
 import type { TabContext } from "../runtime/types.js"
 
 export function pickerButtonTitle(active: boolean, shortcut: string): string {
-  const title = active ? "Cancel element selection" : "Select page element"
-  return shortcut ? `${title} (${shortcut})` : title
+  if (shortcut) {
+    return active
+      ? t("Cancel element selection ({shortcut})", { shortcut })
+      : t("Select page element ({shortcut})", { shortcut })
+  }
+  return active ? t("Cancel element selection") : t("Select page element")
 }
 
 /** Connect only after the conversation is ready. Reconnect after MV3 worker suspension. */

@@ -1,6 +1,7 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core"
 import type { TSchema } from "typebox"
 import type { ConfirmationHandler } from "../agent/browser-tools.js"
+import { t } from "../i18n/index.js"
 import { hasApprovedHostPermission } from "../permissions.js"
 import { formatUntrusted, type JsonObject } from "../runtime/types.js"
 import { McpConnection } from "./client.js"
@@ -99,6 +100,12 @@ export class McpManager {
                   "Call this remote MCP tool? Arguments go to this server; results go to the selected model and saved session. This call may have side effects. Every call requires confirmation.",
                   { endpoint: server.endpoint, tool: tool.name, arguments: args as JsonObject },
                   combined,
+                  undefined,
+                  {
+                    message: t(
+                      "Call this remote MCP tool? Arguments go to this server; results go to the selected model and saved session. This call may have side effects. Every call requires confirmation.",
+                    ),
+                  },
                 ))
               )
                 throw new Error("Remote MCP call was declined")

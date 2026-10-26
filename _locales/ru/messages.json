@@ -1,0 +1,11 @@
+{
+  "description": {
+    "message": "ИИ-помощник в Chrome для просматриваемой страницы."
+  },
+  "actionTitle": {
+    "message": "Открыть Pi Browser Agent"
+  },
+  "pickerCommand": {
+    "message": "Открыть Pi Browser Agent и выбрать элемент страницы"
+  }
+}

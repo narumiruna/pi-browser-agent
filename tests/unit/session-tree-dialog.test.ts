@@ -1,5 +1,6 @@
 import { JSDOM } from "jsdom"
-import { describe, expect, test, vi } from "vitest"
+import { afterEach, describe, expect, test, vi } from "vitest"
+import { setLanguagePreference, t } from "../../src/browser/i18n/index.js"
 import type { SessionTreeItem } from "../../src/browser/sessions/session-tree.js"
 import { SessionTreeDialog } from "../../src/browser/sidepanel/session-tree-dialog.js"
 
@@ -131,7 +132,32 @@ async function settle() {
   await Promise.resolve()
 }
 
+afterEach(() => setLanguagePreference("en"))
+
 describe("SessionTreeDialog", () => {
+  test("localizes fixed wrappers without translating historical excerpts or node identities", () => {
+    setLanguagePreference("ja")
+    const { controller, row, list } = setup()
+    const historical = items.map((item) => ({ ...item, label: "Start of conversation" }))
+    controller.open(historical, "result")
+    expect(list.getAttribute("aria-label")).toBe(t("Conversation tree"))
+    expect(row(0).querySelector(".session-tree-label")?.textContent).toBe(
+      t("Start of conversation"),
+    )
+    expect(row(1).querySelector(".session-tree-label")?.textContent).toBe("Start of conversation")
+    expect(row(1).querySelector(".session-tree-role")?.textContent).toBe(t("User"))
+    expect(row(1).querySelector(".session-tree-role")?.textContent).not.toBe("User")
+    expect(row(2).textContent).toContain(t("Unavailable boundary"))
+    expect(row(3).textContent).toContain(t("Current position"))
+    expect(row(3).dataset.role).toBe("toolResult")
+    expect(row(3).dataset.nodeId).toBe("result")
+    expect(historical.every((item) => item.label === "Start of conversation")).toBe(true)
+    controller.setError(new Error("Browser diagnostic Bearer secret"))
+    expect(list.ownerDocument.querySelector("#session-tree-error")?.textContent).toBe(
+      "Browser diagnostic Bearer [REDACTED]",
+    )
+  })
+
   test("renders every boundary with tree semantics, roles, and current/path status", () => {
     const { controller, list, rows, row, document } = setup()
     controller.open(items, "result")

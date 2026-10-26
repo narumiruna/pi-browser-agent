@@ -113,7 +113,10 @@ async function setup() {
     windows: { getCurrent: vi.fn(async () => ({ id: 1 })) },
     runtime: { sendMessage, onMessage: { addListener: vi.fn() } },
     permissions: { onRemoved: { addListener: vi.fn() } },
-    storage: { onChanged: { addListener: vi.fn() } },
+    storage: {
+      local: { get: vi.fn(async () => ({})) },
+      onChanged: { addListener: vi.fn(), removeListener: vi.fn() },
+    },
   })
   const configuration = {
     appSettings: { fontFamily: "system", fontSize: 14, confirmationMode: "always" },

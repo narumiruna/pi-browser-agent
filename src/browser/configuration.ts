@@ -77,9 +77,8 @@ export class BrowserConfiguration {
     return this.authChanging
   }
 
-  async updateSettings(settings: AppSettings): Promise<void> {
-    this.settings = { ...settings }
-    await saveSettings(this.settings)
+  async updateSettings(settings: AppSettings, preserveLanguage = false): Promise<void> {
+    this.settings = await saveSettings(settings, preserveLanguage)
   }
 
   async syncSettings(): Promise<void> {

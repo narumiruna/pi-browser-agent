@@ -1,3 +1,5 @@
+import { t } from "../i18n/index.js"
+
 export interface SpeechRecognitionAlternativeLike {
   transcript: string
 }
@@ -69,17 +71,19 @@ export async function requestMicrophoneAccess(
 function recognitionErrorMessage(code: string): string {
   switch (code) {
     case "not-allowed":
-      return "Microphone access was denied. Allow microphone access for Pi Browser Agent and try again."
+      return t(
+        "Microphone access was denied. Allow microphone access for Pi Browser Agent and try again.",
+      )
     case "service-not-allowed":
-      return "Voice recognition is blocked by Chrome."
+      return t("Voice recognition is blocked by Chrome.")
     case "audio-capture":
-      return "No microphone is available."
+      return t("No microphone is available.")
     case "no-speech":
-      return "No speech was detected."
+      return t("No speech was detected.")
     case "network":
-      return "Voice recognition could not reach Chrome's speech service."
+      return t("Voice recognition could not reach Chrome's speech service.")
     default:
-      return "Voice recognition stopped unexpectedly."
+      return t("Voice recognition stopped unexpectedly.")
   }
 }
 
@@ -127,7 +131,7 @@ export class VoiceInputController {
     } catch (error) {
       this.setActive(false)
       this.callbacks.onError(
-        error instanceof Error ? error : new Error("Voice recognition could not start."),
+        error instanceof Error ? error : new Error(t("Voice recognition could not start.")),
       )
     }
   }
@@ -142,7 +146,7 @@ export class VoiceInputController {
     } catch (error) {
       this.setActive(false)
       this.callbacks.onError(
-        error instanceof Error ? error : new Error("Voice recognition could not stop."),
+        error instanceof Error ? error : new Error(t("Voice recognition could not stop.")),
       )
     }
   }

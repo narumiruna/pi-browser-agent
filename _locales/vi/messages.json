@@ -1,0 +1,11 @@
+{
+  "description": {
+    "message": "Trợ lý AI tích hợp với Chrome cho trang bạn đang xem."
+  },
+  "actionTitle": {
+    "message": "Mở Pi Browser Agent"
+  },
+  "pickerCommand": {
+    "message": "Mở Pi Browser Agent và chọn phần tử trên trang"
+  }
+}

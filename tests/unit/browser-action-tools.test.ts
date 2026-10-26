@@ -83,8 +83,13 @@ describe("browser action tool execution", () => {
       // The mock returns a new challenge each time; real reference freshness is worker-owned.
       await tool.execute("second", params, undefined)
       expect(show).toHaveBeenCalledTimes(2)
-      for (const args of confirm.mock.calls) expect(args).toHaveLength(3)
-      expect(show).toHaveBeenLastCalledWith("Activate checkbox?", params, undefined)
+      for (const args of confirm.mock.calls) {
+        expect(args).toHaveLength(5)
+        expect(args[3]).toBeUndefined() // No reusable scope, including in non-Strict modes.
+      }
+      expect(show).toHaveBeenLastCalledWith("Activate checkbox?", params, undefined, {
+        message: "Changing checked state can submit a form or run page actions",
+      })
       expect(sendMessage).toHaveBeenLastCalledWith(
         expect.objectContaining({
           method: "page.setChecked",

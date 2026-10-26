@@ -2,6 +2,8 @@ import type { AgentMessage } from "@earendil-works/pi-agent-core"
 import type { AssistantMessage } from "@earendil-works/pi-ai"
 import { JSDOM } from "jsdom"
 import { afterEach, describe, expect, test, vi } from "vitest"
+import { setLanguagePreference, t } from "../../src/browser/i18n/index.js"
+import { conversationText } from "../../src/browser/sidepanel/conversation-copy.js"
 import {
   renderMessageContent,
   TranscriptRenderer,
@@ -34,6 +36,7 @@ function installDocument(): Document {
 }
 
 afterEach(() => {
+  setLanguagePreference("en")
   vi.useRealTimers()
   vi.unstubAllGlobals()
 })
@@ -457,7 +460,8 @@ describe("conversation message rendering", () => {
     expect(container.textContent).toContain("[tool call: browser_read_page]\n{}")
   })
 
-  test("keeps conversation labels in English for a Traditional Chinese browser locale", () => {
+  test("keeps explicitly selected English for a Traditional Chinese browser locale", () => {
+    setLanguagePreference("en")
     const document = installDocument()
     vi.stubGlobal("navigator", { language: "zh-TW", languages: ["zh-TW"] })
     const transcript = document.createElement("div")
@@ -479,6 +483,92 @@ describe("conversation message rendering", () => {
     expect(transcript.querySelector(".assistant-turn")?.getAttribute("aria-label")).toBe(
       "Pi · Browser assistant",
     )
+  })
+
+  test("refreshes cached locale labels without changing messages, disclosure state, focus, scroll, or images", () => {
+    const document = installDocument()
+    const transcript = document.createElement("div")
+    document.body.append(transcript)
+    Object.defineProperties(transcript, {
+      scrollHeight: { configurable: true, value: 1000 },
+      clientHeight: { configurable: true, value: 200 },
+    })
+    transcript.scrollTop = 125
+    const image = { type: "image" as const, data: "cG5n", mimeType: "image/png" }
+    const messages: AgentMessage[] = [
+      { role: "user", content: [{ type: "text", text: "Send" }, image], timestamp: 1 },
+      assistantContent([
+        { type: "thinking", thinking: "Send" },
+        { type: "text", text: "# Send" },
+      ]),
+    ]
+    const original = JSON.stringify(messages)
+    const renderer = new TranscriptRenderer(transcript)
+    renderer.render(messages, "same")
+    transcript.scrollTop = 125
+    const user = transcript.querySelector(".message.user")
+    const imageNode = transcript.querySelector("img")
+    const thinking = transcript.querySelector<HTMLDetailsElement>("details.thinking")
+    const summary = thinking?.querySelector("summary")
+    if (!thinking || !summary) throw new Error("Missing thinking disclosure")
+    thinking.open = true
+    summary.focus()
+    setLanguagePreference("ja")
+    renderer.render(messages, "same")
+    expect(transcript.querySelector(".message.user")).toBe(user)
+    expect(transcript.querySelector("img")).toBe(imageNode)
+    expect(imageNode?.alt).toBe(conversationText("pastedImage"))
+    expect(transcript.querySelector("details.thinking")).toBe(thinking)
+    expect(thinking.open).toBe(true)
+    expect(document.activeElement).toBe(summary)
+    expect(transcript.scrollTop).toBe(125)
+    expect(summary.textContent).toBe(conversationText("thinking"))
+    expect(summary.textContent).not.toBe("Thinking")
+    expect(transcript.querySelector(".message.user .role")?.textContent).toBe(
+      conversationText("user"),
+    )
+    expect(transcript.querySelector(".assistant-turn")?.getAttribute("aria-label")).toBe(
+      `Pi · ${conversationText("assistantIdentity")}`,
+    )
+    expect(transcript.querySelector("h1")?.textContent).toBe("Send")
+    expect(JSON.stringify(messages)).toBe(original)
+  })
+
+  test("keeps pending clipboard feedback and timer labels correct after a locale refresh", async () => {
+    vi.useFakeTimers()
+    const document = installDocument()
+    const transcript = document.createElement("div")
+    document.body.append(transcript)
+    let finish: (() => void) | undefined
+    const writeText = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve
+        }),
+    )
+    vi.stubGlobal("navigator", { clipboard: { writeText } })
+    const renderer = new TranscriptRenderer(transcript)
+    const messages = [assistantContent([{ type: "text", text: "Original answer" }])]
+    renderer.render(messages, "same")
+    const button = transcript.querySelector<HTMLButtonElement>(".answer-copy-button")
+    if (!button) throw new Error("Missing copy button")
+    button.focus()
+    button.click()
+    expect(button.dataset.copyState).toBe("copying")
+    setLanguagePreference("ja")
+    renderer.render(messages, "same")
+    expect(transcript.querySelector(".answer-copy-button")).toBe(button)
+    expect(document.activeElement).toBe(button)
+    expect(button.dataset.copyState).toBe("copying")
+    expect(button.ariaLabel).toBe(t("Copy all"))
+    expect(button.querySelector(".copy-label")?.textContent).toBe(t("Copying…"))
+    expect(writeText).toHaveBeenCalledExactlyOnceWith("Original answer")
+    finish?.()
+    await Promise.resolve()
+    expect(button.querySelector(".copy-label")?.textContent).toBe(t("Copied"))
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(button.querySelector(".copy-label")?.textContent).toBe(t("Copy all"))
+    expect(button.title).toBe(t("Copy all"))
   })
 
   test("renders supported images with stable nodes and accessibility labels", () => {

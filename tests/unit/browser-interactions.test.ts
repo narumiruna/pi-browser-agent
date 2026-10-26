@@ -209,7 +209,15 @@ describe("interaction input schemas and worker validation", () => {
           }),
         )
       } else await expect(pending).rejects.toMatchObject({ code: "PERMISSION_DENIED" })
-      expect(confirm).toHaveBeenCalledExactlyOnceWith("Change option?", reference, undefined)
+      expect(confirm).toHaveBeenCalledExactlyOnceWith(
+        "Change option?",
+        reference,
+        undefined,
+        undefined,
+        {
+          message: "Changing this option can submit a form or run page actions",
+        },
+      )
       expect(sendMessage).toHaveBeenCalledTimes(approved ? 3 : 2)
     },
   )

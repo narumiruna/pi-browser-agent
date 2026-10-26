@@ -1,6 +1,8 @@
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core"
 import { clearConfirmationApprovals } from "../agent/confirmation-policy.js"
 import { BrowserConfiguration } from "../configuration.js"
+import { getLocale, t } from "../i18n/index.js"
+import { isLanguagePreference, type LanguagePreference, LOCALES } from "../i18n/locales.js"
 import type { RuntimeEvent } from "../runtime/messages.js"
 import {
   type ConfirmationMode,
@@ -20,6 +22,15 @@ import { initializeSettingsTabs } from "./settings-tabs.js"
 import { renderToolOptions } from "./settings-tools.js"
 import { initializeSkillsSettings } from "./skills-settings.js"
 import { applyAppearance, element, run, type SettingsSectionState, setErrorOutput } from "./ui.js"
+
+const THINKING_LABELS = {
+  minimal: "Minimal",
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  xhigh: "Extra high",
+  max: "Maximum",
+} as const
 
 export async function initializeSettingsPage(params: URLSearchParams): Promise<void> {
   const settingsContextId = params.get("source") ?? crypto.randomUUID()
@@ -50,6 +61,7 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
   const thinkingError = element<HTMLElement>("thinking-level-error")
   const modelError = element<HTMLElement>("model-error")
   const confirmationStatus = element<HTMLElement>("confirmation-approvals-status")
+  const languageSelect = element<HTMLSelectElement>("language")
   const fontFamilySelect = element<HTMLSelectElement>("font-family")
   const fontSizeInput = element<HTMLInputElement>("font-size")
   const fontSizeOutput = element<HTMLOutputElement>("font-size-value")
@@ -60,18 +72,19 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
     input: element<HTMLInputElement>("provider-search"),
     select: providerSelect,
     listbox: element<HTMLElement>("provider-options"),
-    emptyText: "No providers available",
+    emptyText: t("No providers available"),
   })
   const modelPicker = new SearchableSelect({
     container: element<HTMLElement>("model-picker"),
     input: element<HTMLInputElement>("model-search"),
     select: modelSelect,
     listbox: element<HTMLElement>("model-options"),
-    emptyText: "Configure provider to load models",
+    emptyText: t("Configure provider to load models"),
   })
   const setError = (error?: unknown): void => setErrorOutput(errorOutput, error)
   let settingsModelChanged = false
   let settingsThinkingChanged = false
+  let savedLanguage: LanguagePreference = "en"
   let savedFormState = ""
   let allowClosing = false
   let savingGeneral = false
@@ -83,12 +96,16 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
   let authentication: AuthenticationController | undefined
   const configuration = new BrowserConfiguration((event) => authentication?.onAuthEvent(event))
   let initialSelection = configuration.defaultModel
+  languageSelect.replaceChildren(
+    new Option(t("Follow browser"), "auto"),
+    ...LOCALES.map((locale) => new Option(`${locale.name} (${locale.code})`, locale.code)),
+  )
 
   function renderProviderOptions(preferredId?: string): void {
     providerPicker.setOptions(
       configuration.getProviders().map((provider) => ({
         value: provider.id,
-        label: `${provider.name} (${provider.modelCount})`,
+        label: `${provider.name} (${provider.modelCount.toLocaleString(getLocale())})`,
         keywords: [provider.id],
       })),
       preferredId,
@@ -102,36 +119,30 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
   }
 
   function updateThinkingControls(preferred = thinkingLevelSelect.value): void {
-    const levels = selectedModel()?.thinkingLevels ?? []
+    const levels = (selectedModel()?.thinkingLevels ?? []).filter(
+      (level): level is keyof typeof THINKING_LABELS => level !== "off",
+    )
     const desired = preferred || configuration.appSettings.thinkingLevel
     const needsExplicitChoice =
       settingsModelChanged &&
       !settingsThinkingChanged &&
       levels.length > 0 &&
-      !levels.includes(configuration.appSettings.thinkingLevel)
-    const options = levels.map(
-      (level) =>
-        new Option(
-          level === "xhigh"
-            ? "Extra high"
-            : level === "max"
-              ? "Maximum"
-              : level.charAt(0).toUpperCase() + level.slice(1),
-          level,
-        ),
-    )
+      !levels.some((level) => level === configuration.appSettings.thinkingLevel)
+    const options = levels.map((level) => new Option(t(THINKING_LABELS[level]), level))
     if (levels.length === 0) {
-      options.push(new Option("Not applicable", desired))
-      thinkingHint.textContent =
-        "This model does not use a thinking level. Your saved preference is retained."
+      options.push(new Option(t("Not applicable"), desired))
+      thinkingHint.textContent = t(
+        "This model does not use a thinking level. Your saved preference is retained.",
+      )
     } else {
       if (needsExplicitChoice || !levels.some((level) => level === desired)) {
-        const placeholder = new Option("Choose a supported level", "")
+        const placeholder = new Option(t("Choose a supported level"), "")
         placeholder.disabled = true
         options.unshift(placeholder)
       }
-      thinkingHint.textContent =
-        "Choose a supported level. Higher levels may use more tokens. Unrelated saves keep your saved preference."
+      thinkingHint.textContent = t(
+        "Choose a supported level. Higher levels may use more tokens. Unrelated saves keep your saved preference.",
+      )
     }
     thinkingLevelSelect.replaceChildren(...options)
     thinkingLevelSelect.value =
@@ -145,10 +156,10 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
     const model = selectedModel()
     modelCapabilities.textContent = model
       ? [
-          model.reasoning ? "Reasoning" : "No reasoning",
-          model.imageInput ? "Image input" : "Text input",
+          model.reasoning ? t("Reasoning") : t("No reasoning"),
+          model.imageInput ? t("Image input") : t("Text input"),
         ].join(" · ")
-      : "No models available. Add a credential to load this provider's catalog."
+      : t("No models available. Add a credential to load this provider's catalog.")
     modelError.hidden = true
     element<HTMLInputElement>("model-search").removeAttribute("aria-invalid")
     updateThinkingControls()
@@ -172,14 +183,19 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
 
   function selectedThinkingLevel(): ThinkingLevel {
     if (!isThinkingLevel(thinkingLevelSelect.value))
-      throw new Error("Choose a valid thinking level")
+      throw new Error(t("Choose a valid thinking level"))
     return thinkingLevelSelect.value
   }
 
   function selectedConfirmationMode(): ConfirmationMode {
     const value = confirmationModes.find((radio) => radio.checked)?.value
-    if (!isConfirmationMode(value)) throw new Error("Choose a valid confirmation mode")
+    if (!isConfirmationMode(value)) throw new Error(t("Choose a valid confirmation mode"))
     return value
+  }
+
+  function selectedLanguage(): LanguagePreference {
+    if (!isLanguagePreference(languageSelect.value)) throw new Error(t("Choose a valid language"))
+    return languageSelect.value
   }
 
   function selectedFontFamily(): FontFamily {
@@ -205,6 +221,7 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
       thinkingLevelSelect.value,
       confirmationModes.find((radio) => radio.checked)?.value,
       toolCheckboxes.map((checkbox) => checkbox.checked),
+      languageSelect.value,
       fontFamilySelect.value,
       fontSizeInput.value,
       systemPrompt.value,
@@ -231,15 +248,15 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
     saveButton.disabled = !ready || busy || !hasGeneralChanges()
     closeButton.disabled = cancelButton.disabled = busy
     saveStatus.textContent = savingGeneral
-      ? "Saving general settings…"
+      ? t("Saving general settings…")
       : busy
-        ? "Separate action in progress…"
+        ? t("Separate action in progress…")
         : hasGeneralChanges()
-          ? "Unsaved general changes"
-          : "No unsaved general changes"
+          ? t("Unsaved general changes")
+          : t("No unsaved general changes")
     draftStatus.textContent = [
-      mcpState.hasDraft() ? "Server edits not saved" : "",
-      skillState.hasDraft() ? "Skill review not imported" : "",
+      mcpState.hasDraft() ? t("Server edits not saved") : "",
+      skillState.hasDraft() ? t("Skill review not imported") : "",
     ]
       .filter(Boolean)
       .join(" · ")
@@ -251,7 +268,9 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
 
   function validateGeneralChanges(): HTMLElement | undefined {
     if (settingsModelChanged && !modelSelect.value) {
-      modelError.textContent = "Add a credential and choose a model before saving this selection."
+      modelError.textContent = t(
+        "Add a credential and choose a model before saving this selection.",
+      )
       modelError.hidden = false
       element<HTMLInputElement>("model-search").setAttribute("aria-invalid", "true")
       element<HTMLButtonElement>("settings-tab-model").click()
@@ -270,7 +289,7 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
           !levels.some((level) => level === thinkingLevelSelect.value)))
     ) {
       if (invalidPersistedLevel) updateThinkingControls(persistedLevel)
-      thinkingError.textContent = "Choose a thinking level supported by this model."
+      thinkingError.textContent = t("Choose a thinking level supported by this model.")
       thinkingError.hidden = false
       thinkingLevelSelect.setAttribute("aria-invalid", "true")
       element<HTMLButtonElement>("settings-tab-model").click()
@@ -292,6 +311,8 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
       radio.checked = radio.value === configuration.appSettings.confirmationMode
     const enabledTools = new Set(configuration.appSettings.enabledTools)
     for (const checkbox of toolCheckboxes) checkbox.checked = enabledTools.has(checkbox.value)
+    savedLanguage = configuration.appSettings.language
+    languageSelect.value = savedLanguage
     fontFamilySelect.value = configuration.appSettings.fontFamily
     fontSizeInput.value = String(configuration.appSettings.fontSize)
     fontSizeOutput.value = `${configuration.appSettings.fontSize} px`
@@ -317,10 +338,11 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
     if (
       hasUnsavedChanges() &&
       !(await confirmSettingsAction({
-        title: "Discard unsaved changes?",
-        message:
+        title: t("Discard unsaved changes?"),
+        message: t(
           "Unsaved general settings, MCP edits, and reviewed skill content will be discarded. Saved MCP and Skills changes will remain.",
-        confirmLabel: "Discard changes",
+        ),
+        confirmLabel: t("Discard changes"),
       }))
     )
       return
@@ -370,7 +392,7 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
     void run(async () => {
       try {
         await clearConfirmationApprovals()
-        confirmationStatus.textContent = "Remembered approvals cleared"
+        confirmationStatus.textContent = t("Remembered approvals cleared")
       } finally {
         clearingApprovals = false
         updateSaveState()
@@ -387,10 +409,11 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
       if (
         (mcpState.hasDraft() || skillState.hasDraft()) &&
         !(await confirmSettingsAction({
-          title: "Unsaved MCP or Skills changes",
-          message:
+          title: t("Unsaved MCP or Skills changes"),
+          message: t(
             "Save general settings does not save MCP edits or import a reviewed skill. Use their save controls first, or discard those drafts and continue.",
-          confirmLabel: "Discard drafts and save",
+          ),
+          confirmLabel: t("Discard drafts and save"),
         }))
       )
         return
@@ -405,7 +428,7 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
       updateSaveState()
       page.inert = true
       page.setAttribute("aria-busy", "true")
-      saveButton.textContent = "Saving…"
+      saveButton.textContent = t("Saving…")
       try {
         const applyModelToActiveSession = settingsModelChanged
         let providerId = providerSelect.value
@@ -419,29 +442,37 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
           providerId = configuration.appSettings.modelProvider
           modelId = configuration.appSettings.modelId
         }
-        if (!modelId) throw new Error("Configure the selected provider and choose a model")
+        if (!modelId) throw new Error(t("Configure the selected provider and choose a model"))
 
         const fontFamily = selectedFontFamily()
         const fontSize = selectedFontSize()
         const confirmationMode = selectedConfirmationMode()
+        const language =
+          languageSelect.value !== savedLanguage
+            ? selectedLanguage()
+            : configuration.appSettings.language
         if (confirmationMode !== configuration.appSettings.confirmationMode) {
           await clearConfirmationApprovals()
         }
-        await configuration.updateSettings({
-          confirmationMode,
-          enabledTools: toolCheckboxes
-            .filter((checkbox) => checkbox.checked)
-            .map((checkbox) => checkbox.value),
-          systemPrompt: systemPrompt.value,
-          agentInstructions: agentInstructions.value,
-          fontFamily,
-          fontSize,
-          modelProvider: providerId,
-          modelId,
-          thinkingLevel: applyThinkingToActiveSession
-            ? selectedThinkingLevel()
-            : configuration.appSettings.thinkingLevel,
-        })
+        await configuration.updateSettings(
+          {
+            language,
+            confirmationMode,
+            enabledTools: toolCheckboxes
+              .filter((checkbox) => checkbox.checked)
+              .map((checkbox) => checkbox.value),
+            systemPrompt: systemPrompt.value,
+            agentInstructions: agentInstructions.value,
+            fontFamily,
+            fontSize,
+            modelProvider: providerId,
+            modelId,
+            thinkingLevel: applyThinkingToActiveSession
+              ? selectedThinkingLevel()
+              : configuration.appSettings.thinkingLevel,
+          },
+          languageSelect.value === savedLanguage,
+        )
         savedFormState = generalFormState()
         await chrome.runtime
           .sendMessage({
@@ -458,7 +489,7 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
         if (!allowClosing) {
           page.inert = false
           page.removeAttribute("aria-busy")
-          saveButton.textContent = "Save general settings"
+          saveButton.textContent = t("Save general settings")
           updateSaveState()
           ;(validationFocus ?? saveButton).focus()
         }
@@ -478,7 +509,7 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
   })
   window.addEventListener("pagehide", () => authentication?.abort())
 
-  document.title = "Settings · Pi Browser Agent"
+  document.title = t("Settings · Pi Browser Agent")
   document.body.dataset.view = "settings"
   initialSelection = await configuration.initialize(initialModel)
   populateSettings()

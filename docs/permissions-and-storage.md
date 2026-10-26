@@ -72,6 +72,12 @@ Microphone access is a Chrome content permission for the extension origin, not a
 
 Local extension storage is restricted to trusted contexts. Content injection has no storage API channel and receives only operation parameters. Strict confirms each protected operation; Balanced (new-install default) remembers the same operation and target until Chrome restarts; Convenient remembers them across restarts. Existing installations without a saved mode remain Strict. Approval fingerprints are SHA-256 digests of bounded, canonical action identities, capped at 256 per mode; raw WebMCP arguments, bookmark queries, and full URLs are not kept in the approval ledger. Settings can clear both ledgers; switching modes clears them automatically. Form submissions, downloads, and clicks lacking a stable target always prompt. Chrome-owned permission requests are never cached or suppressed by these modes.
 
+### Interface language preference
+
+The existing `piBrowserAgentSettings` object includes `language`, validated as `auto` or one of the 18 approved application locales. Missing or invalid values read as `en` without a language migration write. Selecting and saving a language requests no permission, makes no model request, and changes no session record. Open views apply it only when safe; an unrelated Settings save retains the latest stored language if that tab did not edit it. Settings writes serialize through a profile-wide Web Lock and merge the untouched language inside the commit. Dictation language and model instructions do not change.
+
+This is an additive settings field, not an IndexedDB migration. Older compatible builds ignore it and can remove it on a later save. English recovery does not clear credentials, skills, MCP data, approvals, or conversations. See [supported languages and native-label limits](i18n.md).
+
 ## Retention and recovery
 
 Confirmed bookmark results are sent to the selected model provider as conversation tool results and then persist in the same transcript record as other complete messages. Search requires a non-empty query; search and recent reads return at most 50 normalized items and 50 KB. Pi Browser Agent does not keep a separate bookmark cache or index.
