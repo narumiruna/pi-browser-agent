@@ -6,6 +6,103 @@ test.setTimeout(120_000)
 
 const STORAGE_KEY = "piBrowserAgentSkillsV1"
 
+test("deleting an installed skill preserves the unimported review and settings draft warning", async () => {
+  const harness = await launchExtensionHarness()
+  try {
+    const requests: string[] = []
+    await harness.context.route(CODEX_RESPONSES_URL, async (route) => {
+      requests.push(route.request().postData() ?? "")
+      await route.fulfill({ status: 500, body: "Unexpected provider request" })
+    })
+    const original = {
+      id: "00000000-0000-4000-8000-000000000001",
+      name: "installed-skill",
+      description: "Installed fixture",
+      body: "Installed body",
+      enabled: false,
+    }
+    await harness.controller.evaluate(
+      async ({ key, record }) => {
+        await chrome.storage.local.set({ [key]: { version: 1, records: [record] } })
+      },
+      { key: STORAGE_KEY, record: original },
+    )
+    const page = await harness.context.newPage()
+    await page.goto(`${harness.controller.url()}?view=settings`)
+    await page.getByRole("tab", { name: "Skills", exact: true }).click()
+    const list = page.getByRole("list", { name: "Installed skills", exact: true })
+    const file = page.locator("#skills-file-input")
+    const review = page.locator("#skills-review")
+    const preview = page.locator("#skills-preview")
+    const importButton = page.locator("#skills-import-reviewed")
+    const draftStatus = page.locator("#settings-draft-status")
+    await list.getByRole("button", { name: /installed-skill/ }).click()
+    const body = "Preserve this reviewed body.\nReview scripts/task.py as text."
+    await file.setInputFiles({
+      name: "SKILL.md",
+      mimeType: "text/markdown",
+      buffer: Buffer.from(`---\nname: reviewed-skill\ndescription: Reviewed fixture\n---\n${body}`),
+    })
+    await expect(review).toBeVisible()
+    await expect(preview).toContainText(body)
+    await expect(preview).toContainText("Compatibility warnings:")
+    await expect(importButton).toBeEnabled()
+    await expect(draftStatus).toHaveText("Skill review not imported")
+    const reviewedPreview = await preview.textContent()
+
+    await page.locator("#skills-delete").click()
+    await expect(page.locator("#skills-delete-name")).toHaveText(original.name)
+    await expect(page.locator("#skills-cancel-delete")).toBeFocused()
+    await page.locator("#skills-cancel-delete").click()
+    await expect(page.locator("#skills-delete-dialog")).toBeHidden()
+    await expect(list.getByRole("listitem")).toHaveCount(1)
+    await expect(preview).toHaveText(reviewedPreview ?? "")
+    await expect(draftStatus).toHaveText("Skill review not imported")
+
+    await page.locator("#skills-delete").click()
+    await page.locator("#skills-confirm-delete").click()
+    await expect(page.locator("#skills-status")).toContainText("Skill deleted")
+    await expect(list.getByRole("listitem")).toHaveCount(0)
+    await expect(page.locator("#skills-installed-controls")).toBeHidden()
+    await expect(file).toBeFocused()
+    await expect(review).toBeVisible()
+    await expect(preview).toHaveText(reviewedPreview ?? "")
+    await expect(importButton).toBeVisible()
+    await expect(importButton).toBeEnabled()
+    await expect(page.locator("#skills-replace-reviewed")).toBeHidden()
+    await expect(draftStatus).toHaveText("Skill review not imported")
+    await expect(page.locator("#save-settings")).toBeDisabled()
+
+    await page.locator("#cancel-settings").click()
+    await expect(page.locator("#settings-confirm-dialog")).toBeVisible()
+    await page.locator("#settings-confirm-cancel").click()
+    await expect(preview).toHaveText(reviewedPreview ?? "")
+    await importButton.click()
+    await expect(page.locator("#skills-status")).toContainText("Skill imported disabled")
+    await expect(list.getByRole("button", { name: /reviewed-skill/ })).toBeFocused()
+    await expect(review).toBeHidden()
+    await expect(draftStatus).toBeEmpty()
+    expect(
+      await page.evaluate(async (key) => (await chrome.storage.local.get(key))[key], STORAGE_KEY),
+    ).toEqual({
+      version: 1,
+      records: [
+        {
+          id: expect.any(String),
+          name: "reviewed-skill",
+          description: "Reviewed fixture",
+          body,
+          enabled: false,
+        },
+      ],
+    })
+    expect(requests).toEqual([])
+    expect(harness.pageErrors).toEqual([])
+  } finally {
+    await harness.close()
+  }
+})
+
 test("Skills separates review from the keyboard-accessible installed list and preserves focus", async () => {
   const harness = await launchExtensionHarness()
   try {

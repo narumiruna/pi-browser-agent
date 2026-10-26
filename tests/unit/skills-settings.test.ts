@@ -524,6 +524,51 @@ describe("Skills settings", () => {
     expect(env.document.activeElement).toBe(env.file)
   })
 
+  test("deleting an installed skill preserves an unrelated review for later import", async () => {
+    const remaining = {
+      ...original,
+      id: "00000000-0000-4000-8000-000000000002",
+      name: "remaining-skill",
+    }
+    const env = await setup([original, remaining])
+    env.selectSkill()
+    await env.choose(source("new-skill", "Reviewed body\nReview scripts/task.py as text."))
+    const preview = env.preview.textContent
+    expect(env.state.hasDraft()).toBe(true)
+    env.button("skills-delete").click()
+    env.button("skills-confirm-delete").click()
+    await settle()
+    expect(await env.store.list()).toEqual([remaining])
+    expect(env.dialog.open).toBe(false)
+    expect(env.selectedButton()).toBeNull()
+    expect(env.installedControls.hidden).toBe(true)
+    expect(env.document.activeElement).toBe(env.selectionButton(remaining.id))
+    expect(env.state.isBusy()).toBe(false)
+    expect(env.state.hasDraft()).toBe(true)
+    expect(env.review.hidden).toBe(false)
+    expect(env.preview.textContent).toBe(preview)
+    expect(env.button("skills-import-reviewed").hidden).toBe(false)
+    expect(env.button("skills-import-reviewed").disabled).toBe(false)
+    expect(env.button("skills-replace-reviewed").hidden).toBe(true)
+    expect(env.status.textContent).toContain("Skill deleted")
+
+    env.button("skills-import-reviewed").click()
+    await settle()
+    expect(await env.store.list()).toEqual([
+      remaining,
+      {
+        id: expect.any(String),
+        name: "new-skill",
+        description: "A useful skill",
+        body: "Reviewed body\nReview scripts/task.py as text.",
+        enabled: false,
+      },
+    ])
+    expect(env.state.hasDraft()).toBe(false)
+    expect(env.review.hidden).toBe(true)
+    expect(env.document.activeElement).toBe(env.selectedButton())
+  })
+
   test.each([
     { name: "other.md", size: 10, message: "named SKILL.md" },
     { name: "SKILL.md", size: SKILL_LIMITS.inputBytes + 1, message: "at most 65,536 bytes" },
@@ -601,7 +646,7 @@ describe("Skills settings", () => {
     async (action) => {
       const env = await setup([original])
       env.selectSkill()
-      if (action === "import" || action === "replace") await env.choose()
+      if (action !== "enable") await env.choose()
       env.storage.set.mockRejectedValueOnce(new Error("Storage failed <img src=x>"))
       if (action === "enable") env.enabled.click()
       else if (action === "delete") {
@@ -615,11 +660,12 @@ describe("Skills settings", () => {
       expect(env.selectionButton().disabled).toBe(false)
       expect(env.state.isBusy()).toBe(false)
       expect(env.enabled.checked).toBe(false)
-      if (action === "import" || action === "replace") {
+      if (action !== "enable") {
         expect(env.preview.textContent).toContain("Reviewed body")
         expect(env.review.hidden).toBe(false)
         expect(env.state.hasDraft()).toBe(true)
-        expect(env.button(`skills-${action}-reviewed`).disabled).toBe(false)
+        expect(env.button("skills-import-reviewed").disabled).toBe(false)
+        expect(env.button("skills-replace-reviewed").disabled).toBe(false)
       }
     },
   )

@@ -5,14 +5,18 @@ import { clearConfirmationApprovals } from "../../src/browser/agent/confirmation
 import { getLocale, setLanguagePreference } from "../../src/browser/i18n/index.js"
 import { LOCALES } from "../../src/browser/i18n/locales.js"
 import { initializeSettingsPage } from "../../src/browser/sidepanel/settings-page.js"
-import { type AppSettings, DEFAULT_SETTINGS } from "../../src/browser/storage.js"
+import {
+  type AppSettings,
+  DEFAULT_SETTINGS,
+  type SettingsUpdate,
+} from "../../src/browser/storage.js"
 
 const state = vi.hoisted(() => ({
   persisted: {} as AppSettings,
   loaded: {} as AppSettings,
   authBusy: false,
   confirm: vi.fn(async () => false),
-  update: vi.fn<(settings: AppSettings, preserveLanguage?: boolean) => Promise<void>>(),
+  update: vi.fn<(update: SettingsUpdate) => Promise<void>>(),
 }))
 
 vi.mock("../../src/browser/configuration.js", () => ({
@@ -30,8 +34,8 @@ vi.mock("../../src/browser/configuration.js", () => ({
     async syncSettings() {
       state.loaded = { ...state.persisted }
     }
-    updateSettings(settings: AppSettings, preserveLanguage = false) {
-      return state.update(settings, preserveLanguage)
+    updateSettings(update: SettingsUpdate) {
+      return state.update(update)
     }
     getProviders() {
       return [{ id: state.persisted.modelProvider, name: "Provider", modelCount: 0 }]
@@ -81,11 +85,9 @@ afterEach(() => {
 
 async function setup() {
   state.persisted = { ...DEFAULT_SETTINGS, language: "en" }
-  state.update.mockImplementation(async (settings, preserveLanguage) => {
-    state.persisted = state.loaded = {
-      ...settings,
-      language: preserveLanguage ? state.persisted.language : settings.language,
-    }
+  state.update.mockImplementation(async (update) => {
+    const changes = typeof update === "function" ? await update({ ...state.persisted }) : update
+    state.persisted = state.loaded = { ...state.persisted, ...changes }
   })
   const dom = new JSDOM(html)
   windows.push(dom)
@@ -213,7 +215,45 @@ describe("Settings language drafts", () => {
     ui.save.click()
     await vi.waitFor(() => expect(ui.close).toHaveBeenCalledOnce())
     expect(state.persisted.language).toBe("ja")
-    expect(state.update.mock.lastCall?.[1]).toBe(true)
+    expect(state.persisted.confirmationMode).toBe("strict")
+  })
+
+  test("an unrelated save preserves all untouched fields and does not clear approvals", async () => {
+    const ui = await setup()
+    vi.mocked(clearConfirmationApprovals).mockClear()
+    state.persisted = {
+      ...state.persisted,
+      language: "ja",
+      confirmationMode: "strict",
+      enabledTools: state.persisted.enabledTools.filter((name) => name !== "browser_type"),
+      fontFamily: "serif",
+      systemPrompt: "Prompt from another tab",
+      agentInstructions: "Instructions from another tab",
+    }
+    const current = { ...state.persisted }
+    const fontSize = ui.get<HTMLInputElement>("font-size")
+    fontSize.value = "19"
+    fontSize.dispatchEvent(new ui.dom.window.Event("input", { bubbles: true }))
+    ui.save.click()
+    await vi.waitFor(() => expect(ui.close).toHaveBeenCalledOnce())
+    expect(state.persisted).toEqual({ ...current, fontSize: 19 })
+    expect(clearConfirmationApprovals).not.toHaveBeenCalled()
+  })
+
+  test("a reverted field preserves the latest stored value on an unrelated save", async () => {
+    const ui = await setup()
+    const strict = ui.dom.window.document.querySelector<HTMLInputElement>('input[value="strict"]')
+    const balanced =
+      ui.dom.window.document.querySelector<HTMLInputElement>('input[value="balanced"]')
+    if (!strict || !balanced) throw new Error("Missing confirmation mode")
+    strict.click()
+    balanced.click()
+    state.persisted = { ...state.persisted, confirmationMode: "convenient" }
+    ui.changeLanguage("ja")
+    ui.save.click()
+    await vi.waitFor(() => expect(ui.close).toHaveBeenCalledOnce())
+    expect(state.persisted.confirmationMode).toBe("convenient")
+    expect(state.persisted.language).toBe("ja")
   })
 
   test("a locally changed language overrides a concurrent persisted language", async () => {
