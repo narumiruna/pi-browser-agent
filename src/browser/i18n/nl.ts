@@ -761,4 +761,77 @@ export default {
     "Aanmeldgegevens voor {provider} ingesteld — Account",
   "{provider} credential missing": "Aanmeldgegevens voor {provider} ontbreken",
   "{provider} not configured": "{provider} niet ingesteld",
+  "GitHub repository": "GitHub-repository",
+  "Enter owner/repo or a GitHub repository URL. Only public repositories are supported.":
+    "Voer owner/repo of een GitHub-repository-URL in. Alleen openbare repository’s worden ondersteund.",
+  "Find GitHub skills": "GitHub-vaardigheden zoeken",
+  "Cancel fetch": "Ophalen annuleren",
+  "GitHub SKILL.md files": "SKILL.md-bestanden op GitHub",
+  "Select a SKILL.md": "Een SKILL.md selecteren",
+  "Review selected GitHub skill": "Geselecteerde GitHub-vaardigheid beoordelen",
+  "Open source on GitHub": "Bronbestand op GitHub openen",
+  "Only name, description, and body are saved. Source identity and optional metadata are review-only.":
+    "Alleen name, description en body worden opgeslagen. De bronidentiteit en optionele metagegevens zijn alleen ter beoordeling.",
+  "Repository: {repository}\nPath: {path}\nCommit: {commit}":
+    "Repository: {repository}\nPad: {path}\nCommit: {commit}",
+  "Original SKILL.md:\n{source}": "Oorspronkelijke SKILL.md:\n{source}",
+  "GitHub results: {total}. Select one SKILL.md to review.":
+    "GitHub-resultaten: {total}. Selecteer één SKILL.md om te beoordelen.",
+  "No SKILL.md files found at the repository root or under skills/.":
+    "Geen SKILL.md-bestanden gevonden in de hoofdmap van de repository of onder skills/.",
+  "GitHub fetch cancelled.": "Ophalen van GitHub geannuleerd.",
+  "Repository changed. Find GitHub skills again.":
+    "Repository gewijzigd. Zoek opnieuw naar GitHub-vaardigheden.",
+  "Select a GitHub SKILL.md to review.": "Selecteer een SKILL.md op GitHub om te beoordelen.",
+  "GitHub access was not granted. Local file import is still available.":
+    "Toegang tot GitHub is niet verleend. Lokale bestanden importeren is nog steeds mogelijk.",
+  "GitHub access starts with Find GitHub skills. Requests use api.github.com without cookies or credentials. Only the selected SKILL.md is downloaded; scripts and supporting files are not imported.":
+    "Toegang tot GitHub begint met GitHub-vaardigheden zoeken. Verzoeken gebruiken api.github.com zonder cookies of aanmeldgegevens. Alleen de geselecteerde SKILL.md wordt gedownload; scripts en ondersteunende bestanden worden niet geïmporteerd.",
+  "Skill frontmatter exceeds 8 container levels or 256 nodes":
+    "De frontmatter van de vaardigheid overschrijdt 8 containerniveaus of 256 knooppunten",
+  "Skill frontmatter must not contain tags, anchors, aliases, directives, or document markers":
+    "De frontmatter van de vaardigheid mag geen tags, ankers, aliassen, richtlijnen of documentmarkeringen bevatten",
+  "Invalid YAML frontmatter": "Ongeldige YAML-frontmatter",
+  "Skill frontmatter requires one YAML document":
+    "De frontmatter van de vaardigheid vereist precies één YAML-document",
+  "Skill frontmatter must contain valid Unicode text without control characters":
+    "De frontmatter van de vaardigheid moet geldige Unicode-tekst zonder besturingstekens bevatten",
+  "Skill frontmatter must be a mapping with string keys":
+    "De frontmatter van de vaardigheid moet een koppelingstabel met tekenreekssleutels zijn",
+  "Skill frontmatter fields must be name, description, license, compatibility, metadata, or allowed-tools":
+    "De velden in de frontmatter van de vaardigheid moeten name, description, license, compatibility, metadata of allowed-tools zijn",
+  "Skill frontmatter values must be strings; metadata must be a string-to-string map":
+    "De waarden in de frontmatter van de vaardigheid moeten tekenreeksen zijn; metadata moet een koppelingstabel van tekenreeksen naar tekenreeksen zijn",
+  "Skill compatibility must be at most 500 characters":
+    "Het veld compatibility van de vaardigheid mag maximaal 500 tekens bevatten",
+  "Enter a GitHub repository as owner/repo or an HTTPS repository-root URL":
+    "Voer een GitHub-repository in als owner/repo of als een HTTPS-URL van de hoofdmap van de repository",
+  "Invalid GitHub response": "Ongeldig GitHub-antwoord",
+  "Invalid GitHub skill selection": "Ongeldige selectie van een GitHub-vaardigheid",
+  "GitHub API host approval is required":
+    "Goedkeuring voor toegang tot de GitHub-API-host is vereist",
+  "GitHub read cancelled": "Lezen van GitHub geannuleerd",
+  "GitHub tree is truncated; no partial listing is available":
+    "De GitHub-boomstructuur is afgekapt; er is geen gedeeltelijke lijst beschikbaar",
+  "GitHub tree exceeds the 10000-entry limit":
+    "De GitHub-boomstructuur overschrijdt de limiet van 10000 vermeldingen",
+  "GitHub listing exceeds the 200-candidate limit":
+    "De GitHub-lijst overschrijdt de limiet van 200 kandidaten",
+  "GitHub read timed out after 30 seconds":
+    "Lezen van GitHub heeft de tijdslimiet van 30 seconden overschreden",
+  "GitHub request failed; check the canonical repository and host access. Redirects are not allowed":
+    "GitHub-verzoek mislukt; controleer de canonieke repository en de hosttoegang. Omleidingen zijn niet toegestaan",
+  "GitHub redirected the request; enter the canonical repository":
+    "GitHub heeft het verzoek omgeleid; voer de canonieke repository in",
+  "GitHub repository or object is unavailable":
+    "De GitHub-repository of het GitHub-object is niet beschikbaar",
+  "GitHub API access was denied or rate limited":
+    "Toegang tot de GitHub-API is geweigerd of het aantal verzoeken is beperkt",
+  "GitHub request failed": "GitHub-verzoek mislukt",
+  "GitHub response exceeds the received-byte limit":
+    "Het GitHub-antwoord overschrijdt de limiet voor ontvangen bytes",
+  "GitHub skill exceeds the 65536-byte source limit":
+    "De GitHub-vaardigheid overschrijdt de bronbestandslimiet van 65536 bytes",
+  "Invalid GitHub skill Base64": "Ongeldige Base64-codering van de GitHub-vaardigheid",
+  "GitHub skill must be valid UTF-8 text": "De GitHub-vaardigheid moet geldige UTF-8-tekst zijn",
 } satisfies Catalog

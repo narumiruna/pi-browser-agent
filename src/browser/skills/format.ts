@@ -1,3 +1,5 @@
+import { Composer, type CST, isMap, isScalar, Parser, Scalar } from "yaml"
+
 /** An extension-owned validation error, not a provider or browser diagnostic. */
 export class SkillError extends Error {}
 
@@ -71,45 +73,179 @@ export function validateSkillContent(
   }
 }
 
-function scalar(value: string): string {
-  if (value.startsWith('"')) {
-    try {
-      const result: unknown = JSON.parse(value)
-      if (typeof result === "string") return result
-    } catch {
-      // Report the supported subset instead of exposing engine-specific JSON errors.
+const yamlLimits = { containers: 8, nodes: 256 } as const
+const optionalFields = new Set(["license", "compatibility", "metadata", "allowed-tools"])
+
+/** Inspect the iterative CST before the composer's recursive scalar resolution. */
+function validateYamlTokens(tokens: CST.Token[]): void {
+  const pending = tokens.map((token) => ({ token, depth: 0 }))
+  let nodes = 0
+  let documents = 0
+  while (pending.length) {
+    const entry = pending.pop()
+    if (!entry) break
+    const { token, depth } = entry
+    const add = (child: CST.Token, childDepth = depth) => {
+      pending.push({ token: child, depth: childDepth })
     }
-    throw new SkillError("Invalid double-quoted frontmatter scalar; use JSON string syntax")
+    switch (token.type) {
+      case "document":
+        documents++
+        for (const child of token.start) add(child)
+        for (const child of token.end ?? []) add(child)
+        if (token.value) add(token.value)
+        break
+      case "block-map":
+      case "block-seq":
+      case "flow-collection": {
+        nodes++
+        if (depth >= yamlLimits.containers) {
+          throw new SkillError("Skill frontmatter exceeds 8 container levels or 256 nodes")
+        }
+        if (token.type === "flow-collection") {
+          add(token.start)
+          for (const child of token.end) add(child)
+        }
+        for (const item of token.items) {
+          for (const child of item.start) add(child)
+          for (const child of item.sep ?? []) add(child)
+          const implicitMap =
+            token.type === "flow-collection" && token.start.type === "flow-seq-start" && !!item.sep
+          const map =
+            implicitMap ||
+            token.type === "block-map" ||
+            (token.type === "flow-collection" && token.start.type === "flow-map-start")
+          const childDepth = depth + 1 + Number(implicitMap)
+          if (implicitMap) {
+            nodes++
+            if (childDepth > yamlLimits.containers) {
+              throw new SkillError("Skill frontmatter exceeds 8 container levels or 256 nodes")
+            }
+          }
+          if (item.key) add(item.key, childDepth)
+          else if (map) nodes++
+          if (item.value) add(item.value, childDepth)
+          else nodes++
+        }
+        break
+      }
+      case "block-scalar":
+        nodes++
+        for (const child of token.props) add(child)
+        break
+      case "scalar":
+      case "single-quoted-scalar":
+      case "double-quoted-scalar":
+        nodes++
+        for (const child of token.end ?? []) add(child)
+        break
+      case "anchor":
+      case "alias":
+      case "tag":
+      case "directive":
+      case "directive-line":
+      case "doc-start":
+      case "doc-end":
+        throw new SkillError(
+          "Skill frontmatter must not contain tags, anchors, aliases, directives, or document markers",
+        )
+      case "error":
+        throw new SkillError("Invalid YAML frontmatter")
+    }
+    if (nodes > yamlLimits.nodes) {
+      throw new SkillError("Skill frontmatter exceeds 8 container levels or 256 nodes")
+    }
   }
-  if (value.startsWith("'")) {
-    if (!/^'(?:[^']|'')*'$/.test(value)) {
+  if (documents !== 1) throw new SkillError("Skill frontmatter requires one YAML document")
+}
+
+function frontmatter(header: string): Map<string, string> {
+  // Line separators are structural; all other metadata controls remain forbidden.
+  if (metadataControls.test(header.replaceAll("\r\n", "\n").replaceAll("\n", ""))) {
+    throw new SkillError(
+      "Skill frontmatter must contain valid Unicode text without control characters",
+    )
+  }
+  // The previous format ignored all outer scalar whitespace, including Unicode
+  // spaces. Keep that behavior on required field lines, not on folded content.
+  const yaml = header.replace(
+    /^(name|description): +(.*)$/gm,
+    (_line, key, value: string) => `${key}: ${value.trim()}`,
+  )
+  const tokens = [...new Parser().parse(`${yaml}\n`)]
+  validateYamlTokens(tokens)
+  const [document] = new Composer({
+    schema: "failsafe", // Preserve number-looking, Boolean-looking, and null-looking strings.
+    resolveKnownTags: false,
+    customTags: [],
+    merge: false,
+    stringKeys: true,
+    uniqueKeys: true,
+    strict: true,
+    prettyErrors: false,
+    logLevel: "silent",
+  }).compose(tokens)
+  if (!document || document.errors.length || document.warnings.length) {
+    throw new SkillError("Invalid YAML frontmatter")
+  }
+  if (!isMap(document.contents)) {
+    throw new SkillError("Skill frontmatter must be a mapping with string keys")
+  }
+  const fields = new Map<string, string>()
+  for (const { key, value } of document.contents.items) {
+    if (!isScalar(key) || typeof key.value !== "string") {
+      throw new SkillError("Skill frontmatter must be a mapping with string keys")
+    }
+    const field = key.value
+    if (field !== "name" && field !== "description" && !optionalFields.has(field)) {
       throw new SkillError(
-        "Invalid single-quoted frontmatter scalar; escape quotes as two single quotes",
+        "Skill frontmatter fields must be name, description, license, compatibility, metadata, or allowed-tools",
       )
     }
-    return value.slice(1, -1).replaceAll("''", "'")
+    const text = (node: unknown): string => {
+      if (!isScalar(node) || typeof node.value !== "string") {
+        throw new SkillError(
+          "Skill frontmatter values must be strings; metadata must be a string-to-string map",
+        )
+      }
+      // Only folded descriptions lose YAML's final line break. Internal line breaks
+      // and surrounding spaces still fail the existing description validation.
+      const result =
+        field === "description" && node.type === Scalar.BLOCK_FOLDED
+          ? node.value.replace(/\n+$/, "")
+          : node.value
+      if (metadataControls.test(result) || invalidUnicode.test(result)) {
+        throw new SkillError(
+          "Skill frontmatter must contain valid Unicode text without control characters",
+        )
+      }
+      return result
+    }
+    if (field === "metadata") {
+      if (!isMap(value)) {
+        throw new SkillError(
+          "Skill frontmatter values must be strings; metadata must be a string-to-string map",
+        )
+      }
+      for (const pair of value.items) {
+        text(pair.key)
+        text(pair.value)
+      }
+    } else {
+      const result = text(value)
+      if (field === "compatibility" && result.length > 500) {
+        throw new SkillError("Skill compatibility must be at most 500 characters")
+      }
+      fields.set(field, result)
+    }
   }
-  if (
-    !value ||
-    /^[!&*|>{}[\],#%@`"']/.test(value) ||
-    /^[-?:](?:\s|$)/.test(value) ||
-    /:\s|:$|(?:^|\s)#/.test(value)
-  ) {
-    throw new SkillError("Unsupported YAML scalar; use a plain string or a quoted string")
-  }
-  return value
+  return fields
 }
 
 /**
- * Supported SKILL.md subset (no YAML dependency or evaluation):
- * - UTF-8, with an optional initial BOM; LF or CRLF delimiter lines exactly `---`.
- * - Only unindented `name: value` and `description: value`, once each; blank lines allowed.
- * - Values are plain strings (no implicit typing), JSON double-quoted strings, or
- *   YAML single-quoted strings (`''` escapes a quote). Outer scalar spaces are ignored.
- * - No comments, tabs, nested values, block scalars, tags, anchors, aliases, flow
- *   collections, unknown fields, or multiline metadata. Quote YAML punctuation.
- * - Body text and its line endings are preserved. Empty bodies and control characters
- *   other than tab, CR, and LF are rejected. Source bytes include the BOM and header.
+ * Parse bounded UTF-8 SKILL.md text with bundled, string-only YAML frontmatter.
+ * Optional standard fields are validated for source review, not returned or stored.
+ * Delimiters use LF or CRLF. Body text and its line endings remain unchanged.
  */
 export function parseSkill(input: Uint8Array | string): ParsedSkill {
   const bytes = typeof input === "string" ? skillByteLength(input) : input.byteLength
@@ -131,24 +267,7 @@ export function parseSkill(input: Uint8Array | string): ParsedSkill {
   if (header?.index !== 0) {
     throw new SkillError("Skill must start with frontmatter enclosed by --- delimiter lines")
   }
-  const fields = new Map<string, string>()
-  for (const rawLine of (header[1] ?? "").split(/\r?\n/)) {
-    if (rawLine === "") continue
-    const match = /^([^\s:]+): +(.*)$/.exec(rawLine)
-    if (!match || metadataControls.test(rawLine)) {
-      throw new SkillError(
-        "Unsupported YAML frontmatter; use unindented name and description scalars",
-      )
-    }
-    const key = match[1] ?? ""
-    if (key !== "name" && key !== "description") {
-      throw new SkillError(
-        `Unknown frontmatter field: ${key}; only name and description are supported`,
-      )
-    }
-    if (fields.has(key)) throw new SkillError(`Duplicate frontmatter field: ${key}`)
-    fields.set(key, scalar((match[2] ?? "").trim()))
-  }
+  const fields = frontmatter(header[1] ?? "")
   if (!fields.has("name") || !fields.has("description")) {
     throw new SkillError("Skill frontmatter requires name and description")
   }

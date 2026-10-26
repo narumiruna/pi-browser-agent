@@ -752,4 +752,74 @@ export default {
   "{provider} credential configured — Account": "{provider}: учётные данные настроены — аккаунт",
   "{provider} credential missing": "{provider}: отсутствуют учётные данные",
   "{provider} not configured": "{provider}: не настроено",
+  "GitHub repository": "Репозиторий GitHub",
+  "Enter owner/repo or a GitHub repository URL. Only public repositories are supported.":
+    "Введите owner/repo или URL репозитория GitHub. Поддерживаются только общедоступные репозитории.",
+  "Find GitHub skills": "Найти навыки GitHub",
+  "Cancel fetch": "Отменить получение",
+  "GitHub SKILL.md files": "Файлы SKILL.md на GitHub",
+  "Select a SKILL.md": "Выбрать SKILL.md",
+  "Review selected GitHub skill": "Проверить выбранный навык GitHub",
+  "Open source on GitHub": "Открыть исходный файл на GitHub",
+  "Only name, description, and body are saved. Source identity and optional metadata are review-only.":
+    "Сохраняются только name, description и body. Сведения об источнике и необязательные metadata доступны только для проверки.",
+  "Repository: {repository}\nPath: {path}\nCommit: {commit}":
+    "Репозиторий: {repository}\nПуть: {path}\nКоммит: {commit}",
+  "Original SKILL.md:\n{source}": "Исходный SKILL.md:\n{source}",
+  "GitHub results: {total}. Select one SKILL.md to review.":
+    "Результаты GitHub: {total}. Выберите один SKILL.md для проверки.",
+  "No SKILL.md files found at the repository root or under skills/.":
+    "Файлы SKILL.md не найдены в корне репозитория или в skills/.",
+  "GitHub fetch cancelled.": "Получение из GitHub отменено.",
+  "Repository changed. Find GitHub skills again.":
+    "Репозиторий изменился. Найдите навыки GitHub снова.",
+  "Select a GitHub SKILL.md to review.": "Выберите SKILL.md на GitHub для проверки.",
+  "GitHub access was not granted. Local file import is still available.":
+    "Доступ к GitHub не предоставлен. Импорт локальных файлов по-прежнему доступен.",
+  "GitHub access starts with Find GitHub skills. Requests use api.github.com without cookies or credentials. Only the selected SKILL.md is downloaded; scripts and supporting files are not imported.":
+    "Доступ к GitHub начинается при выборе «Найти навыки GitHub». Запросы используют api.github.com без файлов cookie и учётных данных. Загружается только выбранный SKILL.md; скрипты и вспомогательные файлы не импортируются.",
+  "Skill frontmatter exceeds 8 container levels or 256 nodes":
+    "Блок frontmatter навыка превышает 8 уровней контейнеров или 256 узлов",
+  "Skill frontmatter must not contain tags, anchors, aliases, directives, or document markers":
+    "Блок frontmatter навыка не должен содержать теги, якоря, псевдонимы, директивы или маркеры документов",
+  "Invalid YAML frontmatter": "Недопустимый блок YAML frontmatter",
+  "Skill frontmatter requires one YAML document":
+    "Блок frontmatter навыка должен содержать один документ YAML",
+  "Skill frontmatter must contain valid Unicode text without control characters":
+    "Блок frontmatter навыка должен содержать допустимый текст Unicode без управляющих символов",
+  "Skill frontmatter must be a mapping with string keys":
+    "Блок frontmatter навыка должен быть отображением со строковыми ключами",
+  "Skill frontmatter fields must be name, description, license, compatibility, metadata, or allowed-tools":
+    "Поля блока frontmatter навыка должны быть name, description, license, compatibility, metadata или allowed-tools",
+  "Skill frontmatter values must be strings; metadata must be a string-to-string map":
+    "Значения блока frontmatter навыка должны быть строками; metadata должно быть отображением строк в строки",
+  "Skill compatibility must be at most 500 characters":
+    "Поле compatibility навыка должно содержать не более 500 символов",
+  "Enter a GitHub repository as owner/repo or an HTTPS repository-root URL":
+    "Введите репозиторий GitHub в виде owner/repo или HTTPS URL корня репозитория",
+  "Invalid GitHub response": "Недопустимый ответ GitHub",
+  "Invalid GitHub skill selection": "Недопустимый выбор навыка GitHub",
+  "GitHub API host approval is required": "Требуется одобрение доступа к хосту GitHub API",
+  "GitHub read cancelled": "Чтение из GitHub отменено",
+  "GitHub tree is truncated; no partial listing is available":
+    "Дерево GitHub усечено; частичный список недоступен",
+  "GitHub tree exceeds the 10000-entry limit": "Дерево GitHub превышает предел в 10000 записей",
+  "GitHub listing exceeds the 200-candidate limit":
+    "Список GitHub превышает предел в 200 кандидатов",
+  "GitHub read timed out after 30 seconds":
+    "Время ожидания чтения из GitHub истекло через 30 секунд",
+  "GitHub request failed; check the canonical repository and host access. Redirects are not allowed":
+    "Запрос к GitHub не выполнен; проверьте канонический репозиторий и доступ к хосту. Перенаправления запрещены",
+  "GitHub redirected the request; enter the canonical repository":
+    "GitHub перенаправил запрос; введите канонический репозиторий",
+  "GitHub repository or object is unavailable": "Репозиторий или объект GitHub недоступен",
+  "GitHub API access was denied or rate limited":
+    "Доступ к GitHub API запрещён или ограничен по частоте запросов",
+  "GitHub request failed": "Запрос к GitHub не выполнен",
+  "GitHub response exceeds the received-byte limit":
+    "Ответ GitHub превышает предел полученных байтов",
+  "GitHub skill exceeds the 65536-byte source limit":
+    "Навык GitHub превышает предел исходного файла в 65536 байт",
+  "Invalid GitHub skill Base64": "Недопустимые данные Base64 навыка GitHub",
+  "GitHub skill must be valid UTF-8 text": "Навык GitHub должен быть допустимым текстом UTF-8",
 } satisfies Catalog

@@ -766,4 +766,77 @@ export default {
   "{provider} credential configured — Account": "Credencial de {provider} configurada — cuenta",
   "{provider} credential missing": "Falta la credencial de {provider}",
   "{provider} not configured": "{provider} no configurado",
+  "GitHub repository": "Repositorio de GitHub",
+  "Enter owner/repo or a GitHub repository URL. Only public repositories are supported.":
+    "Introduzca owner/repo o la URL de un repositorio de GitHub. Solo se admiten repositorios públicos.",
+  "Find GitHub skills": "Buscar habilidades en GitHub",
+  "Cancel fetch": "Cancelar obtención",
+  "GitHub SKILL.md files": "Archivos SKILL.md de GitHub",
+  "Select a SKILL.md": "Seleccionar un SKILL.md",
+  "Review selected GitHub skill": "Revisar la habilidad de GitHub seleccionada",
+  "Open source on GitHub": "Abrir el archivo fuente en GitHub",
+  "Only name, description, and body are saved. Source identity and optional metadata are review-only.":
+    "Solo se guardan name, description y body. La identidad de la fuente y los metadatos opcionales son solo para revisión.",
+  "Repository: {repository}\nPath: {path}\nCommit: {commit}":
+    "Repositorio: {repository}\nRuta: {path}\nCommit: {commit}",
+  "Original SKILL.md:\n{source}": "SKILL.md original:\n{source}",
+  "GitHub results: {total}. Select one SKILL.md to review.":
+    "Resultados de GitHub: {total}. Seleccione un SKILL.md para revisarlo.",
+  "No SKILL.md files found at the repository root or under skills/.":
+    "No se encontraron archivos SKILL.md en la raíz del repositorio ni en skills/.",
+  "GitHub fetch cancelled.": "Obtención de GitHub cancelada.",
+  "Repository changed. Find GitHub skills again.":
+    "El repositorio ha cambiado. Busque de nuevo habilidades en GitHub.",
+  "Select a GitHub SKILL.md to review.": "Seleccione un SKILL.md de GitHub para revisarlo.",
+  "GitHub access was not granted. Local file import is still available.":
+    "No se concedió acceso a GitHub. La importación de archivos locales sigue disponible.",
+  "GitHub access starts with Find GitHub skills. Requests use api.github.com without cookies or credentials. Only the selected SKILL.md is downloaded; scripts and supporting files are not imported.":
+    "El acceso a GitHub comienza con Buscar habilidades en GitHub. Las solicitudes usan api.github.com sin cookies ni credenciales. Solo se descarga el SKILL.md seleccionado; no se importan scripts ni archivos auxiliares.",
+  "Skill frontmatter exceeds 8 container levels or 256 nodes":
+    "Los metadatos iniciales de la habilidad superan los 8 niveles de contenedores o los 256 nodos",
+  "Skill frontmatter must not contain tags, anchors, aliases, directives, or document markers":
+    "Los metadatos iniciales de la habilidad no deben contener etiquetas, anclas, alias, directivas ni marcadores de documento",
+  "Invalid YAML frontmatter": "Metadatos iniciales YAML no válidos",
+  "Skill frontmatter requires one YAML document":
+    "Los metadatos iniciales de la habilidad requieren un único documento YAML",
+  "Skill frontmatter must contain valid Unicode text without control characters":
+    "Los metadatos iniciales de la habilidad deben contener texto Unicode válido sin caracteres de control",
+  "Skill frontmatter must be a mapping with string keys":
+    "Los metadatos iniciales de la habilidad deben ser un mapa con claves de tipo cadena",
+  "Skill frontmatter fields must be name, description, license, compatibility, metadata, or allowed-tools":
+    "Los campos de los metadatos iniciales de la habilidad deben ser name, description, license, compatibility, metadata o allowed-tools",
+  "Skill frontmatter values must be strings; metadata must be a string-to-string map":
+    "Los valores de los metadatos iniciales de la habilidad deben ser cadenas; metadata debe ser un mapa de cadenas a cadenas",
+  "Skill compatibility must be at most 500 characters":
+    "El campo compatibility de la habilidad debe tener como máximo 500 caracteres",
+  "Enter a GitHub repository as owner/repo or an HTTPS repository-root URL":
+    "Introduzca un repositorio de GitHub como owner/repo o como una URL HTTPS de la raíz del repositorio",
+  "Invalid GitHub response": "Respuesta de GitHub no válida",
+  "Invalid GitHub skill selection": "Selección de habilidad de GitHub no válida",
+  "GitHub API host approval is required":
+    "Se requiere la autorización de acceso al host de la API de GitHub",
+  "GitHub read cancelled": "Lectura de GitHub cancelada",
+  "GitHub tree is truncated; no partial listing is available":
+    "El árbol de GitHub está truncado; no hay un listado parcial disponible",
+  "GitHub tree exceeds the 10000-entry limit":
+    "El árbol de GitHub supera el límite de 10000 entradas",
+  "GitHub listing exceeds the 200-candidate limit":
+    "El listado de GitHub supera el límite de 200 candidatos",
+  "GitHub read timed out after 30 seconds":
+    "La lectura de GitHub agotó el tiempo de espera tras 30 segundos",
+  "GitHub request failed; check the canonical repository and host access. Redirects are not allowed":
+    "La solicitud a GitHub falló; compruebe el repositorio canónico y el acceso al host. No se permiten redirecciones",
+  "GitHub redirected the request; enter the canonical repository":
+    "GitHub redirigió la solicitud; introduzca el repositorio canónico",
+  "GitHub repository or object is unavailable":
+    "El repositorio u objeto de GitHub no está disponible",
+  "GitHub API access was denied or rate limited":
+    "Se denegó el acceso a la API de GitHub o se limitó la frecuencia de solicitudes",
+  "GitHub request failed": "La solicitud a GitHub falló",
+  "GitHub response exceeds the received-byte limit":
+    "La respuesta de GitHub supera el límite de bytes recibidos",
+  "GitHub skill exceeds the 65536-byte source limit":
+    "La habilidad de GitHub supera el límite de 65536 bytes del archivo fuente",
+  "Invalid GitHub skill Base64": "Codificación Base64 de la habilidad de GitHub no válida",
+  "GitHub skill must be valid UTF-8 text": "La habilidad de GitHub debe ser texto UTF-8 válido",
 } satisfies Catalog

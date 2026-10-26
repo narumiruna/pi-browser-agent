@@ -733,4 +733,72 @@ export default {
     "Đã cấu hình thông tin xác thực {provider} — Tài khoản",
   "{provider} credential missing": "Thiếu thông tin xác thực {provider}",
   "{provider} not configured": "Chưa cấu hình {provider}",
+  "GitHub repository": "Kho GitHub",
+  "Enter owner/repo or a GitHub repository URL. Only public repositories are supported.":
+    "Nhập owner/repo hoặc URL kho GitHub. Chỉ hỗ trợ kho công khai.",
+  "Find GitHub skills": "Tìm kỹ năng GitHub",
+  "Cancel fetch": "Hủy tải",
+  "GitHub SKILL.md files": "Các tệp SKILL.md trên GitHub",
+  "Select a SKILL.md": "Chọn một SKILL.md",
+  "Review selected GitHub skill": "Xem xét kỹ năng GitHub đã chọn",
+  "Open source on GitHub": "Mở mã nguồn trên GitHub",
+  "Only name, description, and body are saved. Source identity and optional metadata are review-only.":
+    "Chỉ lưu name, description và body. Thông tin nhận dạng nguồn và metadata tùy chọn chỉ dùng để xem xét.",
+  "Repository: {repository}\nPath: {path}\nCommit: {commit}":
+    "Kho: {repository}\nĐường dẫn: {path}\nCommit: {commit}",
+  "Original SKILL.md:\n{source}": "SKILL.md gốc:\n{source}",
+  "GitHub results: {total}. Select one SKILL.md to review.":
+    "Kết quả GitHub: {total}. Chọn một SKILL.md để xem xét.",
+  "No SKILL.md files found at the repository root or under skills/.":
+    "Không tìm thấy tệp SKILL.md ở thư mục gốc của kho hoặc trong skills/.",
+  "GitHub fetch cancelled.": "Đã hủy tải từ GitHub.",
+  "Repository changed. Find GitHub skills again.": "Kho đã thay đổi. Hãy tìm lại kỹ năng GitHub.",
+  "Select a GitHub SKILL.md to review.": "Chọn một SKILL.md trên GitHub để xem xét.",
+  "GitHub access was not granted. Local file import is still available.":
+    "Chưa được cấp quyền truy cập GitHub. Bạn vẫn có thể nhập tệp cục bộ.",
+  "GitHub access starts with Find GitHub skills. Requests use api.github.com without cookies or credentials. Only the selected SKILL.md is downloaded; scripts and supporting files are not imported.":
+    "Truy cập GitHub bắt đầu khi chọn “Tìm kỹ năng GitHub”. Các yêu cầu dùng api.github.com mà không có cookie hoặc thông tin xác thực. Chỉ tải xuống SKILL.md đã chọn; không nhập tập lệnh và tệp hỗ trợ.",
+  "Skill frontmatter exceeds 8 container levels or 256 nodes":
+    "Frontmatter của kỹ năng vượt quá 8 cấp vùng chứa hoặc 256 nút",
+  "Skill frontmatter must not contain tags, anchors, aliases, directives, or document markers":
+    "Frontmatter của kỹ năng không được chứa thẻ, neo, bí danh, chỉ thị hoặc dấu đánh dấu tài liệu",
+  "Invalid YAML frontmatter": "Frontmatter YAML không hợp lệ",
+  "Skill frontmatter requires one YAML document":
+    "Frontmatter của kỹ năng cần có một tài liệu YAML",
+  "Skill frontmatter must contain valid Unicode text without control characters":
+    "Frontmatter của kỹ năng phải là văn bản Unicode hợp lệ, không có ký tự điều khiển",
+  "Skill frontmatter must be a mapping with string keys":
+    "Frontmatter của kỹ năng phải là một ánh xạ có khóa là chuỗi",
+  "Skill frontmatter fields must be name, description, license, compatibility, metadata, or allowed-tools":
+    "Các trường trong frontmatter của kỹ năng phải là name, description, license, compatibility, metadata hoặc allowed-tools",
+  "Skill frontmatter values must be strings; metadata must be a string-to-string map":
+    "Các giá trị trong frontmatter của kỹ năng phải là chuỗi; metadata phải là ánh xạ từ chuỗi sang chuỗi",
+  "Skill compatibility must be at most 500 characters":
+    "compatibility của kỹ năng không được dài quá 500 ký tự",
+  "Enter a GitHub repository as owner/repo or an HTTPS repository-root URL":
+    "Nhập kho GitHub theo dạng owner/repo hoặc URL HTTPS trỏ đến thư mục gốc của kho",
+  "Invalid GitHub response": "Phản hồi GitHub không hợp lệ",
+  "Invalid GitHub skill selection": "Lựa chọn kỹ năng GitHub không hợp lệ",
+  "GitHub API host approval is required": "Cần phê duyệt quyền truy cập máy chủ GitHub API",
+  "GitHub read cancelled": "Đã hủy đọc từ GitHub",
+  "GitHub tree is truncated; no partial listing is available":
+    "Cây GitHub bị cắt bớt; không có danh sách một phần",
+  "GitHub tree exceeds the 10000-entry limit": "Cây GitHub vượt giới hạn 10000 mục",
+  "GitHub listing exceeds the 200-candidate limit":
+    "Danh sách GitHub vượt giới hạn 200 mục ứng viên",
+  "GitHub read timed out after 30 seconds": "Đọc từ GitHub đã hết thời gian chờ sau 30 giây",
+  "GitHub request failed; check the canonical repository and host access. Redirects are not allowed":
+    "Yêu cầu GitHub thất bại; kiểm tra địa chỉ chính thức của kho và quyền truy cập máy chủ. Không cho phép chuyển hướng",
+  "GitHub redirected the request; enter the canonical repository":
+    "GitHub đã chuyển hướng yêu cầu; hãy nhập địa chỉ chính thức của kho",
+  "GitHub repository or object is unavailable": "Kho hoặc đối tượng GitHub không khả dụng",
+  "GitHub API access was denied or rate limited":
+    "Quyền truy cập GitHub API bị từ chối hoặc bị giới hạn tần suất",
+  "GitHub request failed": "Yêu cầu GitHub thất bại",
+  "GitHub response exceeds the received-byte limit":
+    "Phản hồi GitHub vượt giới hạn số byte nhận được",
+  "GitHub skill exceeds the 65536-byte source limit":
+    "Kỹ năng GitHub vượt giới hạn mã nguồn 65536 byte",
+  "Invalid GitHub skill Base64": "Base64 của kỹ năng GitHub không hợp lệ",
+  "GitHub skill must be valid UTF-8 text": "Kỹ năng GitHub phải là văn bản UTF-8 hợp lệ",
 } satisfies Catalog

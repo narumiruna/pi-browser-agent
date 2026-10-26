@@ -2,7 +2,7 @@
 
 Pi Browser Agent is a Chrome-native AI assistant. The Side Panel runs `pi-agent-core` and the browser-compatible built-in provider/model catalog from `pi-ai`. Chat works on any tab; bounded page tools work only on the active, accessible HTTP(S) tab in the focused Chrome window. With separate approval, Pi can also search or inspect recent Chrome bookmarks without a web page.
 
-No local agent process, native host, shell, general filesystem access, pairing secret, or loopback connection is required. Skill import reads only the file you explicitly select.
+No local agent process, native host, shell, general filesystem access, pairing secret, or loopback connection is required. Skill import reads a selected local file or a selected public GitHub `SKILL.md` after explicit repository fetch and host approval.
 
 ## Requirements
 
@@ -68,9 +68,11 @@ Use **Disable** to stop a server, or **Remove server and token** to confirm dele
 
 ## Browser skills
 
-Open **Settings → Skills**. The installed list shows names, descriptions, and enabled state before the import/review flow. Choose a UTF-8 file named exactly `SKILL.md`; only a valid review reveals its plain-text preview and import actions. Replacement also requires an explicitly selected installed target. Imports and explicit replacements start disabled. Enable a reviewed skill, then ask for it by name in chat. Importing or enabling sends no model request; a submitted run shares enabled metadata, and the model can request the body with `skills_load({id})`.
+Open **Settings → Skills**. The installed list shows names, descriptions, and enabled state before import/review. Choose a UTF-8 file named exactly `SKILL.md`, or enter `owner/repo` or an HTTPS `github.com` repository-root URL. Select **Find GitHub skills** and approve `https://api.github.com/*`, then select one candidate path and choose **Review selected GitHub skill**. Discovery includes root `SKILL.md` and `skills/**/SKILL.md`, including dot-directories. It does not install plugins or search their nested skill containers.
 
-Skills provide untrusted, user-authorized task guidance. They cannot grant permissions or bypass browser confirmations. Only text is supported: no scripts, supporting files, remote installation, or local directory discovery. Changes apply to the next run. Disabling or deleting blocks future loads, but previous content remains in saved conversations; deleting sessions does not delete skills. See [format, limits, and recovery](docs/skills.md).
+Review the complete original source, parsed fields, and compatibility warnings as plain text. GitHub reviews also show the repository, full path, commit SHA, and a source link. Only name, description, and body are saved; source identity and optional frontmatter fields are review-only. Replacement requires an explicitly selected installed target. Imports and replacements start disabled. Enable a reviewed skill, then ask for it by name in chat. These Settings actions send no model request; a submitted run shares enabled metadata, and the model can request the body with `skills_load({id})`.
+
+Skills provide untrusted, user-authorized task guidance. They cannot grant permissions or bypass browser confirmations. This is partial Agent Skills text support, not full skill execution: scripts, supporting files, local tools, and local directory discovery are unavailable. GitHub reads use its public API without cookies or credentials; installed records have no update tracking, and runtime loading makes no GitHub request. Changes apply to the next run. Disabling or deleting blocks future loads, but previous content remains in saved conversations; deleting sessions does not delete skills. See [format, network limits, and recovery](docs/skills.md).
 
 ## Browser safety
 
@@ -92,7 +94,7 @@ The agent can read visible text and selection, discover visible controls and scr
   - A page-level capture listener installed before the picker may still observe an intercepted event; this is not browser-internal input isolation.
 - Screenshot access is optional. Its first confirmation requests Chrome's broad `<all_urls>` capability, but the runtime accepts only the active visible HTTP(S) tab and captures only its viewport.
 - Screenshot annotation runs locally, downscales oversized-but-valid captures to a bounded canvas, and limits strokes, points, and output bytes. Attach creates a new normal composer image; only **Send** transmits it. The original result is unchanged, and both images can consume session storage.
-- Chrome can treat `<all_urls>` as satisfying narrower host requests. Pi Browser Agent separately records exact origins approved by explicit Send, login, site-access, catalog-load, or cross-origin confirmation actions and requires that approval for ordinary access.
+- Chrome can treat `<all_urls>` as satisfying narrower host requests. Pi Browser Agent separately records exact origins approved by explicit Send, login, site-access, catalog-load, GitHub-fetch, or cross-origin confirmation actions and requires that approval for ordinary access.
 - A message accepts up to four pasted PNG, JPEG, WebP, or GIF images using at most 3 MB in total.
 - Page text, selections, selected-element context, screenshot metadata, bookmark data, and WebMCP results are labeled as untrusted model input.
 - Bookmark access is optional and absent by default. Every search or recent-bookmark read requires confirmation, returns at most 50 items and 50 KB, and sends the returned titles and URLs to the selected model provider as part of the conversation.

@@ -2,7 +2,7 @@
 
 ## Trust boundaries
 
-Trusted extension contexts include the Side Panel, Settings page, and MV3 service worker. Web pages, injected page results, bookmark titles and URLs, model output, WebMCP definitions, WebMCP results, and imported skill metadata and bodies are untrusted.
+Trusted extension contexts include the Side Panel, Settings page, and MV3 service worker. Web pages, injected page results, bookmark titles and URLs, model output, WebMCP definitions, WebMCP results, GitHub repository responses, and imported skill metadata and bodies are untrusted.
 
 `chrome.storage.local` is restricted to `TRUSTED_CONTEXTS`. API keys and OAuth values never enter runtime messages, the service worker, injected functions, model messages, tool results, IndexedDB sessions, or logs. Diagnostic strings pass through credential redaction.
 
@@ -62,7 +62,13 @@ Every remote call requires a new confirmation containing its endpoint, tool, and
 
 ## Skill controls
 
-Skill import requires an explicit file selection and plain-text review. Imported records and explicit replacements start disabled; replacement retains the installed ID. Names, descriptions, and bodies are displayed as text, not executable HTML. The parser accepts only the fixed frontmatter subset and valid UTF-8 within the [skill limits](skills.md). It does not evaluate YAML tags, fetch dependencies, traverse directories, execute scripts, or install remote packages. Static warnings cannot identify every unsupported dependency; review the complete body.
+Skill import requires an explicit local-file selection or GitHub fetch/selection, followed by plain-text review. Imported records and explicit replacements start disabled; replacement retains the installed ID. Complete original source, parsed fields, optional license and metadata, and source identity are displayed as text, not executable HTML. A source link opens only on user action. Static warnings cannot identify every unsupported dependency; review the complete source. Text import does not establish full Agent Skills or plugin compatibility.
+
+The shared bundled YAML parser validates UTF-8 and the required name/description plus supported optional fields within the [skill limits](skills.md). It limits YAML to 8 container levels and 256 nodes and rejects tags, anchors, aliases, duplicate keys, multiple documents, and unknown top-level fields. Folded descriptions must normalize to the existing one-line, 512 UTF-16-unit contract; body text is preserved. Optional `allowed-tools` and `compatibility` do not grant tools, access, or execution. No scripts, supporting files, linked resources, plugins, or local directory discovery are available.
+
+GitHub import accepts only validated repository shorthand or an HTTPS `github.com` root URL. The Settings fetch-button gesture requests `https://api.github.com/*`; each request requires both Chrome permission and recorded exact-origin approval through `hasApprovedHostPermission()`. Screenshot `<all_urls>` alone cannot authorize it. Fixed API URLs resolve a default-branch commit and immutable tree, then read only the selected blob. Requests omit cookies and credentials, reject redirects, and do not follow response-supplied URLs. Provider credentials, GitHub tokens, raw-content hosts, archive downloads, and worker bridges are not used.
+
+Streamed response bytes, tree entries, candidate paths, decoded source, and operation duration have [fixed limits](skills.md#github-import). Truncated or oversized listings fail instead of exposing an incomplete list. Rate-limit errors stop without automatic retry. Cancellation, source changes, Settings disposal, and host permission revocation abort pending work; stale results cannot replace a newer review. Discovery, preview, errors, and cancellation do not write or enable records. Import saves the reviewed snapshot without refetching. Source identity and optional fields are review-only; installed records have no persistent provenance or update tracking. Runtime loading makes no network request.
 
 Enabled metadata is serialized as JSON containing only `id`, `name`, and `description`. The body is withheld until the model calls `skills_load({id})`. Both metadata and loaded bodies remain untrusted, user-authorized task guidance, not authority to change system rules, available tools, Chrome permissions, or browser confirmations. A no-page run can load a skill but does not gain page tools from it. Imported text can still influence model behavior; enable only reviewed content that is safe to share with the selected provider.
 

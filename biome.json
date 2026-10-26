@@ -40,7 +40,7 @@
   },
   "overrides": [
     {
-      "includes": [".changeset/*.md"],
+      "includes": [".changeset/*.md", "tests/fixtures/skills/synthetic-*.md"],
       "formatter": {
         "enabled": false
       }

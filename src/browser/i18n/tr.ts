@@ -741,4 +741,71 @@ export default {
   "{provider} credential configured — Account": "{provider} kimlik bilgisi yapılandırıldı — Hesap",
   "{provider} credential missing": "{provider} kimlik bilgisi eksik",
   "{provider} not configured": "{provider} yapılandırılmamış",
+  "GitHub repository": "GitHub deposu",
+  "Enter owner/repo or a GitHub repository URL. Only public repositories are supported.":
+    "owner/repo veya bir GitHub deposunun URL’sini girin. Yalnızca herkese açık depolar desteklenir.",
+  "Find GitHub skills": "GitHub becerilerini bul",
+  "Cancel fetch": "Getirmeyi iptal et",
+  "GitHub SKILL.md files": "GitHub SKILL.md dosyaları",
+  "Select a SKILL.md": "Bir SKILL.md seç",
+  "Review selected GitHub skill": "Seçili GitHub becerisini incele",
+  "Open source on GitHub": "Kaynak dosyayı GitHub’da aç",
+  "Only name, description, and body are saved. Source identity and optional metadata are review-only.":
+    "Yalnızca name, description ve body kaydedilir. Kaynak kimliği ve isteğe bağlı meta veriler yalnızca inceleme içindir.",
+  "Repository: {repository}\nPath: {path}\nCommit: {commit}":
+    "Depo: {repository}\nYol: {path}\nCommit: {commit}",
+  "Original SKILL.md:\n{source}": "Özgün SKILL.md:\n{source}",
+  "GitHub results: {total}. Select one SKILL.md to review.":
+    "GitHub sonuçları: {total}. İncelemek için bir SKILL.md seçin.",
+  "No SKILL.md files found at the repository root or under skills/.":
+    "Deponun kök dizininde veya skills/ altında SKILL.md dosyası bulunamadı.",
+  "GitHub fetch cancelled.": "GitHub’dan getirme iptal edildi.",
+  "Repository changed. Find GitHub skills again.":
+    "Depo değişti. GitHub becerilerini yeniden bulun.",
+  "Select a GitHub SKILL.md to review.": "İncelemek için GitHub’dan bir SKILL.md seçin.",
+  "GitHub access was not granted. Local file import is still available.":
+    "GitHub erişimi verilmedi. Yerel dosya içe aktarma hâlâ kullanılabilir.",
+  "GitHub access starts with Find GitHub skills. Requests use api.github.com without cookies or credentials. Only the selected SKILL.md is downloaded; scripts and supporting files are not imported.":
+    "GitHub erişimi, GitHub becerilerini bul ile başlar. İstekler, çerez veya kimlik bilgileri olmadan api.github.com adresini kullanır. Yalnızca seçili SKILL.md indirilir; betikler ve destek dosyaları içe aktarılmaz.",
+  "Skill frontmatter exceeds 8 container levels or 256 nodes":
+    "Beceri frontmatter bölümü 8 kapsayıcı düzeyini veya 256 düğümü aşıyor",
+  "Skill frontmatter must not contain tags, anchors, aliases, directives, or document markers":
+    "Beceri frontmatter bölümü etiket, çapa, takma ad, yönerge veya belge işaretçisi içermemelidir",
+  "Invalid YAML frontmatter": "Geçersiz YAML frontmatter bölümü",
+  "Skill frontmatter requires one YAML document":
+    "Beceri frontmatter bölümü tek bir YAML belgesi gerektirir",
+  "Skill frontmatter must contain valid Unicode text without control characters":
+    "Beceri frontmatter bölümü kontrol karakterleri olmadan geçerli Unicode metni içermelidir",
+  "Skill frontmatter must be a mapping with string keys":
+    "Beceri frontmatter bölümü, anahtarları dize olan bir eşleme olmalıdır",
+  "Skill frontmatter fields must be name, description, license, compatibility, metadata, or allowed-tools":
+    "Beceri frontmatter alanları name, description, license, compatibility, metadata veya allowed-tools olmalıdır",
+  "Skill frontmatter values must be strings; metadata must be a string-to-string map":
+    "Beceri frontmatter değerleri dize olmalıdır; metadata, dizeden dizeye bir eşleme olmalıdır",
+  "Skill compatibility must be at most 500 characters":
+    "Becerinin compatibility alanı en fazla 500 karakter olmalıdır",
+  "Enter a GitHub repository as owner/repo or an HTTPS repository-root URL":
+    "GitHub deposunu owner/repo veya deponun kök dizinine ait bir HTTPS URL’si olarak girin",
+  "Invalid GitHub response": "Geçersiz GitHub yanıtı",
+  "Invalid GitHub skill selection": "Geçersiz GitHub becerisi seçimi",
+  "GitHub API host approval is required": "GitHub API ana makinesine erişim onayı gerekir",
+  "GitHub read cancelled": "GitHub okuması iptal edildi",
+  "GitHub tree is truncated; no partial listing is available":
+    "GitHub ağacı kesilmiş; kısmi liste sunulmuyor",
+  "GitHub tree exceeds the 10000-entry limit": "GitHub ağacı 10000 girdi sınırını aşıyor",
+  "GitHub listing exceeds the 200-candidate limit": "GitHub listesi 200 aday sınırını aşıyor",
+  "GitHub read timed out after 30 seconds": "GitHub okuması 30 saniye sonra zaman aşımına uğradı",
+  "GitHub request failed; check the canonical repository and host access. Redirects are not allowed":
+    "GitHub isteği başarısız oldu; kanonik depoyu ve ana makine erişimini kontrol edin. Yönlendirmelere izin verilmez",
+  "GitHub redirected the request; enter the canonical repository":
+    "GitHub isteği yönlendirdi; kanonik depoyu girin",
+  "GitHub repository or object is unavailable": "GitHub deposu veya nesnesi kullanılamıyor",
+  "GitHub API access was denied or rate limited":
+    "GitHub API erişimi reddedildi veya istek sıklığı sınırlandı",
+  "GitHub request failed": "GitHub isteği başarısız oldu",
+  "GitHub response exceeds the received-byte limit": "GitHub yanıtı alınan bayt sınırını aşıyor",
+  "GitHub skill exceeds the 65536-byte source limit":
+    "GitHub becerisi 65536 bayt kaynak sınırını aşıyor",
+  "Invalid GitHub skill Base64": "GitHub becerisinin Base64 kodlaması geçersiz",
+  "GitHub skill must be valid UTF-8 text": "GitHub becerisi geçerli UTF-8 metni olmalıdır",
 } satisfies Catalog

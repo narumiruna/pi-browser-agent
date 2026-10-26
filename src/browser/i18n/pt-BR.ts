@@ -760,4 +760,77 @@ export default {
   "{provider} credential configured — Account": "Credencial de {provider} configurada — conta",
   "{provider} credential missing": "Falta a credencial de {provider}",
   "{provider} not configured": "{provider} não configurado",
+  "GitHub repository": "Repositório do GitHub",
+  "Enter owner/repo or a GitHub repository URL. Only public repositories are supported.":
+    "Insira owner/repo ou a URL de um repositório do GitHub. Apenas repositórios públicos são compatíveis.",
+  "Find GitHub skills": "Buscar habilidades no GitHub",
+  "Cancel fetch": "Cancelar busca",
+  "GitHub SKILL.md files": "Arquivos SKILL.md do GitHub",
+  "Select a SKILL.md": "Selecionar um SKILL.md",
+  "Review selected GitHub skill": "Revisar a habilidade do GitHub selecionada",
+  "Open source on GitHub": "Abrir o arquivo-fonte no GitHub",
+  "Only name, description, and body are saved. Source identity and optional metadata are review-only.":
+    "Apenas name, description e body são salvos. A identidade da origem e os metadados opcionais servem apenas para revisão.",
+  "Repository: {repository}\nPath: {path}\nCommit: {commit}":
+    "Repositório: {repository}\nCaminho: {path}\nCommit: {commit}",
+  "Original SKILL.md:\n{source}": "SKILL.md original:\n{source}",
+  "GitHub results: {total}. Select one SKILL.md to review.":
+    "Resultados do GitHub: {total}. Selecione um SKILL.md para revisar.",
+  "No SKILL.md files found at the repository root or under skills/.":
+    "Nenhum arquivo SKILL.md encontrado na raiz do repositório ou em skills/.",
+  "GitHub fetch cancelled.": "Busca no GitHub cancelada.",
+  "Repository changed. Find GitHub skills again.":
+    "O repositório foi alterado. Busque habilidades no GitHub novamente.",
+  "Select a GitHub SKILL.md to review.": "Selecione um SKILL.md do GitHub para revisar.",
+  "GitHub access was not granted. Local file import is still available.":
+    "O acesso ao GitHub não foi concedido. A importação de arquivos locais continua disponível.",
+  "GitHub access starts with Find GitHub skills. Requests use api.github.com without cookies or credentials. Only the selected SKILL.md is downloaded; scripts and supporting files are not imported.":
+    "O acesso ao GitHub começa com Buscar habilidades no GitHub. As solicitações usam api.github.com sem cookies nem credenciais. Apenas o SKILL.md selecionado é baixado; scripts e arquivos de apoio não são importados.",
+  "Skill frontmatter exceeds 8 container levels or 256 nodes":
+    "Os metadados iniciais da habilidade excedem 8 níveis de contêineres ou 256 nós",
+  "Skill frontmatter must not contain tags, anchors, aliases, directives, or document markers":
+    "Os metadados iniciais da habilidade não podem conter tags, âncoras, aliases, diretivas ou marcadores de documento",
+  "Invalid YAML frontmatter": "Metadados iniciais YAML inválidos",
+  "Skill frontmatter requires one YAML document":
+    "Os metadados iniciais da habilidade exigem um único documento YAML",
+  "Skill frontmatter must contain valid Unicode text without control characters":
+    "Os metadados iniciais da habilidade devem conter texto Unicode válido sem caracteres de controle",
+  "Skill frontmatter must be a mapping with string keys":
+    "Os metadados iniciais da habilidade devem ser um mapa com chaves do tipo string",
+  "Skill frontmatter fields must be name, description, license, compatibility, metadata, or allowed-tools":
+    "Os campos dos metadados iniciais da habilidade devem ser name, description, license, compatibility, metadata ou allowed-tools",
+  "Skill frontmatter values must be strings; metadata must be a string-to-string map":
+    "Os valores dos metadados iniciais da habilidade devem ser strings; metadata deve ser um mapa de strings para strings",
+  "Skill compatibility must be at most 500 characters":
+    "O campo compatibility da habilidade deve ter no máximo 500 caracteres",
+  "Enter a GitHub repository as owner/repo or an HTTPS repository-root URL":
+    "Insira um repositório do GitHub como owner/repo ou como uma URL HTTPS da raiz do repositório",
+  "Invalid GitHub response": "Resposta do GitHub inválida",
+  "Invalid GitHub skill selection": "Seleção de habilidade do GitHub inválida",
+  "GitHub API host approval is required":
+    "É necessária a aprovação de acesso ao host da API do GitHub",
+  "GitHub read cancelled": "Leitura do GitHub cancelada",
+  "GitHub tree is truncated; no partial listing is available":
+    "A árvore do GitHub está truncada; nenhuma listagem parcial está disponível",
+  "GitHub tree exceeds the 10000-entry limit":
+    "A árvore do GitHub excede o limite de 10000 entradas",
+  "GitHub listing exceeds the 200-candidate limit":
+    "A listagem do GitHub excede o limite de 200 candidatos",
+  "GitHub read timed out after 30 seconds":
+    "A leitura do GitHub excedeu o tempo limite de 30 segundos",
+  "GitHub request failed; check the canonical repository and host access. Redirects are not allowed":
+    "A solicitação ao GitHub falhou; verifique o repositório canônico e o acesso ao host. Redirecionamentos não são permitidos",
+  "GitHub redirected the request; enter the canonical repository":
+    "O GitHub redirecionou a solicitação; insira o repositório canônico",
+  "GitHub repository or object is unavailable":
+    "O repositório ou objeto do GitHub não está disponível",
+  "GitHub API access was denied or rate limited":
+    "O acesso à API do GitHub foi negado ou limitado pela frequência das solicitações",
+  "GitHub request failed": "A solicitação ao GitHub falhou",
+  "GitHub response exceeds the received-byte limit":
+    "A resposta do GitHub excede o limite de bytes recebidos",
+  "GitHub skill exceeds the 65536-byte source limit":
+    "A habilidade do GitHub excede o limite de 65536 bytes do arquivo-fonte",
+  "Invalid GitHub skill Base64": "Codificação Base64 da habilidade do GitHub inválida",
+  "GitHub skill must be valid UTF-8 text": "A habilidade do GitHub deve ser texto UTF-8 válido",
 } satisfies Catalog

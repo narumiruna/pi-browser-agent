@@ -453,10 +453,27 @@
             <label for="skills-file-input">SKILL.md file</label>
             <input id="skills-file-input" type="file" accept=".md,text/markdown,text/plain" aria-describedby="skills-review-help" disabled />
             <p id="skills-review-help">UTF-8 text, at most 64 KiB. Review all file content and warnings below. Import adds a new disabled skill. Replace selected skill confirms replacement of the selected installed skill with the reviewed file and disables it.</p>
+            <label for="skills-github-repository">GitHub repository</label>
+            <input id="skills-github-repository" type="text" maxlength="2048" placeholder="openai/skills" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="skills-github-help" disabled />
+            <p id="skills-github-help" class="field-hint">Enter owner/repo or a GitHub repository URL. Only public repositories are supported.</p>
+            <div class="skills-actions">
+              <button id="skills-github-fetch" type="button" disabled>Find GitHub skills</button>
+              <button id="skills-github-cancel" type="button" hidden disabled>Cancel fetch</button>
+            </div>
+            <div id="skills-github-results" hidden>
+              <label for="skills-github-candidates">GitHub SKILL.md files</label>
+              <select id="skills-github-candidates" disabled></select>
+              <div class="skills-actions">
+                <button id="skills-github-review" type="button" disabled>Review selected GitHub skill</button>
+              </div>
+            </div>
             <div id="skills-review" hidden>
             <p id="skills-preview-label">File plain-text preview and compatibility warnings</p>
             <!-- biome-ignore lint/a11y/noNoninteractiveTabindex: The bounded text preview needs keyboard scrolling. -->
             <section id="skills-preview" class="skills-preview" tabindex="0" aria-labelledby="skills-preview-label">No file reviewed.</section>
+            <!-- biome-ignore lint/a11y/useValidAnchor: The hidden source link receives a validated immutable URL before it is shown. -->
+            <a id="skills-source-link" target="_blank" rel="noopener noreferrer" hidden>Open source on GitHub</a>
+            <p>Only name, description, and body are saved. Source identity and optional metadata are review-only.</p>
             <p class="settings-scope">Skill actions save separately. Cancel does not undo saved changes. Imports and replacements start disabled.</p>
             <div class="skills-actions">
               <button id="skills-import-reviewed" type="button" class="primary" disabled>Import reviewed skill</button>
@@ -469,6 +486,7 @@
               <summary>Skill requirements and data sharing</summary>
               <p>These controls save independently of Save general settings and Cancel. Changes apply to the next run, not an active run. Imported and replaced skills start disabled.</p>
               <p>Import one UTF-8 SKILL.md file and review its plain text before saving. Scripts and supporting files are not supported. Static review cannot detect every unsupported dependency.</p>
+              <p>GitHub access starts with Find GitHub skills. Requests use api.github.com without cookies or credentials. Only the selected SKILL.md is downloaded; scripts and supporting files are not imported.</p>
               <p>Skills can affect model behavior but cannot override safety rules or grant permissions. Enabled skill names, descriptions, and loaded content are shared with the selected model provider only when you submit a chat message. They can remain in saved session history after you disable or delete a skill.</p>
             </details>
           </section>

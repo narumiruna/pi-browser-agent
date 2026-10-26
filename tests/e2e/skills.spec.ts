@@ -238,7 +238,9 @@ test("skill validation and explicit replacement are local and clearing sessions 
       settings,
       Buffer.from("---\nname: bad\ndescription: text\nextra: denied\n---\nBody"),
     )
-    await expect(settings.locator("#skills-status")).toContainText("Unknown frontmatter field")
+    await expect(settings.locator("#skills-status")).toContainText(
+      "Skill frontmatter fields must be",
+    )
     expect(await records(settings)).toEqual([])
 
     const original = await importSkill(settings)
