@@ -317,7 +317,6 @@ export async function initializeSkillsSettings(
       if (disposed) return
       await store.remove(record.id, record)
       if (disposed) return
-      clearReview()
       await refresh("")
       focusAfterSave = items.values().next().value?.button ?? file
       status.textContent = t("Skill deleted. Previous session history is retained.")

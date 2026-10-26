@@ -15,6 +15,7 @@ import {
   getSettings,
   isThinkingLevel,
   restrictLocalStorageToTrustedContexts,
+  type SettingsUpdate,
   saveSettings,
 } from "./storage.js"
 
@@ -77,8 +78,8 @@ export class BrowserConfiguration {
     return this.authChanging
   }
 
-  async updateSettings(settings: AppSettings, preserveLanguage = false): Promise<void> {
-    this.settings = await saveSettings(settings, preserveLanguage)
+  async updateSettings(update: SettingsUpdate): Promise<void> {
+    this.settings = await saveSettings(update)
   }
 
   async syncSettings(): Promise<void> {

@@ -56,6 +56,11 @@ export interface AppSettings {
   enabledTools: string[]
 }
 
+// Returning undefined from a locked update cancels the settings write.
+export type SettingsUpdate =
+  | Partial<AppSettings>
+  | ((current: AppSettings) => Promise<Partial<AppSettings> | undefined>)
+
 export interface PendingSelection {
   windowId: number
   payload: JsonObject
@@ -128,6 +133,11 @@ export async function getSettings(): Promise<AppSettings> {
       return migrated
     })
   }
+  return settingsFromStorage(value)
+}
+
+function settingsFromStorage(stored: unknown): AppSettings {
+  const value = stored as (Partial<AppSettings> & { disabledTools?: unknown }) | undefined
   return {
     language: languagePreferenceFromSettings(value),
     systemPrompt:
@@ -139,9 +149,11 @@ export async function getSettings(): Promise<AppSettings> {
     fontFamily: isFontFamily(value?.fontFamily) ? value.fontFamily : DEFAULT_SETTINGS.fontFamily,
     fontSize: isFontSize(value?.fontSize) ? value.fontSize : DEFAULT_SETTINGS.fontSize,
     modelProvider:
-      typeof value?.modelProvider === "string" && value.modelProvider
-        ? value.modelProvider
-        : DEFAULT_SETTINGS.modelProvider,
+      value?.modelProvider === "azure-openai-responses"
+        ? "azure"
+        : typeof value?.modelProvider === "string" && value.modelProvider
+          ? value.modelProvider
+          : DEFAULT_SETTINGS.modelProvider,
     modelId:
       typeof value?.modelId === "string" && value.modelId
         ? value.modelId
@@ -158,17 +170,21 @@ export async function getSettings(): Promise<AppSettings> {
   }
 }
 
-export async function saveSettings(
-  settings: AppSettings,
-  preserveLanguage = false,
-): Promise<AppSettings> {
-  const draft = { ...settings, enabledTools: [...settings.enabledTools] }
+export async function saveSettings(update: SettingsUpdate): Promise<AppSettings> {
+  const draft =
+    typeof update === "function"
+      ? update
+      : {
+          ...update,
+          ...(update.enabledTools ? { enabledTools: [...update.enabledTools] } : {}),
+        }
   return withExclusiveStorageWrite(SETTINGS_WRITE_LOCK, async () => {
-    const committed = { ...draft }
-    if (preserveLanguage) {
-      const stored = await chrome.storage.local.get(SETTINGS_KEY)
-      committed.language = languagePreferenceFromSettings(stored[SETTINGS_KEY])
-    }
+    const stored = await chrome.storage.local.get(SETTINGS_KEY)
+    const current = settingsFromStorage(stored[SETTINGS_KEY])
+    const changes = typeof draft === "function" ? await draft(current) : draft
+    if (!changes) return current
+    const committed = { ...current, ...changes }
+    committed.enabledTools = [...committed.enabledTools]
     const enabled = new Set(committed.enabledTools)
     await chrome.storage.local.set({
       [SETTINGS_KEY]: {

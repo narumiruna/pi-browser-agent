@@ -43,7 +43,7 @@ describe("browser storage", () => {
     expect(values.piBrowserAgentSettings).toMatchObject({ modelProvider: "azure", language: "ja" })
   })
 
-  test("merges untouched language inside the serialized commit, after earlier writers finish", async () => {
+  test("merges untouched preferences inside the serialized commit, after earlier writers finish", async () => {
     const values: Record<string, unknown> = {}
     let release: (() => void) | undefined
     const firstWrite = new Promise<void>((resolve) => {
@@ -62,15 +62,112 @@ describe("browser storage", () => {
         },
       },
     })
-    const languageSave = saveSettings({ ...DEFAULT_SETTINGS, language: "ja" })
-    const unrelatedSave = saveSettings({ ...DEFAULT_SETTINGS, fontSize: 19 }, true)
+    const preferences = {
+      ...DEFAULT_SETTINGS,
+      language: "ja" as const,
+      confirmationMode: "strict" as const,
+      enabledTools: DEFAULT_SETTINGS.enabledTools.filter((name) => name !== "browser_type"),
+      fontFamily: "serif" as const,
+      systemPrompt: "Prompt from another tab",
+      agentInstructions: "Instructions from another tab",
+    }
+    const firstSave = saveSettings(preferences)
+    const unrelatedSave = saveSettings({ fontSize: 19 })
     await vi.waitFor(() => expect(set).toHaveBeenCalledTimes(1))
     release?.()
-    await languageSave
-    await expect(unrelatedSave).resolves.toMatchObject({ language: "ja", fontSize: 19 })
-    await expect(getSettings()).resolves.toMatchObject({ language: "ja", fontSize: 19 })
-    await saveSettings({ ...DEFAULT_SETTINGS, language: "pt-BR" })
-    await expect(getSettings()).resolves.toMatchObject({ language: "pt-BR" })
+    await firstSave
+    await expect(unrelatedSave).resolves.toEqual({ ...preferences, fontSize: 19 })
+    await expect(getSettings()).resolves.toEqual({ ...preferences, fontSize: 19 })
+    await saveSettings({ language: "pt-BR" })
+    await expect(getSettings()).resolves.toEqual({
+      ...preferences,
+      language: "pt-BR",
+      fontSize: 19,
+    })
+  })
+
+  test("a locked update validates after an earlier serialized writer finishes", async () => {
+    const values: Record<string, unknown> = {}
+    let release: (() => void) | undefined
+    const pending = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const set = vi.fn(async (items: Record<string, unknown>) => {
+      await pending
+      Object.assign(values, items)
+    })
+    vi.stubGlobal("chrome", {
+      storage: {
+        local: {
+          get: vi.fn(async (key: string) => ({ [key]: structuredClone(values[key]) })),
+          set,
+        },
+      },
+    })
+    const firstSave = saveSettings({ thinkingLevel: "max", confirmationMode: "strict" })
+    const validate = vi.fn(async () => undefined)
+    const canceledSave = saveSettings(validate)
+    await vi.waitFor(() => expect(set).toHaveBeenCalledOnce())
+    expect(validate).not.toHaveBeenCalled()
+    release?.()
+    const current = await firstSave
+    await expect(canceledSave).resolves.toEqual(current)
+    expect(validate).toHaveBeenCalledWith(
+      expect.objectContaining({ thinkingLevel: "max", confirmationMode: "strict" }),
+    )
+    expect(set).toHaveBeenCalledOnce()
+  })
+
+  test("a locked update receives the latest settings and can cancel without writing", async () => {
+    const current = { ...DEFAULT_SETTINGS, language: "ja" as const, fontSize: 19 }
+    const values: Record<string, unknown> = { piBrowserAgentSettings: current }
+    const set = vi.fn(async (items: Record<string, unknown>) => Object.assign(values, items))
+    vi.stubGlobal("chrome", {
+      storage: {
+        local: {
+          get: vi.fn(async (key: string) => ({ [key]: structuredClone(values[key]) })),
+          set,
+        },
+      },
+    })
+    const cancel = vi.fn(async () => undefined)
+    await expect(saveSettings(cancel)).resolves.toEqual(current)
+    expect(cancel).toHaveBeenCalledWith(current)
+    expect(set).not.toHaveBeenCalled()
+
+    await expect(
+      saveSettings(async (latest) => ({ fontSize: latest.fontSize + 1 })),
+    ).resolves.toEqual({ ...current, fontSize: 20 })
+    expect(set).toHaveBeenCalledOnce()
+    const saved = structuredClone(values.piBrowserAgentSettings)
+    await expect(
+      saveSettings(async () => {
+        throw new Error("Update failed")
+      }),
+    ).rejects.toThrow("Update failed")
+    expect(values.piBrowserAgentSettings).toEqual(saved)
+    expect(set).toHaveBeenCalledOnce()
+  })
+
+  test("a partial save normalizes legacy settings without taking the settings lock again", async () => {
+    const values: Record<string, unknown> = {
+      piBrowserAgentSettings: { modelProvider: "azure-openai-responses", language: "ja" },
+    }
+    vi.stubGlobal("chrome", {
+      storage: {
+        local: {
+          get: vi.fn(async (key: string) => ({ [key]: values[key] })),
+          set: vi.fn(async (items: Record<string, unknown>) => Object.assign(values, items)),
+        },
+      },
+    })
+    await expect(saveSettings({ fontSize: 19 })).resolves.toMatchObject({
+      modelProvider: "azure",
+      language: "ja",
+      confirmationMode: "strict",
+      fontSize: 19,
+    })
+    await expect(getSettings()).resolves.toMatchObject({ modelProvider: "azure", fontSize: 19 })
   })
 
   test("persists validated appearance and thinking preferences and migrates older settings", async () => {

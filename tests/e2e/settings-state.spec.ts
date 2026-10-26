@@ -167,6 +167,42 @@ test("pristine, edited, reverted, and mixed-scope summaries follow their draft o
   }
 })
 
+test("a stale general save keeps untouched preferences saved by another Settings tab", async () => {
+  const harness = await launchExtensionHarness()
+  try {
+    const first = await openSettings(harness)
+    const stale = await openSettings(harness)
+    await selectTab(first, "Tools")
+    await first.locator('input[name="confirmation-mode"][value="strict"]').check()
+    await first.locator('input[type="checkbox"][value="browser_type"]').uncheck()
+    await selectTab(first, "Instructions")
+    await first.locator("#system-prompt").fill("Prompt saved by the first tab")
+    await first.locator("#agent-instructions").fill("Instructions saved by the first tab")
+    await selectTab(first, "Appearance")
+    await first.locator("#font-family").selectOption("serif")
+    await first.locator("#language").selectOption("ja")
+    await saveAndClose(first)
+    const saved = (await readSettings(harness)) as Record<string, unknown> & {
+      enabledTools: string[]
+    }
+    expect(saved.confirmationMode).toBe("strict")
+    expect(saved.disabledTools).toContain("browser_type")
+
+    await selectTab(stale, "Appearance")
+    await stale.locator("#font-size").fill("18")
+    await saveAndClose(stale)
+    const latest = (await readSettings(harness)) as typeof saved
+    expect({ ...latest, enabledTools: [...latest.enabledTools].sort() }).toEqual({
+      ...saved,
+      enabledTools: [...saved.enabledTools].sort(),
+      fontSize: 18,
+    })
+    expect(harness.pageErrors).toEqual([])
+  } finally {
+    await harness.close()
+  }
+})
+
 test("independent resource and approval saves are not reported as general changes", async () => {
   const harness = await launchExtensionHarness()
   try {
@@ -482,6 +518,72 @@ for (const changedAfterOpen of [false, true]) {
     }
   })
 }
+
+test("model-only save revalidates thinking after waiting for another settings writer", async () => {
+  const harness = await launchExtensionHarness()
+  let writer: Promise<void> | undefined
+  const releaseWriter = () =>
+    harness.controller.evaluate(() => {
+      const state = window as typeof window & { releaseSettingsReviewWriter?: () => void }
+      state.releaseSettingsReviewWriter?.()
+    })
+  try {
+    await seedSettings(harness, {
+      modelProvider: "openai",
+      modelId: "gpt-5.4",
+      thinkingLevel: "high",
+    })
+    await observeSaveEvents(harness)
+    const page = await openSettings(harness)
+    await chooseModel(page, "gpt-5-mini")
+    writer = harness.controller.evaluate(async () => {
+      const pending = new Promise<void>((resolve) => {
+        Object.assign(window, { releaseSettingsReviewWriter: resolve })
+      })
+      await navigator.locks.request("pi-browser-agent-settings-write", async () => {
+        await pending
+        const stored = await chrome.storage.local.get("piBrowserAgentSettings")
+        await chrome.storage.local.set({
+          piBrowserAgentSettings: {
+            ...(stored.piBrowserAgentSettings as Record<string, unknown>),
+            thinkingLevel: "max",
+            confirmationMode: "strict",
+          },
+        })
+      })
+    })
+    await expect
+      .poll(() =>
+        harness.controller.evaluate(async () =>
+          (await navigator.locks.query()).held?.some(
+            (lock) => lock.name === "pi-browser-agent-settings-write",
+          ),
+        ),
+      )
+      .toBe(true)
+    await page.locator("#save-settings").click()
+    await expect(page.locator("#settings-page")).toHaveJSProperty("inert", true)
+    await releaseWriter()
+    await writer
+    await expect(page.locator("#thinking-level-error")).toBeVisible()
+    await expect(page.locator("#thinking-level")).toBeFocused()
+    await expect(page.locator("#settings-page")).toHaveJSProperty("inert", false)
+    expect(await readSettings(harness)).toMatchObject({ modelId: "gpt-5.4", thinkingLevel: "max" })
+    expect(await saveEvents(harness)).toEqual([])
+    await page.locator("#thinking-level").selectOption("high")
+    await saveAndClose(page)
+    expect(await readSettings(harness)).toMatchObject({
+      modelId: "gpt-5-mini",
+      thinkingLevel: "high",
+      confirmationMode: "strict",
+    })
+    expect(harness.pageErrors).toEqual([])
+  } finally {
+    await releaseWriter().catch(() => undefined)
+    await writer?.catch(() => undefined)
+    await harness.close()
+  }
+})
 
 test("visible credential status distinguishes missing, API key, and Account without a provider probe", async () => {
   const harness = await launchExtensionHarness()

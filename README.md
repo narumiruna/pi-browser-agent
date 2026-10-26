@@ -48,7 +48,7 @@ Pi Browser Agent registers the browser-compatible built-in `pi-ai` providers and
 
 Settings opens in an independent full browser tab with a centered shell at most 1080 px wide. Its six panels remain mounted: **Model**, **Tools**, **MCP**, **Skills**, **Appearance**, and **Instructions**. At widths of 800 px or more, section navigation is vertical; use Up/Down Arrow. Below 800 px, tabs scroll horizontally; use Left/Right Arrow. Home/End selects the first/last section in either layout.
 
-Switching sections keeps drafts. **Save general settings** saves the model, thinking preference, confirmation mode, browser-tool choices, language, font, and instructions. A persistent footer identifies general changes, unsaved MCP edits, and unimported skill reviews separately. Save is disabled when there are no general changes or explicit model/thinking apply intent. Pending credential, approval, MCP, or Skills operations block general Save, Back, and Cancel.
+Switching sections keeps drafts. **Save general settings** saves changed general fields and explicit model/thinking selections. Untouched preferences saved by another Settings tab remain unchanged. A persistent footer identifies general changes, unsaved MCP edits, and unimported skill reviews separately. Save is disabled when there are no general changes or explicit model/thinking apply intent. Pending credential, approval, MCP, or Skills operations block general Save, Back, and Cancel.
 
 General Save asks before discarding pending MCP or Skills drafts; it does not save them. Back, Escape, and **Cancel** also protect drafts. Browser reload and close use Chrome's unsaved-change warning. Resource actions, credential changes, and **Clear remembered approvals** take effect separately; Cancel does not undo them.
 

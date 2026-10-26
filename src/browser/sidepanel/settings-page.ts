@@ -5,6 +5,7 @@ import { getLocale, t } from "../i18n/index.js"
 import { isLanguagePreference, type LanguagePreference, LOCALES } from "../i18n/locales.js"
 import type { RuntimeEvent } from "../runtime/messages.js"
 import {
+  type AppSettings,
   type ConfirmationMode,
   DEFAULT_SETTINGS,
   FONT_FAMILIES,
@@ -84,7 +85,7 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
   const setError = (error?: unknown): void => setErrorOutput(errorOutput, error)
   let settingsModelChanged = false
   let settingsThinkingChanged = false
-  let savedLanguage: LanguagePreference = "en"
+  let savedSettings = DEFAULT_SETTINGS
   let savedFormState = ""
   let allowClosing = false
   let savingGeneral = false
@@ -229,6 +230,32 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
     ])
   }
 
+  function generalSettingsEdits(): Partial<AppSettings> {
+    const draft = {
+      language: selectedLanguage(),
+      confirmationMode: selectedConfirmationMode(),
+      enabledTools: toolCheckboxes
+        .filter((checkbox) => checkbox.checked)
+        .map((checkbox) => checkbox.value),
+      systemPrompt: systemPrompt.value,
+      agentInstructions: agentInstructions.value,
+      fontFamily: selectedFontFamily(),
+      fontSize: selectedFontSize(),
+    }
+    const edits: Partial<AppSettings> = {}
+    for (const key of Object.keys(draft) as (keyof typeof draft)[]) {
+      const changed =
+        key === "enabledTools"
+          ? toolCheckboxes.some(
+              (checkbox) =>
+                checkbox.checked !== savedSettings.enabledTools.includes(checkbox.value),
+            )
+          : draft[key] !== savedSettings[key]
+      if (changed) Object.assign(edits, { [key]: draft[key] })
+    }
+    return edits
+  }
+
   function hasGeneralChanges(): boolean {
     return generalFormState() !== savedFormState || settingsModelChanged || settingsThinkingChanged
   }
@@ -266,7 +293,7 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
     return isActionBusy() || hasGeneralChanges() || mcpState.hasDraft() || skillState.hasDraft()
   }
 
-  function validateGeneralChanges(): HTMLElement | undefined {
+  function validateGeneralChanges(settings = configuration.appSettings): HTMLElement | undefined {
     if (settingsModelChanged && !modelSelect.value) {
       modelError.textContent = t(
         "Add a credential and choose a model before saving this selection.",
@@ -279,7 +306,7 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
     const levels = selectedModel()?.thinkingLevels ?? []
     const persistedLevel = settingsThinkingChanged
       ? thinkingLevelSelect.value
-      : configuration.appSettings.thinkingLevel
+      : settings.thinkingLevel
     const invalidPersistedLevel =
       settingsModelChanged && levels.length > 0 && !levels.some((level) => level === persistedLevel)
     if (
@@ -311,8 +338,8 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
       radio.checked = radio.value === configuration.appSettings.confirmationMode
     const enabledTools = new Set(configuration.appSettings.enabledTools)
     for (const checkbox of toolCheckboxes) checkbox.checked = enabledTools.has(checkbox.value)
-    savedLanguage = configuration.appSettings.language
-    languageSelect.value = savedLanguage
+    savedSettings = configuration.appSettings
+    languageSelect.value = savedSettings.language
     fontFamilySelect.value = configuration.appSettings.fontFamily
     fontSizeInput.value = String(configuration.appSettings.fontSize)
     fontSizeOutput.value = `${configuration.appSettings.fontSize} px`
@@ -431,48 +458,26 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
       saveButton.textContent = t("Saving…")
       try {
         const applyModelToActiveSession = settingsModelChanged
-        let providerId = providerSelect.value
-        let modelId = modelSelect.value
         await configuration.syncSettings()
-        validationFocus = validateGeneralChanges()
-        if (validationFocus) return
         const applyThinkingToActiveSession =
           settingsThinkingChanged && (selectedModel()?.thinkingLevels.length ?? 0) > 0
-        if (!applyModelToActiveSession) {
-          providerId = configuration.appSettings.modelProvider
-          modelId = configuration.appSettings.modelId
+        const edits = generalSettingsEdits()
+        if (applyModelToActiveSession) {
+          edits.modelProvider = providerSelect.value
+          edits.modelId = modelSelect.value
         }
-        if (!modelId) throw new Error(t("Configure the selected provider and choose a model"))
-
-        const fontFamily = selectedFontFamily()
-        const fontSize = selectedFontSize()
-        const confirmationMode = selectedConfirmationMode()
-        const language =
-          languageSelect.value !== savedLanguage
-            ? selectedLanguage()
-            : configuration.appSettings.language
-        if (confirmationMode !== configuration.appSettings.confirmationMode) {
-          await clearConfirmationApprovals()
-        }
-        await configuration.updateSettings(
-          {
-            language,
-            confirmationMode,
-            enabledTools: toolCheckboxes
-              .filter((checkbox) => checkbox.checked)
-              .map((checkbox) => checkbox.value),
-            systemPrompt: systemPrompt.value,
-            agentInstructions: agentInstructions.value,
-            fontFamily,
-            fontSize,
-            modelProvider: providerId,
-            modelId,
-            thinkingLevel: applyThinkingToActiveSession
-              ? selectedThinkingLevel()
-              : configuration.appSettings.thinkingLevel,
-          },
-          languageSelect.value === savedLanguage,
-        )
+        if (applyThinkingToActiveSession) edits.thinkingLevel = selectedThinkingLevel()
+        await configuration.updateSettings(async (current) => {
+          validationFocus = validateGeneralChanges(current)
+          if (validationFocus) return undefined
+          if (
+            edits.confirmationMode !== undefined &&
+            edits.confirmationMode !== current.confirmationMode
+          )
+            await clearConfirmationApprovals()
+          return edits
+        })
+        if (validationFocus) return
         savedFormState = generalFormState()
         await chrome.runtime
           .sendMessage({
@@ -481,7 +486,8 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
             payload: { settingsContextId, applyModelToActiveSession, applyThinkingToActiveSession },
           } satisfies RuntimeEvent)
           .catch(() => undefined)
-        applyAppearance(fontFamily, fontSize)
+        const saved = configuration.appSettings
+        applyAppearance(saved.fontFamily, saved.fontSize)
         await authentication?.refresh()
         closeSettingsPage()
       } finally {
