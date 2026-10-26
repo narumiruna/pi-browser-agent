@@ -721,4 +721,71 @@ export default {
   "{provider} credential configured — Account": "{provider} 인증 정보 설정됨 — 계정",
   "{provider} credential missing": "{provider} 인증 정보가 없습니다",
   "{provider} not configured": "{provider} 설정 안 됨",
+  "GitHub repository": "GitHub 저장소",
+  "Enter owner/repo or a GitHub repository URL. Only public repositories are supported.":
+    "owner/repo 또는 GitHub 저장소 URL을 입력하세요. 공개 저장소만 지원합니다.",
+  "Find GitHub skills": "GitHub 스킬 찾기",
+  "Cancel fetch": "가져오기 취소",
+  "GitHub SKILL.md files": "GitHub SKILL.md 파일",
+  "Select a SKILL.md": "SKILL.md 선택",
+  "Review selected GitHub skill": "선택한 GitHub 스킬 검토",
+  "Open source on GitHub": "GitHub에서 소스 열기",
+  "Only name, description, and body are saved. Source identity and optional metadata are review-only.":
+    "name, description, body만 저장됩니다. 소스 식별 정보와 선택적 metadata는 검토용으로만 사용됩니다.",
+  "Repository: {repository}\nPath: {path}\nCommit: {commit}":
+    "저장소: {repository}\n경로: {path}\n커밋: {commit}",
+  "Original SKILL.md:\n{source}": "원본 SKILL.md:\n{source}",
+  "GitHub results: {total}. Select one SKILL.md to review.":
+    "GitHub 검색 결과: {total}. 검토할 SKILL.md 하나를 선택하세요.",
+  "No SKILL.md files found at the repository root or under skills/.":
+    "저장소 루트 또는 skills/ 아래에서 SKILL.md 파일을 찾지 못했습니다.",
+  "GitHub fetch cancelled.": "GitHub 가져오기가 취소되었습니다.",
+  "Repository changed. Find GitHub skills again.":
+    "저장소가 변경되었습니다. GitHub 스킬을 다시 찾으세요.",
+  "Select a GitHub SKILL.md to review.": "검토할 GitHub SKILL.md를 선택하세요.",
+  "GitHub access was not granted. Local file import is still available.":
+    "GitHub 액세스 권한이 부여되지 않았습니다. 로컬 파일 가져오기는 계속 사용할 수 있습니다.",
+  "GitHub access starts with Find GitHub skills. Requests use api.github.com without cookies or credentials. Only the selected SKILL.md is downloaded; scripts and supporting files are not imported.":
+    "'GitHub 스킬 찾기'를 선택하면 GitHub 액세스가 시작됩니다. 요청은 쿠키나 인증 정보 없이 api.github.com을 사용합니다. 선택한 SKILL.md만 다운로드하며 스크립트와 보조 파일은 가져오지 않습니다.",
+  "Skill frontmatter exceeds 8 container levels or 256 nodes":
+    "스킬 frontmatter가 컨테이너 8단계 또는 노드 256개를 초과합니다",
+  "Skill frontmatter must not contain tags, anchors, aliases, directives, or document markers":
+    "스킬 frontmatter에는 태그, 앵커, 별칭, 지시문 또는 문서 표시자가 포함되어서는 안 됩니다",
+  "Invalid YAML frontmatter": "유효하지 않은 YAML frontmatter입니다",
+  "Skill frontmatter requires one YAML document":
+    "스킬 frontmatter에는 YAML 문서가 하나 필요합니다",
+  "Skill frontmatter must contain valid Unicode text without control characters":
+    "스킬 frontmatter는 제어 문자가 없는 유효한 Unicode 텍스트여야 합니다",
+  "Skill frontmatter must be a mapping with string keys":
+    "스킬 frontmatter는 문자열 키를 가진 매핑이어야 합니다",
+  "Skill frontmatter fields must be name, description, license, compatibility, metadata, or allowed-tools":
+    "스킬 frontmatter의 필드는 name, description, license, compatibility, metadata 또는 allowed-tools여야 합니다",
+  "Skill frontmatter values must be strings; metadata must be a string-to-string map":
+    "스킬 frontmatter의 값은 문자열이어야 하며 metadata는 문자열 간 매핑이어야 합니다",
+  "Skill compatibility must be at most 500 characters":
+    "스킬의 compatibility는 최대 500자여야 합니다",
+  "Enter a GitHub repository as owner/repo or an HTTPS repository-root URL":
+    "GitHub 저장소를 owner/repo 또는 저장소 루트의 HTTPS URL로 입력하세요",
+  "Invalid GitHub response": "유효하지 않은 GitHub 응답입니다",
+  "Invalid GitHub skill selection": "유효하지 않은 GitHub 스킬 선택입니다",
+  "GitHub API host approval is required": "GitHub API 호스트 액세스 승인이 필요합니다",
+  "GitHub read cancelled": "GitHub 읽기가 취소되었습니다",
+  "GitHub tree is truncated; no partial listing is available":
+    "GitHub 트리가 잘렸습니다. 부분 목록은 사용할 수 없습니다",
+  "GitHub tree exceeds the 10000-entry limit": "GitHub 트리가 항목 10000개 제한을 초과합니다",
+  "GitHub listing exceeds the 200-candidate limit": "GitHub 목록이 후보 200개 제한을 초과합니다",
+  "GitHub read timed out after 30 seconds": "GitHub 읽기가 30초 후 시간 초과되었습니다",
+  "GitHub request failed; check the canonical repository and host access. Redirects are not allowed":
+    "GitHub 요청이 실패했습니다. 정식 저장소와 호스트 액세스 권한을 확인하세요. 리디렉션은 허용되지 않습니다",
+  "GitHub redirected the request; enter the canonical repository":
+    "GitHub가 요청을 리디렉션했습니다. 정식 저장소를 입력하세요",
+  "GitHub repository or object is unavailable": "GitHub 저장소 또는 객체를 사용할 수 없습니다",
+  "GitHub API access was denied or rate limited":
+    "GitHub API 액세스가 거부되었거나 요청 빈도 제한에 도달했습니다",
+  "GitHub request failed": "GitHub 요청이 실패했습니다",
+  "GitHub response exceeds the received-byte limit": "GitHub 응답이 수신 바이트 제한을 초과합니다",
+  "GitHub skill exceeds the 65536-byte source limit":
+    "GitHub 스킬이 소스 크기 제한인 65536바이트를 초과합니다",
+  "Invalid GitHub skill Base64": "GitHub 스킬의 Base64가 유효하지 않습니다",
+  "GitHub skill must be valid UTF-8 text": "GitHub 스킬은 유효한 UTF-8 텍스트여야 합니다",
 } satisfies Catalog

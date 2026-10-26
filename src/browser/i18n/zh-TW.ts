@@ -684,4 +684,65 @@ export default {
   "{provider} credential configured — Account": "已設定 {provider} 憑證 — 帳戶",
   "{provider} credential missing": "缺少 {provider} 憑證",
   "{provider} not configured": "尚未設定 {provider}",
+  "GitHub repository": "GitHub 儲存庫",
+  "Enter owner/repo or a GitHub repository URL. Only public repositories are supported.":
+    "請輸入 owner/repo 或 GitHub 儲存庫網址。僅支援公開儲存庫。",
+  "Find GitHub skills": "尋找 GitHub 技能",
+  "Cancel fetch": "取消擷取",
+  "GitHub SKILL.md files": "GitHub SKILL.md 檔案",
+  "Select a SKILL.md": "選取 SKILL.md",
+  "Review selected GitHub skill": "檢閱所選 GitHub 技能",
+  "Open source on GitHub": "在 GitHub 開啟原始檔",
+  "Only name, description, and body are saved. Source identity and optional metadata are review-only.":
+    "僅儲存 name、description 和 body。來源識別資訊與選用的 metadata 僅供檢閱。",
+  "Repository: {repository}\nPath: {path}\nCommit: {commit}":
+    "儲存庫：{repository}\n路徑：{path}\n提交：{commit}",
+  "Original SKILL.md:\n{source}": "原始 SKILL.md：\n{source}",
+  "GitHub results: {total}. Select one SKILL.md to review.":
+    "GitHub 結果：{total}。請選取一個 SKILL.md 以供檢閱。",
+  "No SKILL.md files found at the repository root or under skills/.":
+    "在儲存庫根目錄或 skills/ 下找不到 SKILL.md 檔案。",
+  "GitHub fetch cancelled.": "已取消 GitHub 擷取。",
+  "Repository changed. Find GitHub skills again.": "儲存庫已變更。請重新尋找 GitHub 技能。",
+  "Select a GitHub SKILL.md to review.": "請選取 GitHub SKILL.md 以供檢閱。",
+  "GitHub access was not granted. Local file import is still available.":
+    "未授予 GitHub 存取權。仍可匯入本機檔案。",
+  "GitHub access starts with Find GitHub skills. Requests use api.github.com without cookies or credentials. Only the selected SKILL.md is downloaded; scripts and supporting files are not imported.":
+    "選取「尋找 GitHub 技能」後才會開始存取 GitHub。請求使用 api.github.com，不含 Cookie 或憑證。僅下載所選的 SKILL.md；不會匯入指令碼或輔助檔案。",
+  "Skill frontmatter exceeds 8 container levels or 256 nodes":
+    "技能 frontmatter 超過 8 層容器或 256 個節點",
+  "Skill frontmatter must not contain tags, anchors, aliases, directives, or document markers":
+    "技能 frontmatter 不得包含標籤、錨點、別名、指令或文件標記",
+  "Invalid YAML frontmatter": "無效的 YAML frontmatter",
+  "Skill frontmatter requires one YAML document": "技能 frontmatter 必須包含一份 YAML 文件",
+  "Skill frontmatter must contain valid Unicode text without control characters":
+    "技能 frontmatter 必須包含有效的 Unicode 文字，且不得含有控制字元",
+  "Skill frontmatter must be a mapping with string keys": "技能 frontmatter 必須是以字串為鍵的對映",
+  "Skill frontmatter fields must be name, description, license, compatibility, metadata, or allowed-tools":
+    "技能 frontmatter 欄位必須是 name、description、license、compatibility、metadata 或 allowed-tools",
+  "Skill frontmatter values must be strings; metadata must be a string-to-string map":
+    "技能 frontmatter 的值必須是字串；metadata 必須是字串到字串的對映",
+  "Skill compatibility must be at most 500 characters": "技能的 compatibility 最多可有 500 個字元",
+  "Enter a GitHub repository as owner/repo or an HTTPS repository-root URL":
+    "請以 owner/repo 或 HTTPS 儲存庫根目錄網址輸入 GitHub 儲存庫",
+  "Invalid GitHub response": "無效的 GitHub 回應",
+  "Invalid GitHub skill selection": "無效的 GitHub 技能選取",
+  "GitHub API host approval is required": "需要 GitHub API 主機的存取核准",
+  "GitHub read cancelled": "已取消 GitHub 讀取",
+  "GitHub tree is truncated; no partial listing is available":
+    "GitHub 樹狀結構已截斷；無法提供部分清單",
+  "GitHub tree exceeds the 10000-entry limit": "GitHub 樹狀結構超過 10000 個項目的上限",
+  "GitHub listing exceeds the 200-candidate limit": "GitHub 清單超過 200 個候選項目的上限",
+  "GitHub read timed out after 30 seconds": "GitHub 讀取在 30 秒後逾時",
+  "GitHub request failed; check the canonical repository and host access. Redirects are not allowed":
+    "GitHub 請求失敗；請檢查正式儲存庫與主機存取權。不允許重新導向",
+  "GitHub redirected the request; enter the canonical repository":
+    "GitHub 已重新導向請求；請輸入正式儲存庫",
+  "GitHub repository or object is unavailable": "GitHub 儲存庫或物件無法使用",
+  "GitHub API access was denied or rate limited": "GitHub API 存取遭拒或已達速率限制",
+  "GitHub request failed": "GitHub 請求失敗",
+  "GitHub response exceeds the received-byte limit": "GitHub 回應超過接收位元組數上限",
+  "GitHub skill exceeds the 65536-byte source limit": "GitHub 技能超過 65536 位元組的原始檔上限",
+  "Invalid GitHub skill Base64": "GitHub 技能的 Base64 無效",
+  "GitHub skill must be valid UTF-8 text": "GitHub 技能必須是有效的 UTF-8 文字",
 } satisfies Catalog

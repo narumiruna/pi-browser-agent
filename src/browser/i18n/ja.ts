@@ -728,4 +728,75 @@ export default {
   "{provider} credential configured — Account": "{provider} の認証情報は設定済み — アカウント",
   "{provider} credential missing": "{provider} の認証情報がありません",
   "{provider} not configured": "{provider} は未設定です",
+  "GitHub repository": "GitHub リポジトリ",
+  "Enter owner/repo or a GitHub repository URL. Only public repositories are supported.":
+    "owner/repo または GitHub リポジトリの URL を入力してください。公開リポジトリのみ対応しています。",
+  "Find GitHub skills": "GitHub スキルを検索",
+  "Cancel fetch": "取得をキャンセル",
+  "GitHub SKILL.md files": "GitHub の SKILL.md ファイル",
+  "Select a SKILL.md": "SKILL.md を選択",
+  "Review selected GitHub skill": "選択した GitHub スキルを確認",
+  "Open source on GitHub": "GitHub でソースを開く",
+  "Only name, description, and body are saved. Source identity and optional metadata are review-only.":
+    "保存するのは name、description、body のみです。ソースの識別情報と任意の metadata は確認用であり、保存しません。",
+  "Repository: {repository}\nPath: {path}\nCommit: {commit}":
+    "リポジトリ：{repository}\nパス：{path}\nコミット：{commit}",
+  "Original SKILL.md:\n{source}": "元の SKILL.md：\n{source}",
+  "GitHub results: {total}. Select one SKILL.md to review.":
+    "GitHub の検索結果：{total}。確認する SKILL.md を 1 つ選択してください。",
+  "No SKILL.md files found at the repository root or under skills/.":
+    "リポジトリのルートまたは skills/ 内に SKILL.md ファイルが見つかりませんでした。",
+  "GitHub fetch cancelled.": "GitHub からの取得をキャンセルしました。",
+  "Repository changed. Find GitHub skills again.":
+    "リポジトリが変更されました。GitHub スキルを再度検索してください。",
+  "Select a GitHub SKILL.md to review.": "確認する GitHub の SKILL.md を選択してください。",
+  "GitHub access was not granted. Local file import is still available.":
+    "GitHub へのアクセス権が付与されませんでした。ローカルファイルのインポートは引き続き利用できます。",
+  "GitHub access starts with Find GitHub skills. Requests use api.github.com without cookies or credentials. Only the selected SKILL.md is downloaded; scripts and supporting files are not imported.":
+    "「GitHub スキルを検索」を選択すると GitHub へのアクセスを開始します。リクエストは Cookie や認証情報なしで api.github.com を使用します。選択した SKILL.md のみをダウンロードし、スクリプトや補助ファイルはインポートしません。",
+  "Skill frontmatter exceeds 8 container levels or 256 nodes":
+    "スキルの frontmatter がコンテナーの 8 階層または 256 ノードを超えています",
+  "Skill frontmatter must not contain tags, anchors, aliases, directives, or document markers":
+    "スキルの frontmatter にタグ、アンカー、エイリアス、ディレクティブ、ドキュメントマーカーを含めることはできません",
+  "Invalid YAML frontmatter": "無効な YAML frontmatter です",
+  "Skill frontmatter requires one YAML document":
+    "スキルの frontmatter には YAML ドキュメントが 1 つ必要です",
+  "Skill frontmatter must contain valid Unicode text without control characters":
+    "スキルの frontmatter は制御文字を含まない有効な Unicode テキストである必要があります",
+  "Skill frontmatter must be a mapping with string keys":
+    "スキルの frontmatter は文字列をキーとするマッピングである必要があります",
+  "Skill frontmatter fields must be name, description, license, compatibility, metadata, or allowed-tools":
+    "スキルの frontmatter のフィールドは name、description、license、compatibility、metadata、allowed-tools のいずれかである必要があります",
+  "Skill frontmatter values must be strings; metadata must be a string-to-string map":
+    "スキルの frontmatter の値は文字列である必要があります。metadata は文字列から文字列へのマップである必要があります",
+  "Skill compatibility must be at most 500 characters":
+    "スキルの compatibility は 500 文字以内である必要があります",
+  "Enter a GitHub repository as owner/repo or an HTTPS repository-root URL":
+    "GitHub リポジトリを owner/repo またはリポジトリのルートを指す HTTPS URL で入力してください",
+  "Invalid GitHub response": "GitHub の応答が無効です",
+  "Invalid GitHub skill selection": "GitHub スキルの選択が無効です",
+  "GitHub API host approval is required": "GitHub API ホストへのアクセス承認が必要です",
+  "GitHub read cancelled": "GitHub からの読み取りをキャンセルしました",
+  "GitHub tree is truncated; no partial listing is available":
+    "GitHub のツリーが切り詰められています。部分的な一覧は利用できません",
+  "GitHub tree exceeds the 10000-entry limit":
+    "GitHub のツリーが上限の 10000 エントリーを超えています",
+  "GitHub listing exceeds the 200-candidate limit": "GitHub の一覧が上限の 200 候補を超えています",
+  "GitHub read timed out after 30 seconds": "GitHub からの読み取りが 30 秒でタイムアウトしました",
+  "GitHub request failed; check the canonical repository and host access. Redirects are not allowed":
+    "GitHub へのリクエストに失敗しました。正規のリポジトリとホストへのアクセス権を確認してください。リダイレクトは許可されていません",
+  "GitHub redirected the request; enter the canonical repository":
+    "GitHub がリクエストをリダイレクトしました。正規のリポジトリを入力してください",
+  "GitHub repository or object is unavailable":
+    "GitHub のリポジトリまたはオブジェクトを利用できません",
+  "GitHub API access was denied or rate limited":
+    "GitHub API へのアクセスが拒否されたか、レート制限に達しました",
+  "GitHub request failed": "GitHub へのリクエストに失敗しました",
+  "GitHub response exceeds the received-byte limit":
+    "GitHub の応答が受信バイト数の上限を超えています",
+  "GitHub skill exceeds the 65536-byte source limit":
+    "GitHub スキルのソースが上限の 65536 バイトを超えています",
+  "Invalid GitHub skill Base64": "GitHub スキルの Base64 が無効です",
+  "GitHub skill must be valid UTF-8 text":
+    "GitHub スキルは有効な UTF-8 テキストである必要があります",
 } satisfies Catalog

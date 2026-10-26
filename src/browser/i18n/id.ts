@@ -734,4 +734,72 @@ export default {
   "{provider} credential configured — Account": "Kredensial {provider} dikonfigurasi — Akun",
   "{provider} credential missing": "Kredensial {provider} belum ada",
   "{provider} not configured": "{provider} belum dikonfigurasi",
+  "GitHub repository": "Repositori GitHub",
+  "Enter owner/repo or a GitHub repository URL. Only public repositories are supported.":
+    "Masukkan owner/repo atau URL repositori GitHub. Hanya repositori publik yang didukung.",
+  "Find GitHub skills": "Cari keterampilan GitHub",
+  "Cancel fetch": "Batalkan pengambilan",
+  "GitHub SKILL.md files": "Berkas SKILL.md di GitHub",
+  "Select a SKILL.md": "Pilih SKILL.md",
+  "Review selected GitHub skill": "Tinjau keterampilan GitHub yang dipilih",
+  "Open source on GitHub": "Buka sumber di GitHub",
+  "Only name, description, and body are saved. Source identity and optional metadata are review-only.":
+    "Hanya name, description, dan body yang disimpan. Identitas sumber dan metadata opsional hanya untuk ditinjau.",
+  "Repository: {repository}\nPath: {path}\nCommit: {commit}":
+    "Repositori: {repository}\nJalur: {path}\nKomit: {commit}",
+  "Original SKILL.md:\n{source}": "SKILL.md asli:\n{source}",
+  "GitHub results: {total}. Select one SKILL.md to review.":
+    "Hasil GitHub: {total}. Pilih satu SKILL.md untuk ditinjau.",
+  "No SKILL.md files found at the repository root or under skills/.":
+    "Tidak ditemukan berkas SKILL.md di direktori akar repositori atau di bawah skills/.",
+  "GitHub fetch cancelled.": "Pengambilan dari GitHub dibatalkan.",
+  "Repository changed. Find GitHub skills again.":
+    "Repositori berubah. Cari keterampilan GitHub lagi.",
+  "Select a GitHub SKILL.md to review.": "Pilih SKILL.md dari GitHub untuk ditinjau.",
+  "GitHub access was not granted. Local file import is still available.":
+    "Akses GitHub tidak diberikan. Impor berkas lokal masih tersedia.",
+  "GitHub access starts with Find GitHub skills. Requests use api.github.com without cookies or credentials. Only the selected SKILL.md is downloaded; scripts and supporting files are not imported.":
+    "Akses GitHub dimulai dengan Cari keterampilan GitHub. Permintaan menggunakan api.github.com tanpa cookie atau kredensial. Hanya SKILL.md yang dipilih yang diunduh; skrip dan berkas pendukung tidak diimpor.",
+  "Skill frontmatter exceeds 8 container levels or 256 nodes":
+    "Frontmatter keterampilan melebihi 8 tingkat kontainer atau 256 simpul",
+  "Skill frontmatter must not contain tags, anchors, aliases, directives, or document markers":
+    "Frontmatter keterampilan tidak boleh berisi tag, jangkar, alias, direktif, atau penanda dokumen",
+  "Invalid YAML frontmatter": "Frontmatter YAML tidak valid",
+  "Skill frontmatter requires one YAML document":
+    "Frontmatter keterampilan memerlukan satu dokumen YAML",
+  "Skill frontmatter must contain valid Unicode text without control characters":
+    "Frontmatter keterampilan harus berupa teks Unicode yang valid tanpa karakter kontrol",
+  "Skill frontmatter must be a mapping with string keys":
+    "Frontmatter keterampilan harus berupa pemetaan dengan kunci string",
+  "Skill frontmatter fields must be name, description, license, compatibility, metadata, or allowed-tools":
+    "Bidang frontmatter keterampilan harus berupa name, description, license, compatibility, metadata, atau allowed-tools",
+  "Skill frontmatter values must be strings; metadata must be a string-to-string map":
+    "Nilai frontmatter keterampilan harus berupa string; metadata harus berupa peta string ke string",
+  "Skill compatibility must be at most 500 characters":
+    "compatibility keterampilan harus paling banyak 500 karakter",
+  "Enter a GitHub repository as owner/repo or an HTTPS repository-root URL":
+    "Masukkan repositori GitHub sebagai owner/repo atau URL HTTPS direktori akar repositori",
+  "Invalid GitHub response": "Respons GitHub tidak valid",
+  "Invalid GitHub skill selection": "Pilihan keterampilan GitHub tidak valid",
+  "GitHub API host approval is required": "Persetujuan akses host GitHub API diperlukan",
+  "GitHub read cancelled": "Pembacaan dari GitHub dibatalkan",
+  "GitHub tree is truncated; no partial listing is available":
+    "Pohon GitHub terpotong; daftar sebagian tidak tersedia",
+  "GitHub tree exceeds the 10000-entry limit": "Pohon GitHub melebihi batas 10000 entri",
+  "GitHub listing exceeds the 200-candidate limit": "Daftar GitHub melebihi batas 200 kandidat",
+  "GitHub read timed out after 30 seconds": "Pembacaan dari GitHub melewati batas waktu 30 detik",
+  "GitHub request failed; check the canonical repository and host access. Redirects are not allowed":
+    "Permintaan GitHub gagal; periksa repositori kanonis dan akses host. Pengalihan tidak diizinkan",
+  "GitHub redirected the request; enter the canonical repository":
+    "GitHub mengalihkan permintaan; masukkan repositori kanonis",
+  "GitHub repository or object is unavailable": "Repositori atau objek GitHub tidak tersedia",
+  "GitHub API access was denied or rate limited":
+    "Akses GitHub API ditolak atau terkena pembatasan laju",
+  "GitHub request failed": "Permintaan GitHub gagal",
+  "GitHub response exceeds the received-byte limit":
+    "Respons GitHub melebihi batas byte yang diterima",
+  "GitHub skill exceeds the 65536-byte source limit":
+    "Keterampilan GitHub melebihi batas sumber 65536 byte",
+  "Invalid GitHub skill Base64": "Base64 keterampilan GitHub tidak valid",
+  "GitHub skill must be valid UTF-8 text": "Keterampilan GitHub harus berupa teks UTF-8 yang valid",
 } satisfies Catalog

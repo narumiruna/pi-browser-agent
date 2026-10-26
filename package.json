@@ -37,7 +37,8 @@
     "@modelcontextprotocol/sdk": "1.32.1",
     "dompurify": "3.4.17",
     "marked": "18.1.1",
-    "typebox": "^1.4.3"
+    "typebox": "^1.4.3",
+    "yaml": "2.9.1"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.2",

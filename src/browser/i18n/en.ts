@@ -729,6 +729,72 @@ export const english = {
   "{provider} credential configured — Account": "{provider} credential configured — Account",
   "{provider} credential missing": "{provider} credential missing",
   "{provider} not configured": "{provider} not configured",
+  "GitHub repository": "GitHub repository",
+  "Enter owner/repo or a GitHub repository URL. Only public repositories are supported.":
+    "Enter owner/repo or a GitHub repository URL. Only public repositories are supported.",
+  "Find GitHub skills": "Find GitHub skills",
+  "Cancel fetch": "Cancel fetch",
+  "GitHub SKILL.md files": "GitHub SKILL.md files",
+  "Select a SKILL.md": "Select a SKILL.md",
+  "Review selected GitHub skill": "Review selected GitHub skill",
+  "Open source on GitHub": "Open source on GitHub",
+  "Only name, description, and body are saved. Source identity and optional metadata are review-only.":
+    "Only name, description, and body are saved. Source identity and optional metadata are review-only.",
+  "Repository: {repository}\nPath: {path}\nCommit: {commit}":
+    "Repository: {repository}\nPath: {path}\nCommit: {commit}",
+  "Original SKILL.md:\n{source}": "Original SKILL.md:\n{source}",
+  "GitHub results: {total}. Select one SKILL.md to review.":
+    "GitHub results: {total}. Select one SKILL.md to review.",
+  "No SKILL.md files found at the repository root or under skills/.":
+    "No SKILL.md files found at the repository root or under skills/.",
+  "GitHub fetch cancelled.": "GitHub fetch cancelled.",
+  "Repository changed. Find GitHub skills again.": "Repository changed. Find GitHub skills again.",
+  "Select a GitHub SKILL.md to review.": "Select a GitHub SKILL.md to review.",
+  "GitHub access was not granted. Local file import is still available.":
+    "GitHub access was not granted. Local file import is still available.",
+  "GitHub access starts with Find GitHub skills. Requests use api.github.com without cookies or credentials. Only the selected SKILL.md is downloaded; scripts and supporting files are not imported.":
+    "GitHub access starts with Find GitHub skills. Requests use api.github.com without cookies or credentials. Only the selected SKILL.md is downloaded; scripts and supporting files are not imported.",
+  "Skill frontmatter exceeds 8 container levels or 256 nodes":
+    "Skill frontmatter exceeds 8 container levels or 256 nodes",
+  "Skill frontmatter must not contain tags, anchors, aliases, directives, or document markers":
+    "Skill frontmatter must not contain tags, anchors, aliases, directives, or document markers",
+  "Invalid YAML frontmatter": "Invalid YAML frontmatter",
+  "Skill frontmatter requires one YAML document": "Skill frontmatter requires one YAML document",
+  "Skill frontmatter must contain valid Unicode text without control characters":
+    "Skill frontmatter must contain valid Unicode text without control characters",
+  "Skill frontmatter must be a mapping with string keys":
+    "Skill frontmatter must be a mapping with string keys",
+  "Skill frontmatter fields must be name, description, license, compatibility, metadata, or allowed-tools":
+    "Skill frontmatter fields must be name, description, license, compatibility, metadata, or allowed-tools",
+  "Skill frontmatter values must be strings; metadata must be a string-to-string map":
+    "Skill frontmatter values must be strings; metadata must be a string-to-string map",
+  "Skill compatibility must be at most 500 characters":
+    "Skill compatibility must be at most 500 characters",
+  "Enter a GitHub repository as owner/repo or an HTTPS repository-root URL":
+    "Enter a GitHub repository as owner/repo or an HTTPS repository-root URL",
+  "Invalid GitHub response": "Invalid GitHub response",
+  "Invalid GitHub skill selection": "Invalid GitHub skill selection",
+  "GitHub API host approval is required": "GitHub API host approval is required",
+  "GitHub read cancelled": "GitHub read cancelled",
+  "GitHub tree is truncated; no partial listing is available":
+    "GitHub tree is truncated; no partial listing is available",
+  "GitHub tree exceeds the 10000-entry limit": "GitHub tree exceeds the 10000-entry limit",
+  "GitHub listing exceeds the 200-candidate limit":
+    "GitHub listing exceeds the 200-candidate limit",
+  "GitHub read timed out after 30 seconds": "GitHub read timed out after 30 seconds",
+  "GitHub request failed; check the canonical repository and host access. Redirects are not allowed":
+    "GitHub request failed; check the canonical repository and host access. Redirects are not allowed",
+  "GitHub redirected the request; enter the canonical repository":
+    "GitHub redirected the request; enter the canonical repository",
+  "GitHub repository or object is unavailable": "GitHub repository or object is unavailable",
+  "GitHub API access was denied or rate limited": "GitHub API access was denied or rate limited",
+  "GitHub request failed": "GitHub request failed",
+  "GitHub response exceeds the received-byte limit":
+    "GitHub response exceeds the received-byte limit",
+  "GitHub skill exceeds the 65536-byte source limit":
+    "GitHub skill exceeds the 65536-byte source limit",
+  "Invalid GitHub skill Base64": "Invalid GitHub skill Base64",
+  "GitHub skill must be valid UTF-8 text": "GitHub skill must be valid UTF-8 text",
 } as const
 
 export type MessageKey = keyof typeof english

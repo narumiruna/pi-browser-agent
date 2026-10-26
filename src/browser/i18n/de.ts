@@ -765,4 +765,77 @@ export default {
   "{provider} credential configured — Account": "Zugangsdaten für {provider} eingerichtet — Konto",
   "{provider} credential missing": "Zugangsdaten für {provider} fehlen",
   "{provider} not configured": "{provider} nicht eingerichtet",
+  "GitHub repository": "GitHub-Repository",
+  "Enter owner/repo or a GitHub repository URL. Only public repositories are supported.":
+    "Geben Sie owner/repo oder eine GitHub-Repository-URL ein. Es werden nur öffentliche Repositorys unterstützt.",
+  "Find GitHub skills": "GitHub-Fähigkeiten suchen",
+  "Cancel fetch": "Abruf abbrechen",
+  "GitHub SKILL.md files": "SKILL.md-Dateien auf GitHub",
+  "Select a SKILL.md": "Eine SKILL.md auswählen",
+  "Review selected GitHub skill": "Ausgewählte GitHub-Fähigkeit prüfen",
+  "Open source on GitHub": "Quelldatei auf GitHub öffnen",
+  "Only name, description, and body are saved. Source identity and optional metadata are review-only.":
+    "Nur name, description und body werden gespeichert. Die Identität der Quelle und optionale Metadaten dienen nur zur Prüfung.",
+  "Repository: {repository}\nPath: {path}\nCommit: {commit}":
+    "Repository: {repository}\nPfad: {path}\nCommit: {commit}",
+  "Original SKILL.md:\n{source}": "Ursprüngliche SKILL.md:\n{source}",
+  "GitHub results: {total}. Select one SKILL.md to review.":
+    "GitHub-Ergebnisse: {total}. Wählen Sie eine SKILL.md zur Prüfung aus.",
+  "No SKILL.md files found at the repository root or under skills/.":
+    "Keine SKILL.md-Dateien im Stammverzeichnis des Repositorys oder unter skills/ gefunden.",
+  "GitHub fetch cancelled.": "GitHub-Abruf abgebrochen.",
+  "Repository changed. Find GitHub skills again.":
+    "Repository geändert. Suchen Sie erneut nach GitHub-Fähigkeiten.",
+  "Select a GitHub SKILL.md to review.": "Wählen Sie eine SKILL.md auf GitHub zur Prüfung aus.",
+  "GitHub access was not granted. Local file import is still available.":
+    "GitHub-Zugriff wurde nicht gewährt. Der Import lokaler Dateien ist weiterhin möglich.",
+  "GitHub access starts with Find GitHub skills. Requests use api.github.com without cookies or credentials. Only the selected SKILL.md is downloaded; scripts and supporting files are not imported.":
+    "Der GitHub-Zugriff beginnt mit GitHub-Fähigkeiten suchen. Anfragen verwenden api.github.com ohne Cookies oder Zugangsdaten. Nur die ausgewählte SKILL.md wird heruntergeladen; Skripte und Zusatzdateien werden nicht importiert.",
+  "Skill frontmatter exceeds 8 container levels or 256 nodes":
+    "Der Frontmatter der Fähigkeit überschreitet 8 Containerebenen oder 256 Knoten",
+  "Skill frontmatter must not contain tags, anchors, aliases, directives, or document markers":
+    "Der Frontmatter der Fähigkeit darf keine Tags, Anker, Aliase, Direktiven oder Dokumentmarkierungen enthalten",
+  "Invalid YAML frontmatter": "Ungültiger YAML-Frontmatter",
+  "Skill frontmatter requires one YAML document":
+    "Der Frontmatter der Fähigkeit erfordert genau ein YAML-Dokument",
+  "Skill frontmatter must contain valid Unicode text without control characters":
+    "Der Frontmatter der Fähigkeit muss gültigen Unicode-Text ohne Steuerzeichen enthalten",
+  "Skill frontmatter must be a mapping with string keys":
+    "Der Frontmatter der Fähigkeit muss eine Zuordnung mit Zeichenfolgen als Schlüsseln sein",
+  "Skill frontmatter fields must be name, description, license, compatibility, metadata, or allowed-tools":
+    "Die Felder im Frontmatter der Fähigkeit müssen name, description, license, compatibility, metadata oder allowed-tools sein",
+  "Skill frontmatter values must be strings; metadata must be a string-to-string map":
+    "Die Werte im Frontmatter der Fähigkeit müssen Zeichenfolgen sein; metadata muss Zeichenfolgen auf Zeichenfolgen abbilden",
+  "Skill compatibility must be at most 500 characters":
+    "Das Feld compatibility der Fähigkeit darf höchstens 500 Zeichen enthalten",
+  "Enter a GitHub repository as owner/repo or an HTTPS repository-root URL":
+    "Geben Sie ein GitHub-Repository als owner/repo oder als HTTPS-URL des Repository-Stammverzeichnisses ein",
+  "Invalid GitHub response": "Ungültige GitHub-Antwort",
+  "Invalid GitHub skill selection": "Ungültige Auswahl einer GitHub-Fähigkeit",
+  "GitHub API host approval is required":
+    "Die Zugriffsgenehmigung für den GitHub-API-Host ist erforderlich",
+  "GitHub read cancelled": "Lesen von GitHub abgebrochen",
+  "GitHub tree is truncated; no partial listing is available":
+    "Der GitHub-Verzeichnisbaum ist abgeschnitten; eine unvollständige Auflistung ist nicht verfügbar",
+  "GitHub tree exceeds the 10000-entry limit":
+    "Der GitHub-Verzeichnisbaum überschreitet das Limit von 10000 Einträgen",
+  "GitHub listing exceeds the 200-candidate limit":
+    "Die GitHub-Auflistung überschreitet das Limit von 200 Kandidaten",
+  "GitHub read timed out after 30 seconds":
+    "Zeitüberschreitung beim Lesen von GitHub nach 30 Sekunden",
+  "GitHub request failed; check the canonical repository and host access. Redirects are not allowed":
+    "GitHub-Anfrage fehlgeschlagen; prüfen Sie das kanonische Repository und den Hostzugriff. Weiterleitungen sind nicht zulässig",
+  "GitHub redirected the request; enter the canonical repository":
+    "GitHub hat die Anfrage weitergeleitet; geben Sie das kanonische Repository ein",
+  "GitHub repository or object is unavailable":
+    "Das GitHub-Repository oder -Objekt ist nicht verfügbar",
+  "GitHub API access was denied or rate limited":
+    "Der GitHub-API-Zugriff wurde verweigert oder durch ein Anfragelimit eingeschränkt",
+  "GitHub request failed": "GitHub-Anfrage fehlgeschlagen",
+  "GitHub response exceeds the received-byte limit":
+    "Die GitHub-Antwort überschreitet das Limit für empfangene Bytes",
+  "GitHub skill exceeds the 65536-byte source limit":
+    "Die GitHub-Fähigkeit überschreitet das Quelldateilimit von 65536 Byte",
+  "Invalid GitHub skill Base64": "Ungültige Base64-Kodierung der GitHub-Fähigkeit",
+  "GitHub skill must be valid UTF-8 text": "Die GitHub-Fähigkeit muss gültiger UTF-8-Text sein",
 } satisfies Catalog

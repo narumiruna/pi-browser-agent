@@ -71,6 +71,24 @@ async function setup(initial: SkillRecord[] = []) {
   }
   const removeListener = vi.fn((listener: Changed) => listeners.delete(listener))
   const runtime = { sendMessage: vi.fn() }
+  let githubGranted = true
+  const permissionListeners = new Set<() => void>()
+  const permissions = {
+    contains: vi.fn(async () => githubGranted),
+    request: vi.fn(async () => githubGranted),
+    onRemoved: {
+      addListener: (listener: () => void) => permissionListeners.add(listener),
+      removeListener: (listener: () => void) => permissionListeners.delete(listener),
+    },
+  }
+  const revokeGitHub = () => {
+    githubGranted = false
+    for (const listener of permissionListeners) listener()
+  }
+  const fetch = vi.fn<typeof globalThis.fetch>(async () => {
+    throw new Error("Unexpected network request")
+  })
+  vi.stubGlobal("fetch", fetch)
   vi.stubGlobal("window", dom.window)
   vi.stubGlobal("document", document)
   vi.stubGlobal("chrome", {
@@ -79,6 +97,7 @@ async function setup(initial: SkillRecord[] = []) {
       onChanged: { addListener: (listener: Changed) => listeners.add(listener), removeListener },
     },
     runtime,
+    permissions,
   })
   const dialog = get<HTMLDialogElement>("skills-delete-dialog")
   const showModal = vi.fn(() => {
@@ -143,6 +162,9 @@ async function setup(initial: SkillRecord[] = []) {
     notify,
     removeListener,
     runtime,
+    permissions,
+    revokeGitHub,
+    fetch,
     hide,
     state,
     onStateChange,
@@ -873,5 +895,284 @@ describe("Skills settings", () => {
     expect(env.installedPreview.textContent).toContain("<svg onload=alert(1)>")
     expect(env.installedPreview.children).toHaveLength(0)
     expect(env.installedPreview.textContent?.length).toBeLessThan(SKILL_LIMITS.inputBytes + 200)
+  })
+})
+
+const remoteSource = `---
+name: remote-skill
+description: >-
+  A reviewed
+  remote skill
+license: MIT
+metadata:
+  author: Test author
+allowed-tools: Bash
+---
+<script>window.skillInjected=true</script>
+Review references/checklist.md as text only.`
+const commitSha = "a".repeat(40)
+const treeSha = "b".repeat(40)
+const blobSha = "c".repeat(40)
+const remotePath = "skills/.curated/remote-skill/SKILL.md"
+
+async function setupGitHub(initial: SkillRecord[] = [], text = remoteSource) {
+  const env = await setup(initial)
+  const bytes = new TextEncoder().encode(text)
+  const commit = [{ sha: commitSha, commit: { tree: { sha: treeSha } } }]
+  const tree = {
+    sha: treeSha,
+    truncated: false,
+    tree: [{ path: remotePath, type: "blob", mode: "100644", sha: blobSha, size: bytes.length }],
+  }
+  const blob = {
+    sha: blobSha,
+    size: bytes.length,
+    encoding: "base64",
+    content: Buffer.from(bytes).toString("base64"),
+  }
+  env.fetch.mockImplementation(async (input) => {
+    const url = String(input)
+    if (url.endsWith("/commits?per_page=1")) return Response.json(commit)
+    if (url.endsWith(`/git/trees/${treeSha}?recursive=1`)) return Response.json(tree)
+    if (url.endsWith(`/git/blobs/${blobSha}`)) return Response.json(blob)
+    throw new Error("Unexpected GitHub endpoint")
+  })
+  const repository = env.get<HTMLInputElement>("skills-github-repository")
+  const candidates = env.get<HTMLSelectElement>("skills-github-candidates")
+  const setRepository = (value: string) => {
+    repository.value = value
+    repository.dispatchEvent(new env.dom.window.Event("input"))
+  }
+  const find = async () => {
+    setRepository("openai/skills")
+    env.button("skills-github-fetch").click()
+    await settle()
+  }
+  const review = async () => {
+    candidates.value = remotePath
+    candidates.dispatchEvent(new env.dom.window.Event("change"))
+    env.button("skills-github-review").click()
+    await settle()
+  }
+  return {
+    ...env,
+    repository,
+    candidates,
+    setRepository,
+    find,
+    reviewRemote: review,
+    commit,
+    tree,
+    blob,
+  }
+}
+
+describe("GitHub Skills settings", () => {
+  test("requests host access directly from the gesture and imports exactly the reviewed text", async () => {
+    const env = await setupGitHub()
+    env.setRepository("https://github.com/OpenAI/Skills.git")
+    expect(env.fetch).not.toHaveBeenCalled()
+    expect(env.permissions.request).not.toHaveBeenCalled()
+    env.button("skills-github-fetch").click()
+    expect(env.permissions.request).toHaveBeenCalledWith({ origins: ["https://api.github.com/*"] })
+    expect(env.state.isBusy()).toBe(true)
+    await settle()
+    expect(env.fetch).toHaveBeenCalledTimes(2)
+    expect(env.candidates.options[1]?.textContent).toBe(remotePath)
+    expect(env.state.hasDraft()).toBe(false)
+    expect(await env.store.list()).toEqual([])
+    await env.reviewRemote()
+    expect(env.fetch).toHaveBeenCalledTimes(3)
+    expect(env.preview.textContent).toContain(remoteSource)
+    expect(env.preview.textContent).toContain("Description: A reviewed remote skill")
+    expect(env.preview.textContent).toContain(commitSha)
+    expect(env.preview.textContent).toContain(remotePath)
+    expect(env.preview.textContent).toContain("Compatibility warnings:")
+    expect(env.preview.children).toHaveLength(0)
+    const link = env.get<HTMLAnchorElement>("skills-source-link")
+    expect(link.href).toBe(`https://github.com/openai/skills/blob/${commitSha}/${remotePath}`)
+    expect(link.rel).toBe("noopener noreferrer")
+    expect(env.state.hasDraft()).toBe(true)
+    expect(await env.store.list()).toEqual([])
+    env.button("skills-import-reviewed").click()
+    await settle()
+    const records = await env.store.list()
+    expect(records).toEqual([
+      {
+        id: expect.any(String),
+        name: "remote-skill",
+        description: "A reviewed remote skill",
+        body: remoteSource.split("---\n").at(-1),
+        enabled: false,
+      },
+    ])
+    expect(env.fetch).toHaveBeenCalledTimes(3)
+    expect(env.runtime.sendMessage).not.toHaveBeenCalled()
+    expect(link.hidden).toBe(true)
+    expect(link.hasAttribute("href")).toBe(false)
+    expect(env.state.hasDraft()).toBe(false)
+  })
+
+  test.each(["cancel", "edit", "dispose"])(
+    "%s settles busy state while host approval is pending and rejects a late grant",
+    async (action) => {
+      const env = await setupGitHub()
+      let grant!: (allowed: boolean) => void
+      env.permissions.request.mockImplementationOnce(
+        () =>
+          new Promise<boolean>((resolve) => {
+            grant = resolve
+          }),
+      )
+      await env.find()
+      expect(env.state.isBusy()).toBe(true)
+      expect(env.fetch).not.toHaveBeenCalled()
+      if (action === "cancel") env.button("skills-github-cancel").click()
+      if (action === "edit") env.setRepository("other/repository")
+      if (action === "dispose") env.hide()
+      await settle()
+      expect(env.state.isBusy()).toBe(false)
+      expect(env.state.hasDraft()).toBe(false)
+      expect(env.fetch).not.toHaveBeenCalled()
+      grant(true)
+      await settle()
+      expect(env.fetch).not.toHaveBeenCalled()
+      expect(env.review.hidden).toBe(true)
+      expect(await env.store.list()).toEqual([])
+    },
+  )
+
+  test("denied host access keeps local import available without fetching or saving a skill", async () => {
+    const env = await setupGitHub()
+    env.permissions.request.mockResolvedValue(false)
+    await env.find()
+    expect(env.status.textContent).toContain("GitHub access was not granted")
+    expect(env.fetch).not.toHaveBeenCalled()
+    expect(env.storage.set).not.toHaveBeenCalled()
+    expect(env.file.disabled).toBe(false)
+    await env.choose()
+    expect(env.state.hasDraft()).toBe(true)
+    expect(env.preview.textContent).toContain("Reviewed body")
+  })
+
+  test("invalid sources do not request a host grant", async () => {
+    const env = await setupGitHub()
+    env.setRepository("https://github.com:443/openai/skills")
+    env.button("skills-github-fetch").click()
+    await settle()
+    expect(env.permissions.request).not.toHaveBeenCalled()
+    expect(env.fetch).not.toHaveBeenCalled()
+    expect(env.state.hasDraft()).toBe(false)
+    expect(env.state.isBusy()).toBe(false)
+  })
+
+  test.each(["cancel", "edit", "dispose"])(
+    "%s prevents a late listing from restoring results",
+    async (action) => {
+      const env = await setupGitHub()
+      let release!: (response: Response) => void
+      env.fetch.mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            release = resolve
+          }),
+      )
+      await env.find()
+      expect(env.state.isBusy()).toBe(true)
+      expect(env.repository.disabled).toBe(false)
+      expect(env.file.disabled).toBe(true)
+      expect(env.button("skills-github-cancel").hidden).toBe(false)
+      if (action === "cancel") env.button("skills-github-cancel").click()
+      if (action === "edit") env.setRepository("other/repository")
+      if (action === "dispose") env.hide()
+      await settle()
+      release(Response.json(env.commit))
+      await settle()
+      expect(env.state.isBusy()).toBe(false)
+      expect(env.state.hasDraft()).toBe(false)
+      expect(env.fetch).toHaveBeenCalledTimes(1)
+      expect(env.get("skills-github-results").hidden).toBe(true)
+      expect(env.review.hidden).toBe(true)
+      expect(await env.store.list()).toEqual([])
+    },
+  )
+
+  test("changing the source during a blob read rejects the old review", async () => {
+    const env = await setupGitHub()
+    await env.find()
+    let release!: (response: Response) => void
+    env.fetch.mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          release = resolve
+        }),
+    )
+    await env.reviewRemote()
+    expect(env.state.isBusy()).toBe(true)
+    env.setRepository("other/repository")
+    await settle()
+    release(Response.json(env.blob))
+    await settle()
+    expect(env.review.hidden).toBe(true)
+    expect(env.preview.textContent).toBe("No file reviewed.")
+    expect(env.state.hasDraft()).toBe(false)
+    expect(await env.store.list()).toEqual([])
+  })
+
+  test("permission loss cancels a pending blob read without creating a review", async () => {
+    const env = await setupGitHub()
+    await env.find()
+    let release!: (response: Response) => void
+    env.fetch.mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          release = resolve
+        }),
+    )
+    await env.reviewRemote()
+    env.revokeGitHub()
+    await settle()
+    release(Response.json(env.blob))
+    await settle()
+    expect(env.status.textContent).toContain("GitHub API host approval is required")
+    expect(env.state.isBusy()).toBe(false)
+    expect(env.state.hasDraft()).toBe(false)
+    expect(await env.store.list()).toEqual([])
+  })
+
+  test("duplicates require explicit replacement which preserves the ID and disables the record", async () => {
+    const installed = { ...original, name: "remote-skill", enabled: true }
+    const env = await setupGitHub([installed])
+    env.selectSkill()
+    await env.find()
+    await env.reviewRemote()
+    env.button("skills-import-reviewed").click()
+    await settle()
+    expect(env.status.textContent).toContain("already installed")
+    expect(env.state.hasDraft()).toBe(true)
+    expect(await env.store.list()).toEqual([installed])
+    env.button("skills-replace-reviewed").click()
+    await settle()
+    expect(await env.store.list()).toMatchObject([
+      { id, name: "remote-skill", enabled: false, description: "A reviewed remote skill" },
+    ])
+    expect(env.fetch).toHaveBeenCalledTimes(3)
+  })
+
+  test("record quota failure preserves both the store and the GitHub review", async () => {
+    const initial = Array.from({ length: SKILL_LIMITS.installed }, (_, index) => ({
+      ...original,
+      id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+      name: `installed-${index}`,
+    }))
+    const env = await setupGitHub(initial)
+    await env.find()
+    await env.reviewRemote()
+    env.button("skills-import-reviewed").click()
+    await settle()
+    expect(env.status.textContent).toContain("Installed skill limit is 20")
+    expect(env.state.hasDraft()).toBe(true)
+    expect(await env.store.list()).toEqual(initial)
+    expect(env.fetch).toHaveBeenCalledTimes(3)
   })
 })

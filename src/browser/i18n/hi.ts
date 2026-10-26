@@ -711,4 +711,69 @@ export default {
   "{provider} credential configured — Account": "{provider} का क्रेडेंशियल कॉन्फ़िगर है — खाता",
   "{provider} credential missing": "{provider} का क्रेडेंशियल नहीं है",
   "{provider} not configured": "{provider} कॉन्फ़िगर नहीं है",
+  "GitHub repository": "GitHub रिपॉज़िटरी",
+  "Enter owner/repo or a GitHub repository URL. Only public repositories are supported.":
+    "owner/repo या GitHub रिपॉज़िटरी का URL दर्ज करें। केवल सार्वजनिक रिपॉज़िटरी समर्थित हैं।",
+  "Find GitHub skills": "GitHub कौशल खोजें",
+  "Cancel fetch": "प्राप्त करना रद्द करें",
+  "GitHub SKILL.md files": "GitHub की SKILL.md फ़ाइलें",
+  "Select a SKILL.md": "SKILL.md चुनें",
+  "Review selected GitHub skill": "चुने गए GitHub कौशल की समीक्षा करें",
+  "Open source on GitHub": "GitHub पर स्रोत खोलें",
+  "Only name, description, and body are saved. Source identity and optional metadata are review-only.":
+    "केवल name, description और body सहेजे जाते हैं। स्रोत की पहचान और वैकल्पिक metadata केवल समीक्षा के लिए हैं।",
+  "Repository: {repository}\nPath: {path}\nCommit: {commit}":
+    "रिपॉज़िटरी: {repository}\nपथ: {path}\nकमिट: {commit}",
+  "Original SKILL.md:\n{source}": "मूल SKILL.md:\n{source}",
+  "GitHub results: {total}. Select one SKILL.md to review.":
+    "GitHub के परिणाम: {total}। समीक्षा के लिए एक SKILL.md चुनें।",
+  "No SKILL.md files found at the repository root or under skills/.":
+    "रिपॉज़िटरी की मूल डायरेक्टरी या skills/ के अंतर्गत कोई SKILL.md फ़ाइल नहीं मिली।",
+  "GitHub fetch cancelled.": "GitHub से प्राप्त करना रद्द कर दिया गया।",
+  "Repository changed. Find GitHub skills again.": "रिपॉज़िटरी बदल गई है। GitHub कौशल फिर से खोजें।",
+  "Select a GitHub SKILL.md to review.": "समीक्षा के लिए GitHub की SKILL.md चुनें।",
+  "GitHub access was not granted. Local file import is still available.":
+    "GitHub की ऐक्सेस नहीं दी गई। स्थानीय फ़ाइल का आयात अभी भी उपलब्ध है।",
+  "GitHub access starts with Find GitHub skills. Requests use api.github.com without cookies or credentials. Only the selected SKILL.md is downloaded; scripts and supporting files are not imported.":
+    "GitHub की ऐक्सेस “GitHub कौशल खोजें” से शुरू होती है। अनुरोध कुकी या क्रेडेंशियल के बिना api.github.com का उपयोग करते हैं। केवल चुनी गई SKILL.md डाउनलोड होती है; स्क्रिप्ट और सहायक फ़ाइलें आयात नहीं होती हैं।",
+  "Skill frontmatter exceeds 8 container levels or 256 nodes":
+    "कौशल के frontmatter में 8 कंटेनर स्तरों या 256 नोड की सीमा पार हो गई है",
+  "Skill frontmatter must not contain tags, anchors, aliases, directives, or document markers":
+    "कौशल के frontmatter में टैग, एंकर, उपनाम, निर्देश या दस्तावेज़ चिह्न नहीं होने चाहिए",
+  "Invalid YAML frontmatter": "अमान्य YAML frontmatter",
+  "Skill frontmatter requires one YAML document": "कौशल के frontmatter में एक YAML दस्तावेज़ आवश्यक है",
+  "Skill frontmatter must contain valid Unicode text without control characters":
+    "कौशल के frontmatter में नियंत्रण वर्णों के बिना मान्य Unicode टेक्स्ट होना चाहिए",
+  "Skill frontmatter must be a mapping with string keys":
+    "कौशल का frontmatter स्ट्रिंग कुंजियों वाली मैपिंग होना चाहिए",
+  "Skill frontmatter fields must be name, description, license, compatibility, metadata, or allowed-tools":
+    "कौशल के frontmatter के फ़ील्ड name, description, license, compatibility, metadata या allowed-tools होने चाहिए",
+  "Skill frontmatter values must be strings; metadata must be a string-to-string map":
+    "कौशल के frontmatter के मान स्ट्रिंग होने चाहिए; metadata स्ट्रिंग से स्ट्रिंग का मैप होना चाहिए",
+  "Skill compatibility must be at most 500 characters":
+    "कौशल का compatibility अधिकतम 500 वर्ण का होना चाहिए",
+  "Enter a GitHub repository as owner/repo or an HTTPS repository-root URL":
+    "GitHub रिपॉज़िटरी को owner/repo या रिपॉज़िटरी की मूल डायरेक्टरी के HTTPS URL के रूप में दर्ज करें",
+  "Invalid GitHub response": "अमान्य GitHub प्रतिक्रिया",
+  "Invalid GitHub skill selection": "GitHub कौशल का चयन अमान्य है",
+  "GitHub API host approval is required": "GitHub API होस्ट की स्वीकृति आवश्यक है",
+  "GitHub read cancelled": "GitHub से पढ़ना रद्द कर दिया गया",
+  "GitHub tree is truncated; no partial listing is available":
+    "GitHub ट्री अधूरा है; आंशिक सूची उपलब्ध नहीं है",
+  "GitHub tree exceeds the 10000-entry limit": "GitHub ट्री 10000 प्रविष्टियों की सीमा से अधिक है",
+  "GitHub listing exceeds the 200-candidate limit": "GitHub सूची 200 उम्मीदवारों की सीमा से अधिक है",
+  "GitHub read timed out after 30 seconds": "GitHub से पढ़ने का समय 30 सेकंड के बाद समाप्त हो गया",
+  "GitHub request failed; check the canonical repository and host access. Redirects are not allowed":
+    "GitHub अनुरोध विफल हुआ; रिपॉज़िटरी के प्रामाणिक पते और होस्ट ऐक्सेस की जाँच करें। रीडायरेक्ट की अनुमति नहीं है",
+  "GitHub redirected the request; enter the canonical repository":
+    "GitHub ने अनुरोध रीडायरेक्ट किया; रिपॉज़िटरी का प्रामाणिक पता दर्ज करें",
+  "GitHub repository or object is unavailable": "GitHub रिपॉज़िटरी या ऑब्जेक्ट उपलब्ध नहीं है",
+  "GitHub API access was denied or rate limited":
+    "GitHub API की ऐक्सेस अस्वीकार कर दी गई या अनुरोध दर की सीमा लग गई है",
+  "GitHub request failed": "GitHub अनुरोध विफल हुआ",
+  "GitHub response exceeds the received-byte limit": "GitHub प्रतिक्रिया प्राप्त बाइट की सीमा से अधिक है",
+  "GitHub skill exceeds the 65536-byte source limit":
+    "GitHub कौशल 65536-बाइट की स्रोत सीमा से अधिक है",
+  "Invalid GitHub skill Base64": "GitHub कौशल का Base64 अमान्य है",
+  "GitHub skill must be valid UTF-8 text": "GitHub कौशल मान्य UTF-8 टेक्स्ट होना चाहिए",
 } satisfies Catalog

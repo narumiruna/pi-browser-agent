@@ -686,4 +686,67 @@ export default {
   "{provider} credential configured — Account": "ตั้งค่าข้อมูลรับรอง {provider} แล้ว — บัญชี",
   "{provider} credential missing": "ไม่มีข้อมูลรับรอง {provider}",
   "{provider} not configured": "ยังไม่ได้ตั้งค่า {provider}",
+  "GitHub repository": "ที่เก็บ GitHub",
+  "Enter owner/repo or a GitHub repository URL. Only public repositories are supported.":
+    "ป้อน owner/repo หรือ URL ของที่เก็บ GitHub รองรับเฉพาะที่เก็บสาธารณะเท่านั้น",
+  "Find GitHub skills": "ค้นหาทักษะ GitHub",
+  "Cancel fetch": "ยกเลิกการดึงข้อมูล",
+  "GitHub SKILL.md files": "ไฟล์ SKILL.md บน GitHub",
+  "Select a SKILL.md": "เลือก SKILL.md",
+  "Review selected GitHub skill": "ตรวจสอบทักษะ GitHub ที่เลือก",
+  "Open source on GitHub": "เปิดต้นฉบับบน GitHub",
+  "Only name, description, and body are saved. Source identity and optional metadata are review-only.":
+    "บันทึกเฉพาะ name, description และ body เท่านั้น ข้อมูลระบุแหล่งที่มาและ metadata ที่ไม่บังคับมีไว้สำหรับตรวจสอบเท่านั้น",
+  "Repository: {repository}\nPath: {path}\nCommit: {commit}":
+    "ที่เก็บ: {repository}\nเส้นทาง: {path}\nคอมมิต: {commit}",
+  "Original SKILL.md:\n{source}": "SKILL.md ต้นฉบับ:\n{source}",
+  "GitHub results: {total}. Select one SKILL.md to review.":
+    "ผลลัพธ์ GitHub: {total} เลือก SKILL.md หนึ่งไฟล์เพื่อตรวจสอบ",
+  "No SKILL.md files found at the repository root or under skills/.":
+    "ไม่พบไฟล์ SKILL.md ที่รากของที่เก็บหรือภายใต้ skills/",
+  "GitHub fetch cancelled.": "ยกเลิกการดึงข้อมูลจาก GitHub แล้ว",
+  "Repository changed. Find GitHub skills again.": "ที่เก็บมีการเปลี่ยนแปลง ค้นหาทักษะ GitHub อีกครั้ง",
+  "Select a GitHub SKILL.md to review.": "เลือก SKILL.md จาก GitHub เพื่อตรวจสอบ",
+  "GitHub access was not granted. Local file import is still available.":
+    "ไม่ได้รับสิทธิ์เข้าถึง GitHub ยังสามารถนำเข้าไฟล์ในเครื่องได้",
+  "GitHub access starts with Find GitHub skills. Requests use api.github.com without cookies or credentials. Only the selected SKILL.md is downloaded; scripts and supporting files are not imported.":
+    "การเข้าถึง GitHub เริ่มเมื่อเลือก “ค้นหาทักษะ GitHub” คำขอใช้ api.github.com โดยไม่มีคุกกี้หรือข้อมูลรับรอง ดาวน์โหลดเฉพาะ SKILL.md ที่เลือกเท่านั้น ไม่นำเข้าสคริปต์หรือไฟล์สนับสนุน",
+  "Skill frontmatter exceeds 8 container levels or 256 nodes":
+    "frontmatter ของทักษะมีคอนเทนเนอร์เกิน 8 ระดับหรือมีโหนดเกิน 256 โหนด",
+  "Skill frontmatter must not contain tags, anchors, aliases, directives, or document markers":
+    "frontmatter ของทักษะต้องไม่มีแท็ก แองเคอร์ นามแฝง คำสั่งกำกับ หรือเครื่องหมายเอกสาร",
+  "Invalid YAML frontmatter": "frontmatter ของ YAML ไม่ถูกต้อง",
+  "Skill frontmatter requires one YAML document": "frontmatter ของทักษะต้องมีเอกสาร YAML หนึ่งฉบับ",
+  "Skill frontmatter must contain valid Unicode text without control characters":
+    "frontmatter ของทักษะต้องเป็นข้อความ Unicode ที่ถูกต้องและไม่มีอักขระควบคุม",
+  "Skill frontmatter must be a mapping with string keys":
+    "frontmatter ของทักษะต้องเป็นการจับคู่ที่มีคีย์เป็นสตริง",
+  "Skill frontmatter fields must be name, description, license, compatibility, metadata, or allowed-tools":
+    "ฟิลด์ใน frontmatter ของทักษะต้องเป็น name, description, license, compatibility, metadata หรือ allowed-tools",
+  "Skill frontmatter values must be strings; metadata must be a string-to-string map":
+    "ค่าใน frontmatter ของทักษะต้องเป็นสตริง ส่วน metadata ต้องเป็นการจับคู่สตริงกับสตริง",
+  "Skill compatibility must be at most 500 characters":
+    "compatibility ของทักษะต้องยาวไม่เกิน 500 อักขระ",
+  "Enter a GitHub repository as owner/repo or an HTTPS repository-root URL":
+    "ป้อนที่เก็บ GitHub ในรูปแบบ owner/repo หรือ URL แบบ HTTPS ที่ชี้ไปยังรากของที่เก็บ",
+  "Invalid GitHub response": "การตอบกลับจาก GitHub ไม่ถูกต้อง",
+  "Invalid GitHub skill selection": "การเลือกทักษะ GitHub ไม่ถูกต้อง",
+  "GitHub API host approval is required": "ต้องได้รับการอนุมัติการเข้าถึงโฮสต์ GitHub API",
+  "GitHub read cancelled": "ยกเลิกการอ่านจาก GitHub แล้ว",
+  "GitHub tree is truncated; no partial listing is available":
+    "โครงสร้างต้นไม้ของ GitHub ถูกตัดทอน ไม่สามารถแสดงรายการบางส่วนได้",
+  "GitHub tree exceeds the 10000-entry limit": "โครงสร้างต้นไม้ของ GitHub เกินขีดจำกัด 10000 รายการ",
+  "GitHub listing exceeds the 200-candidate limit": "รายการจาก GitHub เกินขีดจำกัดตัวเลือก 200 รายการ",
+  "GitHub read timed out after 30 seconds": "การอ่านจาก GitHub หมดเวลาหลังจาก 30 วินาที",
+  "GitHub request failed; check the canonical repository and host access. Redirects are not allowed":
+    "คำขอ GitHub ล้มเหลว ตรวจสอบที่อยู่มาตรฐานของที่เก็บและสิทธิ์เข้าถึงโฮสต์ ไม่อนุญาตให้เปลี่ยนเส้นทาง",
+  "GitHub redirected the request; enter the canonical repository":
+    "GitHub เปลี่ยนเส้นทางคำขอ ให้ป้อนที่อยู่มาตรฐานของที่เก็บ",
+  "GitHub repository or object is unavailable": "ที่เก็บหรือออบเจ็กต์บน GitHub ไม่พร้อมใช้งาน",
+  "GitHub API access was denied or rate limited": "การเข้าถึง GitHub API ถูกปฏิเสธหรือถูกจำกัดอัตราคำขอ",
+  "GitHub request failed": "คำขอ GitHub ล้มเหลว",
+  "GitHub response exceeds the received-byte limit": "การตอบกลับจาก GitHub เกินขีดจำกัดจำนวนไบต์ที่รับ",
+  "GitHub skill exceeds the 65536-byte source limit": "ทักษะ GitHub เกินขีดจำกัดต้นฉบับ 65536 ไบต์",
+  "Invalid GitHub skill Base64": "Base64 ของทักษะ GitHub ไม่ถูกต้อง",
+  "GitHub skill must be valid UTF-8 text": "ทักษะ GitHub ต้องเป็นข้อความ UTF-8 ที่ถูกต้อง",
 } satisfies Catalog
