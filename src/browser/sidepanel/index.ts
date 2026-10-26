@@ -1,10 +1,12 @@
 import "./styles.css"
 import { safeErrorMessage } from "../auth/redaction.js"
+import { initializeDocumentLanguage } from "../i18n/dom.js"
 
 const params = new URLSearchParams(window.location.search)
 const view = params.get("view")
 
 async function initialize(): Promise<void> {
+  await initializeDocumentLanguage(document)
   if (view === "microphone") {
     const { initializeMicrophonePage } = await import("./microphone-page.js")
     await initializeMicrophonePage()

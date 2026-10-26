@@ -1,0 +1,11 @@
+{
+  "description": {
+    "message": "Um assistente de IA nativo do Chrome para a página que você está visualizando."
+  },
+  "actionTitle": {
+    "message": "Abrir Pi Browser Agent"
+  },
+  "pickerCommand": {
+    "message": "Abrir Pi Browser Agent e selecionar um elemento da página"
+  }
+}

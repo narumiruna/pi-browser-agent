@@ -1,3 +1,6 @@
+/** An extension-owned validation error, not a provider or browser diagnostic. */
+export class SkillError extends Error {}
+
 export const SKILL_LIMITS = Object.freeze({
   inputBytes: 65_536,
   name: 64,
@@ -37,7 +40,7 @@ export function validateSkillContent(
     metadataControls.test(skill.name) ||
     skill.name.length > SKILL_LIMITS.name
   ) {
-    throw new Error(
+    throw new SkillError(
       `Skill name must be lowercase kebab-case, at most ${SKILL_LIMITS.name} characters`,
     )
   }
@@ -49,7 +52,7 @@ export function validateSkillContent(
     metadataControls.test(skill.description) ||
     invalidUnicode.test(skill.description)
   ) {
-    throw new Error(
+    throw new SkillError(
       `Skill description must be one line of 1 to ${SKILL_LIMITS.description} characters without surrounding whitespace`,
     )
   }
@@ -59,12 +62,12 @@ export function validateSkillContent(
     bodyControls.test(skill.body) ||
     invalidUnicode.test(skill.body)
   ) {
-    throw new Error("Skill body must contain valid Unicode text without control characters")
+    throw new SkillError("Skill body must contain valid Unicode text without control characters")
   }
   // Imported source includes frontmatter delimiters. Persisted content has no source;
   // enforce the same byte ceiling on its combined metadata and body on every read.
   if (skillByteLength(skill.name + skill.description + skill.body) > SKILL_LIMITS.inputBytes) {
-    throw new Error(`Skill content exceeds the ${SKILL_LIMITS.inputBytes}-byte limit`)
+    throw new SkillError(`Skill content exceeds the ${SKILL_LIMITS.inputBytes}-byte limit`)
   }
 }
 
@@ -76,11 +79,11 @@ function scalar(value: string): string {
     } catch {
       // Report the supported subset instead of exposing engine-specific JSON errors.
     }
-    throw new Error("Invalid double-quoted frontmatter scalar; use JSON string syntax")
+    throw new SkillError("Invalid double-quoted frontmatter scalar; use JSON string syntax")
   }
   if (value.startsWith("'")) {
     if (!/^'(?:[^']|'')*'$/.test(value)) {
-      throw new Error(
+      throw new SkillError(
         "Invalid single-quoted frontmatter scalar; escape quotes as two single quotes",
       )
     }
@@ -92,7 +95,7 @@ function scalar(value: string): string {
     /^[-?:](?:\s|$)/.test(value) ||
     /:\s|:$|(?:^|\s)#/.test(value)
   ) {
-    throw new Error("Unsupported YAML scalar; use a plain string or a quoted string")
+    throw new SkillError("Unsupported YAML scalar; use a plain string or a quoted string")
   }
   return value
 }
@@ -111,39 +114,43 @@ function scalar(value: string): string {
 export function parseSkill(input: Uint8Array | string): ParsedSkill {
   const bytes = typeof input === "string" ? skillByteLength(input) : input.byteLength
   if (bytes > SKILL_LIMITS.inputBytes) {
-    throw new Error(`Skill input exceeds the ${SKILL_LIMITS.inputBytes}-byte limit`)
+    throw new SkillError(`Skill input exceeds the ${SKILL_LIMITS.inputBytes}-byte limit`)
   }
   let source: string
   if (typeof input === "string") {
-    if (invalidUnicode.test(input)) throw new Error("Skill input must be valid UTF-8 text")
+    if (invalidUnicode.test(input)) throw new SkillError("Skill input must be valid UTF-8 text")
     source = input.replace(/^\uFEFF/, "")
   } else {
     try {
       source = new TextDecoder("utf-8", { fatal: true }).decode(input)
     } catch {
-      throw new Error("Skill input must be valid UTF-8 text")
+      throw new SkillError("Skill input must be valid UTF-8 text")
     }
   }
   const header = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|(?![\s\S]))/.exec(source)
   if (header?.index !== 0) {
-    throw new Error("Skill must start with frontmatter enclosed by --- delimiter lines")
+    throw new SkillError("Skill must start with frontmatter enclosed by --- delimiter lines")
   }
   const fields = new Map<string, string>()
   for (const rawLine of (header[1] ?? "").split(/\r?\n/)) {
     if (rawLine === "") continue
     const match = /^([^\s:]+): +(.*)$/.exec(rawLine)
     if (!match || metadataControls.test(rawLine)) {
-      throw new Error("Unsupported YAML frontmatter; use unindented name and description scalars")
+      throw new SkillError(
+        "Unsupported YAML frontmatter; use unindented name and description scalars",
+      )
     }
     const key = match[1] ?? ""
     if (key !== "name" && key !== "description") {
-      throw new Error(`Unknown frontmatter field: ${key}; only name and description are supported`)
+      throw new SkillError(
+        `Unknown frontmatter field: ${key}; only name and description are supported`,
+      )
     }
-    if (fields.has(key)) throw new Error(`Duplicate frontmatter field: ${key}`)
+    if (fields.has(key)) throw new SkillError(`Duplicate frontmatter field: ${key}`)
     fields.set(key, scalar((match[2] ?? "").trim()))
   }
   if (!fields.has("name") || !fields.has("description")) {
-    throw new Error("Skill frontmatter requires name and description")
+    throw new SkillError("Skill frontmatter requires name and description")
   }
   const skill: ParsedSkill = {
     name: fields.get("name") ?? "",

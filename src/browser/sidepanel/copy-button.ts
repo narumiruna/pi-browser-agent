@@ -20,7 +20,7 @@ export class CopyButton {
   private resetTimer?: ReturnType<typeof setTimeout>
 
   constructor(
-    label: string,
+    private label: string,
     private text: string,
     kind: CopyButtonKind,
   ) {
@@ -51,8 +51,8 @@ export class CopyButton {
     const showDefault = (attempt: number): void => {
       if (attempt !== this.attempt) return
       path.setAttribute("d", defaultIcons[kind])
-      visibleLabel.textContent = label
-      button.title = label
+      visibleLabel.textContent = this.label
+      button.title = this.label
       status.textContent = ""
       delete button.dataset.copyState
     }
@@ -61,7 +61,7 @@ export class CopyButton {
       const message = conversationText(feedback)
       path.setAttribute("d", feedbackIcons[feedback])
       visibleLabel.textContent = message
-      button.title = `${label}: ${message}`
+      button.title = `${this.label}: ${message}`
       button.dataset.copyState = feedback
       status.textContent = message
       if (feedback === "copying") return
@@ -82,6 +82,18 @@ export class CopyButton {
         report(attempt, "copyFailed")
       }
     })
+  }
+
+  updateLabel(label: string): void {
+    this.label = label
+    this.element.ariaLabel = label
+    const feedback = this.element.dataset.copyState as keyof typeof feedbackIcons | undefined
+    const message = feedback ? conversationText(feedback) : label
+    const visibleLabel = this.element.querySelector(".copy-label")
+    if (visibleLabel) visibleLabel.textContent = message
+    this.element.title = feedback ? `${label}: ${message}` : label
+    const status = this.element.querySelector("[role=status]")
+    if (status) status.textContent = feedback ? message : ""
   }
 
   updateText(text: string): void {

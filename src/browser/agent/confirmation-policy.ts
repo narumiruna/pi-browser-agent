@@ -1,3 +1,4 @@
+import { t } from "../i18n/index.js"
 import { hasBookmarkPermission, hasHostPermission } from "../permissions.js"
 import type { JsonObject } from "../runtime/types.js"
 import type { ConfirmationMode } from "../storage.js"
@@ -15,10 +16,16 @@ export interface ApprovalScope {
   bookmarkPermission?: boolean
 }
 
+/** Trusted local text only. Never sent to the worker or used as an approval identity. */
+export interface ConfirmationPresentation {
+  message: string
+}
+
 type ShowConfirmation = (
   message: string,
   details?: JsonObject,
   signal?: AbortSignal,
+  presentation?: ConfirmationPresentation,
 ) => Promise<boolean>
 
 function readKeys(value: unknown): string[] {
@@ -73,13 +80,14 @@ export class ConfirmationPolicy {
     details?: JsonObject,
     signal?: AbortSignal,
     scope?: ApprovalScope,
+    presentation?: ConfirmationPresentation,
   ): Promise<boolean> {
     if (signal?.aborted) return false
     const mode = this.mode()
-    if (mode === "strict" || !scope) return this.show(message, details, signal)
+    if (mode === "strict" || !scope) return this.show(message, details, signal, presentation)
 
     const key = await digest(scope)
-    if (!key) return this.show(message, details, signal)
+    if (!key) return this.show(message, details, signal, presentation)
     const area = storage(mode)
     // Cached consent never substitutes for a revoked Chrome or app-level permission.
     if (await hasScopePermission(scope)) {
@@ -96,7 +104,17 @@ export class ConfirmationPolicy {
       mode === "balanced"
         ? "The same operation and target/arguments can run again without a dialog until Chrome restarts."
         : "The same operation and target/arguments can run again without a dialog after Chrome restarts, until cleared in Settings."
-    const approved = await this.show(`${message}\n\n${lifetime}`, details, signal)
+    const localizedLifetime =
+      mode === "balanced"
+        ? t(
+            "The same operation and target/arguments can run again without a dialog until Chrome restarts.",
+          )
+        : t(
+            "The same operation and target/arguments can run again without a dialog after Chrome restarts, until cleared in Settings.",
+          )
+    const approved = await this.show(`${message}\n\n${lifetime}`, details, signal, {
+      message: `${presentation?.message ?? message}\n\n${localizedLifetime}`,
+    })
     if (!approved || signal?.aborted) return false
     if (this.mode() !== mode) return true
     // The confirmation button may have requested optional access; do not remember an

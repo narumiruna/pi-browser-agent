@@ -1,0 +1,11 @@
+{
+  "description": {
+    "message": "表示中のページで使える Chrome ネイティブの AI アシスタント。"
+  },
+  "actionTitle": {
+    "message": "Pi Browser Agent を開く"
+  },
+  "pickerCommand": {
+    "message": "Pi Browser Agent を開いてページ要素を選択"
+  }
+}

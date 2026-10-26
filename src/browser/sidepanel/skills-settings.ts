@@ -1,4 +1,6 @@
-import { type ParsedSkill, parseSkill, SKILL_LIMITS } from "../skills/format.js"
+import { safeErrorMessage } from "../auth/redaction.js"
+import { t, translateDiagnostic, translateKnownMessage } from "../i18n/index.js"
+import { type ParsedSkill, parseSkill, SKILL_LIMITS, SkillError } from "../skills/format.js"
 import { SKILLS_STORAGE_KEY, type SkillRecord, SkillStore } from "../skills/store.js"
 import { element, type SettingsSectionState, setErrorOutput } from "./ui.js"
 
@@ -48,13 +50,17 @@ export async function initializeSkillsSettings(
   }
 
   function textPreview(skill: Pick<ParsedSkill, "name" | "description" | "body">): string {
-    return `Name: ${skill.name.slice(0, SKILL_LIMITS.name)}\n\nDescription: ${skill.description.slice(0, SKILL_LIMITS.description)}\n\nBody:\n${skill.body.slice(0, SKILL_LIMITS.inputBytes)}`
+    return t("Name: {name}\n\nDescription: {description}\n\nBody:\n{body}", {
+      name: skill.name.slice(0, SKILL_LIMITS.name),
+      description: skill.description.slice(0, SKILL_LIMITS.description),
+      body: skill.body.slice(0, SKILL_LIMITS.inputBytes),
+    })
   }
 
   function updateControls(): void {
     const record = selected()
     installedControls.hidden = !record
-    selectedName.textContent = record?.name ?? "Selected skill"
+    selectedName.textContent = record?.name ?? t("Selected skill")
     emptyState.hidden = records.length !== 0
     file.disabled = busy
     for (const [id, { button }] of items) {
@@ -70,14 +76,14 @@ export async function initializeSkillsSettings(
     replaceButton.disabled = busy || !reviewed || !record
     confirmDelete.disabled = busy || !deletion
     cancelDelete.disabled = busy
-    installedPreview.textContent = record ? textPreview(record) : "No installed skill selected."
+    installedPreview.textContent = record ? textPreview(record) : t("No installed skill selected.")
     onStateChange()
   }
 
   function clearReview(): void {
     reviewed = undefined
     file.value = ""
-    preview.textContent = "No file reviewed."
+    preview.textContent = t("No file reviewed.")
     updateControls()
   }
 
@@ -126,7 +132,7 @@ export async function initializeSkillsSettings(
       }
       entry.name.textContent = record.name
       entry.description.textContent = record.description
-      entry.badge.textContent = record.enabled ? "Enabled" : "Disabled"
+      entry.badge.textContent = record.enabled ? t("Enabled") : t("Disabled")
       // Keep existing buttons attached so storage refresh does not remove keyboard focus.
       if (list.children[index] !== entry.item)
         list.insertBefore(entry.item, list.children[index] ?? null)
@@ -146,11 +152,17 @@ export async function initializeSkillsSettings(
     ].find((control) => control === document.activeElement)
     busy = true
     updateControls()
-    if (reportWorking) status.textContent = "Working…"
+    if (reportWorking) status.textContent = t("Working…")
     try {
       await action()
     } catch (error) {
-      if (!disposed) setErrorOutput(status, error)
+      if (!disposed)
+        setErrorOutput(
+          status,
+          error instanceof SkillError
+            ? translateKnownMessage(safeErrorMessage(error))
+            : translateDiagnostic(error),
+        )
     } finally {
       busy = false
       if (!disposed) {
@@ -187,7 +199,7 @@ export async function initializeSkillsSettings(
       current.enabled !== record.enabled
     ) {
       await refresh("")
-      throw new Error("The selected skill changed. Select and review it again.")
+      throw new Error(t("The selected skill changed. Select and review it again."))
     }
   }
 
@@ -205,24 +217,32 @@ export async function initializeSkillsSettings(
     void perform(async () => {
       clearReview()
       if (!chosen || count === 0) {
-        status.textContent = "No file selected."
+        status.textContent = t("No file selected.")
         return
       }
       if (count !== 1 || chosen.name !== "SKILL.md")
-        throw new Error("Select one UTF-8 text file named SKILL.md.")
+        throw new Error(t("Select one UTF-8 text file named SKILL.md."))
       if (chosen.size > SKILL_LIMITS.inputBytes)
-        throw new Error(`SKILL.md must be at most ${SKILL_LIMITS.inputBytes} bytes.`)
+        throw new Error(
+          t("SKILL.md must be at most {bytes} bytes.", { bytes: SKILL_LIMITS.inputBytes }),
+        )
       const bytes = new Uint8Array(await chosen.arrayBuffer())
       if (disposed) return
       const parsed = parseSkill(bytes)
       reviewed = parsed
       const warnings = parsed.warnings
         .slice(0, 20)
-        .map((warning) => warning.slice(0, SKILL_LIMITS.description))
+        .map((warning) => translateKnownMessage(warning))
         .join("\n")
-      preview.textContent = `${textPreview(parsed)}\n\nCompatibility warnings:\n${warnings || "No specific warnings. Static review cannot detect every unsupported dependency."}`
-      status.textContent =
-        "Review the name, description, body, and warnings before saving. Nothing has been imported."
+      preview.textContent = t("{preview}\n\nCompatibility warnings:\n{warnings}", {
+        preview: textPreview(parsed),
+        warnings:
+          warnings ||
+          t("No specific warnings. Static review cannot detect every unsupported dependency."),
+      })
+      status.textContent = t(
+        "Review the name, description, body, and warnings before saving. Nothing has been imported.",
+      )
     })
   })
 
@@ -235,7 +255,7 @@ export async function initializeSkillsSettings(
       clearReview()
       await refresh(record.id)
       focusAfterSave = items.get(record.id)?.button ?? file
-      status.textContent = "Skill imported disabled. Review and enable it for the next run."
+      status.textContent = t("Skill imported disabled. Review and enable it for the next run.")
     })
   })
   replaceButton.addEventListener("click", () => {
@@ -250,7 +270,7 @@ export async function initializeSkillsSettings(
       clearReview()
       await refresh(record.id)
       focusAfterSave = items.get(record.id)?.button ?? file
-      status.textContent = "Selected skill replaced and disabled. Changes apply to the next run."
+      status.textContent = t("Selected skill replaced and disabled. Changes apply to the next run.")
     })
   })
   enabled.addEventListener("change", () => {
@@ -263,7 +283,9 @@ export async function initializeSkillsSettings(
       await store.setEnabled(record.id, value, record)
       await refresh(record.id)
       if (!disposed)
-        status.textContent = `Skill ${value ? "enabled" : "disabled"} for the next run.`
+        status.textContent = value
+          ? t("Skill enabled for the next run.")
+          : t("Skill disabled for the next run.")
     })
   })
   deleteButton.addEventListener("click", () => {
@@ -298,7 +320,7 @@ export async function initializeSkillsSettings(
       clearReview()
       await refresh("")
       focusAfterSave = items.values().next().value?.button ?? file
-      status.textContent = "Skill deleted. Previous session history is retained."
+      status.textContent = t("Skill deleted. Previous session history is retained.")
     })
   })
 
@@ -323,7 +345,8 @@ export async function initializeSkillsSettings(
   clearReview()
   await perform(async () => {
     await refresh("")
-    if (!disposed) status.textContent = "Skills save independently. Imported skills start disabled."
+    if (!disposed)
+      status.textContent = t("Skills save independently. Imported skills start disabled.")
   })
   return {
     hasDraft: () => !disposed && reviewed !== undefined,

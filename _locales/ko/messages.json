@@ -1,0 +1,11 @@
+{
+  "description": {
+    "message": "현재 보고 있는 페이지를 위한 Chrome 네이티브 AI 도우미입니다."
+  },
+  "actionTitle": {
+    "message": "Pi Browser Agent 열기"
+  },
+  "pickerCommand": {
+    "message": "Pi Browser Agent를 열고 페이지 요소 선택"
+  }
+}

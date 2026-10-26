@@ -10,6 +10,8 @@ async function artifactFixture(options: {
   bookmarkCode?: string
   bookmarksRequired?: boolean
   screenshotPermissionOmitted?: boolean
+  manifest?: Record<string, unknown>
+  catalogs?: Record<string, string>
 }): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "pi-browser-agent-artifact-audit-"))
   temporaryDirectories.push(root)
@@ -28,6 +30,10 @@ async function artifactFixture(options: {
     "tabs",
     ...(options.bookmarksRequired ? ["bookmarks"] : []),
   ]
+  for (const [locale, contents] of Object.entries(options.catalogs ?? {})) {
+    await mkdir(join(root, "_locales", locale), { recursive: true })
+    await writeFile(join(root, "_locales", locale, "messages.json"), contents)
+  }
   await writeFile(
     join(root, "manifest.json"),
     JSON.stringify({
@@ -45,6 +51,7 @@ async function artifactFixture(options: {
         "https://*/*",
         ...(options.screenshotPermissionOmitted ? [] : ["<all_urls>"]),
       ],
+      ...options.manifest,
     }),
   )
   return root
@@ -62,6 +69,45 @@ afterEach(async () => {
   await Promise.all(
     temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true })),
   )
+})
+
+describe("production native localization catalogs", () => {
+  const manifest = { default_locale: "en", description: "__MSG_description__" }
+  const catalog = JSON.stringify({ description: { message: "A local assistant" } })
+
+  test("accepts native references without replacing Chrome placeholders", async () => {
+    const result = audit(
+      await artifactFixture({ manifest, catalogs: { en: catalog, ja: catalog } }),
+    )
+    expect(result.status).toBe(0)
+  })
+
+  test.each([
+    [{ manifest }, "missing default locale catalog"],
+    [{ manifest: { description: "__MSG_description__" } }, "valid default_locale is required"],
+    [{ manifest, catalogs: { en: "{" } }, "malformed native catalog JSON"],
+    [{ manifest, catalogs: { en: "[]" } }, "native catalog must be a non-empty object"],
+    [
+      { manifest, catalogs: { en: JSON.stringify({ other: { message: "Text" } }) } },
+      "missing native message key description",
+    ],
+    [
+      { manifest, catalogs: { en: JSON.stringify({ description: { message: "" } }) } },
+      "requires a non-empty message",
+    ],
+    [
+      { manifest, catalogs: { en: catalog, ja: JSON.stringify({ other: { message: "Text" } }) } },
+      "missing native message key description",
+    ],
+    [
+      { manifest: { ...manifest, description: "__MSG_description_" }, catalogs: { en: catalog } },
+      "malformed native message reference",
+    ],
+  ])("rejects invalid native metadata %j", async (options, error) => {
+    const result = audit(await artifactFixture(options))
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain(error)
+  })
 })
 
 describe("production artifact permission policy", () => {

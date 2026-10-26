@@ -1,5 +1,6 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core"
 import { Type } from "typebox"
+import { t } from "../i18n/index.js"
 import { REQUEST_LIMITS, type RuntimeMethod, sendRuntimeRequest } from "../runtime/messages.js"
 import { classifyPage } from "../runtime/page-capability.js"
 import {
@@ -9,13 +10,18 @@ import {
   RuntimeError,
   type TabContext,
 } from "../runtime/types.js"
-import { type ApprovalScope, stableJson } from "./confirmation-policy.js"
+import {
+  type ApprovalScope,
+  type ConfirmationPresentation,
+  stableJson,
+} from "./confirmation-policy.js"
 
 export type ConfirmationHandler = (
   message: string,
   details?: JsonObject,
   signal?: AbortSignal,
   scope?: ApprovalScope,
+  presentation?: ConfirmationPresentation,
 ) => Promise<boolean>
 
 async function currentTabContext(): Promise<TabContext> {
@@ -68,6 +74,53 @@ function approvalScope(
   }
 }
 
+// Select trusted copy from the requested operation, never from arbitrary exception prose.
+function operationPresentation(
+  method: RuntimeMethod,
+  params: JsonObject,
+  context: TabContext | undefined,
+): ConfirmationPresentation | undefined {
+  switch (method) {
+    case "bookmarks.search":
+      return {
+        message: t(
+          "Read matching Chrome bookmark titles and URLs? Results will be sent to the selected model provider and saved in this session.",
+        ),
+      }
+    case "bookmarks.getRecent":
+      return {
+        message: t(
+          "Read recent Chrome bookmark titles and URLs? Results will be sent to the selected model provider and saved in this session.",
+        ),
+      }
+    case "page.captureVisible":
+      return {
+        message: t(
+          "Allow screenshots of visible HTTP(S) tabs? Chrome grants access to all sites, but Pi Browser Agent captures only the current visible viewport and separately limits ordinary access to exact origins approved through explicit actions. Screenshots are sent to the selected model provider and saved in this session.",
+        ),
+      }
+    case "page.click":
+      return {
+        message: t("This click may submit a form, download a file, or navigate across origins"),
+      }
+    case "page.selectOption":
+      return { message: t("Changing this option can submit a form or run page actions") }
+    case "page.setChecked":
+      return { message: t("Changing checked state can submit a form or run page actions") }
+    case "tabs.navigate":
+      return context && typeof params.url === "string"
+        ? {
+            message: t("Navigate from {source} to {destination}?", {
+              source: new URL(context.url).origin,
+              destination: new URL(params.url).origin,
+            }),
+          }
+        : undefined
+    default:
+      return undefined
+  }
+}
+
 async function requestTool(
   method: RuntimeMethod,
   params: JsonObject,
@@ -87,9 +140,13 @@ async function requestTool(
     if (!(error instanceof RuntimeError) || error.code !== "CONFIRMATION_REQUIRED") throw error
     const scope = approvalScope(method, params, tabContext, error.details)
     if (
-      !(await (scope
-        ? confirm(error.message, error.details, signal, scope)
-        : confirm(error.message, error.details, signal)))
+      !(await confirm(
+        error.message,
+        error.details,
+        signal,
+        scope,
+        operationPresentation(method, params, tabContext),
+      ))
     ) {
       throw new RuntimeError("PERMISSION_DENIED", "Browser action was declined")
     }
@@ -214,6 +271,11 @@ export function createBrowserTools(
               identity: [String(id), tab.url as string],
               permissionUrl: tab.url as string,
             },
+            {
+              message: t("Use the tab {title}?", {
+                title: tab.title || new URL(tab.url as string).origin,
+              }),
+            },
           ))
         ) {
           throw new RuntimeError("PERMISSION_DENIED", "Browser action was declined")
@@ -262,6 +324,12 @@ export function createBrowserTools(
               operation: "tabs.open",
               identity: [destination.href],
               permissionUrl: destination.href,
+            },
+            {
+              message: t(
+                "Open {url}? A search query in this URL will be sent to the destination.",
+                { url: destination.href },
+              ),
             },
           ))
         ) {
@@ -762,6 +830,14 @@ export function createBrowserTools(
             },
             signal,
             scope,
+            {
+              message:
+                action === "list"
+                  ? t("List the tools provided by this page through WebMCP?")
+                  : t(
+                      "Call this page-provided WebMCP tool? It may have side effects, even when called again with identical arguments.",
+                    ),
+            },
           ))
         ) {
           throw new RuntimeError("PERMISSION_DENIED", "WebMCP access was declined")

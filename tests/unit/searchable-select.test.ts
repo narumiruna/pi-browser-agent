@@ -1,6 +1,9 @@
 import { JSDOM } from "jsdom"
-import { describe, expect, test, vi } from "vitest"
+import { afterEach, describe, expect, test, vi } from "vitest"
+import * as i18n from "../../src/browser/i18n/index.js"
 import { SearchableSelect } from "../../src/browser/sidepanel/searchable-select.js"
+
+afterEach(() => vi.restoreAllMocks())
 
 function required<T extends Element>(element: T | null): T {
   if (!element) throw new Error("Missing test element")
@@ -39,6 +42,30 @@ function setup(useInteractionBoundary = false) {
 }
 
 describe("SearchableSelect", () => {
+  test("uses its effective locale for names and independent casing for technical IDs", () => {
+    const locale = vi.spyOn(i18n, "getLocale").mockReturnValue("en")
+    const { dom, input, listbox, picker } = setup()
+    picker.setOptions([
+      { value: "city", label: "İSTANBUL" },
+      { value: "PIXEL-MODEL", label: "Model" },
+      { value: "provider", label: "Provider", keywords: ["GITHUB"] },
+    ])
+    // Shared conversation controls follow the effective locale after a safe relabel.
+    // Settings keeps its document locale unchanged for its lifetime.
+    locale.mockReturnValue("tr")
+    for (const [query, expected] of [
+      ["istanbul", "İSTANBUL"],
+      ["pixel-model", "Model"],
+      ["github", "Provider"],
+    ]) {
+      input.value = query ?? ""
+      input.dispatchEvent(new dom.window.Event("input", { bubbles: true }))
+      expect(listbox.querySelectorAll("[role='option']")).toHaveLength(1)
+      expect(listbox.textContent).toBe(expected)
+    }
+    dom.window.close()
+  })
+
   test("filters options and selects the active result with the keyboard", () => {
     const { dom, input, select, listbox, picker } = setup()
     const changed = vi.fn()

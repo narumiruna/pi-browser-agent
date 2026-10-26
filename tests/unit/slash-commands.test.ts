@@ -1,4 +1,5 @@
-import { describe, expect, test } from "vitest"
+import { afterEach, describe, expect, test } from "vitest"
+import { setLanguagePreference, t } from "../../src/browser/i18n/index.js"
 import {
   escapeRestoredPrompt,
   getSlashCommandMatches,
@@ -6,7 +7,32 @@ import {
   SLASH_COMMANDS,
 } from "../../src/browser/sidepanel/slash-commands.js"
 
+afterEach(() => setLanguagePreference("en"))
+
 describe("parseSlashCommand", () => {
+  test("localizes errors without translating tokens, arguments, or descriptors", () => {
+    setLanguagePreference("ja")
+    expect(parseSlashCommand("/unknown secret")).toEqual({
+      kind: "invalid",
+      error: t("Unknown slash command."),
+    })
+    expect(t("Unknown slash command.")).not.toBe("Unknown slash command.")
+    expect(parseSlashCommand("/new secret")).toEqual({
+      kind: "invalid",
+      error: t("This slash command does not accept arguments."),
+    })
+    expect(parseSlashCommand("/name first\nsecond")).toEqual({
+      kind: "invalid",
+      error: t("Slash commands must use a single line."),
+    })
+    expect(parseSlashCommand("/name My title")).toEqual({
+      kind: "command",
+      name: "name",
+      argument: "My title",
+    })
+    expect(SLASH_COMMANDS[0].description).toBe("Start a new session")
+  })
+
   test.each(SLASH_COMMANDS)("recognizes /$name", ({ name }) => {
     expect(parseSlashCommand(`/${name}`)).toEqual({ kind: "command", name, argument: "" })
     expect(parseSlashCommand(` \t/${name} \t `)).toEqual({ kind: "command", name, argument: "" })

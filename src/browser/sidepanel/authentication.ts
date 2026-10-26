@@ -2,19 +2,20 @@ import type { AuthEvent, AuthPrompt, AuthType } from "@earendil-works/pi-ai"
 import { AUTH_ORIGINS, OPENAI_PROVIDER_ID } from "../auth/codex-oauth.js"
 import { CREDENTIALS_KEY } from "../auth/credential-store.js"
 import type { BrowserConfiguration } from "../configuration.js"
+import { t } from "../i18n/index.js"
 import { hasHostPermissions, requestHostPermissions } from "../permissions.js"
 import { SearchableSelect } from "./searchable-select.js"
 import { element, run } from "./ui.js"
 
-const AUTH_METHOD_LABELS: Record<AuthType, string> = {
-  oauth: "Sign in with an account",
-  api_key: "Sign in with an API key",
-}
+const AUTH_PROVIDER_DESCRIPTIONS = {
+  oauth: "Providers available for sign in with an account.",
+  api_key: "Providers available for sign in with an API key.",
+} as const
 
-const AUTH_METHOD_NAMES: Record<AuthType, string> = {
-  oauth: "account login",
-  api_key: "API key authentication",
-}
+const AUTH_UNAVAILABLE_ERRORS = {
+  oauth: "No providers support account login in Chrome",
+  api_key: "No providers support API key authentication in Chrome",
+} as const
 
 type AuthenticationOptions = {
   configuration: BrowserConfiguration
@@ -22,7 +23,7 @@ type AuthenticationOptions = {
   updateError: (error?: unknown) => void
   onProvidersChanged?: () => void
   onStateChanged?: () => void
-  onStatus?: (text: string) => void
+  onStatus?: (render: () => string) => void
   mode: "conversation" | "settings"
 }
 
@@ -63,7 +64,7 @@ export class AuthenticationController {
       input: element<HTMLInputElement>("auth-provider-search"),
       select: this.authProviderSelect,
       listbox: element<HTMLElement>("auth-provider-options"),
-      emptyText: "No providers support this authentication method",
+      emptyText: t("No providers support this authentication method"),
       interactionBoundary: this.authProviderDialog,
     })
 
@@ -134,7 +135,7 @@ export class AuthenticationController {
       void run(async () => {
         await options.configuration.invalidateCredential(OPENAI_PROVIDER_ID)
         await this.refresh()
-        throw new Error("OpenAI host access was revoked. Log in again to continue.")
+        throw new Error(t("OpenAI host access was revoked. Log in again to continue."))
       }, this.updateError)
     })
 
@@ -153,7 +154,7 @@ export class AuthenticationController {
       this.options.mode === "conversation" &&
       (event.type === "progress" || event.type === "info")
     ) {
-      this.options.onStatus?.(event.message)
+      this.options.onStatus?.(() => event.message)
     }
   }
 
@@ -177,13 +178,13 @@ export class AuthenticationController {
 
     if (this.loginButton) {
       this.loginButton.hidden = !configurable
-      this.loginButton.textContent = "Add credential"
+      this.loginButton.textContent = t("Add credential")
     }
     if (this.configureButton) {
-      this.configureButton.textContent = "Add credential"
+      this.configureButton.textContent = t("Add credential")
       this.configureButton.disabled = this.isBusy || !configurable
       if (this.statusOutput) {
-        this.statusOutput.textContent = "Checking credential status…"
+        this.statusOutput.textContent = t("Checking credential status…")
         this.statusOutput.dataset.loggedIn = "false"
       }
     }
@@ -214,15 +215,21 @@ export class AuthenticationController {
         this.statusOutput.textContent =
           this.options.mode === "settings"
             ? status.loggedIn
-              ? `${provider.name} credential configured — ${status.type === "oauth" ? "Account" : "API key"}`
-              : `${provider.name} credential missing`
+              ? status.type === "oauth"
+                ? t("{provider} credential configured — Account", { provider: provider.name })
+                : t("{provider} credential configured — API key", { provider: provider.name })
+              : t("{provider} credential missing", { provider: provider.name })
             : status.loggedIn
-              ? `${provider.name} configured with ${status.type === "oauth" ? "an account" : "an API key"}`
-              : `${provider.name} not configured`
+              ? status.type === "oauth"
+                ? t("{provider} configured with an account", { provider: provider.name })
+                : t("{provider} configured with an API key", { provider: provider.name })
+              : t("{provider} not configured", { provider: provider.name })
         this.statusOutput.dataset.loggedIn = String(status.loggedIn)
       }
       if (this.configureButton) {
-        this.configureButton.textContent = status.loggedIn ? "Update credential" : "Add credential"
+        this.configureButton.textContent = status.loggedIn
+          ? t("Update credential")
+          : t("Add credential")
         this.configureButton.disabled = this.isBusy || !configurable
       }
     } catch (error) {
@@ -242,17 +249,17 @@ export class AuthenticationController {
     }
     this.options.updateError(
       this.options.mode === "settings"
-        ? new Error("Authentication is unavailable. Try again.")
+        ? new Error(t("Authentication is unavailable. Try again."))
         : error,
     )
   }
 
   private showUnavailableStatus(): void {
     if (this.statusOutput) {
-      this.statusOutput.textContent = "Credential status unavailable. Try again."
+      this.statusOutput.textContent = t("Credential status unavailable. Try again.")
       this.statusOutput.dataset.loggedIn = "false"
     }
-    if (this.configureButton) this.configureButton.textContent = "Add credential"
+    if (this.configureButton) this.configureButton.textContent = t("Add credential")
     if (this.logoutButton) this.logoutButton.hidden = true
     if (this.refreshButton) this.refreshButton.hidden = true
   }
@@ -280,7 +287,7 @@ export class AuthenticationController {
       const provider = this.options.configuration
         .getProviders(authType)
         .find((candidate) => candidate.id === providerId)
-      if (!provider) throw new Error("Select a provider before configuring it")
+      if (!provider) throw new Error(t("Select a provider before configuring it"))
       guard?.()
       await requestProviderSetupPermission(providerId, authType)
       guard?.()
@@ -305,8 +312,10 @@ export class AuthenticationController {
       if (loginDialog.open) loginDialog.close()
       this.options.onProvidersChanged?.()
       await this.refresh()
-      this.options.onStatus?.(
-        `${provider.name} configured with ${authType === "oauth" ? "an account" : "an API key"}`,
+      this.options.onStatus?.(() =>
+        authType === "oauth"
+          ? t("{provider} configured with an account", { provider: provider.name })
+          : t("{provider} configured with an API key", { provider: provider.name }),
       )
       return true
     } finally {
@@ -331,14 +340,16 @@ export class AuthenticationController {
       const providerId = this.options.currentProviderId()
       const credential = await this.options.configuration.credentials.read(providerId)
       if (this.options.currentProviderId() !== providerId) {
-        throw new Error("The selected provider changed. Try again.")
+        throw new Error(t("The selected provider changed. Try again."))
       }
       guard?.()
       if (!credential) {
         const provider = this.options.configuration
           .getProviders()
           .find((candidate) => candidate.id === providerId)
-        this.options.onStatus?.(`${provider?.name ?? providerId} not configured`)
+        this.options.onStatus?.(() =>
+          t("{provider} not configured", { provider: provider?.name ?? providerId }),
+        )
         return true
       }
       await this.options.configuration.logout(providerId)
@@ -374,15 +385,17 @@ export class AuthenticationController {
   ): Promise<AuthProviderSelection> {
     const providers = this.options.configuration.getProviders(authType)
     if (providers.length === 0) {
-      throw new Error(`No providers support ${AUTH_METHOD_NAMES[authType]} in Chrome`)
+      throw new Error(t(AUTH_UNAVAILABLE_ERRORS[authType]))
     }
-    this.authProviderDescription.textContent = `Providers available for ${AUTH_METHOD_LABELS[authType].toLowerCase()}.`
+    this.authProviderDescription.textContent = t(AUTH_PROVIDER_DESCRIPTIONS[authType])
     this.providerPicker.setOptions(
       providers.map((provider) => {
         const method = provider.authMethods.find((candidate) => candidate.type === authType)
         return {
           value: provider.id,
-          label: method ? `${provider.name} — ${method.label}` : provider.name,
+          label: method
+            ? `${provider.name} — ${method.type === "oauth" ? t("Account") : t("API key")}`
+            : provider.name,
           keywords: [provider.name, provider.id],
         }
       }),
@@ -461,14 +474,16 @@ async function requestProviderSetupPermission(
 ): Promise<void> {
   if (authType === "oauth") {
     if (providerId !== OPENAI_PROVIDER_ID) {
-      throw new Error(`Account login is not configured for ${providerId} in Chrome`)
+      throw new Error(
+        t("Account login is not configured for {provider} in Chrome", { provider: providerId }),
+      )
     }
     const granted = await requestHostPermissions(AUTH_ORIGINS)
-    if (!granted) throw new Error("OpenAI host access is required for login")
+    if (!granted) throw new Error(t("OpenAI host access is required for login"))
     return
   }
   if (providerId === "radius") {
     const granted = await requestHostPermissions(["https://radius.pi.dev"])
-    if (!granted) throw new Error("Radius host access is required to load its models")
+    if (!granted) throw new Error(t("Radius host access is required to load its models"))
   }
 }

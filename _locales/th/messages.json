@@ -1,0 +1,11 @@
+{
+  "description": {
+    "message": "ผู้ช่วย AI ที่ทำงานใน Chrome สำหรับหน้าที่คุณกำลังดู"
+  },
+  "actionTitle": {
+    "message": "เปิด Pi Browser Agent"
+  },
+  "pickerCommand": {
+    "message": "เปิด Pi Browser Agent และเลือกองค์ประกอบในหน้า"
+  }
+}

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "vitest"
+import type { ConfirmationHandler } from "../../src/browser/agent/browser-tools.js"
 import { McpManager } from "../../src/browser/mcp/manager.js"
 import { MCP_LIMITS } from "../../src/browser/mcp/policy.js"
 import { removeMcpServer, saveMcpServer, setMcpConnection } from "../../src/browser/mcp/store.js"
@@ -17,7 +18,7 @@ describe("remote MCP tool ownership", () => {
     await env.server()
     await env.server()
     const mock = mockMcpFetch()
-    const confirm = vi.fn(async () => true)
+    const confirm = vi.fn<ConfirmationHandler>(async () => true)
     const manager = new McpManager(confirm)
     const tools = await manager.prepare()
     expect(tools).toHaveLength(2)
@@ -34,7 +35,11 @@ describe("remote MCP tool ownership", () => {
     })
     await required(tools[0]).execute("two", { text: "x" }, undefined)
     expect(confirm).toHaveBeenCalledTimes(2)
-    expect(confirm.mock.calls[0]).toHaveLength(3) // No reusable ApprovalScope in any mode.
+    expect(confirm.mock.calls[0]).toHaveLength(5)
+    expect(confirm.mock.calls[0]?.[3]).toBeUndefined() // No reusable ApprovalScope in any mode.
+    expect(confirm.mock.calls[0]?.[4]).toEqual({
+      message: expect.stringContaining("Every call requires confirmation."),
+    })
     expect(mock.messages.filter((m) => m.method === "tools/call")).toHaveLength(2)
     const names = tools.map((t) => t.name)
     expect((await manager.prepare()).map((t) => t.name)).toEqual(names)

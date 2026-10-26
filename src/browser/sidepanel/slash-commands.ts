@@ -1,3 +1,5 @@
+import { t } from "../i18n/index.js"
+
 export const SLASH_COMMANDS = [
   { name: "new", description: "Start a new session", acceptsArgument: false },
   { name: "resume", description: "Choose a saved session", acceptsArgument: false },
@@ -31,14 +33,14 @@ export function parseSlashCommand(input: string): SlashCommandResult {
   if (!match) return { kind: "prompt", text: input }
 
   const command = SLASH_COMMANDS.find((item) => item.name === match[1])
-  if (!command) return { kind: "invalid", error: "Unknown slash command." }
+  if (!command) return { kind: "invalid", error: t("Unknown slash command.") }
   if (/[\r\n\u2028\u2029]/.test(input)) {
-    return { kind: "invalid", error: "Slash commands must use a single line." }
+    return { kind: "invalid", error: t("Slash commands must use a single line.") }
   }
 
   const argument = trimmed.slice(match[0].length).trim()
   if (argument && !command.acceptsArgument) {
-    return { kind: "invalid", error: "This slash command does not accept arguments." }
+    return { kind: "invalid", error: t("This slash command does not accept arguments.") }
   }
   return { kind: "command", name: command.name, argument }
 }

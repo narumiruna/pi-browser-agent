@@ -1,0 +1,11 @@
+{
+  "description": {
+    "message": "專為您目前瀏覽的網頁打造的 Chrome 原生 AI 助理。"
+  },
+  "actionTitle": {
+    "message": "開啟 Pi Browser Agent"
+  },
+  "pickerCommand": {
+    "message": "開啟 Pi Browser Agent 並選取網頁元素"
+  }
+}

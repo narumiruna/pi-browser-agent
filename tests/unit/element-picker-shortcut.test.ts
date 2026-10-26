@@ -5,6 +5,7 @@ import {
   installElementPickerShortcut,
   SHORTCUT_INTENT_LIFETIME_MS,
 } from "../../src/browser/element-picker-shortcut.js"
+import { setLanguagePreference, t } from "../../src/browser/i18n/index.js"
 import {
   assignedPickerShortcut,
   connectElementPickerShortcut,
@@ -64,6 +65,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  setLanguagePreference("en")
   vi.useRealTimers()
   vi.unstubAllGlobals()
 })
@@ -78,6 +80,21 @@ async function flush() {
   await Promise.resolve()
   await Promise.resolve()
 }
+
+test("localizes picker titles without translating the assigned shortcut", () => {
+  setLanguagePreference("ja")
+  expect(pickerButtonTitle(false, "")).toBe(t("Select page element"))
+  expect(pickerButtonTitle(true, "")).toBe(t("Cancel element selection"))
+  expect(pickerButtonTitle(false, "")).not.toBe("Select page element")
+  const shortcut = "Command+Shift+E"
+  expect(pickerButtonTitle(false, shortcut)).toBe(
+    t("Select page element ({shortcut})", { shortcut }),
+  )
+  expect(pickerButtonTitle(true, shortcut)).toBe(
+    t("Cancel element selection ({shortcut})", { shortcut }),
+  )
+  expect(pickerButtonTitle(false, shortcut)).toContain(shortcut)
+})
 
 describe("worker command handoff", () => {
   test("opens synchronously, then delivers once to a ready panel and accepts its ack", async () => {

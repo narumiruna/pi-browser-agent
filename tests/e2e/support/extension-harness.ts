@@ -85,6 +85,7 @@ export async function launchExtensionHarness(
     webMcp?: boolean
     hostPatterns?: string[]
     browserArgs?: string[]
+    locale?: string
   } = {},
 ): Promise<ExtensionHarness> {
   const fixtureServer = await startFixtureServer()
@@ -132,6 +133,7 @@ export async function launchExtensionHarness(
     context = await chromium.launchPersistentContext(profileDirectory, {
       channel: "chromium",
       headless: true,
+      locale: options.locale,
       args: [
         `--disable-extensions-except=${extensionDirectory}`,
         `--load-extension=${extensionDirectory}`,
@@ -168,6 +170,7 @@ export async function launchExtensionHarness(
         context = await chromium.launchPersistentContext(profileDirectory, {
           channel: "chromium",
           headless: true,
+          locale: options.locale,
           args: [
             `--disable-extensions-except=${extensionDirectory}`,
             `--load-extension=${extensionDirectory}`,

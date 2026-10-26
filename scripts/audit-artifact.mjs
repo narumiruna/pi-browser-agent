@@ -29,6 +29,74 @@ for (const path of files) {
 }
 
 const manifest = JSON.parse(await readFile(join(root, "manifest.json"), "utf8"))
+// Chrome resolves native message references at runtime. Keep the placeholders intact.
+const nativeReferences = new Set()
+function collectNativeReferences(value) {
+  if (typeof value === "string") {
+    const remainder = value.replace(/__MSG_([A-Za-z0-9_@]+)__/g, (_match, key) => {
+      if (!key.startsWith("@@")) nativeReferences.add(key.toLowerCase())
+      return ""
+    })
+    if (remainder.includes("__MSG_"))
+      failures.push("manifest.json: malformed native message reference")
+  } else if (Array.isArray(value)) {
+    for (const item of value) collectNativeReferences(item)
+  } else if (value && typeof value === "object") {
+    for (const item of Object.values(value)) collectNativeReferences(item)
+  }
+}
+collectNativeReferences(manifest)
+const nativeCatalogPaths = [...artifactFiles].filter((path) =>
+  /^_locales\/[^/]+\/messages\.json$/.test(path),
+)
+const defaultLocale = manifest.default_locale
+if (defaultLocale !== undefined || nativeCatalogPaths.length || nativeReferences.size) {
+  if (typeof defaultLocale !== "string" || !/^[a-z]{2,3}(?:_[A-Z]{2})?$/.test(defaultLocale)) {
+    failures.push("manifest.json: valid default_locale is required for native catalogs/references")
+  } else if (!artifactFiles.has(`_locales/${defaultLocale}/messages.json`)) {
+    failures.push(
+      `manifest.json: missing default locale catalog _locales/${defaultLocale}/messages.json`,
+    )
+  }
+  for (const path of nativeCatalogPaths) {
+    let catalog
+    try {
+      catalog = JSON.parse(await readFile(join(root, path), "utf8"))
+    } catch {
+      failures.push(`${path}: malformed native catalog JSON`)
+      continue
+    }
+    if (
+      !catalog ||
+      typeof catalog !== "object" ||
+      Array.isArray(catalog) ||
+      !Object.keys(catalog).length
+    ) {
+      failures.push(`${path}: native catalog must be a non-empty object`)
+      continue
+    }
+    const keys = new Set()
+    for (const [key, entry] of Object.entries(catalog)) {
+      const normalizedKey = key.toLowerCase()
+      if (!/^[A-Za-z0-9_@]+$/.test(key) || keys.has(normalizedKey))
+        failures.push(`${path}: invalid or duplicate native key ${key}`)
+      keys.add(normalizedKey)
+      if (
+        !entry ||
+        typeof entry !== "object" ||
+        Array.isArray(entry) ||
+        typeof entry.message !== "string" ||
+        !entry.message.trim()
+      ) {
+        failures.push(`${path}: native key ${key} requires a non-empty message`)
+      }
+    }
+    for (const key of nativeReferences) {
+      if (!keys.has(key)) failures.push(`${path}: missing native message key ${key}`)
+    }
+  }
+}
+
 const iconPaths = (icons) => {
   if (typeof icons === "string") return [icons]
   if (!icons || typeof icons !== "object") return []

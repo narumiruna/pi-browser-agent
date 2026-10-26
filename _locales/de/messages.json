@@ -1,0 +1,11 @@
+{
+  "description": {
+    "message": "Ein in Chrome integrierter KI-Assistent für die angezeigte Seite."
+  },
+  "actionTitle": {
+    "message": "Pi Browser Agent öffnen"
+  },
+  "pickerCommand": {
+    "message": "Pi Browser Agent öffnen und ein Seitenelement auswählen"
+  }
+}

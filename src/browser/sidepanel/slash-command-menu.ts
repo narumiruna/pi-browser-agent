@@ -1,3 +1,4 @@
+import { t } from "../i18n/index.js"
 import { getSlashCommandMatches } from "./slash-commands.js"
 
 interface SlashCommandMenuOptions {
@@ -17,14 +18,15 @@ export class SlashCommandMenu {
   private dismissedState: string | undefined
   private composing = false
   private readonly status: HTMLElement
+  private readonly labelsListbox: boolean
 
   constructor(private readonly options: SlashCommandMenuOptions) {
     const { input, listbox } = options
     if (!listbox.id) listbox.id = `slash-command-listbox-${++nextListboxId}`
     listbox.setAttribute("role", "listbox")
-    if (!listbox.hasAttribute("aria-label") && !listbox.hasAttribute("aria-labelledby")) {
-      listbox.setAttribute("aria-label", "Slash commands")
-    }
+    this.labelsListbox =
+      !listbox.hasAttribute("aria-label") && !listbox.hasAttribute("aria-labelledby")
+    if (this.labelsListbox) listbox.setAttribute("aria-label", t("Slash commands"))
     // Keep the native multiline textbox role; textarea does not allow a combobox override.
     this.status = listbox.ownerDocument.createElement("span")
     this.status.id = `${listbox.id}-status`
@@ -68,7 +70,8 @@ export class SlashCommandMenu {
   }
 
   update(): void {
-    const { input } = this.options
+    const { input, listbox } = this.options
+    if (this.labelsListbox) listbox.setAttribute("aria-label", t("Slash commands"))
     const state = this.state()
     if (state !== this.dismissedState) this.dismissedState = undefined
     if (
@@ -148,7 +151,7 @@ export class SlashCommandMenu {
   private hide(): void {
     const wasOpen = !this.options.listbox.hidden
     this.options.listbox.hidden = true
-    if (wasOpen) this.status.textContent = "Command list closed."
+    if (wasOpen || this.status.textContent) this.status.textContent = t("Command list closed.")
     this.options.input.removeAttribute("aria-activedescendant")
   }
 
@@ -172,13 +175,15 @@ export class SlashCommandMenu {
       name.textContent = `/${command.name}`
       const description = listbox.ownerDocument.createElement("span")
       description.className = "slash-command-description"
-      description.textContent = command.description
+      description.textContent = t(command.description)
       option.append(name, description)
       option.addEventListener("click", () => this.choose(index))
       listbox.append(option)
     }
     listbox.hidden = false
-    const status = `Command list open. ${this.matches.length} commands available.`
+    const status = t("Command list open. {count} commands available.", {
+      count: this.matches.length,
+    })
     if (this.status.textContent !== status) this.status.textContent = status
     input.setAttribute("aria-activedescendant", `${listbox.id}-option-${active.name}`)
     const activeOption = listbox.children.item(this.activeIndex) as HTMLElement | null

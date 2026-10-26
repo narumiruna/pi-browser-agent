@@ -1,4 +1,6 @@
-type ConversationTextKey =
+import { t } from "../i18n/index.js"
+
+export type ConversationTextKey =
   | "activity"
   | "addInstruction"
   | "assistantIdentity"
@@ -38,7 +40,7 @@ type ConversationTextKey =
   | "voiceUnsupported"
   | "working"
 
-const ENGLISH: Record<ConversationTextKey, string> = {
+const ENGLISH = {
   activity: "Activity",
   addInstruction: "Add instruction",
   assistantIdentity: "Browser assistant",
@@ -77,15 +79,14 @@ const ENGLISH: Record<ConversationTextKey, string> = {
   voiceInputStopped: "Voice input stopped",
   voiceUnsupported: "Voice input is not supported by this browser",
   working: "Working",
-}
+} as const satisfies Record<ConversationTextKey, string>
 
 export function conversationText(key: ConversationTextKey): string {
-  return ENGLISH[key]
+  return t(ENGLISH[key])
 }
 
 type ActivityStage = "active" | "complete"
 
-type ActivityLabels = { active: string; complete: string; error: string }
 type ActivityKey =
   | "bookmarks"
   | "click"
@@ -102,7 +103,7 @@ type ActivityKey =
   | "wait"
   | "web"
 
-const ENGLISH_ACTIVITIES: Record<ActivityKey, ActivityLabels> = {
+const ENGLISH_ACTIVITIES = {
   currentTab: {
     active: "Checking the current tab",
     complete: "Checked the current tab",
@@ -173,7 +174,7 @@ const ENGLISH_ACTIVITIES: Record<ActivityKey, ActivityLabels> = {
     complete: "Page activity completed",
     error: "Page activity needs attention",
   },
-}
+} as const satisfies Record<ActivityKey, { active: string; complete: string; error: string }>
 
 const ACTIVITY_KEYS: Record<string, ActivityKey> = {
   "app.getState": "currentTab",
@@ -213,5 +214,5 @@ const ACTIVITY_KEYS: Record<string, ActivityKey> = {
 export function activityText(name: string, stage: ActivityStage, error = false): string {
   const activity =
     ENGLISH_ACTIVITIES[name.startsWith("mcp_") ? "mcp" : (ACTIVITY_KEYS[name] ?? "default")]
-  return error ? activity.error : activity[stage]
+  return t(error ? activity.error : activity[stage])
 }

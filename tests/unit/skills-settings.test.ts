@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs"
 import { JSDOM } from "jsdom"
 import { afterEach, describe, expect, test, vi } from "vitest"
+import * as i18n from "../../src/browser/i18n/index.js"
 import { initializeSettingsTabs } from "../../src/browser/sidepanel/settings-tabs.js"
 import { initializeSkillsSettings } from "../../src/browser/sidepanel/skills-settings.js"
 import { SKILL_LIMITS } from "../../src/browser/skills/format.js"
@@ -157,6 +158,22 @@ async function setup(initial: SkillRecord[] = []) {
 }
 
 describe("Skills settings", () => {
+  test("translates only skill-owned errors, not arbitrary exceptions with the same text", async () => {
+    const env = await setup()
+    const translate = vi
+      .spyOn(i18n, "translateKnownMessage")
+      .mockImplementation((message) => `Localized: ${message}`)
+    const message = "Skill must start with frontmatter enclosed by --- delimiter lines"
+    await env.choose("not frontmatter")
+    expect(env.status.textContent).toBe(`Localized: ${message}`)
+    expect(translate).toHaveBeenCalledWith(message)
+    translate.mockClear()
+    await env.choose(source(), { readError: new Error(message) })
+    expect(env.status.textContent).toBe(message)
+    expect(translate).not.toHaveBeenCalled()
+    expect(env.state.hasDraft()).toBe(false)
+  })
+
   test("keeps file selection disabled until initialization attaches its handlers", async () => {
     const dom = new JSDOM(html)
     try {
@@ -509,7 +526,7 @@ describe("Skills settings", () => {
 
   test.each([
     { name: "other.md", size: 10, message: "named SKILL.md" },
-    { name: "SKILL.md", size: SKILL_LIMITS.inputBytes + 1, message: "at most 65536 bytes" },
+    { name: "SKILL.md", size: SKILL_LIMITS.inputBytes + 1, message: "at most 65,536 bytes" },
   ])("rejects $name at $size bytes before reading", async ({ name, size, message }) => {
     const env = await setup([original])
     const read = await env.choose(source(), { name, size })

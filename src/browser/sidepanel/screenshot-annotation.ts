@@ -1,4 +1,6 @@
 import type { ImageContent } from "@earendil-works/pi-ai"
+import { safeErrorMessage } from "../auth/redaction.js"
+import { t, translateDiagnostic } from "../i18n/index.js"
 import { imageContentSource, MAX_PASTED_IMAGE_BYTES } from "./images.js"
 
 export const ANNOTATION_LIMITS = {
@@ -62,7 +64,7 @@ export function annotationCanvasSize(
     height > ANNOTATION_LIMITS.maxSourceDimension ||
     width * height > ANNOTATION_LIMITS.maxSourcePixels
   ) {
-    throw new Error("The screenshot dimensions are too large to annotate safely")
+    throw new Error(t("The screenshot dimensions are too large to annotate safely"))
   }
   const scale = Math.min(
     1,
@@ -83,7 +85,7 @@ export function canvasPoint(
   canvasWidth: number,
   canvasHeight: number,
 ): AnnotationPoint {
-  if (rectangle.width <= 0 || rectangle.height <= 0) throw new Error("Canvas is not visible")
+  if (rectangle.width <= 0 || rectangle.height <= 0) throw new Error(t("Canvas is not visible"))
   return {
     x: Math.max(
       0,
@@ -169,21 +171,21 @@ export function canvasPng(canvas: HTMLCanvasElement): Promise<Blob> {
     try {
       canvas.toBlob((blob) => {
         if (!blob) {
-          reject(new Error("Chrome could not export the annotated screenshot"))
+          reject(new Error(t("Chrome could not export the annotated screenshot")))
           return
         }
         if (blob.type !== "image/png") {
-          reject(new Error("Chrome did not export a PNG annotation"))
+          reject(new Error(t("Chrome did not export a PNG annotation")))
           return
         }
         if (blob.size === 0 || blob.size > MAX_PASTED_IMAGE_BYTES) {
-          reject(new Error("The annotated screenshot must use 3 MB or less"))
+          reject(new Error(t("The annotated screenshot must use 3 MB or less")))
           return
         }
         resolve(blob)
       }, "image/png")
     } catch (error) {
-      reject(error instanceof Error ? error : new Error("Unable to export the annotation"))
+      reject(error instanceof Error ? error : new Error(t("Unable to export the annotation")))
     }
   })
 }
@@ -246,18 +248,18 @@ export class ScreenshotAnnotationController {
     if (!this.dialog.open) this.dialog.showModal()
     try {
       if (image.mimeType.toLowerCase() !== "image/png") {
-        throw new Error("Only viewport PNG screenshots can be annotated")
+        throw new Error(t("Only viewport PNG screenshots can be annotated"))
       }
       const source = imageContentSource(image)
       const dimensions = pngDimensions(image.data)
-      if (!source || !dimensions) throw new Error("The screenshot image is invalid")
+      if (!source || !dimensions) throw new Error(t("The screenshot image is invalid"))
       const canvasSize = annotationCanvasSize(dimensions.width, dimensions.height)
       const loaded = new Image()
       loaded.src = source
       await loaded.decode()
       if (operation !== this.opening || !this.dialog.open) return
       if (loaded.naturalWidth !== dimensions.width || loaded.naturalHeight !== dimensions.height) {
-        throw new Error("The screenshot dimensions are inconsistent")
+        throw new Error(t("The screenshot dimensions are inconsistent"))
       }
       this.source = loaded
       this.canvas.width = canvasSize.width
@@ -265,7 +267,7 @@ export class ScreenshotAnnotationController {
       this.redraw()
     } catch (error) {
       if (operation === this.opening && this.dialog.open) {
-        this.errorOutput.textContent = error instanceof Error ? error.message : String(error)
+        this.errorOutput.textContent = translateDiagnostic(safeErrorMessage(error))
       }
     }
   }
@@ -293,7 +295,9 @@ export class ScreenshotAnnotationController {
     const displayScale = rectangle.width > 0 ? this.canvas.width / rectangle.width : 1
     const width = Number.parseFloat(this.widthInput.value) * displayScale
     if (!this.history.start(this.point(event), width)) {
-      this.errorOutput.textContent = `An annotation can contain at most ${ANNOTATION_LIMITS.maxStrokes} strokes`
+      this.errorOutput.textContent = t("An annotation can contain at most {count} strokes", {
+        count: ANNOTATION_LIMITS.maxStrokes,
+      })
       return
     }
     this.pointerId = event.pointerId
@@ -306,11 +310,13 @@ export class ScreenshotAnnotationController {
     event.preventDefault()
     if (!this.history.append(this.point(event))) {
       if (this.history.points >= ANNOTATION_LIMITS.maxTotalPoints) {
-        this.errorOutput.textContent = "This annotation reached its total point limit"
+        this.errorOutput.textContent = t("This annotation reached its total point limit")
       } else if (
         this.history.strokes.at(-1)?.points.length === ANNOTATION_LIMITS.maxPointsPerStroke
       ) {
-        this.errorOutput.textContent = "This stroke reached its point limit; start another stroke"
+        this.errorOutput.textContent = t(
+          "This stroke reached its point limit; start another stroke",
+        )
       }
       return
     }
@@ -386,7 +392,7 @@ export class ScreenshotAnnotationController {
       this.close()
     } catch (error) {
       this.attaching = false
-      this.errorOutput.textContent = error instanceof Error ? error.message : String(error)
+      this.errorOutput.textContent = translateDiagnostic(safeErrorMessage(error))
       this.updateControls()
     }
   }

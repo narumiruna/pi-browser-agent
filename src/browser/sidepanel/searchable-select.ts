@@ -1,3 +1,5 @@
+import { getLocale, t } from "../i18n/index.js"
+
 export interface SearchableSelectOption {
   value: string
   label: string
@@ -76,18 +78,26 @@ export class SearchableSelect {
     const disabled = options.length === 0
     select.disabled = disabled
     input.disabled = disabled
-    input.placeholder = disabled ? this.elements.emptyText : input.dataset.placeholder || "Search"
+    input.placeholder = disabled
+      ? this.elements.emptyText
+      : input.dataset.placeholder || t("Search")
     this.syncInputToSelection()
     this.close()
   }
 
   private open(query: string): void {
     if (this.elements.input.disabled) return
-    const normalizedQuery = query.trim().toLocaleLowerCase()
+    const trimmedQuery = query.trim()
+    const locale = getLocale()
+    const normalizedQuery = trimmedQuery.toLocaleLowerCase(locale)
+    const technicalQuery = trimmedQuery.toLowerCase()
     this.filteredOptions = this.options.filter((option) => {
       if (!normalizedQuery) return true
-      return [option.label, option.value, ...(option.keywords ?? [])].some((candidate) =>
-        candidate.toLocaleLowerCase().includes(normalizedQuery),
+      return (
+        option.label.toLocaleLowerCase(locale).includes(normalizedQuery) ||
+        [option.value, ...(option.keywords ?? [])].some((candidate) =>
+          candidate.toLowerCase().includes(technicalQuery),
+        )
       )
     })
     this.renderOptions()
@@ -108,7 +118,7 @@ export class SearchableSelect {
       empty.className = "searchable-select-empty"
       empty.setAttribute("role", "option")
       empty.setAttribute("aria-disabled", "true")
-      empty.textContent = "No matches"
+      empty.textContent = t("No matches")
       listbox.append(empty)
       return
     }

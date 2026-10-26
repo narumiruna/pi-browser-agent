@@ -1,5 +1,11 @@
 import { withExclusiveStorageWrite } from "../storage-lock.js"
-import { type ParsedSkill, SKILL_LIMITS, skillByteLength, validateSkillContent } from "./format.js"
+import {
+  type ParsedSkill,
+  SKILL_LIMITS,
+  SkillError,
+  skillByteLength,
+  validateSkillContent,
+} from "./format.js"
 
 export const SKILLS_STORAGE_KEY = "piBrowserAgentSkillsV1"
 const LOCK = "pi-browser-agent-skills-write"
@@ -45,13 +51,15 @@ function envelope(records: SkillRecord[]): { version: 1; records: SkillRecord[] 
 
 function validateBudgets(records: SkillRecord[]): void {
   if (records.length > SKILL_LIMITS.installed) {
-    throw new Error(`Installed skill limit is ${SKILL_LIMITS.installed}`)
+    throw new SkillError(`Installed skill limit is ${SKILL_LIMITS.installed}`)
   }
   if (skillByteLength(JSON.stringify(envelope(records))) > SKILL_LIMITS.storageBytes) {
-    throw new Error(`Skill storage exceeds the ${SKILL_LIMITS.storageBytes}-byte limit`)
+    throw new SkillError(`Skill storage exceeds the ${SKILL_LIMITS.storageBytes}-byte limit`)
   }
   if (skillByteLength(skillCatalog(records)) > SKILL_LIMITS.catalogBytes) {
-    throw new Error(`Enabled skill catalog exceeds the ${SKILL_LIMITS.catalogBytes}-byte limit`)
+    throw new SkillError(
+      `Enabled skill catalog exceeds the ${SKILL_LIMITS.catalogBytes}-byte limit`,
+    )
   }
 }
 
@@ -63,14 +71,14 @@ function recordsFrom(value: unknown): SkillRecord[] {
       value.version !== 1 ||
       !Array.isArray(value.records)
     ) {
-      throw new Error("Unsupported envelope")
+      throw new SkillError("Unsupported envelope")
     }
-    if (value.records.length > SKILL_LIMITS.installed) throw new Error("Too many records")
+    if (value.records.length > SKILL_LIMITS.installed) throw new SkillError("Too many records")
     if (
       Object.getPrototypeOf(value.records) !== Array.prototype ||
       Reflect.ownKeys(value.records).length !== value.records.length + 1
     ) {
-      throw new Error("Invalid records array")
+      throw new SkillError("Invalid records array")
     }
     const ids = new Set<string>()
     const names = new Set<string>()
@@ -78,7 +86,7 @@ function recordsFrom(value: unknown): SkillRecord[] {
     for (let index = 0; index < value.records.length; index++) {
       const entry = Object.getOwnPropertyDescriptor(value.records, String(index))
       if (!entry?.enumerable || !Object.hasOwn(entry, "value")) {
-        throw new Error("Invalid record entry")
+        throw new SkillError("Invalid record entry")
       }
       const item: unknown = entry.value
       if (
@@ -93,7 +101,7 @@ function recordsFrom(value: unknown): SkillRecord[] {
         ids.has(item.id) ||
         names.has(item.name)
       ) {
-        throw new Error("Invalid or duplicate record")
+        throw new SkillError("Invalid or duplicate record")
       }
       const record: SkillRecord = {
         id: item.id,
@@ -110,7 +118,9 @@ function recordsFrom(value: unknown): SkillRecord[] {
     validateBudgets(records)
     return records
   } catch {
-    throw new Error("Saved skill storage is invalid or exceeds limits; no records were changed")
+    throw new SkillError(
+      "Saved skill storage is invalid or exceeds limits; no records were changed",
+    )
   }
 }
 
@@ -122,7 +132,7 @@ function contentFrom(skill: ParsedSkill): Pick<SkillRecord, "name" | "descriptio
 
 function requiredRecord(records: SkillRecord[], id: string, expected?: SkillRecord): SkillRecord {
   const record = records.find((item) => item.id === id)
-  if (!record) throw new Error("Skill no longer exists")
+  if (!record) throw new SkillError("Skill no longer exists")
   if (
     expected &&
     (record.id !== expected.id ||
@@ -131,7 +141,7 @@ function requiredRecord(records: SkillRecord[], id: string, expected?: SkillReco
       record.body !== expected.body ||
       record.enabled !== expected.enabled)
   ) {
-    throw new Error("The selected skill changed. Select and review it again.")
+    throw new SkillError("The selected skill changed. Select and review it again.")
   }
   return record
 }
@@ -148,10 +158,12 @@ export class SkillStore {
     return withExclusiveStorageWrite(LOCK, async () => {
       const records = await this.list()
       if (records.some((record) => record.name === content.name)) {
-        throw new Error("A skill with this name is already installed; use explicit replacement")
+        throw new SkillError(
+          "A skill with this name is already installed; use explicit replacement",
+        )
       }
       const record: SkillRecord = { id: crypto.randomUUID(), ...content, enabled: false }
-      if (records.some((item) => item.id === record.id)) throw new Error("Duplicate skill ID")
+      if (records.some((item) => item.id === record.id)) throw new SkillError("Duplicate skill ID")
       await this.save([...records, record])
       return { ...record }
     })
@@ -164,7 +176,7 @@ export class SkillStore {
       const records = await this.list()
       requiredRecord(records, id, reviewed)
       if (records.some((record) => record.id !== id && record.name === content.name)) {
-        throw new Error("A skill with this name is already installed")
+        throw new SkillError("A skill with this name is already installed")
       }
       const record: SkillRecord = { id, ...content, enabled: false }
       await this.save(records.map((item) => (item.id === id ? record : item)))
@@ -173,7 +185,7 @@ export class SkillStore {
   }
 
   async setEnabled(id: string, enabled: boolean, expected?: SkillRecord): Promise<void> {
-    if (typeof enabled !== "boolean") throw new Error("Skill enabled state must be a boolean")
+    if (typeof enabled !== "boolean") throw new SkillError("Skill enabled state must be a boolean")
     const reviewed = expected && { ...expected }
     await withExclusiveStorageWrite(LOCK, async () => {
       const records = await this.list()

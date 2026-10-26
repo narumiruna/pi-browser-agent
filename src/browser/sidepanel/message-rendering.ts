@@ -1,5 +1,6 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core"
 import type { ImageContent } from "@earendil-works/pi-ai"
+import { getLocale, t } from "../i18n/index.js"
 import { activityText, conversationText } from "./conversation-copy.js"
 import { CopyButton, type CopyButtonKind } from "./copy-button.js"
 import { imageContentSource } from "./images.js"
@@ -45,6 +46,7 @@ function copyButton(
     control.element.dataset.focusKey = key
     state.copyButtons.set(key, control)
   }
+  control.updateLabel(label)
   control.updateText(text)
   return control.element
 }
@@ -60,8 +62,6 @@ function annotationButton(
     button = document.createElement("button")
     button.type = "button"
     button.className = "icon-button annotate-screenshot-button"
-    button.ariaLabel = "Annotate screenshot"
-    button.title = button.ariaLabel
     button.dataset.focusKey = `annotate-screenshot-${index}`
     const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg")
     icon.setAttribute("class", "radix-icon")
@@ -75,6 +75,8 @@ function annotationButton(
     button.append(icon)
     state.annotationButtons.set(index, button)
   }
+  button.ariaLabel = t("Annotate screenshot")
+  button.title = button.ariaLabel
   button.onclick = () => onAnnotate(image)
   return button
 }
@@ -198,20 +200,23 @@ export function renderMessageContent(
         textParts.push(`[image: ${item.mimeType}]`)
         const source = imageContentSource(item)
         if (!source) {
-          appendTextContent(container, `[image unavailable: ${item.mimeType}]`)
+          appendTextContent(
+            container,
+            t("[image unavailable: {mimeType}]", { mimeType: item.mimeType }),
+          )
           continue
         }
         let image = state.images.get(index) ?? renderedImages.get(item)
         if (!image) {
           image = document.createElement("img")
           image.className = "message-image"
-          image.alt =
-            message.role === "user"
-              ? conversationText("pastedImage")
-              : conversationText("imageResult")
           image.loading = "lazy"
           image.decoding = "async"
         }
+        image.alt =
+          message.role === "user"
+            ? conversationText("pastedImage")
+            : conversationText("imageResult")
         if (image.getAttribute("src") !== source) image.src = source
         state.images.set(index, image)
         renderedImages.set(item, image)
@@ -372,7 +377,7 @@ export class TranscriptRenderer {
         view = { node, content, state: newContentState(), signature: "", initialized: false }
         this.views.set(key, view)
       }
-      const signature = JSON.stringify(message)
+      const signature = `${getLocale()}:${JSON.stringify(message)}`
       if (view.signature !== signature) {
         view.content.replaceChildren()
         const rendered =
@@ -434,6 +439,9 @@ export class TranscriptRenderer {
           assistantTurn.append(heading)
           this.turns.set(turnKey, assistantTurn)
         }
+        assistantTurn.setAttribute("aria-label", `Pi · ${conversationText("assistantIdentity")}`)
+        const identity = assistantTurn.querySelector(".assistant-turn-heading span")
+        if (identity) identity.textContent = conversationText("assistantIdentity")
         topLevelNodes.push(assistantTurn)
         groupedViews.set(assistantTurn, [])
       }

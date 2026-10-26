@@ -48,7 +48,7 @@ Pi Browser Agent registers the browser-compatible built-in `pi-ai` providers and
 
 Settings opens in an independent full browser tab with a centered shell at most 1080 px wide. Its six panels remain mounted: **Model**, **Tools**, **MCP**, **Skills**, **Appearance**, and **Instructions**. At widths of 800 px or more, section navigation is vertical; use Up/Down Arrow. Below 800 px, tabs scroll horizontally; use Left/Right Arrow. Home/End selects the first/last section in either layout.
 
-Switching sections keeps drafts. **Save general settings** saves the model, thinking preference, confirmation mode, browser-tool choices, font, and instructions. A persistent footer identifies general changes, unsaved MCP edits, and unimported skill reviews separately. Save is disabled when there are no general changes or explicit model/thinking apply intent. Pending credential, approval, MCP, or Skills operations block general Save, Back, and Cancel.
+Switching sections keeps drafts. **Save general settings** saves the model, thinking preference, confirmation mode, browser-tool choices, language, font, and instructions. A persistent footer identifies general changes, unsaved MCP edits, and unimported skill reviews separately. Save is disabled when there are no general changes or explicit model/thinking apply intent. Pending credential, approval, MCP, or Skills operations block general Save, Back, and Cancel.
 
 General Save asks before discarding pending MCP or Skills drafts; it does not save them. Back, Escape, and **Cancel** also protect drafts. Browser reload and close use Chrome's unsaved-change warning. Resource actions, credential changes, and **Clear remembered approvals** take effect separately; Cancel does not undo them.
 
@@ -105,7 +105,9 @@ Assistant answers support Markdown headings, lists, tables, links, and fenced co
 
 Each Pi turn groups its activity and final answer in one response card. Production builds replace internal tool names and result payloads with quiet, human-readable activity labels; development builds retain expandable tool diagnostics. Thinking remains expandable, while errors and image results open by default. Manual expansion/collapse and keyboard focus survive streaming updates. The transcript follows new output only while you are near the bottom; when you read older content, one floating button returns to the latest message. Reopening a session restores default disclosure states; it does not change saved messages.
 
-The conversation interface uses English. During a run, **Send** becomes **Add instruction**, and a separate clock control queues the prompt for later. The shorter keyboard hint keeps Enter focused on the primary action.
+The interface supports 18 languages, with English as the default and fallback. Choose **Settings → Appearance → Language** to select a language or **Follow browser**, then save. Language changes have no preview and wait until active work finishes. Portuguese and Brazilian Portuguese are separate choices; Simplified Chinese and RTL layouts are not supported. Dictation keeps the browser language, and interface selection does not set model response language. See [language selection, catalogs, and limits](docs/i18n.md).
+
+During a run, **Send** becomes **Add instruction**, and a separate clock control queues the prompt for later. The shorter keyboard hint keeps Enter focused on the primary action.
 
 ### Slash commands
 
@@ -133,7 +135,7 @@ Existing sessions keep their linear history until the first successful tree navi
 
 The Side Panel supports creating, resuming, renaming, and deleting sessions. Complete transcript boundaries, including confirmed bookmark tool results, are stored in versioned IndexedDB records. Storage keeps at most 50 sessions and limits each record to 5 MB. **Clear all session data** removes transcripts and embedded images.
 
-Open **Account and settings** (the fixed avatar button in the top-right) and choose **Settings** to open settings in a full browser tab. The same structured menu contains credential, site-access, and conversation actions, with credential removal separated at the bottom. The settings page lets you choose a provider, model, supported thinking level, interface font, and a text size from 12 to 24 px using a slider. Save or close the page to return to the previous tab; the Side Panel conversation remains open. The selected model and thinking level are saved in each session, while the latest selections are used for new sessions. Explicitly changing either in Settings updates the opener's active session after any running response finishes. Settings persist across Side Panel and Chrome restarts. The system prompt and AGENTS-style instructions are also editable and apply to the next run. The extension does not discover instructions from the local filesystem.
+Open **Account and settings** (the fixed avatar button in the top-right) and choose **Settings** to open settings in a full browser tab. The same structured menu contains credential, site-access, and conversation actions, with credential removal separated at the bottom. The settings page lets you choose a provider, model, supported thinking level, interface language, interface font, and a text size from 12 to 24 px using a slider. Save or close the page to return to the previous tab; the Side Panel conversation remains open. The selected model and thinking level are saved in each session, while the latest selections are used for new sessions. Explicitly changing either in Settings updates the opener's active session after any running response finishes. Settings persist across Side Panel and Chrome restarts. The system prompt and AGENTS-style instructions are also editable and apply to the next run. The extension does not discover instructions from the local filesystem.
 
 All built-in browser tools are enabled by default, including tools added by updates. Use **Settings → Tools → Available tools** to disable individual tools. Saved choices apply to the next run; confirmations and Chrome permissions still apply. On upgrade from the older enabled-tool list, the original 14 tools keep their saved choices and later additions are enabled. If you previously disabled one of those later additions, disable it again and save.
 
@@ -184,6 +186,7 @@ Pushes to `main` create or update the **chore(release): version packages** pull 
 
 - [Browser interaction tools](docs/browser-interactions.md)
 - [Architecture](docs/architecture.md)
+- [Interface languages](docs/i18n.md)
 - [Authentication](docs/authentication.md)
 - [Permissions and data storage](docs/permissions-and-storage.md)
 - [Privacy policy](PRIVACY.md)

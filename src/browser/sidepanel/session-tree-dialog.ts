@@ -1,4 +1,5 @@
 import { safeErrorMessage } from "../auth/redaction.js"
+import { t, translateDiagnostic } from "../i18n/index.js"
 import type { SessionTreeItem } from "../sessions/session-tree.js"
 
 interface SessionTreeDialogOptions {
@@ -30,14 +31,14 @@ export class SessionTreeDialog {
   private pending = false
   private invokingElement: HTMLElement | null = null
   private readonly cancel: HTMLButtonElement | null
+  private readonly labelsList: boolean
 
   constructor(private readonly options: SessionTreeDialogOptions) {
     const { dialog, list } = options
     this.cancel = dialog.querySelector<HTMLButtonElement>("[data-tree-cancel]")
     list.setAttribute("role", "tree")
-    if (!list.hasAttribute("aria-label") && !list.hasAttribute("aria-labelledby")) {
-      list.setAttribute("aria-label", "Conversation tree")
-    }
+    this.labelsList = !list.hasAttribute("aria-label") && !list.hasAttribute("aria-labelledby")
+    if (this.labelsList) list.setAttribute("aria-label", t("Conversation tree"))
     this.cancel?.addEventListener("click", () => this.close())
     dialog.addEventListener("cancel", (event) => {
       event.preventDefault()
@@ -61,6 +62,7 @@ export class SessionTreeDialog {
   open(items: readonly SessionTreeItem[], activeLeafId: string | null): void {
     if (this.pending || this.isOpen) return
     const { dialog, list } = this.options
+    if (this.labelsList) list.setAttribute("aria-label", t("Conversation tree"))
     const activeElement = dialog.ownerDocument.activeElement
     this.invokingElement =
       activeElement instanceof (dialog.ownerDocument.defaultView?.HTMLElement ?? HTMLElement) &&
@@ -77,7 +79,7 @@ export class SessionTreeDialog {
         parentId: null,
         depth: -1,
         role: "root",
-        label: "Start of conversation",
+        label: t("Start of conversation"),
         selectable: true,
         active: activeLeafId === null,
         onActivePath: true,
@@ -102,7 +104,8 @@ export class SessionTreeDialog {
   }
 
   setError(error?: unknown): void {
-    this.options.error.textContent = error === undefined ? "" : safeErrorMessage(error)
+    this.options.error.textContent =
+      error === undefined ? "" : translateDiagnostic(safeErrorMessage(error))
   }
 
   private addRow(item: DialogTreeItem, hasChildren: boolean): void {
@@ -126,11 +129,11 @@ export class SessionTreeDialog {
       roleLabel.className = "session-tree-role"
       roleLabel.textContent =
         role === "user"
-          ? "User"
+          ? t("User")
           : role === "assistant"
-            ? "Assistant"
+            ? t("Assistant")
             : role === "toolResult"
-              ? "Tool result"
+              ? t("Tool result")
               : boundedText(role)
       element.append(roleLabel)
     }
@@ -141,8 +144,8 @@ export class SessionTreeDialog {
     const status = list.ownerDocument.createElement("span")
     status.className = "session-tree-status"
     status.textContent = [
-      active ? "Current position" : onActivePath ? "Active path" : "",
-      selectable ? "" : "Unavailable boundary",
+      active ? t("Current position") : onActivePath ? t("Active path") : "",
+      selectable ? "" : t("Unavailable boundary"),
     ]
       .filter(Boolean)
       .join(" · ")

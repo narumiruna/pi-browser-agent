@@ -150,7 +150,11 @@ describe("browser agent tools", () => {
     await click.execute("id", { selector: "a" }, undefined)
     const args = confirm.mock.calls[0]
     if (!args) throw new Error("Missing confirmation")
-    expect(args).toHaveLength(reusable ? 4 : 3)
+    expect(args).toHaveLength(5)
+    expect(args[4]).toEqual({
+      message: "This click may submit a form, download a file, or navigate across origins",
+    })
+    if (!reusable) expect(args[3]).toBeUndefined()
     if (reusable)
       expect(args[3]).toEqual({
         operation: "page.click.link",
@@ -215,11 +219,17 @@ describe("browser agent tools", () => {
     expect(enablePage).not.toHaveBeenCalled()
     confirm.mockResolvedValue(true)
     await switchTab.execute("id", { id: 2 }, undefined)
-    expect(confirm).toHaveBeenCalledWith(expect.any(String), { targetUrl: web.url }, undefined, {
-      operation: "tabs.switch",
-      identity: ["2", web.url],
-      permissionUrl: web.url,
-    })
+    expect(confirm).toHaveBeenCalledWith(
+      expect.any(String),
+      { targetUrl: web.url },
+      undefined,
+      {
+        operation: "tabs.switch",
+        identity: ["2", web.url],
+        permissionUrl: web.url,
+      },
+      { message: "Use the tab Example?" },
+    )
     expect(update).toHaveBeenCalledWith(2, { active: true })
     expect(enablePage).toHaveBeenCalledOnce()
   })
@@ -290,6 +300,8 @@ describe("browser agent tools", () => {
       "Allow screenshots?",
       { requiredPermission: SCREENSHOT_HOST_PERMISSION },
       undefined,
+      undefined,
+      { message: expect.stringContaining("Chrome grants access to all sites") },
     )
     expect(sendMessage).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -352,6 +364,11 @@ describe("browser agent tools", () => {
           operation: action === "list" ? "webmcp.listTools" : "webmcp.callTool",
           identity: action === "list" ? [tabContext.url] : [tabContext.url, "lookup", '{"id":1}'],
           permissionUrl: tabContext.url,
+        },
+        {
+          message: expect.stringContaining(
+            action === "list" ? "List the tools" : "It may have side effects",
+          ),
         },
       )
       expect(sendMessage).toHaveBeenLastCalledWith(
@@ -514,6 +531,11 @@ describe("browser agent tools", () => {
         operation: "bookmarks.search",
         identity: ['{"limit":20,"query":"docs"}'],
         bookmarkPermission: true,
+      },
+      {
+        message: expect.stringContaining(
+          "Results will be sent to the selected model provider and saved in this session.",
+        ),
       },
     )
     expect(sendMessage).toHaveBeenCalledTimes(2)
