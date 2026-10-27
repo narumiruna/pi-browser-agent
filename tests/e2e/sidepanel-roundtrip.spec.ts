@@ -2766,6 +2766,13 @@ test("annotates a captured screenshot locally and submits the rendered image", a
   const dialog = controller.locator("#screenshot-annotation-dialog")
   const canvas = controller.locator("#screenshot-annotation-canvas")
   const attach = controller.locator("#annotation-attach")
+  const preview = controller.locator("#pasted-images img")
+  const attachImage = async (): Promise<void> => {
+    await attach.click()
+    // PNG export and composer attachment finish after the click handler returns.
+    await expect(preview).toHaveCount(1, { timeout: 10_000 })
+    await expect(dialog).toBeHidden()
+  }
   const waitForCanvas = async (): Promise<void> => {
     await expect
       .poll(() => canvas.evaluate((element) => (element as HTMLCanvasElement).width))
@@ -2835,9 +2842,7 @@ test("annotates a captured screenshot locally and submits the rendered image", a
       delete state.annotationToBlob
     })
   }
-  await attach.click()
-  await expect(dialog).toBeHidden()
-  await expect(controller.locator("#pasted-images img")).toHaveCount(1)
+  await attachImage()
   await controller.locator(".remove-pasted-image").click()
   await expect(controller.locator("#pasted-images")).toBeHidden()
 
@@ -2876,6 +2881,9 @@ test("annotates a captured screenshot locally and submits the rendered image", a
       }
       await state.imageAttachmentGate?.started
     })
+    await expect(dialog).toBeVisible()
+    await expect(attach).toBeDisabled()
+    await expect(preview).toHaveCount(0)
     await controller.locator("#prompt").evaluate((target) => {
       const encoded =
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nL8AAAAASUVORK5CYII="
@@ -2918,8 +2926,8 @@ test("annotates a captured screenshot locally and submits the rendered image", a
   await action.click()
   await waitForCanvas()
   await draw(-0.15)
-  await attach.click()
-  const attachedSource = await controller.locator("#pasted-images img").getAttribute("src")
+  await attachImage()
+  const attachedSource = await preview.getAttribute("src")
   if (!attachedSource) throw new Error("Missing attached annotation source")
   const attachedBase64 = attachedSource.slice(attachedSource.indexOf(",") + 1)
   let sentBody = ""
@@ -2978,8 +2986,8 @@ test("annotates a captured screenshot locally and submits the rendered image", a
     await controller.locator(".annotate-screenshot-button").click()
     await waitForCanvas()
     await draw(0.2)
-    await attach.click()
-    const queuedSource = await controller.locator("#pasted-images img").getAttribute("src")
+    await attachImage()
+    const queuedSource = await preview.getAttribute("src")
     if (!queuedSource) throw new Error("Missing queued annotation source")
     const queuedBase64 = queuedSource.slice(queuedSource.indexOf(",") + 1)
     await controller.locator("#prompt").press("Alt+Enter")
