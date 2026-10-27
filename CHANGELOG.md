@@ -1,5 +1,21 @@
 # pi-browser-agent
 
+## 0.9.0
+
+### Minor Changes
+
+- 9e20eb2: Add 18 interface languages with English as the default and fallback, separate Portuguese variants, and an opt-in browser-language preference. Localize controls, action confirmations, and Chrome labels while preserving saved conversations and browser security checks. Layouts remain left-to-right.
+
+### Patch Changes
+
+- 130b663: Clarify Settings wording for MCP test-and-enable actions, explicit server saves, multiple-server limits, confirmation approval reuse, and model defaults.
+- 0013e5a: Add reviewed public GitHub SKILL.md text import with explicit API host approval, bounded commit/tree/blob reads, and shared YAML validation for standard optional fields. Keep imports disabled, source metadata review-only, and existing local storage and runtime disclosure unchanged.
+- 0c01873: Group Settings into accessible tabs with keyboard navigation and a horizontally scrolling tab bar on narrow windows. Keep unsaved edits across tabs and preserve the existing general, MCP, and Skills save behavior.
+- ba2ba82: Protect unsaved Settings and MCP drafts, retain typed tokens after failed saves, and confirm server/token deletion. Clarify the general-save action, put primary controls before detailed help, and preview both font family and size.
+- ad30a05: Rename the Browser settings tab to Tools to match its browser-tool and action-confirmation controls.
+- 1b6b3bc: Improve the full-tab Settings layout, light/dark control colors, responsive keyboard navigation, and persistent save-scope feedback. Show configured credential status and model-supported thinking choices, separate MCP and Skills resource lists from editing and review, group browser tools, use native confirmation radio cards, and add a static font preview. Preserve independent save actions, draft protection, permissions, credential boundaries, and no-replay rules.
+- 6b53a60: Preserve untouched general preferences when another Settings tab saves, and keep unimported skill reviews after deleting an installed skill.
+
 ## 0.8.1
 
 ### Patch Changes
