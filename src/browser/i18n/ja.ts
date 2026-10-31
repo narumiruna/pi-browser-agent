@@ -1,6 +1,37 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Draw on page": "ページに描画",
+  "Cancel page drawing": "ページへの描画をキャンセル",
+  "Pen color": "ペンの色",
+  "Page drawing controls": "ページ描画の操作",
+  Red: "赤",
+  Yellow: "黄",
+  Green: "緑",
+  Blue: "青",
+  White: "白",
+  Black: "黒",
+  "Page content can move beneath your marks. Send captures only the visible area.":
+    "マークの下でページの内容が動くことがあります。送信時には表示範囲だけをキャプチャします。",
+  "Wait for the current operation to finish before drawing":
+    "現在の操作が終了してから描画してください",
+  "Open an HTTP or HTTPS page before drawing":
+    "描画する前に HTTP または HTTPS のページを開いてください",
+  "Site access is required to draw on this page":
+    "このページに描画するにはサイトへのアクセス権が必要です",
+  "The page changed before drawing could start. Start drawing again.":
+    "描画を開始する前にページが変更されました。描画をやり直してください。",
+  "Page drawing could not start. Reload the page and try again.":
+    "ページへの描画を開始できませんでした。ページを再読み込みして、もう一度お試しください。",
+  "Page drawing stopped because the page or its protection changed. Start drawing again.":
+    "ページまたはその保護状態が変更されたため、描画を停止しました。描画をやり直してください。",
+  "Could not capture page drawing. Your marks were kept when safe. Try again.":
+    "ページの描画をキャプチャできませんでした。安全に保持できる場合はマークを保持しました。もう一度お試しください。",
+  "Could not confirm drawing cleanup. Reload the page before sending.":
+    "描画のクリーンアップを確認できませんでした。送信する前にページを再読み込みしてください。",
+  "Add a mark before sending page drawing": "ページの描画を送信する前にマークを追加してください",
+  "Page drawing limit reached. Undo or clear some marks.":
+    "ページ描画の上限に達しました。一部のマークを元に戻すかクリアしてください。",
   "Paste a PNG, JPEG, WebP, or GIF image": "PNG、JPEG、WebP、GIF の画像を貼り付けてください",
   "The pasted image is empty": "貼り付けた画像が空です",
   "Pasted images must use 3 MB or less in total": "貼り付ける画像の合計は 3 MB 以下にしてください",

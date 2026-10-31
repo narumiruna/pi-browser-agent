@@ -1,6 +1,34 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Draw on page": "在頁面上繪圖",
+  "Cancel page drawing": "取消頁面繪圖",
+  "Pen color": "筆觸顏色",
+  "Page drawing controls": "頁面繪圖控制項",
+  Red: "紅色",
+  Yellow: "黃色",
+  Green: "綠色",
+  Blue: "藍色",
+  White: "白色",
+  Black: "黑色",
+  "Page content can move beneath your marks. Send captures only the visible area.":
+    "頁面內容可能會在標記下方移動。傳送時只會擷取可見區域。",
+  "Wait for the current operation to finish before drawing": "請等待目前的操作完成後再繪圖",
+  "Open an HTTP or HTTPS page before drawing": "請先開啟 HTTP 或 HTTPS 頁面再繪圖",
+  "Site access is required to draw on this page": "必須取得網站存取權才能在此頁面上繪圖",
+  "The page changed before drawing could start. Start drawing again.":
+    "開始繪圖前頁面已變更。請重新開始繪圖。",
+  "Page drawing could not start. Reload the page and try again.":
+    "無法開始頁面繪圖。請重新載入頁面後再試一次。",
+  "Page drawing stopped because the page or its protection changed. Start drawing again.":
+    "頁面或其保護狀態已變更，因此頁面繪圖已停止。請重新開始繪圖。",
+  "Could not capture page drawing. Your marks were kept when safe. Try again.":
+    "無法擷取頁面繪圖。在安全的情況下已保留您的標記。請再試一次。",
+  "Could not confirm drawing cleanup. Reload the page before sending.":
+    "無法確認繪圖已清除。請重新載入頁面後再傳送。",
+  "Add a mark before sending page drawing": "請先加入標記再傳送頁面繪圖",
+  "Page drawing limit reached. Undo or clear some marks.":
+    "已達頁面繪圖上限。請復原或清除部分標記。",
   "Paste a PNG, JPEG, WebP, or GIF image": "請貼上 PNG、JPEG、WebP 或 GIF 圖片",
   "The pasted image is empty": "貼上的圖片為空",
   "Pasted images must use 3 MB or less in total": "貼上的圖片總大小不得超過 3 MB",

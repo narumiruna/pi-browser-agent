@@ -1,6 +1,37 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Draw on page": "Op de pagina tekenen",
+  "Cancel page drawing": "Tekenen op de pagina annuleren",
+  "Pen color": "Penkleur",
+  "Page drawing controls": "Bediening voor tekenen op de pagina",
+  Red: "Rood",
+  Yellow: "Geel",
+  Green: "Groen",
+  Blue: "Blauw",
+  White: "Wit",
+  Black: "Zwart",
+  "Page content can move beneath your marks. Send captures only the visible area.":
+    "Pagina-inhoud kan onder uw markeringen bewegen. Bij het verzenden wordt alleen het zichtbare gebied vastgelegd.",
+  "Wait for the current operation to finish before drawing":
+    "Wacht tot de huidige bewerking is voltooid voordat u tekent",
+  "Open an HTTP or HTTPS page before drawing": "Open een HTTP- of HTTPS-pagina voordat u tekent",
+  "Site access is required to draw on this page":
+    "Sitetoegang is vereist om op deze pagina te tekenen",
+  "The page changed before drawing could start. Start drawing again.":
+    "De pagina is gewijzigd voordat het tekenen kon beginnen. Start het tekenen opnieuw.",
+  "Page drawing could not start. Reload the page and try again.":
+    "Tekenen op de pagina kon niet worden gestart. Laad de pagina opnieuw en probeer het nogmaals.",
+  "Page drawing stopped because the page or its protection changed. Start drawing again.":
+    "Het tekenen is gestopt omdat de pagina of de beveiliging ervan is gewijzigd. Start het tekenen opnieuw.",
+  "Could not capture page drawing. Your marks were kept when safe. Try again.":
+    "De tekening op de pagina kon niet worden vastgelegd. Uw markeringen zijn behouden als dat veilig was. Probeer het opnieuw.",
+  "Could not confirm drawing cleanup. Reload the page before sending.":
+    "Het verwijderen van het tekenoppervlak kon niet worden bevestigd. Laad de pagina opnieuw voordat u verzendt.",
+  "Add a mark before sending page drawing":
+    "Voeg een markering toe voordat u de tekening op de pagina verzendt",
+  "Page drawing limit reached. Undo or clear some marks.":
+    "Tekenlimiet op de pagina bereikt. Maak enkele markeringen ongedaan of wis ze.",
   "Paste a PNG, JPEG, WebP, or GIF image": "Plak een PNG-, JPEG-, WebP- of GIF-afbeelding",
   "The pasted image is empty": "De geplakte afbeelding is leeg",
   "Pasted images must use 3 MB or less in total":

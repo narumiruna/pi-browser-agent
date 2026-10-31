@@ -53,7 +53,11 @@ describe("service worker visible-tab targeting", () => {
       }: {
         func: (...args: never[]) => unknown
       }): Promise<Array<{ result: unknown }>> =>
-        func.name === "readDocumentContentType" ? [{ result: "text/html" }] : [],
+        func.name === "readDocumentContentType"
+          ? [{ result: "text/html" }]
+          : func.name === "stopPageAnnotationInjection"
+            ? [{ result: { ok: true, result: { active: false } } }]
+            : [],
     )
     const updateTab = vi.fn(async () => activeTab)
     let permissionCheck: Promise<boolean> | undefined
@@ -185,6 +189,8 @@ describe("service worker visible-tab targeting", () => {
       ok: true,
       result: { tabContext: { tabId: 1, url: "https://old.test/page" } },
     })
+    expect(executeScript.mock.calls[0]?.[0].func.name).toBe("stopPageAnnotationInjection")
+    executeScript.mockClear()
 
     const bookmarkRequest = (
       requestId: string,

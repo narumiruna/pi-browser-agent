@@ -1,6 +1,37 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Draw on page": "Рисовать на странице",
+  "Cancel page drawing": "Отменить рисование на странице",
+  "Pen color": "Цвет пера",
+  "Page drawing controls": "Элементы управления рисованием на странице",
+  Red: "Красный",
+  Yellow: "Жёлтый",
+  Green: "Зелёный",
+  Blue: "Синий",
+  White: "Белый",
+  Black: "Чёрный",
+  "Page content can move beneath your marks. Send captures only the visible area.":
+    "Содержимое страницы может перемещаться под отметками. При отправке захватывается только видимая область.",
+  "Wait for the current operation to finish before drawing":
+    "Дождитесь завершения текущей операции, прежде чем рисовать",
+  "Open an HTTP or HTTPS page before drawing":
+    "Откройте страницу HTTP или HTTPS, прежде чем рисовать",
+  "Site access is required to draw on this page":
+    "Для рисования на этой странице требуется доступ к сайту",
+  "The page changed before drawing could start. Start drawing again.":
+    "Страница изменилась до начала рисования. Начните рисование заново.",
+  "Page drawing could not start. Reload the page and try again.":
+    "Не удалось начать рисование на странице. Перезагрузите страницу и повторите попытку.",
+  "Page drawing stopped because the page or its protection changed. Start drawing again.":
+    "Рисование остановлено, поскольку страница или её защита изменилась. Начните рисование заново.",
+  "Could not capture page drawing. Your marks were kept when safe. Try again.":
+    "Не удалось захватить рисунок на странице. Отметки сохранены, если это было безопасно. Повторите попытку.",
+  "Could not confirm drawing cleanup. Reload the page before sending.":
+    "Не удалось подтвердить удаление поверхности рисования. Перезагрузите страницу перед отправкой.",
+  "Add a mark before sending page drawing": "Добавьте отметку перед отправкой рисунка на странице",
+  "Page drawing limit reached. Undo or clear some marks.":
+    "Достигнут предел рисования на странице. Отмените или удалите часть отметок.",
   "Paste a PNG, JPEG, WebP, or GIF image": "Вставьте изображение PNG, JPEG, WebP или GIF",
   "The pasted image is empty": "Вставленное изображение пустое",
   "Pasted images must use 3 MB or less in total":

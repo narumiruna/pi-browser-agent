@@ -1,6 +1,36 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Draw on page": "Sayfada çiz",
+  "Cancel page drawing": "Sayfada çizimi iptal et",
+  "Pen color": "Kalem rengi",
+  "Page drawing controls": "Sayfada çizim kontrolleri",
+  Red: "Kırmızı",
+  Yellow: "Sarı",
+  Green: "Yeşil",
+  Blue: "Mavi",
+  White: "Beyaz",
+  Black: "Siyah",
+  "Page content can move beneath your marks. Send captures only the visible area.":
+    "Sayfa içeriği işaretlerinizin altında hareket edebilir. Gönderirken yalnızca görünür alan yakalanır.",
+  "Wait for the current operation to finish before drawing":
+    "Çizmeden önce geçerli işlemin bitmesini bekleyin",
+  "Open an HTTP or HTTPS page before drawing": "Çizmeden önce bir HTTP veya HTTPS sayfası açın",
+  "Site access is required to draw on this page":
+    "Bu sayfada çizim yapmak için site erişimi gerekir",
+  "The page changed before drawing could start. Start drawing again.":
+    "Çizim başlamadan önce sayfa değişti. Çizimi yeniden başlatın.",
+  "Page drawing could not start. Reload the page and try again.":
+    "Sayfada çizim başlatılamadı. Sayfayı yeniden yükleyip tekrar deneyin.",
+  "Page drawing stopped because the page or its protection changed. Start drawing again.":
+    "Sayfa veya koruması değiştiği için çizim durduruldu. Çizimi yeniden başlatın.",
+  "Could not capture page drawing. Your marks were kept when safe. Try again.":
+    "Sayfa çizimi yakalanamadı. Güvenli olduğunda işaretleriniz korundu. Tekrar deneyin.",
+  "Could not confirm drawing cleanup. Reload the page before sending.":
+    "Çizim temizliği doğrulanamadı. Göndermeden önce sayfayı yeniden yükleyin.",
+  "Add a mark before sending page drawing": "Sayfa çizimini göndermeden önce bir işaret ekleyin",
+  "Page drawing limit reached. Undo or clear some marks.":
+    "Sayfada çizim sınırına ulaşıldı. Bazı işaretleri geri alın veya temizleyin.",
   "Paste a PNG, JPEG, WebP, or GIF image": "Bir PNG, JPEG, WebP veya GIF resmi yapıştırın",
   "The pasted image is empty": "Yapıştırılan resim boş",
   "Pasted images must use 3 MB or less in total":

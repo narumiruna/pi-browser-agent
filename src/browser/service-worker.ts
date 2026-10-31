@@ -4,11 +4,13 @@ import {
   executeElementPicker,
   stopElementPickerInjection,
 } from "./content/element-picker.js"
+import { executePageAnnotation, stopPageAnnotationInjection } from "./content/page-annotation.js"
 import { executePageOperation, type PageOperation } from "./content/page-operations.js"
 import { assertTabContext } from "./content/tab-context.js"
 import { installElementPickerShortcut } from "./element-picker-shortcut.js"
 import { CONTEXT_MENU_TITLES } from "./i18n/context-menu.js"
 import { languagePreferenceFromSettings, resolveLocale } from "./i18n/locales.js"
+import { PageAnnotationWorker } from "./page-annotation-worker.js"
 import {
   BOOKMARKS_PERMISSION,
   hasBookmarkPermission,
@@ -19,6 +21,11 @@ import {
 import { waitForCondition } from "./runtime/condition-wait.js"
 import { ELEMENT_PICKER_LIMITS, parseSelectedElementContext } from "./runtime/element-context.js"
 import { parseRuntimeRequest, type RuntimeEvent, type RuntimeRequest } from "./runtime/messages.js"
+import {
+  PAGE_ANNOTATION_COLORS,
+  PAGE_ANNOTATION_LIMITS,
+  parsePageAnnotationNotification,
+} from "./runtime/page-annotation.js"
 import { classifyPage, type PageCapability } from "./runtime/page-capability.js"
 import { boundPageTextResult, type PageTextResult } from "./runtime/page-text.js"
 import {
@@ -60,6 +67,89 @@ let waitContextVersion = 0
 let visibleTabSyncVersion = 0
 let latestVisibleTabSync: { version: number; promise: Promise<TabContext | undefined> } | undefined
 let pendingSelectionTake: Promise<JsonValue> = Promise.resolve(null)
+const pageAnnotation = new PageAnnotationWorker({
+  async beforeStart() {
+    await initialization
+    elementPickerOperationVersion += 1
+    await stopActiveElementPicker("page-annotation", false)
+  },
+  async context(expected) {
+    await initialization
+    const context = await refreshBoundContext()
+    assertTabContext(expected, context)
+    return context
+  },
+  async windowId(context) {
+    return (await chrome.tabs.get(context.tabId)).windowId
+  },
+  async validate(context, signal) {
+    if (signal?.aborted) throw new RuntimeError("REQUEST_CANCELLED", "Page drawing was cancelled")
+    const current = await refreshBoundContext()
+    assertTabContext(context, current)
+    if (!(await hasHostPermission(context.url)))
+      throw new RuntimeError("PERMISSION_DENIED", "Current site access was revoked")
+    await assertReadableDocument(context, signal)
+    const latest = await refreshBoundContext()
+    assertTabContext(context, latest)
+    if (signal?.aborted) throw new RuntimeError("REQUEST_CANCELLED", "Page drawing was cancelled")
+  },
+  async execute(operation, session) {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: session.context.tabId },
+      world: "ISOLATED",
+      func: executePageAnnotation,
+      args: [
+        operation,
+        session.token,
+        session.context,
+        session.settings,
+        { ...PAGE_ANNOTATION_LIMITS, colors: PAGE_ANNOTATION_COLORS },
+      ],
+    })
+    return results[0]?.result
+  },
+  async cleanup(context, token) {
+    if (typeof chrome.tabs.sendMessage === "function") {
+      const acknowledgement = await chrome.tabs
+        .sendMessage(
+          context.tabId,
+          { kind: "page-annotation-stop", ...(token ? { token } : {}) },
+          { frameId: 0 },
+        )
+        .catch(() => undefined)
+      if (acknowledgement?.active === false) return
+    }
+    try {
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: context.tabId },
+        world: "ISOLATED",
+        func: stopPageAnnotationInjection,
+        args: token === undefined ? [] : [token],
+      })
+      const outcome = results[0]?.result
+      if (outcome?.ok && outcome.result.active === false) return
+    } catch {
+      // URL and epoch changes do not prove document replacement (for example, history.pushState).
+      // Only a successful all-tab lookup can confirm that the target no longer exists.
+      const tabs = await chrome.tabs.query({})
+      if (!tabs.some((tab) => tab.id === context.tabId)) return
+    }
+    throw new RuntimeError(
+      "INTERNAL_ERROR",
+      "Could not confirm page drawing cleanup. Reload the page and try again.",
+    )
+  },
+  emit: emitEvent,
+  capturePermission: assertScreenshotPermission,
+  capture(request, context) {
+    return captureVisible({
+      ...request,
+      method: "page.captureVisible",
+      params: {},
+      tabContext: context,
+    })
+  },
+})
 const initialization = initialize()
 const pickerShortcut = installElementPickerShortcut({
   async validate(tab) {
@@ -73,6 +163,7 @@ const pickerShortcut = installElementPickerShortcut({
     return context
   },
   stop(windowId) {
+    pageAnnotation.disconnect(windowId)
     // Record disconnects even while the start is still looking up its owning window.
     startingElementPicker?.disconnectedWindows.add(windowId)
     if (startingElementPicker?.windowId === windowId) elementPickerOperationVersion += 1
@@ -151,6 +242,7 @@ async function stopActiveElementPicker(reason: string, emit = true): Promise<voi
 }
 
 function clearBoundTab(page: PageCapability = { kind: "none", title: "" }): void {
+  pageAnnotation.contextChanged("tab-context-cleared")
   elementPickerOperationVersion += 1
   if (activeElementPicker) void stopActiveElementPicker("tab-context-cleared")
   if (boundContext) {
@@ -180,6 +272,7 @@ function setBoundTab(tab: chrome.tabs.Tab | undefined): TabContext | undefined {
   }
   elementPickerOperationVersion += 1
   if (activeElementPicker) void stopActiveElementPicker("tab-changed")
+  if (boundContext) pageAnnotation.contextChanged("tab-changed")
   if (boundContext) contextEpoch = Math.max(contextEpoch, boundContext.epoch) + 1
   elementSnapshot = undefined
   boundContext = { tabId: tab.id, url: tab.url, epoch: contextEpoch }
@@ -262,7 +355,10 @@ async function syncUpdatedVisibleTab(updatedTabId: number): Promise<void> {
 async function initialize(): Promise<void> {
   await restrictLocalStorageToTrustedContexts()
   const context = await syncVisibleTab()
-  if (context) await notifyInjectedElementPickerToStop(context)
+  if (context) {
+    await notifyInjectedElementPickerToStop(context)
+    await pageAnnotation.orphanCleanup(context).catch(() => undefined)
+  }
 }
 
 function bindSelectionTab(tab: chrome.tabs.Tab | undefined): TabContext {
@@ -691,11 +787,9 @@ async function getActiveTab(request: RuntimeRequest<"tabs.getActive">): Promise<
   return { ...context, active: tab.active, title: tab.title ?? "", windowId: tab.windowId }
 }
 
-async function captureVisible(request: RuntimeRequest<"page.captureVisible">): Promise<JsonValue> {
-  const context = await refreshBoundContext()
-  assertTabContext(request.tabContext, context)
+async function assertScreenshotPermission(confirmed?: boolean): Promise<void> {
   const permissionGranted = await hasScreenshotPermission().catch(() => false)
-  if (!permissionGranted && !request.confirmed) {
+  if (!permissionGranted && !confirmed) {
     throw new RuntimeError(
       "CONFIRMATION_REQUIRED",
       "Allow screenshots of visible HTTP(S) tabs? Chrome grants access to all sites, but Pi Browser Agent captures only the current visible viewport and separately limits ordinary access to exact origins approved through explicit actions. Screenshots are sent to the selected model provider and saved in this session.",
@@ -705,6 +799,12 @@ async function captureVisible(request: RuntimeRequest<"page.captureVisible">): P
   if (!permissionGranted) {
     throw new RuntimeError("PERMISSION_DENIED", "Chrome screenshot access is not granted")
   }
+}
+
+async function captureVisible(request: RuntimeRequest<"page.captureVisible">): Promise<JsonValue> {
+  const context = await refreshBoundContext()
+  assertTabContext(request.tabContext, context)
+  await assertScreenshotPermission(request.confirmed)
   const tab = await chrome.tabs.get(context.tabId)
   if (!tab.active) {
     throw new RuntimeError("INVALID_REQUEST", "The current tab must remain active for a screenshot")
@@ -945,6 +1045,14 @@ async function stopElementPicker(
 }
 
 async function dispatch(request: RuntimeRequest, signal: AbortSignal): Promise<JsonValue> {
+  // Reserve startup before initialization or picker cleanup can yield to stop/disconnect.
+  if (request.method === "pageAnnotation.start") {
+    return pageAnnotation.start(
+      { ...request, tabContext: request.tabContext ?? currentBoundContext() },
+      signal,
+    )
+  }
+  if (request.method === "pageAnnotation.stop") return pageAnnotation.stop(request)
   await initialization
   if (signal.aborted) throw new RuntimeError("REQUEST_CANCELLED", "Browser request was cancelled")
   let result: JsonValue
@@ -965,7 +1073,14 @@ async function dispatch(request: RuntimeRequest, signal: AbortSignal): Promise<J
     case "selection.takePending":
       result = await consumePendingSelection(request.params.windowId)
       break
+    case "pageAnnotation.update":
+      result = await pageAnnotation.update(request, signal)
+      break
+    case "pageAnnotation.capture":
+      result = await pageAnnotation.capture(request, signal)
+      break
     case "elementPicker.start":
+      await pageAnnotation.cancel("replaced")
       result = await startElementPicker(request)
       break
     case "elementPicker.stop":
@@ -1093,7 +1208,10 @@ chrome.runtime.onInstalled.addListener(() => {
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   const navigation = Boolean(changeInfo.url) || changeInfo.status === "loading"
-  if (navigation) pickerShortcut.invalidate(tabId)
+  if (navigation) {
+    pickerShortcut.invalidate(tabId)
+    pageAnnotation.navigation(tabId)
+  }
   if (!navigation) {
     if (changeInfo.title !== undefined) {
       // A title-only update changes the UI label, not the page or its references.
@@ -1114,6 +1232,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
 })
 
 chrome.tabs.onActivated.addListener(() => {
+  pageAnnotation.contextChanged("tab-activated")
   waitContextVersion += 1
   pickerShortcut.invalidate()
   elementPickerOperationVersion += 1
@@ -1123,6 +1242,7 @@ chrome.tabs.onActivated.addListener(() => {
 })
 
 chrome.tabs.onRemoved.addListener((tabId) => {
+  pageAnnotation.navigation(tabId)
   pickerShortcut.invalidate(tabId)
   if (boundContext?.tabId === tabId) {
     waitContextVersion += 1
@@ -1132,6 +1252,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 })
 
 chrome.windows.onFocusChanged.addListener((windowId) => {
+  pageAnnotation.contextChanged("window-focus-changed")
   waitContextVersion += 1
   pickerShortcut.invalidate()
   elementPickerOperationVersion += 1
@@ -1309,6 +1430,7 @@ async function acceptElementPickerResult(
 }
 
 chrome.permissions.onRemoved?.addListener(() => {
+  void pageAnnotation.accessChanged().catch(() => undefined)
   const picker = activeElementPicker
   if (!picker) return
   void hasHostPermission(picker.context.url)
@@ -1322,6 +1444,26 @@ chrome.permissions.onRemoved?.addListener(() => {
 })
 
 chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
+  if (
+    typeof message === "object" &&
+    message !== null &&
+    "kind" in message &&
+    message.kind === "page-annotation-state"
+  ) {
+    void Promise.resolve()
+      .then(() => pageAnnotation.notification(parsePageAnnotationNotification(message), sender))
+      .then((result) => sendResponse({ ok: true, result }))
+      .catch((error) =>
+        sendResponse({
+          ok: false,
+          error: (error instanceof RuntimeError
+            ? error
+            : new RuntimeError("INVALID_REQUEST", "Invalid page drawing notification")
+          ).toData(),
+        }),
+      )
+    return true
+  }
   if (
     typeof message === "object" &&
     message !== null &&
@@ -1370,6 +1512,22 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
   let request: RuntimeRequest
   try {
     request = parseRuntimeRequest(message)
+    if (request.method.startsWith("pageAnnotation.")) {
+      const path = chrome.runtime.getManifest().side_panel?.default_path
+      const source = new URL(sender.url ?? "about:blank")
+      if (
+        sender.id !== chrome.runtime.id ||
+        (sender.frameId !== undefined && sender.frameId !== 0) ||
+        !path ||
+        sender.url?.split(/[?#]/, 1)[0] !== chrome.runtime.getURL(path) ||
+        source.searchParams.has("view")
+      ) {
+        throw new RuntimeError(
+          "PERMISSION_DENIED",
+          "Page drawing requires the extension Side Panel",
+        )
+      }
+    }
   } catch (error) {
     const runtimeError =
       error instanceof RuntimeError ? error : new RuntimeError("INVALID_REQUEST", String(error))
@@ -1378,11 +1536,19 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
   }
 
   const controller = new AbortController()
-  const reportsProgress = ![
-    "elementPicker.start",
-    "elementPicker.stop",
-    "requests.cancel",
-  ].includes(request.method)
+  if (request.method.startsWith("pageAnnotation.") && "clientId" in request.params) {
+    const clientId = request.params.clientId
+    controller.signal.addEventListener(
+      "abort",
+      () => {
+        void pageAnnotation.cancel("cancelled", undefined, clientId).catch(() => undefined)
+      },
+      { once: true },
+    )
+  }
+  const reportsProgress =
+    !request.method.startsWith("pageAnnotation.") &&
+    !["elementPicker.start", "elementPicker.stop", "requests.cancel"].includes(request.method)
   if (request.method !== "requests.cancel") {
     activeRequests.set(request.requestId, controller)
     if (reportsProgress) {

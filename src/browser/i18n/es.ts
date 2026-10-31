@@ -1,6 +1,37 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Draw on page": "Dibujar en la página",
+  "Cancel page drawing": "Cancelar el dibujo en la página",
+  "Pen color": "Color del lápiz",
+  "Page drawing controls": "Controles de dibujo en la página",
+  Red: "Rojo",
+  Yellow: "Amarillo",
+  Green: "Verde",
+  Blue: "Azul",
+  White: "Blanco",
+  Black: "Negro",
+  "Page content can move beneath your marks. Send captures only the visible area.":
+    "El contenido de la página puede moverse bajo las marcas. Al enviar, solo se captura el área visible.",
+  "Wait for the current operation to finish before drawing":
+    "Espere a que termine la operación actual antes de dibujar",
+  "Open an HTTP or HTTPS page before drawing": "Abra una página HTTP o HTTPS antes de dibujar",
+  "Site access is required to draw on this page":
+    "Se requiere acceso al sitio para dibujar en esta página",
+  "The page changed before drawing could start. Start drawing again.":
+    "La página cambió antes de que pudiera empezar a dibujar. Inicie el dibujo de nuevo.",
+  "Page drawing could not start. Reload the page and try again.":
+    "No se pudo iniciar el dibujo en la página. Recargue la página e inténtelo de nuevo.",
+  "Page drawing stopped because the page or its protection changed. Start drawing again.":
+    "El dibujo se detuvo porque la página o su protección cambiaron. Inicie el dibujo de nuevo.",
+  "Could not capture page drawing. Your marks were kept when safe. Try again.":
+    "No se pudo capturar el dibujo en la página. Sus marcas se conservaron cuando era seguro hacerlo. Inténtelo de nuevo.",
+  "Could not confirm drawing cleanup. Reload the page before sending.":
+    "No se pudo confirmar la limpieza del dibujo. Recargue la página antes de enviar.",
+  "Add a mark before sending page drawing":
+    "Añada una marca antes de enviar el dibujo de la página",
+  "Page drawing limit reached. Undo or clear some marks.":
+    "Se alcanzó el límite de dibujo en la página. Deshaga o borre algunas marcas.",
   "Paste a PNG, JPEG, WebP, or GIF image": "Pegue una imagen PNG, JPEG, WebP o GIF",
   "The pasted image is empty": "La imagen pegada está vacía",
   "Pasted images must use 3 MB or less in total":

@@ -1,6 +1,37 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Draw on page": "Disegna sulla pagina",
+  "Cancel page drawing": "Annulla il disegno sulla pagina",
+  "Pen color": "Colore della penna",
+  "Page drawing controls": "Controlli di disegno sulla pagina",
+  Red: "Rosso",
+  Yellow: "Giallo",
+  Green: "Verde",
+  Blue: "Blu",
+  White: "Bianco",
+  Black: "Nero",
+  "Page content can move beneath your marks. Send captures only the visible area.":
+    "Il contenuto della pagina può spostarsi sotto i segni. L’invio acquisisce solo l’area visibile.",
+  "Wait for the current operation to finish before drawing":
+    "Attendi il completamento dell’operazione corrente prima di disegnare",
+  "Open an HTTP or HTTPS page before drawing": "Apri una pagina HTTP o HTTPS prima di disegnare",
+  "Site access is required to draw on this page":
+    "È necessario l’accesso al sito per disegnare su questa pagina",
+  "The page changed before drawing could start. Start drawing again.":
+    "La pagina è cambiata prima dell’avvio del disegno. Avvia di nuovo il disegno.",
+  "Page drawing could not start. Reload the page and try again.":
+    "Impossibile avviare il disegno sulla pagina. Ricarica la pagina e riprova.",
+  "Page drawing stopped because the page or its protection changed. Start drawing again.":
+    "Il disegno si è interrotto perché la pagina o la sua protezione è cambiata. Avvia di nuovo il disegno.",
+  "Could not capture page drawing. Your marks were kept when safe. Try again.":
+    "Impossibile acquisire il disegno sulla pagina. I segni sono stati mantenuti quando era sicuro farlo. Riprova.",
+  "Could not confirm drawing cleanup. Reload the page before sending.":
+    "Impossibile confermare la rimozione della superficie di disegno. Ricarica la pagina prima di inviare.",
+  "Add a mark before sending page drawing":
+    "Aggiungi un segno prima di inviare il disegno della pagina",
+  "Page drawing limit reached. Undo or clear some marks.":
+    "Limite di disegno sulla pagina raggiunto. Annulla o cancella alcuni segni.",
   "Paste a PNG, JPEG, WebP, or GIF image": "Incolla un’immagine PNG, JPEG, WebP o GIF",
   "The pasted image is empty": "L’immagine incollata è vuota",
   "Pasted images must use 3 MB or less in total":

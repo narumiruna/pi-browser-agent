@@ -224,6 +224,16 @@ beforeEach(async () => {
   })
   await import("../../src/browser/service-worker.js")
   await state()
+  expect(executeScript).toHaveBeenCalledWith(
+    expect.objectContaining({
+      func: expect.any(Function),
+      args: [],
+      world: "ISOLATED",
+    }),
+  )
+  expect(executeScript.mock.calls[0]?.[0].func.name).toBe("stopPageAnnotationInjection")
+  executeScript.mockClear()
+  injectionCount = 0
 })
 afterEach(() => {
   restoreSurface()

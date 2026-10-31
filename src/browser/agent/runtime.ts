@@ -433,7 +433,9 @@ export class BrowserAgentRuntime {
     images: ImageContent[] = [],
     elements: SelectedElementContext[] = [],
     usePage = true,
+    assertSubmission?: () => void,
   ): Promise<SubmissionMode> {
+    assertSubmission?.()
     this.assertNotNavigatingTree()
     if (this.changingSession) throw new Error("Wait for the session change to finish")
     if (this.configuration.isChangingAuth)
@@ -452,6 +454,7 @@ export class BrowserAgentRuntime {
       this.preparing = true
       const generation = ++this.preparationGeneration
       const assertPreparing = () => {
+        assertSubmission?.()
         if (generation !== this.preparationGeneration || this.shuttingDown) {
           throw new Error("Run preparation was cancelled")
         }
@@ -477,10 +480,12 @@ export class BrowserAgentRuntime {
       this.updateAvailableTools()
       this.agent.state.tools.push(...skillRun.tools(), ...remoteTools)
       this.updateSystemPrompt()
+      assertSubmission?.()
       if (images.length > 0) await this.agent.prompt(multimodalUserMessage(content, images))
       else await this.agent.prompt(content)
       return "prompt"
     }
+    assertSubmission?.()
     this.queueStreamingMessage(streamingBehavior, content, images)
     return streamingBehavior
   }

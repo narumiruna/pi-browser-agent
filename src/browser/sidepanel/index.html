@@ -150,6 +150,14 @@
           aria-live="polite"
           hidden
         ></div>
+        <fieldset id="page-pen-controls" class="page-pen-controls" aria-label="Page drawing controls" hidden>
+          <label for="page-pen-width">Pen width</label>
+          <input id="page-pen-width" type="range" min="2" max="32" value="8" />
+          <button id="page-pen-undo" type="button" class="subtle" disabled>Undo</button>
+          <button id="page-pen-clear" type="button" class="subtle" disabled>Clear</button>
+          <button id="page-pen-cancel" type="button" class="subtle">Cancel</button>
+          <p id="page-pen-help">Page content can move beneath your marks. Send captures only the visible area.</p>
+        </fieldset>
         <textarea
           id="prompt"
           rows="2"
@@ -189,6 +197,22 @@
                 <path d="M2.75 7.25a4.75 4.75 0 0 0 9.5 0M7.5 12v2M5.25 14h4.5" />
               </svg>
             </button>
+            <div class="page-pen-group">
+              <button id="page-pen" type="button" class="icon-button page-pen-button" aria-label="Draw on page" title="Draw on page" aria-pressed="false" aria-describedby="page-pen-help">
+                <svg class="radix-icon" viewBox="0 0 15 15" aria-hidden="true">
+                  <path d="m3 9 7-7 3 3-7 7-4 1 1-4Zm6-6 3 3M3 9l3 3" />
+                </svg>
+                <span class="pen-color-indicator" aria-hidden="true"></span>
+              </button>
+              <select id="page-pen-color" aria-label="Pen color">
+                <option value="red">Red</option>
+                <option value="yellow">Yellow</option>
+                <option value="green">Green</option>
+                <option value="blue">Blue</option>
+                <option value="white">White</option>
+                <option value="black">Black</option>
+              </select>
+            </div>
             <button type="button" id="abort" class="stop-button" hidden>Stop</button>
             <button
               type="button"

@@ -1,6 +1,36 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Draw on page": "Gambar di halaman",
+  "Cancel page drawing": "Batalkan menggambar di halaman",
+  "Pen color": "Warna pena",
+  "Page drawing controls": "Kontrol menggambar di halaman",
+  Red: "Merah",
+  Yellow: "Kuning",
+  Green: "Hijau",
+  Blue: "Biru",
+  White: "Putih",
+  Black: "Hitam",
+  "Page content can move beneath your marks. Send captures only the visible area.":
+    "Konten halaman dapat bergerak di bawah tanda Anda. Pengiriman hanya menangkap area yang terlihat.",
+  "Wait for the current operation to finish before drawing":
+    "Tunggu hingga operasi saat ini selesai sebelum menggambar",
+  "Open an HTTP or HTTPS page before drawing": "Buka halaman HTTP atau HTTPS sebelum menggambar",
+  "Site access is required to draw on this page":
+    "Akses situs diperlukan untuk menggambar di halaman ini",
+  "The page changed before drawing could start. Start drawing again.":
+    "Halaman berubah sebelum menggambar dapat dimulai. Mulai menggambar lagi.",
+  "Page drawing could not start. Reload the page and try again.":
+    "Tidak dapat mulai menggambar di halaman. Muat ulang halaman dan coba lagi.",
+  "Page drawing stopped because the page or its protection changed. Start drawing again.":
+    "Menggambar dihentikan karena halaman atau perlindungannya berubah. Mulai menggambar lagi.",
+  "Could not capture page drawing. Your marks were kept when safe. Try again.":
+    "Tidak dapat menangkap gambar di halaman. Tanda Anda dipertahankan jika aman. Coba lagi.",
+  "Could not confirm drawing cleanup. Reload the page before sending.":
+    "Tidak dapat mengonfirmasi pembersihan gambar. Muat ulang halaman sebelum mengirim.",
+  "Add a mark before sending page drawing": "Tambahkan tanda sebelum mengirim gambar halaman",
+  "Page drawing limit reached. Undo or clear some marks.":
+    "Batas menggambar di halaman tercapai. Urungkan atau hapus beberapa tanda.",
   "Paste a PNG, JPEG, WebP, or GIF image": "Tempel gambar PNG, JPEG, WebP, atau GIF",
   "The pasted image is empty": "Gambar yang ditempel kosong",
   "Pasted images must use 3 MB or less in total":

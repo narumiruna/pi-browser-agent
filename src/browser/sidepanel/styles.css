@@ -1444,10 +1444,86 @@ button.remove-pasted-image {
   text-align: center;
 }
 
+.composer-toolbar > .status-pill {
+  min-width: 48px;
+}
+
 .composer-actions {
-  flex: 0 0 auto;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  min-width: 0;
   gap: 4px;
   margin-inline-start: auto;
+}
+
+.page-pen-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+}
+
+#page-pen-color {
+  width: 78px;
+  min-height: 34px;
+  padding: 4px;
+  font-size: 0.75rem;
+}
+
+.page-pen-button {
+  position: relative;
+}
+
+.page-pen-button[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.pen-color-indicator {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 7px;
+  height: 7px;
+  border: 1px solid var(--text);
+  border-radius: 50%;
+  background: var(--pen-color, #ef4444);
+}
+
+.page-pen-controls {
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 4px;
+  font-size: 0.8rem;
+}
+
+.page-pen-controls[hidden] {
+  display: none;
+}
+
+#page-pen-width {
+  width: 78px;
+  min-width: 0;
+}
+
+#page-pen-help {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+@media (forced-colors: active) {
+  .page-pen-button[aria-pressed="true"] {
+    outline: 2px solid Highlight;
+  }
 }
 
 .send-button {

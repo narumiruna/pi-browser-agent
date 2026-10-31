@@ -25,7 +25,7 @@ import {
 } from "../runtime/element-context.js"
 import { pageCapabilityFrom, type RuntimeEvent, sendRuntimeRequest } from "../runtime/messages.js"
 import type { PageCapability } from "../runtime/page-capability.js"
-import type { JsonObject, TabContext } from "../runtime/types.js"
+import { type JsonObject, RuntimeError, type TabContext } from "../runtime/types.js"
 import { getTreeItems } from "../sessions/session-tree.js"
 import { SETTINGS_KEY } from "../storage.js"
 import { AuthenticationController } from "./authentication.js"
@@ -45,6 +45,7 @@ import {
   restoreComposerImages,
 } from "./images.js"
 import { TranscriptRenderer } from "./message-rendering.js"
+import { PageAnnotationController } from "./page-annotation.js"
 import { ScreenshotAnnotationController } from "./screenshot-annotation.js"
 import { SessionPicker } from "./session-picker.js"
 import { SessionTreeDialog } from "./session-tree-dialog.js"
@@ -125,8 +126,14 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   const voiceButton = element<HTMLButtonElement>("voice-input")
   const voiceStatus = element<HTMLElement>("voice-status")
   let screenshotAnnotation: ScreenshotAnnotationController | undefined
+  let pageAnnotation: PageAnnotationController | undefined
+  let annotationSubmissionAbort: AbortController | undefined
   const transcriptRenderer = new TranscriptRenderer(transcript, {
     onAnnotateScreenshot(image) {
+      if (pageAnnotation?.occupied || annotationSubmissionAbort) {
+        setError(t("Wait for the current operation to finish before drawing"))
+        return
+      }
       void screenshotAnnotation?.open(image)
     },
   })
@@ -345,20 +352,27 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   }
 
   function updateSendButton(): void {
-    newSessionButton.disabled = commandInProgress
-    sessionPicker.setDisabled(commandInProgress)
-    element<HTMLButtonElement>("rename-session").disabled = commandInProgress
-    element<HTMLButtonElement>("delete-session").disabled = commandInProgress
-    element<HTMLButtonElement>("clear-sessions").disabled = commandInProgress
+    const navigationBusy =
+      commandInProgress ||
+      pageAnnotation?.occupied === true ||
+      annotationSubmissionAbort !== undefined
+    newSessionButton.disabled = navigationBusy
+    sessionPicker.setDisabled(navigationBusy)
+    element<HTMLButtonElement>("rename-session").disabled = navigationBusy
+    element<HTMLButtonElement>("delete-session").disabled = navigationBusy
+    element<HTMLButtonElement>("clear-sessions").disabled = navigationBusy
     sendButton.disabled =
       activeSubmissionGuard !== undefined ||
       pendingPasteOperations > 0 ||
       pickerActive ||
       pickerStarting ||
+      pageAnnotation?.sendBlocked === true ||
+      (pageAnnotation?.active === true && !pageAnnotation.hasMarks) ||
       voiceInputStarting ||
       voiceInput?.active === true
     voiceButton.disabled =
       voiceInput === undefined ||
+      pageAnnotation?.occupied === true ||
       activeSubmissionGuard !== undefined ||
       pickerActive ||
       pickerStarting ||
@@ -368,12 +382,14 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     grantSiteButton.disabled = currentTabContext === undefined || pageToolsUnavailable
     languageWatcher?.flush()
     elementPickerButton.disabled =
+      pageAnnotation?.occupied === true ||
       activeSubmissionGuard !== undefined ||
       pickerStarting ||
       voiceInputStarting ||
       voiceInput?.active === true ||
       (!pickerActive && (currentTabContext === undefined || pageToolsUnavailable)) ||
       (!pickerActive && selectedElements.length >= ELEMENT_PICKER_LIMITS.elements)
+    pageAnnotation?.refresh()
   }
 
   function releaseSubmissionGuard(guard: object): void {
@@ -469,6 +485,35 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       promptInput.focus()
     },
   })
+
+  pageAnnotation = new PageAnnotationController({
+    getContext: refreshTabContext,
+    requestSiteAccess,
+    canStart: () =>
+      !disposed &&
+      !runtime.isBusy &&
+      !authentication?.isBusy &&
+      !activeSubmissionGuard &&
+      !commandInProgress &&
+      !pickerActive &&
+      !pickerStarting &&
+      !pickerStopping &&
+      !voiceInputStarting &&
+      !voiceInput?.active &&
+      pendingPasteOperations === 0 &&
+      currentTabContext !== undefined &&
+      runtime.model.input.includes("image") &&
+      document.querySelector("dialog[open]") === null,
+    onChange: updateSendButton,
+    onCancel: cancelAnnotationSubmission,
+    onError: setError,
+  })
+
+  function cancelAnnotationSubmission(): void {
+    if (!annotationSubmissionAbort) return
+    annotationSubmissionAbort.abort()
+    if (runtime.isPreparing) runtime.abort()
+  }
 
   function providerName(providerId: string): string | undefined {
     return runtime.configuration.getProviders().find((provider) => provider.id === providerId)?.name
@@ -582,8 +627,13 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     updateSendButton()
   }
 
-  function attachComposerImages(files: Blob[], source: "annotation" | "paste"): Promise<void> {
+  function attachComposerImages(
+    files: Blob[],
+    source: "annotation" | "paste",
+    accept?: () => void,
+  ): Promise<Array<ComposerImage & { id: string }>> {
     const operation = imageAttachmentQueue.then(async () => {
+      accept?.()
       if (composerImages.length + files.length > MAX_PASTED_IMAGES) {
         throw new Error(t("Attach up to {count} images at a time", { count: MAX_PASTED_IMAGES }))
       }
@@ -606,15 +656,20 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       ) {
         throw new Error(t("Composer image limits changed while attachments were loading"))
       }
+      accept?.()
       composerImages.push(...additions)
       renderComposerImages()
+      return additions
     })
-    imageAttachmentQueue = operation.catch(() => undefined)
+    imageAttachmentQueue = operation.then(
+      () => undefined,
+      () => undefined,
+    )
     return operation
   }
 
   function attachPastedImages(files: File[]): Promise<void> {
-    return attachComposerImages(files, "paste")
+    return attachComposerImages(files, "paste").then(() => undefined)
   }
 
   function renderPageCapability(): void {
@@ -685,6 +740,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   function assertPickerActionAvailable(): void {
     if (
       activeSubmissionGuard !== undefined ||
+      pageAnnotation?.occupied === true ||
       voiceInputStarting ||
       voiceInput?.active === true ||
       selectedElements.length >= ELEMENT_PICKER_LIMITS.elements
@@ -883,6 +939,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       pendingPasteOperations > 0 ||
       pickerActive ||
       pickerStarting ||
+      pageAnnotation?.occupied === true ||
       voiceInputStarting ||
       voiceInput?.active
     )
@@ -1068,6 +1125,12 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       setError(t("Wait for the pasted image preview before sending"))
       return
     }
+    const withAnnotation = pageAnnotation?.active === true
+    if (pageAnnotation?.sendBlocked) return
+    if (withAnnotation && !pageAnnotation?.hasMarks) {
+      setError(t("Add a mark before sending page drawing"))
+      return
+    }
     const draftText = promptInput.value
     const text = parsed.text.trim()
     const submittedImages = composerImages.map((image) => ({
@@ -1079,13 +1142,33 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       context: structuredClone(selected.context),
       tabContext: { ...selected.tabContext },
     }))
-    if (!text && submittedImages.length === 0 && submittedElements.length === 0) return
-    if (submittedImages.length > 0 && !runtime.model.input.includes("image")) {
+    if (!text && submittedImages.length === 0 && submittedElements.length === 0 && !withAnnotation)
+      return
+    if ((submittedImages.length > 0 || withAnnotation) && !runtime.model.input.includes("image")) {
       setError(t("{model} does not support image input", { model: runtime.model.name }))
       return
     }
+    if (withAnnotation && submittedImages.length >= MAX_PASTED_IMAGES) {
+      setError(t("Attach up to {count} images at a time", { count: MAX_PASTED_IMAGES }))
+      return
+    }
     const submittedWhileStreaming = runtime.agent.state.isStreaming
+    const sessionId = runtime.activeSession.id
+    const model = runtime.model
+    const annotationAbort = withAnnotation ? new AbortController() : undefined
+    annotationSubmissionAbort = annotationAbort
     const submissionGuard = {}
+    const assertSubmission = (): void => {
+      if (
+        disposed ||
+        activeSubmissionGuard !== submissionGuard ||
+        annotationAbort?.signal.aborted ||
+        runtime.activeSession.id !== sessionId ||
+        runtime.model !== model
+      ) {
+        throw new RuntimeError("REQUEST_CANCELLED", "Browser request was cancelled")
+      }
+    }
     activeSubmissionGuard = submissionGuard
     updateSendButton()
     void run(async () => {
@@ -1097,9 +1180,25 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
             }),
           )
         }
+        assertSubmission()
         const { context: submissionTabContext, usePage } = await requestRunAccess(
-          submittedElements.length > 0,
+          submittedElements.length > 0 || withAnnotation,
         )
+        assertSubmission()
+        if (withAnnotation) {
+          const drawingContext = pageAnnotation?.tabContext
+          if (
+            !drawingContext ||
+            !submissionTabContext ||
+            !sameTabContext(drawingContext, submissionTabContext)
+          ) {
+            throw new Error(
+              t(
+                "Page drawing stopped because the page or its protection changed. Start drawing again.",
+              ),
+            )
+          }
+        }
         if (
           submittedElements.some(
             (element) =>
@@ -1120,10 +1219,27 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
               : t("A task started before the prompt could be sent. Send it again."),
           )
         }
+        if (withAnnotation && pageAnnotation && annotationAbort) {
+          const image = await pageAnnotation.capture(annotationAbort.signal, (error) =>
+            confirmation(error.message, error.details, annotationAbort.signal),
+          )
+          assertSubmission()
+          const additions = await attachComposerImages([image], "annotation", assertSubmission)
+          submittedImages.push(
+            ...additions.map((attachment) => ({
+              id: attachment.id,
+              content: { ...attachment.content },
+            })),
+          )
+          assertSubmission()
+          await pageAnnotation.stop(false)
+          assertSubmission()
+        }
         const submittedImageIds = new Set(submittedImages.map((image) => image.id))
         const submittedElementIds = new Set(submittedElements.map((element) => element.id))
         const accept = (): void => {
           if (activeSubmissionGuard !== submissionGuard) return
+          if (annotationSubmissionAbort === annotationAbort) annotationSubmissionAbort = undefined
           composerImages = composerImages.filter((image) => !submittedImageIds.has(image.id))
           selectedElements = selectedElements.filter(
             (element) => !submittedElementIds.has(element.id),
@@ -1135,20 +1251,28 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
           commandMenu.close()
         }
         pendingSubmission = { guard: submissionGuard, accept }
-        const submission = runtime.submit(
+        const submissionArgs = [
           text,
           queueAfterCurrentTask ? "followUp" : "steer",
           submittedImages.map((image) => image.content),
           submittedElements.map((element) => element.context),
           usePage,
-        )
+        ] as const
+        const submission = withAnnotation
+          ? runtime.submit(...submissionArgs, assertSubmission)
+          : runtime.submit(...submissionArgs)
         const mode = await submission
         if (mode !== "prompt") {
           accept()
           setRunStatus("instructionQueued", { busy: true, streaming: true })
         }
+      } catch (error) {
+        if (withAnnotation && !annotationAbort?.signal.aborted)
+          await pageAnnotation?.resume().catch(() => undefined)
+        if (!annotationAbort?.signal.aborted) throw error
       } finally {
         if (pendingSubmission?.guard === submissionGuard) pendingSubmission = undefined
+        if (annotationSubmissionAbort === annotationAbort) annotationSubmissionAbort = undefined
         releaseSubmissionGuard(submissionGuard)
       }
     }, setError)
@@ -1157,14 +1281,19 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   async function refreshActiveSessionUi(): Promise<void> {
     renderMessages()
     await Promise.all([refreshSessions(), authentication?.refresh()])
+    updateSendButton()
   }
 
   async function clearElementComposerContext(): Promise<void> {
+    cancelAnnotationSubmission()
+    if (pageAnnotation?.occupied) await pageAnnotation.stop()
     if (pickerActive || pickerStarting) await stopElementPicker().catch(() => undefined)
     clearSelectedElements()
   }
 
   async function openSettingsTab(accept?: () => void): Promise<void> {
+    if (pageAnnotation?.occupied || annotationSubmissionAbort)
+      throw new Error(t("Wait for the current operation to finish before drawing"))
     voiceInput?.abort()
     const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true })
     accept?.()
@@ -1218,6 +1347,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
 
   voiceInput = createVoiceInput({
     onTranscript(text) {
+      if (pageAnnotation?.occupied || annotationSubmissionAbort) return
       promptInput.value = text
       resizePromptInput()
     },
@@ -1249,6 +1379,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     void run(toggleElementPicker, setError)
   })
   voiceButton.addEventListener("click", () => {
+    if (pageAnnotation?.occupied || annotationSubmissionAbort) return
     if (voiceInput?.active) {
       setError()
       voiceInput.stop()
@@ -1352,6 +1483,13 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   document.addEventListener(
     "keydown",
     (event) => {
+      if (event.key === "Escape" && (pageAnnotation?.occupied || annotationSubmissionAbort)) {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        cancelAnnotationSubmission()
+        void pageAnnotation?.stop().catch(setError)
+        return
+      }
       if (
         event.key !== "Escape" ||
         (!pickerActive && !pickerStarting && !shortcutPermissionContext)
@@ -1383,6 +1521,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   chrome.runtime.onMessage.addListener((message: unknown) => {
     const event = message as Partial<RuntimeEvent>
     if (event.kind !== "event") return false
+    pageAnnotation?.onEvent(event as RuntimeEvent)
     if (event.name === "settings.saved" && event.payload?.settingsContextId === settingsContextId) {
       void run(async () => {
         await runtime.syncSettings({
@@ -1404,6 +1543,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
         !currentTabContext ||
         !sameTabContext(event.tabContext, currentTabContext)
       ) {
+        cancelAnnotationSubmission()
         currentTabContext = undefined
         // Restart refresh can emit a new epoch before the stop request completes.
         if (!pickerStopping) setPickerActive(false)
@@ -1478,6 +1618,8 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     observedTranscriptElements.clear()
     voiceInput?.abort()
     screenshotAnnotation?.close()
+    cancelAnnotationSubmission()
+    if (pageAnnotation?.occupied) void pageAnnotation.stop().catch(() => undefined)
     treeDialog.close()
     if (pickerActive || pickerStarting) void stopElementPicker().catch(() => undefined)
     authentication?.abort()
@@ -1494,6 +1636,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       pickerActive ||
       pickerStarting ||
       Boolean(pickerStopping) ||
+      pageAnnotation?.occupied === true ||
       voiceInputStarting ||
       Boolean(voiceInput?.active) ||
       pendingPasteOperations > 0 ||
@@ -1516,6 +1659,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       )
       elementPickerButton.ariaLabel = t("Select page element")
       elementPickerButton.title = pickerButtonTitle(false, pickerShortcut)
+      pageAnnotation?.refresh()
       renderRunStatus()
       renderPageCapability()
       renderMessages()
@@ -1558,6 +1702,8 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     toggle: toggleElementPicker,
     error: setError,
     disconnected() {
+      cancelAnnotationSubmission()
+      if (pageAnnotation?.occupied) void pageAnnotation.stop().catch(setError)
       if (pickerActive || pickerStarting) {
         // Wake the replacement worker and wait for cleanup before clearing the active UI.
         void stopElementPicker().catch(setError)

@@ -1,6 +1,34 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Draw on page": "วาดบนหน้าเว็บ",
+  "Cancel page drawing": "ยกเลิกการวาดบนหน้าเว็บ",
+  "Pen color": "สีปากกา",
+  "Page drawing controls": "ตัวควบคุมการวาดบนหน้าเว็บ",
+  Red: "แดง",
+  Yellow: "เหลือง",
+  Green: "เขียว",
+  Blue: "น้ำเงิน",
+  White: "ขาว",
+  Black: "ดำ",
+  "Page content can move beneath your marks. Send captures only the visible area.":
+    "เนื้อหาหน้าเว็บอาจเคลื่อนที่ใต้เครื่องหมายของคุณ เมื่อส่งจะจับภาพเฉพาะพื้นที่ที่มองเห็นเท่านั้น",
+  "Wait for the current operation to finish before drawing": "รอให้การดำเนินการปัจจุบันเสร็จสิ้นก่อนวาด",
+  "Open an HTTP or HTTPS page before drawing": "เปิดหน้า HTTP หรือ HTTPS ก่อนวาด",
+  "Site access is required to draw on this page": "ต้องมีสิทธิ์เข้าถึงเว็บไซต์เพื่อวาดบนหน้านี้",
+  "The page changed before drawing could start. Start drawing again.":
+    "หน้าเว็บเปลี่ยนแปลงก่อนเริ่มวาด ให้เริ่มวาดอีกครั้ง",
+  "Page drawing could not start. Reload the page and try again.":
+    "ไม่สามารถเริ่มวาดบนหน้าเว็บได้ โหลดหน้าเว็บใหม่แล้วลองอีกครั้ง",
+  "Page drawing stopped because the page or its protection changed. Start drawing again.":
+    "หยุดการวาดเนื่องจากหน้าเว็บหรือการป้องกันเปลี่ยนแปลง ให้เริ่มวาดอีกครั้ง",
+  "Could not capture page drawing. Your marks were kept when safe. Try again.":
+    "ไม่สามารถจับภาพการวาดบนหน้าเว็บได้ เครื่องหมายของคุณถูกเก็บไว้เมื่อปลอดภัย ลองอีกครั้ง",
+  "Could not confirm drawing cleanup. Reload the page before sending.":
+    "ไม่สามารถยืนยันการล้างพื้นผิววาดได้ โหลดหน้าเว็บใหม่ก่อนส่ง",
+  "Add a mark before sending page drawing": "เพิ่มเครื่องหมายก่อนส่งภาพวาดบนหน้าเว็บ",
+  "Page drawing limit reached. Undo or clear some marks.":
+    "ถึงขีดจำกัดการวาดบนหน้าเว็บแล้ว เลิกทำหรือล้างเครื่องหมายบางส่วน",
   "Paste a PNG, JPEG, WebP, or GIF image": "วางภาพ PNG, JPEG, WebP หรือ GIF",
   "The pasted image is empty": "ภาพที่วางว่างเปล่า",
   "Pasted images must use 3 MB or less in total": "ภาพที่วางต้องมีขนาดรวมไม่เกิน 3 MB",
