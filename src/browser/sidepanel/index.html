@@ -150,14 +150,7 @@
           aria-live="polite"
           hidden
         ></div>
-        <fieldset id="page-pen-controls" class="page-pen-controls" aria-label="Page drawing controls" hidden>
-          <label for="page-pen-width">Pen width</label>
-          <input id="page-pen-width" type="range" min="2" max="32" value="8" />
-          <button id="page-pen-undo" type="button" class="subtle" disabled>Undo</button>
-          <button id="page-pen-clear" type="button" class="subtle" disabled>Clear</button>
-          <button id="page-pen-cancel" type="button" class="subtle">Cancel</button>
-          <p id="page-pen-help">Page content can move beneath your marks. Send captures only the visible area.</p>
-        </fieldset>
+        <span id="page-pen-help" class="visually-hidden">Page content can move beneath your marks. Send captures only the visible area.</span>
         <textarea
           id="prompt"
           rows="2"
@@ -204,14 +197,28 @@
                 </svg>
                 <span class="pen-color-indicator" aria-hidden="true"></span>
               </button>
-              <select id="page-pen-color" aria-label="Pen color">
-                <option value="red">Red</option>
-                <option value="yellow">Yellow</option>
-                <option value="green">Green</option>
-                <option value="blue">Blue</option>
-                <option value="white">White</option>
-                <option value="black">Black</option>
-              </select>
+              <fieldset id="page-pen-controls" class="page-pen-controls" aria-label="Page drawing controls" hidden>
+                <div class="page-pen-setting">
+                  <button id="page-pen-color" type="button" class="icon-button page-pen-tool page-pen-color" aria-label="Pen color" aria-haspopup="menu" aria-expanded="false" aria-controls="page-pen-palette"><span class="page-pen-color-square" aria-hidden="true"></span></button>
+                  <div id="page-pen-palette" class="page-pen-popup page-pen-palette" role="menu" aria-label="Pen color" hidden>
+                    <button type="button" class="page-pen-swatch" data-pen-color="red" role="menuitemradio" aria-label="Red" aria-checked="true" tabindex="-1"></button>
+                    <button type="button" class="page-pen-swatch" data-pen-color="yellow" role="menuitemradio" aria-label="Yellow" aria-checked="false" tabindex="-1"></button>
+                    <button type="button" class="page-pen-swatch" data-pen-color="green" role="menuitemradio" aria-label="Green" aria-checked="false" tabindex="-1"></button>
+                    <button type="button" class="page-pen-swatch" data-pen-color="blue" role="menuitemradio" aria-label="Blue" aria-checked="false" tabindex="-1"></button>
+                    <button type="button" class="page-pen-swatch" data-pen-color="white" role="menuitemradio" aria-label="White" aria-checked="false" tabindex="-1"></button>
+                    <button type="button" class="page-pen-swatch" data-pen-color="black" role="menuitemradio" aria-label="Black" aria-checked="false" tabindex="-1"></button>
+                  </div>
+                </div>
+                <div class="page-pen-setting">
+                  <button id="page-pen-width-toggle" type="button" class="icon-button page-pen-tool" aria-label="Pen width" aria-expanded="false" aria-controls="page-pen-width-popup"><svg class="radix-icon" viewBox="0 0 15 15" aria-hidden="true"><path d="M2 3h11M2 7.5h11"/><path d="M2 12h11" stroke-width="3"/></svg></button>
+                  <div id="page-pen-width-popup" class="page-pen-popup page-pen-width-popup" hidden>
+                    <label for="page-pen-width" class="visually-hidden">Pen width</label>
+                    <input id="page-pen-width" type="range" min="2" max="32" value="8" aria-orientation="vertical" />
+                  </div>
+                </div>
+                <button id="page-pen-undo" type="button" class="icon-button page-pen-tool" aria-label="Undo" disabled><svg class="radix-icon" viewBox="0 0 15 15" aria-hidden="true"><path d="M5 3 1.5 6.5 5 10M2 6.5h7a4 4 0 0 1 0 8"/></svg></button>
+                <button id="page-pen-clear" type="button" class="icon-button page-pen-tool" aria-label="Clear" disabled><svg class="radix-icon" viewBox="0 0 15 15" aria-hidden="true"><path d="M2 4h11M5 4V2h5v2M3.5 4l.75 9h6.5l.75-9M6 6v5M9 6v5"/></svg></button>
+              </fieldset>
             </div>
             <button type="button" id="abort" class="stop-button" hidden>Stop</button>
             <button

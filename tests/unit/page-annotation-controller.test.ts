@@ -28,9 +28,10 @@ afterEach(() => {
 
 function setup() {
   dom = new JSDOM(`<button id="page-pen"></button>
-    <select id="page-pen-color">${["red", "yellow", "green", "blue", "white", "black"].map((color) => `<option value="${color}">${color}</option>`).join("")}</select>
-    <div id="page-pen-controls"><input id="page-pen-width" type="range" min="2" max="32">
-    <button id="page-pen-undo"></button><button id="page-pen-clear"></button><button id="page-pen-cancel"></button></div>`)
+    <div id="page-pen-controls"><button id="page-pen-color"></button>
+    <div id="page-pen-palette" role="menu" hidden>${["red", "yellow", "green", "blue", "white", "black"].map((color) => `<button data-pen-color="${color}" role="menuitemradio" tabindex="-1"></button>`).join("")}</div>
+    <button id="page-pen-width-toggle"></button><div id="page-pen-width-popup" hidden><input id="page-pen-width" type="range" min="2" max="32"></div>
+    <button id="page-pen-undo"></button><button id="page-pen-clear"></button></div>`)
   vi.stubGlobal("document", dom.window.document)
   let clientId = ""
   const request = vi.fn<typeof sendRuntimeRequest>(async (method, params): Promise<JsonValue> => {
@@ -94,11 +95,15 @@ function deferred<T>() {
 }
 
 describe("page annotation panel controller", () => {
-  test("renders native named palette and starts with fixed settings", async () => {
+  test("renders named color-only swatches and reveals tools only while drawing", async () => {
     const { controller, request, document, marks } = setup()
     expect(document.querySelector("#page-pen")?.getAttribute("aria-label")).toBe("Draw on page")
     expect(document.querySelector("#page-pen-color")?.getAttribute("aria-label")).toBe("Pen color")
-    expect([...document.querySelectorAll("option")].map((option) => option.textContent)).toEqual([
+    expect(document.querySelector<HTMLElement>("#page-pen-controls")?.hidden).toBe(true)
+    expect(document.querySelector("#page-pen-cancel")).toBeNull()
+    const swatches = [...document.querySelectorAll("[data-pen-color]")]
+    expect(swatches.every((swatch) => swatch.textContent === "")).toBe(true)
+    expect(swatches.map((swatch) => swatch.getAttribute("aria-label"))).toEqual([
       "Red",
       "Yellow",
       "Green",
@@ -177,9 +182,9 @@ describe("page annotation panel controller", () => {
   test("updates color and width through validated control actions", async () => {
     const { controller, request } = setup()
     await controller.toggle()
-    const colors = element<HTMLSelectElement>("page-pen-color")
-    colors.value = "blue"
-    colors.dispatchEvent(new dom.window.Event("change"))
+    const colors = element<HTMLButtonElement>("page-pen-color")
+    colors.click()
+    dom.window.document.querySelector<HTMLButtonElement>('[data-pen-color="blue"]')?.click()
     await vi.waitFor(() =>
       expect(request).toHaveBeenCalledWith(
         "pageAnnotation.update",
@@ -190,7 +195,7 @@ describe("page annotation panel controller", () => {
     await vi.waitFor(() => expect(controller.sendBlocked).toBe(false))
     const width = element<HTMLInputElement>("page-pen-width")
     width.value = "12"
-    width.dispatchEvent(new dom.window.Event("input"))
+    width.dispatchEvent(new dom.window.Event("change"))
     await vi.waitFor(() =>
       expect(request).toHaveBeenCalledWith(
         "pageAnnotation.update",
@@ -204,23 +209,150 @@ describe("page annotation panel controller", () => {
     const { controller, request } = setup()
     await controller.toggle()
     const original = getRequestImplementation(request)
-    const colors = element<HTMLSelectElement>("page-pen-color")
+    const colors = element<HTMLButtonElement>("page-pen-color")
     for (const moveFocus of [false, true]) {
       const gate = deferred<undefined>()
       request.mockImplementationOnce(async (...args): Promise<JsonValue> => {
         await gate.promise
         return original(...args)
       })
-      colors.focus()
-      colors.value = moveFocus ? "green" : "blue"
-      colors.dispatchEvent(new dom.window.Event("change"))
+      colors.click()
+      dom.window.document
+        .querySelector<HTMLButtonElement>(`[data-pen-color="${moveFocus ? "green" : "blue"}"]`)
+        ?.click()
       colors.blur()
-      const cancel = element<HTMLButtonElement>("page-pen-cancel")
-      if (moveFocus) cancel.focus()
+      const pen = element<HTMLButtonElement>("page-pen")
+      if (moveFocus) pen.focus()
       gate.resolve(undefined)
       await vi.waitFor(() => expect(controller.sendBlocked).toBe(false))
-      expect(dom.window.document.activeElement).toBe(moveFocus ? cancel : colors)
+      expect(dom.window.document.activeElement).toBe(moveFocus ? pen : colors)
     }
+  })
+
+  test("keeps native width input enabled through a drag and commits the final value once", async () => {
+    const { controller, request, marks } = setup()
+    await controller.toggle()
+    marks()
+    element<HTMLButtonElement>("page-pen-width-toggle").click()
+    const width = element<HTMLInputElement>("page-pen-width")
+    for (const value of [12, 20, 32]) {
+      width.value = String(value)
+      width.dispatchEvent(new dom.window.Event("input"))
+      expect(width.disabled).toBe(false)
+      expect(controller.sendBlocked).toBe(false)
+    }
+    expect(
+      request.mock.calls.filter(([method]) => method === "pageAnnotation.update"),
+    ).toHaveLength(0)
+    const gate = deferred<undefined>()
+    const original = getRequestImplementation(request)
+    request.mockImplementationOnce(async (...args): Promise<JsonValue> => {
+      await gate.promise
+      return original(...args)
+    })
+    width.dispatchEvent(new dom.window.Event("change"))
+    expect(controller.sendBlocked).toBe(true)
+    expect(width.disabled).toBe(true)
+    expect(
+      request.mock.calls.filter(([method]) => method === "pageAnnotation.update"),
+    ).toHaveLength(1)
+    expect(request).toHaveBeenLastCalledWith(
+      "pageAnnotation.update",
+      expect.objectContaining({ action: "width", width: 32 }),
+      { tabContext: context },
+    )
+    gate.resolve(undefined)
+    await vi.waitFor(() => expect(controller.sendBlocked).toBe(false))
+    expect(width.disabled).toBe(false)
+  })
+
+  test("restores focus to the width button if its popup closes while an update is pending", async () => {
+    const { controller, request } = setup()
+    await controller.toggle()
+    const toggle = element<HTMLButtonElement>("page-pen-width-toggle")
+    toggle.click()
+    const width = element<HTMLInputElement>("page-pen-width")
+    const gate = deferred<undefined>()
+    const original = getRequestImplementation(request)
+    request.mockImplementationOnce(async (...args): Promise<JsonValue> => {
+      await gate.promise
+      return original(...args)
+    })
+    width.value = "24"
+    width.dispatchEvent(new dom.window.Event("change"))
+    // jsdom does not move focus when it disables a native range.
+    dom.window.document.body.tabIndex = -1
+    dom.window.document.body.focus()
+    controller.closeToolsPopup()
+    gate.resolve(undefined)
+    await vi.waitFor(() => expect(controller.sendBlocked).toBe(false))
+    expect(dom.window.document.activeElement).toBe(toggle)
+  })
+
+  test("uses keyboard focus without changing color until a swatch is chosen", async () => {
+    const { controller, request } = setup()
+    await controller.toggle()
+    const trigger = element<HTMLButtonElement>("page-pen-color")
+    const palette = element<HTMLElement>("page-pen-palette")
+    trigger.click()
+    expect(controller.paletteOpen).toBe(true)
+    expect(dom.window.document.activeElement?.getAttribute("data-pen-color")).toBe("red")
+    palette.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "End", bubbles: true }))
+    expect(dom.window.document.activeElement?.getAttribute("data-pen-color")).toBe("black")
+    expect(trigger.dataset.color).toBe("red")
+    expect(
+      request.mock.calls.filter(([method]) => method === "pageAnnotation.update"),
+    ).toHaveLength(0)
+    palette.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }))
+    expect(controller.paletteOpen).toBe(false)
+    expect(controller.active).toBe(true)
+    expect(dom.window.document.activeElement).toBe(trigger)
+    trigger.click()
+    const selected = palette.querySelector<HTMLButtonElement>('[data-pen-color="black"]')
+    selected?.click()
+    await vi.waitFor(() => expect(controller.sendBlocked).toBe(false))
+    expect(trigger.dataset.color).toBe("black")
+    expect(selected?.getAttribute("aria-checked")).toBe("true")
+    expect(controller.paletteOpen).toBe(false)
+  })
+
+  test("keeps tool popups exclusive and hides the strip when the pen stops", async () => {
+    const { controller } = setup()
+    await controller.toggle()
+    const widthToggle = element<HTMLButtonElement>("page-pen-width-toggle")
+    widthToggle.click()
+    expect(element<HTMLElement>("page-pen-width-popup").hidden).toBe(false)
+    element<HTMLButtonElement>("page-pen-color").click()
+    expect(element<HTMLElement>("page-pen-width-popup").hidden).toBe(true)
+    expect(controller.paletteOpen).toBe(true)
+    widthToggle.click()
+    expect(controller.paletteOpen).toBe(false)
+    controller.closeToolsPopup()
+    expect(controller.toolsPopupOpen).toBe(false)
+    expect(dom.window.document.activeElement).toBe(widthToggle)
+    await controller.toggle()
+    expect(element<HTMLElement>("page-pen-controls").hidden).toBe(true)
+    expect(controller.toolsPopupOpen).toBe(false)
+  })
+
+  test("ignores a late control failure after the pen is cancelled", async () => {
+    const { controller, request, options } = setup()
+    await controller.toggle()
+    let rejectUpdate: (error: Error) => void = () => undefined
+    const pending = new Promise<JsonValue>((_resolve, reject) => {
+      rejectUpdate = reject
+    })
+    const original = getRequestImplementation(request)
+    request.mockImplementation(
+      async (...args): Promise<JsonValue> =>
+        args[0] === "pageAnnotation.update" ? pending : original(...args),
+    )
+    element<HTMLButtonElement>("page-pen-color").click()
+    dom.window.document.querySelector<HTMLButtonElement>('[data-pen-color="blue"]')?.click()
+    await controller.toggle()
+    rejectUpdate(new Error("old update failed"))
+    await vi.waitFor(() => expect(controller.sendBlocked).toBe(false))
+    expect(options.onError).not.toHaveBeenCalled()
   })
 
   test("empty drawing does not capture", async () => {

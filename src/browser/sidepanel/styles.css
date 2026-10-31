@@ -1464,11 +1464,62 @@ button.remove-pasted-image {
   max-width: 100%;
 }
 
-#page-pen-color {
-  width: 78px;
-  min-height: 34px;
-  padding: 4px;
-  font-size: 0.75rem;
+.page-pen-setting {
+  position: relative;
+  display: inline-flex;
+}
+
+.page-pen-tool {
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+}
+
+.page-pen-color-square {
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--text-muted);
+  background: var(--pen-color, #ef4444);
+  forced-color-adjust: none;
+}
+
+.page-pen-popup {
+  position: absolute;
+  z-index: 30;
+  right: 0;
+  bottom: calc(100% + 8px);
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.page-pen-popup[hidden] {
+  display: none;
+}
+
+.page-pen-palette {
+  display: grid;
+  grid-template-columns: repeat(3, 32px);
+  gap: 8px;
+}
+
+button.page-pen-swatch,
+button.page-pen-swatch:hover:not(:disabled) {
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+  border: 1px solid var(--text-muted);
+  border-radius: 3px;
+  background: var(--pen-color);
+  forced-color-adjust: none;
+}
+
+.page-pen-swatch[aria-checked="true"] {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
 }
 
 .page-pen-button {
@@ -1495,29 +1546,46 @@ button.remove-pasted-image {
   min-width: 0;
   margin: 0;
   border: 0;
-  display: flex;
-  flex-wrap: wrap;
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 4px;
-  font-size: 0.8rem;
+  gap: 2px;
+  padding: 0;
+  animation: reveal-pen-tools 140ms ease-out;
+}
+
+@keyframes reveal-pen-tools {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 .page-pen-controls[hidden] {
   display: none;
 }
 
-#page-pen-width {
-  width: 78px;
-  min-width: 0;
+.page-pen-width-popup {
+  display: grid;
+  place-items: center;
 }
 
-#page-pen-help {
-  flex-basis: 100%;
-  margin: 0;
-  color: var(--text-muted);
-  font-size: 0.75rem;
-  overflow-wrap: anywhere;
+#page-pen-width {
+  width: 32px;
+  height: 136px;
+  min-width: 0;
+  appearance: slider-vertical;
+  writing-mode: vertical-lr;
+  direction: rtl;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-pen-controls {
+    animation: none;
+  }
 }
 
 @media (forced-colors: active) {

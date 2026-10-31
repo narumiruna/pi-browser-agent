@@ -1483,6 +1483,12 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   document.addEventListener(
     "keydown",
     (event) => {
+      if (event.key === "Escape" && pageAnnotation?.toolsPopupOpen) {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        pageAnnotation.closeToolsPopup()
+        return
+      }
       if (event.key === "Escape" && (pageAnnotation?.occupied || annotationSubmissionAbort)) {
         event.preventDefault()
         event.stopImmediatePropagation()

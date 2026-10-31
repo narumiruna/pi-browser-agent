@@ -12,6 +12,9 @@ const PNG =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nL8AAAAASUVORK5CYII="
 type Probe = typeof globalThis & {
   annotationCaptureCount?: number
+  annotationWidthUpdates?: number[]
+  annotationWidthHeld?: boolean
+  annotationWidthDisabledWhileHeld?: boolean
   annotationCaptureEntered?: boolean
   annotationCaptureSettled?: boolean
   releaseAnnotationCapture?: () => void
@@ -64,6 +67,9 @@ test.afterEach(async () => {
 async function start(): Promise<void> {
   await harness.fixturePage.bringToFront()
   await expect(harness.controller.locator("#page-pen")).toBeEnabled()
+  await expect(harness.controller.locator("#page-pen-controls")).toBeHidden()
+  await expect(harness.controller.locator("#page-pen-color")).toBeHidden()
+  await expect(harness.controller.locator("#page-pen-width-toggle")).toBeHidden()
   await harness.controller.locator("#page-pen").click()
   await expect(harness.fixturePage.locator(HOST))
     .toHaveCount(1)
@@ -75,7 +81,13 @@ async function start(): Promise<void> {
       )
       throw error
     })
+  await expect(harness.controller.locator("#page-pen-controls")).toBeVisible()
+  await expect(harness.controller.locator("#page-pen-color")).toBeVisible()
+  await expect(harness.controller.locator("#page-pen-width-toggle")).toBeVisible()
   await expect(harness.controller.locator("#page-pen-width")).toBeEnabled()
+  for (const id of ["page-pen-color", "page-pen-width-toggle", "page-pen-undo", "page-pen-clear"])
+    await expect(harness.controller.locator(`#${id}`)).toHaveText("")
+  await expect(harness.controller.locator("#page-pen-cancel")).toHaveCount(0)
   await expect(harness.controller.locator("#page-pen")).toHaveAttribute("aria-pressed", "true")
 }
 
@@ -94,6 +106,18 @@ async function stroke(y = 130): Promise<void> {
   await page.mouse.up()
   await expect(harness.controller.locator("#page-pen-undo")).toBeEnabled()
   await expect(harness.controller.locator("#send")).toBeEnabled()
+}
+
+async function chooseColor(color: string): Promise<void> {
+  const trigger = harness.controller.locator("#page-pen-color")
+  await trigger.click()
+  await expect(trigger).toHaveAttribute("aria-expanded", "true")
+  await harness.controller.locator(`#page-pen-palette [data-pen-color="${color}"]`).click()
+  await expect(trigger).toHaveAttribute("data-color", color)
+  await expect(trigger).toHaveAttribute("aria-expanded", "false")
+  await expect(harness.controller.locator("#page-pen-palette")).toBeHidden()
+  await expect(trigger).toBeEnabled()
+  await expect(trigger).toBeFocused()
 }
 
 async function captures(): Promise<number | undefined> {
@@ -178,6 +202,93 @@ async function releaseCapture(): Promise<void> {
     .toBe(true)
 }
 
+test("commits native width drag once on release and draws with the final width", async () => {
+  await start()
+  const page = harness.controller
+  const width = page.locator("#page-pen-width")
+  await page.locator("#page-pen-width-toggle").click()
+  await expect(page.locator("#page-pen-width-popup")).toBeVisible()
+  await expect(width).toBeVisible()
+  await page.evaluate(() => {
+    const state = globalThis as Probe
+    state.annotationWidthUpdates = []
+    state.annotationWidthDisabledWhileHeld = false
+    const range = document.querySelector<HTMLInputElement>("#page-pen-width")
+    if (!range) throw new Error("Missing pen width")
+    new MutationObserver(() => {
+      if (state.annotationWidthHeld && range.disabled) state.annotationWidthDisabledWhileHeld = true
+    }).observe(range, { attributes: true, attributeFilter: ["disabled"] })
+    const original = chrome.runtime.sendMessage.bind(chrome.runtime)
+    chrome.runtime.sendMessage = ((message: {
+      method?: string
+      params?: { action?: string; width?: number }
+    }) => {
+      if (message.method === "pageAnnotation.update" && message.params?.action === "width")
+        state.annotationWidthUpdates?.push(message.params.width as number)
+      return original(message)
+    }) as typeof chrome.runtime.sendMessage
+  })
+  const box = await width.boundingBox()
+  if (!box) throw new Error("Missing pen width geometry")
+  // Start on the vertical native thumb, then drag from bottom to top while held.
+  expect(box.height).toBeGreaterThan(box.width)
+  const thumbRadius = 8
+  const bottom = box.y + box.height - thumbRadius
+  const travel = box.height - thumbRadius * 2
+  const x = box.x + box.width / 2
+  await page.mouse.move(x, bottom - travel * ((8 - 2) / (32 - 2)))
+  await page.evaluate(() => {
+    ;(globalThis as Probe).annotationWidthHeld = true
+  })
+  await page.mouse.down()
+  try {
+    for (const fraction of [0.35, 0.5, 0.7, 0.85, 1]) {
+      await page.mouse.move(x, bottom - travel * fraction, { steps: 3 })
+      await expect(width).toBeEnabled()
+      expect(
+        await page.evaluate(() => (globalThis as Probe).annotationWidthDisabledWhileHeld),
+      ).toBe(false)
+    }
+    await expect(width).toHaveValue("32")
+    expect(await page.evaluate(() => (globalThis as Probe).annotationWidthUpdates)).toEqual([])
+  } finally {
+    await page.evaluate(() => {
+      ;(globalThis as Probe).annotationWidthHeld = false
+    })
+    await page.mouse.up()
+  }
+  await expect(width).toBeEnabled()
+  await expect
+    .poll(() => page.evaluate(() => (globalThis as Probe).annotationWidthUpdates))
+    .toEqual([32])
+  await stroke(240)
+  await page.locator("#send").click()
+  await complete()
+  expect(requests).toHaveLength(1)
+  expect(await captures()).toBe(1)
+  const urls = imageUrls(requests[0])
+  expect(urls).toHaveLength(1)
+  const pixels = await harness.fixturePage.evaluate(async (source) => {
+    const image = new Image()
+    image.src = source
+    await image.decode()
+    const canvas = document.createElement("canvas")
+    canvas.width = image.width
+    canvas.height = image.height
+    const paint = canvas.getContext("2d")
+    if (!paint) throw new Error("Missing PNG decoder")
+    paint.drawImage(image, 0, 0)
+    const sample = (y: number) => [
+      ...paint.getImageData((200 * image.width) / 1000, (y * image.height) / 700, 1, 1).data,
+    ]
+    return { inside: sample(252), outside: sample(258) }
+  }, urls[0] as string)
+  expect(pixels.inside).toEqual([239, 68, 68, 255])
+  expect(pixels.outside).toEqual([252, 252, 252, 255])
+  expect(await page.evaluate(() => (globalThis as Probe).annotationWidthUpdates)).toEqual([32])
+  expect(harness.pageErrors).toEqual([])
+})
+
 test("sends marks alone as one colored PNG, clears the draft, and restores only the sent image", async () => {
   await harness.fixturePage.evaluate(() => {
     document.documentElement.style.zoom = "0.9"
@@ -187,8 +298,7 @@ test("sends marks alone as one colored PNG, clears the draft, and restores only 
   expect(await captures()).toBe(0)
   expect(requests).toHaveLength(0)
   await stroke()
-  await harness.controller.locator("#page-pen-color").selectOption("blue")
-  await expect(harness.controller.locator("#page-pen-color")).toBeEnabled()
+  await chooseColor("blue")
   await stroke(210)
   await harness.fixturePage.mouse.click(180, 140, { button: "right" })
   await harness.fixturePage.mouse.wheel(0, 250)
@@ -234,8 +344,7 @@ test("sends marks alone as one colored PNG, clears the draft, and restores only 
 test("sends optional text with exactly one annotated input image", async () => {
   await harness.controller.locator("#prompt").fill("Review the blue mark.")
   await start()
-  await harness.controller.locator("#page-pen-color").selectOption("blue")
-  await expect(harness.controller.locator("#page-pen-color")).toBeEnabled()
+  await chooseColor("blue")
   await stroke()
   await harness.controller.locator("#send").click()
   await complete()
@@ -478,7 +587,7 @@ test("cleans the original drawing after an MV3 worker restart and a window switc
     await otherPage.close()
     await start()
     await stroke(210)
-    await harness.controller.locator("#page-pen-cancel").click()
+    await harness.controller.locator("#page-pen").click()
     await stopped()
   } finally {
     await otherPage.close().catch(() => undefined)
@@ -566,11 +675,22 @@ test("does not offer drawing for a text-only model", async () => {
   await expect(harness.fixturePage.locator(HOST)).toHaveCount(0)
   expect(await captures()).toBe(0)
   expect(requests).toHaveLength(0)
+  await expect(harness.controller.locator("#page-pen-controls")).toBeHidden()
+  await expect(harness.controller.locator("#page-pen-color")).toBeHidden()
+  await expect(harness.controller.locator("#page-pen-width-toggle")).toBeHidden()
 })
 
 async function reachable(page: Page): Promise<void> {
+  const penBox = await page.locator("#page-pen").boundingBox()
+  const stripBox = await page.locator("#page-pen-controls").boundingBox()
+  if (!penBox || !stripBox) throw new Error("Missing pen tool strip geometry")
+  expect(stripBox.x).toBeGreaterThanOrEqual(penBox.x + penBox.width)
+  expect(stripBox.x - penBox.x - penBox.width).toBeLessThanOrEqual(8)
+  expect(
+    Math.abs(stripBox.y + stripBox.height / 2 - penBox.y - penBox.height / 2),
+  ).toBeLessThanOrEqual(1)
   const controls = page.locator(
-    "#page-pen, #page-pen-color, #page-pen-width, #page-pen-undo, #page-pen-clear, #page-pen-cancel, #send",
+    "#page-pen, #page-pen-color, #page-pen-palette [data-pen-color]:visible, #page-pen-width-toggle, #page-pen-width:visible, #page-pen-undo, #page-pen-clear, #send",
   )
   for (const control of await controls.all()) {
     await expect(control).toHaveAccessibleName(/\S/)
@@ -591,7 +711,53 @@ async function reachable(page: Page): Promise<void> {
   ).toBe(true)
 }
 
-test("records narrow UI evidence with named reachable controls and native palette keyboard operation", async () => {
+async function paletteState(page: Page, selected: string, translated = false): Promise<void> {
+  const trigger = page.locator("#page-pen-color")
+  const palette = page.locator("#page-pen-palette")
+  await expect(trigger).toHaveRole("button")
+  await expect(trigger).toHaveAccessibleName(translated ? "筆觸顏色" : "Pen color")
+  await expect(trigger).toHaveAttribute("aria-haspopup", "menu")
+  await expect(trigger).toHaveAttribute("data-color", selected)
+  await expect(trigger).toHaveText("")
+  await expect(palette).toHaveRole("menu")
+  await expect(palette.locator("button")).toHaveCount(6)
+  const names = translated
+    ? ["紅色", "黃色", "綠色", "藍色", "白色", "黑色"]
+    : ["Red", "Yellow", "Green", "Blue", "White", "Black"]
+  const fills: Record<string, string> = {
+    red: "rgb(239, 68, 68)",
+    yellow: "rgb(234, 179, 8)",
+    green: "rgb(34, 197, 94)",
+    blue: "rgb(59, 130, 246)",
+    white: "rgb(255, 255, 255)",
+    black: "rgb(0, 0, 0)",
+  }
+  await expect(trigger.locator(".page-pen-color-square")).toHaveCSS(
+    "background-color",
+    fills[selected] as string,
+  )
+  for (const [index, color] of ["red", "yellow", "green", "blue", "white", "black"].entries()) {
+    const swatch = palette.locator(`[data-pen-color="${color}"]`)
+    await expect(swatch).toHaveRole("menuitemradio")
+    await expect(swatch).toHaveAccessibleName(names[index] as string)
+    await expect(swatch).toHaveAttribute("aria-label", names[index] as string)
+    await expect(swatch).toHaveAttribute("aria-checked", String(color === selected))
+    await expect(swatch).toHaveText("")
+    await expect(swatch).toHaveCSS("background-color", fills[color] as string)
+    if (color === selected) {
+      await expect(swatch).toHaveCSS("outline-style", "solid")
+      await expect(swatch).not.toHaveCSS("outline-width", "0px")
+    }
+    // Text-empty buttons must render squares, not a text list or empty hit targets.
+    const box = await swatch.boundingBox()
+    if (!box) throw new Error("Missing color swatch geometry")
+    expect(box.width).toBeGreaterThan(0)
+    expect(Math.abs(box.width - box.height)).toBeLessThanOrEqual(1)
+  }
+  await expect(palette).toHaveText("")
+}
+
+test("records narrow UI evidence with color-only named swatches and palette keyboard operation", async () => {
   test.setTimeout(90_000)
   await start()
   await stroke()
@@ -609,25 +775,95 @@ test("records narrow UI evidence with named reachable controls and native palett
             )
             await expect(page.locator("html")).toHaveCSS("font-size", `${fontSize}px`)
             await reachable(page)
+            await page.locator("#page-pen-width-toggle").click()
+            await expect(page.locator("#page-pen-width-popup")).toBeVisible()
+            const range = page.locator("#page-pen-width")
+            await expect(range).toBeVisible()
+            const rangeBox = await range.boundingBox()
+            if (!rangeBox) throw new Error("Missing vertical pen width geometry")
+            expect(rangeBox.height).toBeGreaterThan(rangeBox.width)
+            await reachable(page)
+            await page.keyboard.press("Escape")
+            await expect(page.locator("#page-pen-width-popup")).toBeHidden()
+            await expect(harness.fixturePage.locator(HOST)).toHaveCount(1)
             const colors = page.locator("#page-pen-color")
-            await colors.focus()
-            await expect(colors).toBeFocused()
-            await colors.press("Home")
-            await expect(colors).toHaveValue("red")
-            await expect(colors).toBeEnabled()
+            const palette = page.locator("#page-pen-palette")
+            const swatch = (color: string) => palette.locator(`[data-pen-color="${color}"]`)
+            await expect(palette).toBeHidden()
+            await chooseColor("blue")
             await colors.press("ArrowDown")
-            await expect(colors).toHaveValue("yellow")
+            await expect(colors).toHaveAttribute("aria-expanded", "true")
+            await expect(palette).toBeVisible()
+            await paletteState(page, "blue")
+            await reachable(page)
+            // Navigation changes focus only. Selection waits for explicit activation.
+            for (const [key, color] of [
+              ["Home", "red"],
+              ["ArrowRight", "yellow"],
+              ["ArrowDown", "green"],
+              ["ArrowLeft", "yellow"],
+              ["ArrowUp", "red"],
+              ["ArrowUp", "black"],
+              ["Home", "red"],
+              ["End", "black"],
+              ["ArrowDown", "red"],
+              ["ArrowDown", "yellow"],
+            ]) {
+              await page.keyboard.press(key as string)
+              await expect(swatch(color as string)).toBeFocused()
+              await expect(colors).toHaveAttribute("data-color", "blue")
+              await expect(swatch("blue")).toHaveAttribute("aria-checked", "true")
+              await expect(swatch("yellow")).toHaveAttribute("aria-checked", "false")
+            }
+            await page.keyboard.press("Enter")
+            await expect(palette).toBeHidden()
+            await expect(colors).toHaveAttribute("aria-expanded", "false")
+            await expect(colors).toHaveAttribute("data-color", "yellow")
             await expect(colors).toBeEnabled()
-            await colors.press("End")
-            await expect(colors).toHaveValue("black")
-            await expect(colors).toBeEnabled()
-            await expect(colors.locator("option:checked")).toHaveText("Black")
             await expect(colors).toBeFocused()
+            await colors.press("ArrowUp")
+            await expect(palette).toBeVisible()
+            await paletteState(page, "yellow")
+            await page.keyboard.press("End")
+            await expect(swatch("black")).toBeFocused()
+            await page.keyboard.press("Space")
+            await expect(palette).toBeHidden()
+            await expect(colors).toHaveAttribute("aria-expanded", "false")
+            await expect(colors).toHaveAttribute("data-color", "black")
+            await expect(colors).toBeEnabled()
+            await expect(colors).toBeFocused()
+            await colors.click()
+            await paletteState(page, "black")
+            await reachable(page)
             await page.screenshot({
               path: test
                 .info()
                 .outputPath(`pen-${width}-${fontSize}-${colorScheme}-${forcedColors}.png`),
             })
+            await page.keyboard.press("Escape")
+            await expect(palette).toBeHidden()
+            await expect(colors).toHaveAttribute("aria-expanded", "false")
+            await expect(colors).toBeFocused()
+            await expect(harness.fixturePage.locator(HOST)).toHaveCount(1)
+            await expect(page.locator("#page-pen-undo")).toBeEnabled()
+            await colors.press("ArrowDown")
+            await expect(palette).toBeVisible()
+            await page.keyboard.press("Tab")
+            await expect(palette).toBeHidden()
+            await expect(page.locator("#page-pen-width-toggle")).toBeFocused()
+            await page.keyboard.press("Enter")
+            await expect(page.locator("#page-pen-width-popup")).toBeVisible()
+            await expect(range).toBeFocused()
+            await page.keyboard.press("Tab")
+            await expect(page.locator("#page-pen-width-popup")).toBeHidden()
+            await expect(page.locator("#page-pen-undo")).toBeFocused()
+            await colors.focus()
+            await colors.press("ArrowUp")
+            await expect(palette).toBeVisible()
+            await page.keyboard.press("Shift+Tab")
+            await expect(palette).toBeHidden()
+            await expect(page.locator("#page-pen")).toBeFocused()
+            await expect(harness.fixturePage.locator(HOST)).toHaveCount(1)
           })
         }
       }
@@ -647,12 +883,25 @@ test("records narrow UI evidence with named reachable controls and native palett
   })
   await expect(page.locator("html")).toHaveAttribute("lang", "en")
   await expect(page.locator("#page-pen")).toHaveAccessibleName("Cancel page drawing")
-  await page.locator("#page-pen-cancel").focus()
+  await page.locator("#page-pen-color").click()
+  await paletteState(page, "black")
+  await page.keyboard.press("Escape")
+  await expect(page.locator("#page-pen-palette")).toBeHidden()
+  await expect(harness.fixturePage.locator(HOST)).toHaveCount(1)
+  await page.locator("#page-pen").focus()
   await page.keyboard.press("Enter")
   await stopped()
   await expect(page.locator("html")).toHaveAttribute("lang", "zh-TW")
   await expect(page.locator("#page-pen")).toHaveAccessibleName("在頁面上繪圖")
+  await start()
   await expect(page.locator("#page-pen-color")).toHaveAccessibleName("筆觸顏色")
+  await page.locator("#page-pen-color").click()
+  await paletteState(page, "black", true)
+  await page.keyboard.press("Escape")
+  await expect(page.locator("#page-pen-palette")).toBeHidden()
+  await expect(harness.fixturePage.locator(HOST)).toHaveCount(1)
+  await page.keyboard.press("Escape")
+  await stopped()
   await expect(page.locator("#prompt")).toHaveValue("Keep this unsent drawing draft")
   await expect(page.locator("#pasted-images img")).toHaveAttribute("src", preview as string)
   expect(requests).toHaveLength(0)

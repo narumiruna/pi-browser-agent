@@ -42,12 +42,17 @@ function record(value: unknown): value is Record<string, unknown> {
 /** Owns the panel controls; editable strokes remain in the isolated page world. */
 export class PageAnnotationController {
   private readonly button = element<HTMLButtonElement>("page-pen")
-  private readonly colors = element<HTMLSelectElement>("page-pen-color")
+  private readonly colors = element<HTMLButtonElement>("page-pen-color")
+  private readonly palette = element<HTMLElement>("page-pen-palette")
+  private readonly swatches = Array.from(
+    this.palette.querySelectorAll<HTMLButtonElement>("[data-pen-color]"),
+  )
   private readonly controls = element<HTMLElement>("page-pen-controls")
   private readonly width = element<HTMLInputElement>("page-pen-width")
+  private readonly widthToggle = element<HTMLButtonElement>("page-pen-width-toggle")
+  private readonly widthPopup = element<HTMLElement>("page-pen-width-popup")
   private readonly undo = element<HTMLButtonElement>("page-pen-undo")
   private readonly clear = element<HTMLButtonElement>("page-pen-clear")
-  private readonly cancel = element<HTMLButtonElement>("page-pen-cancel")
   private readonly request: typeof sendRuntimeRequest
   private state: PageAnnotationState = { active: false }
   private clientId?: string
@@ -64,18 +69,87 @@ export class PageAnnotationController {
   constructor(private readonly options: PageAnnotationOptions) {
     this.request = options.request ?? sendRuntimeRequest
     this.button.addEventListener("click", () => this.run(() => this.toggle()))
-    this.colors.addEventListener("change", () => {
-      if (!isPageAnnotationColor(this.colors.value)) return
-      this.color = this.colors.value
-      this.render()
-      if (this.active) this.run(() => this.update({ action: "color", color: this.color }))
+    this.palette.hidden = true
+    this.widthPopup.hidden = true
+    this.widthToggle.addEventListener("click", () => {
+      if (!this.widthPopup.hidden) this.closeWidth()
+      else {
+        this.closePalette(false)
+        this.widthPopup.hidden = false
+        this.widthToggle.setAttribute("aria-expanded", "true")
+        this.width.focus({ preventScroll: true })
+        this.options.onChange()
+      }
     })
-    this.width.addEventListener("input", () => {
+    this.colors.addEventListener("click", () => {
+      if (this.paletteOpen) this.closePalette()
+      else this.openPalette()
+    })
+    this.colors.addEventListener("keydown", (event) => {
+      if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return
+      event.preventDefault()
+      this.openPalette()
+    })
+    for (const swatch of this.swatches)
+      swatch.addEventListener("click", () => {
+        const color = swatch.dataset.penColor
+        if (!isPageAnnotationColor(color) || swatch.disabled) return
+        this.color = color
+        this.closePalette()
+        this.render()
+        if (this.active) this.run(() => this.update({ action: "color", color }))
+      })
+    this.palette.addEventListener("keydown", (event) => {
+      if (event.key === "Tab") {
+        this.closePalette()
+        return
+      }
+      if (event.key === "Escape") {
+        event.preventDefault()
+        event.stopPropagation()
+        this.closePalette()
+        return
+      }
+      const index = this.swatches.indexOf(document.activeElement as HTMLButtonElement)
+      let next: number
+      if (["ArrowRight", "ArrowDown"].includes(event.key)) next = (index + 1) % this.swatches.length
+      else if (["ArrowLeft", "ArrowUp"].includes(event.key))
+        next = (index + this.swatches.length - 1) % this.swatches.length
+      else if (event.key === "Home") next = 0
+      else if (event.key === "End") next = this.swatches.length - 1
+      else return
+      event.preventDefault()
+      this.swatches[next]?.focus()
+    })
+    document.addEventListener("pointerdown", (event) => {
+      if (
+        event.target &&
+        !this.palette.contains(event.target as Node) &&
+        !this.colors.contains(event.target as Node)
+      )
+        this.closePalette(false)
+      if (
+        event.target &&
+        !this.widthPopup.contains(event.target as Node) &&
+        !this.widthToggle.contains(event.target as Node)
+      )
+        this.closeWidth(false)
+    })
+    this.widthPopup.addEventListener("keydown", (event) => {
+      if (event.key === "Tab") {
+        this.closeWidth()
+        return
+      }
+      if (event.key !== "Escape") return
+      event.preventDefault()
+      event.stopPropagation()
+      this.closeWidth()
+    })
+    this.width.addEventListener("change", () => {
       this.run(() => this.update({ action: "width", width: Number(this.width.value) }))
     })
     this.undo.addEventListener("click", () => this.run(() => this.update({ action: "undo" })))
     this.clear.addEventListener("click", () => this.run(() => this.update({ action: "clear" })))
-    this.cancel.addEventListener("click", () => this.run(() => this.stop()))
     this.width.value = String(PAGE_ANNOTATION_LIMITS.defaultPenWidth)
     this.render()
   }
@@ -107,6 +181,44 @@ export class PageAnnotationController {
     return this.context
   }
 
+  get paletteOpen(): boolean {
+    return !this.palette.hidden
+  }
+
+  get toolsPopupOpen(): boolean {
+    return this.paletteOpen || !this.widthPopup.hidden
+  }
+
+  closeToolsPopup(restoreFocus = true): void {
+    this.closePalette(restoreFocus)
+    this.closeWidth(restoreFocus)
+  }
+
+  private closeWidth(restoreFocus = true): void {
+    if (this.widthPopup.hidden) return
+    this.widthPopup.hidden = true
+    this.widthToggle.setAttribute("aria-expanded", "false")
+    if (restoreFocus && !this.widthToggle.disabled) this.widthToggle.focus({ preventScroll: true })
+    this.options.onChange()
+  }
+
+  closePalette(restoreFocus = true): void {
+    if (!this.paletteOpen) return
+    this.palette.hidden = true
+    this.colors.setAttribute("aria-expanded", "false")
+    if (restoreFocus && !this.colors.disabled) this.colors.focus({ preventScroll: true })
+    this.options.onChange()
+  }
+
+  private openPalette(): void {
+    if (this.colors.disabled) return
+    this.closeWidth(false)
+    this.palette.hidden = false
+    this.colors.setAttribute("aria-expanded", "true")
+    this.swatches.find((swatch) => swatch.dataset.penColor === this.color)?.focus()
+    this.options.onChange()
+  }
+
   refresh(): void {
     this.render()
   }
@@ -124,25 +236,49 @@ export class PageAnnotationController {
     this.button.ariaLabel = this.button.title = t(
       this.occupied ? "Cancel page drawing" : "Draw on page",
     )
+    if (this.occupied)
+      this.button.title += `\n${t("Page content can move beneath your marks. Send captures only the visible area.")}`
     this.button.setAttribute("aria-pressed", String(this.occupied))
     this.button.style.setProperty("--pen-color", PAGE_ANNOTATION_COLORS[this.color])
     this.button.disabled = !this.occupied && !this.options.canStart()
     this.colors.ariaLabel = t("Pen color")
-    this.colors.value = this.color
+    this.colors.dataset.color = this.color
+    this.colors.setAttribute("aria-description", t(colorLabels[this.color]))
+    this.colors.style.setProperty("--pen-color", PAGE_ANNOTATION_COLORS[this.color])
     this.colors.disabled =
+      !this.active ||
       this.starting ||
       this.updating ||
       this.capturing ||
       this.cleanupRequired ||
       (this.state.active && this.state.drawing)
-    for (const option of this.colors.options) {
-      if (isPageAnnotationColor(option.value)) option.textContent = t(colorLabels[option.value])
+    if (this.colors.disabled) this.palette.hidden = true
+    this.colors.setAttribute("aria-expanded", String(this.paletteOpen))
+    this.palette.ariaLabel = t("Pen color")
+    for (const swatch of this.swatches) {
+      const color = swatch.dataset.penColor
+      if (!isPageAnnotationColor(color)) continue
+      swatch.ariaLabel = t(colorLabels[color])
+      swatch.setAttribute("aria-checked", String(color === this.color))
+      swatch.style.setProperty("--pen-color", PAGE_ANNOTATION_COLORS[color])
+      swatch.disabled = this.colors.disabled
     }
     this.controls.hidden = !this.occupied
     this.controls.ariaLabel = t("Page drawing controls")
-    this.width.disabled = !this.active || this.sendBlocked
+    this.width.disabled = this.widthToggle.disabled = !this.active || this.sendBlocked
+    this.widthToggle.ariaLabel = t("Pen width")
+    this.widthToggle.setAttribute("aria-description", String(this.width.value))
+    if (
+      !this.active ||
+      this.capturing ||
+      this.cleanupRequired ||
+      (this.state.active && this.state.drawing)
+    )
+      this.widthPopup.hidden = true
+    this.widthToggle.setAttribute("aria-expanded", String(!this.widthPopup.hidden))
+    this.undo.ariaLabel = t("Undo")
+    this.clear.ariaLabel = t("Clear")
     this.undo.disabled = this.clear.disabled = !this.hasMarks || this.sendBlocked
-    this.cancel.disabled = this.stopping !== undefined
   }
 
   async toggle(): Promise<void> {
@@ -230,16 +366,20 @@ export class PageAnnotationController {
       const state = parsePageAnnotationState(result.state)
       if (!this.state.active || !state.active || state.revision >= this.state.revision)
         this.state = state
+    } catch (error) {
+      if (generation === this.generation) throw error
     } finally {
       this.updating = false
       this.changed()
+      const restoreTarget =
+        focusedControl === this.width && this.widthPopup.hidden ? this.widthToggle : focusedControl
       if (
         generation === this.generation &&
-        focusedControl &&
-        !focusedControl.disabled &&
+        restoreTarget &&
+        !restoreTarget.disabled &&
         document.activeElement === document.body
       )
-        focusedControl.focus({ preventScroll: true })
+        restoreTarget.focus({ preventScroll: true })
     }
   }
 
@@ -322,6 +462,7 @@ export class PageAnnotationController {
   }
 
   async stop(cancelSubmission = true): Promise<void> {
+    this.closeToolsPopup(false)
     if (cancelSubmission) this.options.onCancel()
     ++this.generation
     this.starting = false

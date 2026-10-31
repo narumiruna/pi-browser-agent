@@ -8,10 +8,11 @@ See [automated evidence and external handoff](manual-acceptance.md#page-annotati
 
 1. Open an accessible HTTP or HTTPS page in the active tab of the focused Chrome window.
 2. Wait until the conversation is idle. Drawing cannot run with element selection, dictation, commands, or session navigation.
-3. Select **Draw on page** in the Side Panel. Approve exact current-site access if requested.
-4. Select a pen color and **Pen width**, then draw on the page. Use **Undo**, **Clear**, or **Cancel** in the Side Panel.
+3. Select **Draw on page** in the Side Panel. Approve exact current-site access if requested. A compact tool strip appears to the right of the pen.
+4. Select the color-square button to open six swatches. Select the width button to open a vertical slider. Drag the slider and release it to apply the final width.
+5. Draw on the page. Use the Undo or Clear icons as needed. Select the active pen again to stop; there is no separate Cancel button.
 
-All controls remain in the Side Panel, outside the captured tab. The palette offers red, yellow, green, blue, white, and black. Each color has a translated name and selected state; color alone must not identify the selection. Interface language changes wait until drawing and submission finish.
+All controls remain in the Side Panel, outside the captured tab. The palette shows red, yellow, green, blue, white, and black squares without visible color names. Each swatch has a translated accessible name, a checked state, and a selection outline. Arrow keys and Home/End move menu focus; Enter or Space selects the focused color. Escape closes an open color or width popup first. Interface language changes wait until drawing and submission finish.
 
 The surface is a live overlay, not a frozen screenshot. Page scripts and animations can move content beneath the marks. Marks do not follow elements. There is no automatic DOM tracking, selection or dragging of existing marks, shape tool, text box, or change to page-owned content, layout, root styles, dialogs, or popovers. The owned drawing surface is removed during cleanup.
 
@@ -36,7 +37,7 @@ Capture creates one ordinary validated PNG attachment with one immutable ID. It 
 
 ## Cancel and lifetime
 
-Press **Esc** in the page or panel, select **Cancel**, or select the active drawing button again to discard unsent marks without sending. Drawing also stops on navigation, same-URL reload, SPA context change, tab/window change, scroll, viewport or zoom change, access revocation, panel disconnect, worker restart, expiry, or loss/change of protection.
+Select the active drawing button again to discard unsent marks without sending. **Esc** in the page also cancels drawing. In the panel, **Esc** closes an open tool popup first; with no popup open, it cancels drawing. Drawing also stops on navigation, same-URL reload, SPA context change, tab/window change, scroll, viewport or zoom change, access revocation, panel disconnect, worker restart, expiry, or loss/change of protection.
 
 Cancellation invalidates pending capture and submission. A late capture or permission reply must not send a cancelled draft. Cleanup is idempotent and restores earlier page focus only while the owned surface still has focus.
 
