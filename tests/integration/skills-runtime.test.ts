@@ -415,6 +415,41 @@ describe("browser skills runtime", () => {
     },
   )
 
+  test("rechecks a captured-image submission guard after deferred preparation", async () => {
+    const runtime = createRuntime()
+    await runtime.initialize()
+    const entered = deferred()
+    const release = deferred()
+    vi.spyOn(SkillStore.prototype, "list").mockImplementationOnce(async () => {
+      entered.resolve()
+      await release.promise
+      return []
+    })
+    const prompt = vi.spyOn(runtime.agent, "prompt").mockResolvedValue()
+    let valid = true
+    const guard = () => {
+      if (!valid) throw new Error("Annotation submission cancelled")
+    }
+    const pending = runtime.submit(
+      "Marked page",
+      "steer",
+      [{ type: "image", mimeType: "image/png", data: "cGl4ZWxz" }],
+      [],
+      true,
+      guard,
+    )
+    const rejected = expect(pending).rejects.toThrow("Annotation submission cancelled")
+    await entered.promise
+    valid = false
+    release.resolve()
+    await rejected
+    expect(prompt).not.toHaveBeenCalled()
+    expect(runtime.agent.state.messages.filter((message) => message.role === "user")).toHaveLength(
+      0,
+    )
+    expect(runtime.isPreparing).toBe(false)
+  })
+
   test.each(["disable", "delete"] as const)(
     "persists a real model-requested body without replay; restored history cannot authorize a %sd skill",
     async (operation) => {

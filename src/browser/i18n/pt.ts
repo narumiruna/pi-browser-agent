@@ -1,6 +1,37 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Draw on page": "Desenhar na página",
+  "Cancel page drawing": "Cancelar desenho na página",
+  "Pen color": "Cor da caneta",
+  "Page drawing controls": "Controlos de desenho na página",
+  Red: "Vermelho",
+  Yellow: "Amarelo",
+  Green: "Verde",
+  Blue: "Azul",
+  White: "Branco",
+  Black: "Preto",
+  "Page content can move beneath your marks. Send captures only the visible area.":
+    "O conteúdo da página pode mover-se por baixo das suas marcas. O envio captura apenas a área visível.",
+  "Wait for the current operation to finish before drawing":
+    "Aguarde a conclusão da operação atual antes de desenhar",
+  "Open an HTTP or HTTPS page before drawing": "Abra uma página HTTP ou HTTPS antes de desenhar",
+  "Site access is required to draw on this page":
+    "É necessário acesso ao site para desenhar nesta página",
+  "The page changed before drawing could start. Start drawing again.":
+    "A página mudou antes de ser possível começar a desenhar. Inicie o desenho novamente.",
+  "Page drawing could not start. Reload the page and try again.":
+    "Não foi possível iniciar o desenho na página. Recarregue a página e tente novamente.",
+  "Page drawing stopped because the page or its protection changed. Start drawing again.":
+    "O desenho parou porque a página ou a respetiva proteção mudou. Inicie o desenho novamente.",
+  "Could not capture page drawing. Your marks were kept when safe. Try again.":
+    "Não foi possível capturar o desenho na página. As suas marcas foram mantidas quando era seguro fazê-lo. Tente novamente.",
+  "Could not confirm drawing cleanup. Reload the page before sending.":
+    "Não foi possível confirmar a remoção da superfície de desenho. Recarregue a página antes de enviar.",
+  "Add a mark before sending page drawing":
+    "Adicione uma marca antes de enviar o desenho da página",
+  "Page drawing limit reached. Undo or clear some marks.":
+    "Foi atingido o limite de desenho na página. Anule ou apague algumas marcas.",
   "Paste a PNG, JPEG, WebP, or GIF image": "Cole uma imagem PNG, JPEG, WebP ou GIF",
   "The pasted image is empty": "A imagem colada está vazia",
   "Pasted images must use 3 MB or less in total":

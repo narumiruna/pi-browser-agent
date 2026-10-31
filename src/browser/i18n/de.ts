@@ -1,6 +1,38 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Draw on page": "Auf der Seite zeichnen",
+  "Cancel page drawing": "Zeichnen auf der Seite abbrechen",
+  "Pen color": "Stiftfarbe",
+  "Page drawing controls": "Steuerelemente zum Zeichnen auf der Seite",
+  Red: "Rot",
+  Yellow: "Gelb",
+  Green: "Grün",
+  Blue: "Blau",
+  White: "Weiß",
+  Black: "Schwarz",
+  "Page content can move beneath your marks. Send captures only the visible area.":
+    "Seiteninhalte können sich unter Ihren Markierungen bewegen. Beim Senden wird nur der sichtbare Bereich erfasst.",
+  "Wait for the current operation to finish before drawing":
+    "Warten Sie vor dem Zeichnen, bis der aktuelle Vorgang abgeschlossen ist",
+  "Open an HTTP or HTTPS page before drawing":
+    "Öffnen Sie vor dem Zeichnen eine HTTP- oder HTTPS-Seite",
+  "Site access is required to draw on this page":
+    "Zum Zeichnen auf dieser Seite ist Websitezugriff erforderlich",
+  "The page changed before drawing could start. Start drawing again.":
+    "Die Seite hat sich vor dem Start des Zeichnens geändert. Starten Sie das Zeichnen erneut.",
+  "Page drawing could not start. Reload the page and try again.":
+    "Das Zeichnen auf der Seite konnte nicht gestartet werden. Laden Sie die Seite neu und versuchen Sie es erneut.",
+  "Page drawing stopped because the page or its protection changed. Start drawing again.":
+    "Das Zeichnen wurde beendet, da sich die Seite oder ihr Schutz geändert hat. Starten Sie das Zeichnen erneut.",
+  "Could not capture page drawing. Your marks were kept when safe. Try again.":
+    "Die Zeichnung auf der Seite konnte nicht erfasst werden. Ihre Markierungen wurden beibehalten, sofern dies sicher war. Versuchen Sie es erneut.",
+  "Could not confirm drawing cleanup. Reload the page before sending.":
+    "Das Entfernen der Zeichenoberfläche konnte nicht bestätigt werden. Laden Sie die Seite vor dem Senden neu.",
+  "Add a mark before sending page drawing":
+    "Fügen Sie eine Markierung hinzu, bevor Sie die Seitenzeichnung senden",
+  "Page drawing limit reached. Undo or clear some marks.":
+    "Zeichenlimit auf der Seite erreicht. Machen Sie einige Markierungen rückgängig oder löschen Sie sie.",
   "Paste a PNG, JPEG, WebP, or GIF image": "Fügen Sie ein PNG-, JPEG-, WebP- oder GIF-Bild ein",
   "The pasted image is empty": "Das eingefügte Bild ist leer",
   "Pasted images must use 3 MB or less in total":

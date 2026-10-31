@@ -1,5 +1,34 @@
 // English source messages are stable catalog keys. Use them only for trusted presentation.
 export const english = {
+  "Draw on page": "Draw on page",
+  "Cancel page drawing": "Cancel page drawing",
+  "Pen color": "Pen color",
+  "Page drawing controls": "Page drawing controls",
+  Red: "Red",
+  Yellow: "Yellow",
+  Green: "Green",
+  Blue: "Blue",
+  White: "White",
+  Black: "Black",
+  "Page content can move beneath your marks. Send captures only the visible area.":
+    "Page content can move beneath your marks. Send captures only the visible area.",
+  "Wait for the current operation to finish before drawing":
+    "Wait for the current operation to finish before drawing",
+  "Open an HTTP or HTTPS page before drawing": "Open an HTTP or HTTPS page before drawing",
+  "Site access is required to draw on this page": "Site access is required to draw on this page",
+  "The page changed before drawing could start. Start drawing again.":
+    "The page changed before drawing could start. Start drawing again.",
+  "Page drawing could not start. Reload the page and try again.":
+    "Page drawing could not start. Reload the page and try again.",
+  "Page drawing stopped because the page or its protection changed. Start drawing again.":
+    "Page drawing stopped because the page or its protection changed. Start drawing again.",
+  "Could not capture page drawing. Your marks were kept when safe. Try again.":
+    "Could not capture page drawing. Your marks were kept when safe. Try again.",
+  "Could not confirm drawing cleanup. Reload the page before sending.":
+    "Could not confirm drawing cleanup. Reload the page before sending.",
+  "Add a mark before sending page drawing": "Add a mark before sending page drawing",
+  "Page drawing limit reached. Undo or clear some marks.":
+    "Page drawing limit reached. Undo or clear some marks.",
   "Paste a PNG, JPEG, WebP, or GIF image": "Paste a PNG, JPEG, WebP, or GIF image",
   "The pasted image is empty": "The pasted image is empty",
   "Pasted images must use 3 MB or less in total": "Pasted images must use 3 MB or less in total",

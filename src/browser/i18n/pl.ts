@@ -1,6 +1,36 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Draw on page": "Rysuj na stronie",
+  "Cancel page drawing": "Anuluj rysowanie na stronie",
+  "Pen color": "Kolor pióra",
+  "Page drawing controls": "Narzędzia rysowania na stronie",
+  Red: "Czerwony",
+  Yellow: "Żółty",
+  Green: "Zielony",
+  Blue: "Niebieski",
+  White: "Biały",
+  Black: "Czarny",
+  "Page content can move beneath your marks. Send captures only the visible area.":
+    "Zawartość strony może przesuwać się pod oznaczeniami. Wysłanie powoduje przechwycenie tylko widocznego obszaru.",
+  "Wait for the current operation to finish before drawing":
+    "Przed rysowaniem poczekaj na zakończenie bieżącej operacji",
+  "Open an HTTP or HTTPS page before drawing": "Przed rysowaniem otwórz stronę HTTP lub HTTPS",
+  "Site access is required to draw on this page":
+    "Rysowanie na tej stronie wymaga dostępu do witryny",
+  "The page changed before drawing could start. Start drawing again.":
+    "Strona zmieniła się przed rozpoczęciem rysowania. Rozpocznij rysowanie ponownie.",
+  "Page drawing could not start. Reload the page and try again.":
+    "Nie udało się rozpocząć rysowania na stronie. Odśwież stronę i spróbuj ponownie.",
+  "Page drawing stopped because the page or its protection changed. Start drawing again.":
+    "Rysowanie zatrzymano, ponieważ zmieniła się strona lub jej ochrona. Rozpocznij rysowanie ponownie.",
+  "Could not capture page drawing. Your marks were kept when safe. Try again.":
+    "Nie udało się przechwycić rysunku na stronie. Oznaczenia zachowano, jeśli było to bezpieczne. Spróbuj ponownie.",
+  "Could not confirm drawing cleanup. Reload the page before sending.":
+    "Nie udało się potwierdzić usunięcia powierzchni rysowania. Odśwież stronę przed wysłaniem.",
+  "Add a mark before sending page drawing": "Przed wysłaniem rysunku na stronie dodaj oznaczenie",
+  "Page drawing limit reached. Undo or clear some marks.":
+    "Osiągnięto limit rysowania na stronie. Cofnij lub usuń część oznaczeń.",
   "Paste a PNG, JPEG, WebP, or GIF image": "Wklej obraz PNG, JPEG, WebP lub GIF",
   "The pasted image is empty": "Wklejony obraz jest pusty",
   "Pasted images must use 3 MB or less in total":

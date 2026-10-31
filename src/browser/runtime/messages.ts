@@ -1,3 +1,8 @@
+import {
+  type PageAnnotationSettings,
+  type PageAnnotationUpdate,
+  validPageAnnotationParams,
+} from "./page-annotation.js"
 import type { PageCapability } from "./page-capability.js"
 import {
   type ElementTarget,
@@ -16,6 +21,10 @@ export const RUNTIME_METHODS = [
   "selection.takePending",
   "elementPicker.start",
   "elementPicker.stop",
+  "pageAnnotation.start",
+  "pageAnnotation.update",
+  "pageAnnotation.capture",
+  "pageAnnotation.stop",
   "requests.cancel",
   "page.getVisibleText",
   "page.listElements",
@@ -84,6 +93,10 @@ type RuntimeParams = {
   "selection.takePending": { windowId: number }
   "elementPicker.start": { clientId: string }
   "elementPicker.stop": Record<string, never>
+  "pageAnnotation.start": { clientId: string } & PageAnnotationSettings
+  "pageAnnotation.update": PageAnnotationUpdate
+  "pageAnnotation.capture": { clientId: string }
+  "pageAnnotation.stop": { clientId: string }
   "requests.cancel": { requestId: string }
   "page.getVisibleText": { selector?: string; offset?: number }
   "page.listElements": ElementDiscoveryParams
@@ -125,6 +138,8 @@ export interface RuntimeEvent {
     | "elementPicker.cancelled"
     | "elementPicker.selected"
     | "elementPicker.started"
+    | "pageAnnotation.changed"
+    | "pageAnnotation.cancelled"
     | "operation.progress"
     | "selection.queued"
     | "settings.saved"
@@ -216,6 +231,11 @@ function isBoundedInteger(value: unknown, maximum: number, minimum = 0): value i
 
 function hasValidParams(method: RuntimeMethod, params: Record<string, unknown>): boolean {
   switch (method) {
+    case "pageAnnotation.start":
+    case "pageAnnotation.update":
+    case "pageAnnotation.capture":
+    case "pageAnnotation.stop":
+      return validPageAnnotationParams(method, params)
     case "app.getState":
     case "elementPicker.stop":
     case "tabs.getActive":
@@ -385,6 +405,11 @@ function isRuntimeRequest(value: unknown): value is RuntimeRequest {
     isRecord(value.params) &&
     isJsonValue(value.params) &&
     hasValidParams(value.method, value.params) &&
+    (!value.method.startsWith("pageAnnotation.") ||
+      (hasOnlyKeys(value, ["kind", "requestId", "method", "params", "tabContext", "confirmed"]) &&
+        (value.tabContext === undefined ||
+          (isRecord(value.tabContext) &&
+            hasOnlyKeys(value.tabContext, ["tabId", "url", "epoch"]))))) &&
     (!["bookmarks.search", "bookmarks.getRecent"].includes(value.method) ||
       value.tabContext === undefined) &&
     (value.tabContext === undefined || isTabContext(value.tabContext)) &&

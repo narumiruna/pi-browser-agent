@@ -1,6 +1,36 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Draw on page": "페이지에 그리기",
+  "Cancel page drawing": "페이지 그리기 취소",
+  "Pen color": "펜 색상",
+  "Page drawing controls": "페이지 그리기 컨트롤",
+  Red: "빨강",
+  Yellow: "노랑",
+  Green: "초록",
+  Blue: "파랑",
+  White: "흰색",
+  Black: "검정",
+  "Page content can move beneath your marks. Send captures only the visible area.":
+    "표시 아래에서 페이지 내용이 움직일 수 있습니다. 전송 시 보이는 영역만 캡처합니다.",
+  "Wait for the current operation to finish before drawing":
+    "현재 작업이 끝난 후에 그리기를 시작하세요",
+  "Open an HTTP or HTTPS page before drawing": "그리기 전에 HTTP 또는 HTTPS 페이지를 여세요",
+  "Site access is required to draw on this page":
+    "이 페이지에 그리려면 사이트 접근 권한이 필요합니다",
+  "The page changed before drawing could start. Start drawing again.":
+    "그리기를 시작하기 전에 페이지가 변경되었습니다. 그리기를 다시 시작하세요.",
+  "Page drawing could not start. Reload the page and try again.":
+    "페이지 그리기를 시작할 수 없습니다. 페이지를 새로고침한 후 다시 시도하세요.",
+  "Page drawing stopped because the page or its protection changed. Start drawing again.":
+    "페이지 또는 보호 상태가 변경되어 페이지 그리기가 중지되었습니다. 그리기를 다시 시작하세요.",
+  "Could not capture page drawing. Your marks were kept when safe. Try again.":
+    "페이지 그리기를 캡처할 수 없습니다. 안전한 경우 표시를 유지했습니다. 다시 시도하세요.",
+  "Could not confirm drawing cleanup. Reload the page before sending.":
+    "그리기 정리를 확인할 수 없습니다. 전송하기 전에 페이지를 새로고침하세요.",
+  "Add a mark before sending page drawing": "페이지 그리기를 전송하기 전에 표시를 추가하세요",
+  "Page drawing limit reached. Undo or clear some marks.":
+    "페이지 그리기 한도에 도달했습니다. 일부 표시를 실행 취소하거나 지우세요.",
   "Paste a PNG, JPEG, WebP, or GIF image": "PNG, JPEG, WebP 또는 GIF 이미지를 붙여넣으세요",
   "The pasted image is empty": "붙여넣은 이미지가 비어 있습니다",
   "Pasted images must use 3 MB or less in total":

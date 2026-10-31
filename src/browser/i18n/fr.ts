@@ -1,6 +1,37 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Draw on page": "Dessiner sur la page",
+  "Cancel page drawing": "Annuler le dessin sur la page",
+  "Pen color": "Couleur du stylo",
+  "Page drawing controls": "Commandes de dessin sur la page",
+  Red: "Rouge",
+  Yellow: "Jaune",
+  Green: "Vert",
+  Blue: "Bleu",
+  White: "Blanc",
+  Black: "Noir",
+  "Page content can move beneath your marks. Send captures only the visible area.":
+    "Le contenu de la page peut bouger sous vos marques. L’envoi capture uniquement la zone visible.",
+  "Wait for the current operation to finish before drawing":
+    "Attendez la fin de l’opération en cours avant de dessiner",
+  "Open an HTTP or HTTPS page before drawing": "Ouvrez une page HTTP ou HTTPS avant de dessiner",
+  "Site access is required to draw on this page":
+    "L’accès au site est nécessaire pour dessiner sur cette page",
+  "The page changed before drawing could start. Start drawing again.":
+    "La page a changé avant le début du dessin. Recommencez le dessin.",
+  "Page drawing could not start. Reload the page and try again.":
+    "Impossible de commencer à dessiner sur la page. Rechargez la page et réessayez.",
+  "Page drawing stopped because the page or its protection changed. Start drawing again.":
+    "Le dessin s’est arrêté car la page ou sa protection a changé. Recommencez le dessin.",
+  "Could not capture page drawing. Your marks were kept when safe. Try again.":
+    "Impossible de capturer le dessin sur la page. Vos marques ont été conservées lorsque cela était sûr. Réessayez.",
+  "Could not confirm drawing cleanup. Reload the page before sending.":
+    "Impossible de confirmer la suppression de la surface de dessin. Rechargez la page avant l’envoi.",
+  "Add a mark before sending page drawing":
+    "Ajoutez une marque avant d’envoyer le dessin de la page",
+  "Page drawing limit reached. Undo or clear some marks.":
+    "Limite de dessin sur la page atteinte. Annulez ou effacez certaines marques.",
   "Paste a PNG, JPEG, WebP, or GIF image": "Collez une image PNG, JPEG, WebP ou GIF",
   "The pasted image is empty": "L’image collée est vide",
   "Pasted images must use 3 MB or less in total":

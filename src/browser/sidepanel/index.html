@@ -150,6 +150,7 @@
           aria-live="polite"
           hidden
         ></div>
+        <span id="page-pen-help" class="visually-hidden">Page content can move beneath your marks. Send captures only the visible area.</span>
         <textarea
           id="prompt"
           rows="2"
@@ -189,6 +190,36 @@
                 <path d="M2.75 7.25a4.75 4.75 0 0 0 9.5 0M7.5 12v2M5.25 14h4.5" />
               </svg>
             </button>
+            <div class="page-pen-group">
+              <button id="page-pen" type="button" class="icon-button page-pen-button" aria-label="Draw on page" title="Draw on page" aria-pressed="false" aria-describedby="page-pen-help">
+                <svg class="radix-icon" viewBox="0 0 15 15" aria-hidden="true">
+                  <path d="m3 9 7-7 3 3-7 7-4 1 1-4Zm6-6 3 3M3 9l3 3" />
+                </svg>
+                <span class="pen-color-indicator" aria-hidden="true"></span>
+              </button>
+              <fieldset id="page-pen-controls" class="page-pen-controls" aria-label="Page drawing controls" hidden>
+                <div class="page-pen-setting">
+                  <button id="page-pen-color" type="button" class="icon-button page-pen-tool page-pen-color" aria-label="Pen color" aria-haspopup="menu" aria-expanded="false" aria-controls="page-pen-palette"><span class="page-pen-color-square" aria-hidden="true"></span></button>
+                  <div id="page-pen-palette" class="page-pen-popup page-pen-palette" role="menu" aria-label="Pen color" hidden>
+                    <button type="button" class="page-pen-swatch" data-pen-color="red" role="menuitemradio" aria-label="Red" aria-checked="true" tabindex="-1"></button>
+                    <button type="button" class="page-pen-swatch" data-pen-color="yellow" role="menuitemradio" aria-label="Yellow" aria-checked="false" tabindex="-1"></button>
+                    <button type="button" class="page-pen-swatch" data-pen-color="green" role="menuitemradio" aria-label="Green" aria-checked="false" tabindex="-1"></button>
+                    <button type="button" class="page-pen-swatch" data-pen-color="blue" role="menuitemradio" aria-label="Blue" aria-checked="false" tabindex="-1"></button>
+                    <button type="button" class="page-pen-swatch" data-pen-color="white" role="menuitemradio" aria-label="White" aria-checked="false" tabindex="-1"></button>
+                    <button type="button" class="page-pen-swatch" data-pen-color="black" role="menuitemradio" aria-label="Black" aria-checked="false" tabindex="-1"></button>
+                  </div>
+                </div>
+                <div class="page-pen-setting">
+                  <button id="page-pen-width-toggle" type="button" class="icon-button page-pen-tool" aria-label="Pen width" aria-expanded="false" aria-controls="page-pen-width-popup"><svg class="radix-icon" viewBox="0 0 15 15" aria-hidden="true"><path d="M2 3h11M2 7.5h11"/><path d="M2 12h11" stroke-width="3"/></svg></button>
+                  <div id="page-pen-width-popup" class="page-pen-popup page-pen-width-popup" hidden>
+                    <label for="page-pen-width" class="visually-hidden">Pen width</label>
+                    <input id="page-pen-width" type="range" min="2" max="32" value="8" aria-orientation="vertical" />
+                  </div>
+                </div>
+                <button id="page-pen-undo" type="button" class="icon-button page-pen-tool" aria-label="Undo" disabled><svg class="radix-icon" viewBox="0 0 15 15" aria-hidden="true"><path d="M5 3 1.5 6.5 5 10M2 6.5h7a4 4 0 0 1 0 8"/></svg></button>
+                <button id="page-pen-clear" type="button" class="icon-button page-pen-tool" aria-label="Clear" disabled><svg class="radix-icon" viewBox="0 0 15 15" aria-hidden="true"><path d="M2 4h11M5 4V2h5v2M3.5 4l.75 9h6.5l.75-9M6 6v5M9 6v5"/></svg></button>
+              </fieldset>
+            </div>
             <button type="button" id="abort" class="stop-button" hidden>Stop</button>
             <button
               type="button"

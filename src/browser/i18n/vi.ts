@@ -1,6 +1,36 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Draw on page": "Vẽ trên trang",
+  "Cancel page drawing": "Hủy vẽ trên trang",
+  "Pen color": "Màu bút",
+  "Page drawing controls": "Điều khiển vẽ trên trang",
+  Red: "Đỏ",
+  Yellow: "Vàng",
+  Green: "Xanh lá",
+  Blue: "Xanh dương",
+  White: "Trắng",
+  Black: "Đen",
+  "Page content can move beneath your marks. Send captures only the visible area.":
+    "Nội dung trang có thể di chuyển bên dưới các nét đánh dấu. Khi gửi, chỉ vùng hiển thị được chụp.",
+  "Wait for the current operation to finish before drawing":
+    "Chờ thao tác hiện tại hoàn tất trước khi vẽ",
+  "Open an HTTP or HTTPS page before drawing": "Mở trang HTTP hoặc HTTPS trước khi vẽ",
+  "Site access is required to draw on this page":
+    "Cần có quyền truy cập trang web để vẽ trên trang này",
+  "The page changed before drawing could start. Start drawing again.":
+    "Trang đã thay đổi trước khi có thể bắt đầu vẽ. Hãy bắt đầu vẽ lại.",
+  "Page drawing could not start. Reload the page and try again.":
+    "Không thể bắt đầu vẽ trên trang. Hãy tải lại trang và thử lại.",
+  "Page drawing stopped because the page or its protection changed. Start drawing again.":
+    "Đã dừng vẽ vì trang hoặc cơ chế bảo vệ của trang đã thay đổi. Hãy bắt đầu vẽ lại.",
+  "Could not capture page drawing. Your marks were kept when safe. Try again.":
+    "Không thể chụp bản vẽ trên trang. Các nét đánh dấu được giữ lại khi an toàn. Hãy thử lại.",
+  "Could not confirm drawing cleanup. Reload the page before sending.":
+    "Không thể xác nhận việc dọn dẹp bản vẽ. Hãy tải lại trang trước khi gửi.",
+  "Add a mark before sending page drawing": "Thêm nét đánh dấu trước khi gửi bản vẽ trên trang",
+  "Page drawing limit reached. Undo or clear some marks.":
+    "Đã đạt giới hạn vẽ trên trang. Hãy hoàn tác hoặc xóa bớt nét đánh dấu.",
   "Paste a PNG, JPEG, WebP, or GIF image": "Dán ảnh PNG, JPEG, WebP hoặc GIF",
   "The pasted image is empty": "Ảnh đã dán trống",
   "Pasted images must use 3 MB or less in total":

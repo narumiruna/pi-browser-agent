@@ -1,6 +1,6 @@
 # Privacy Policy for Pi Browser Agent
 
-**Effective date:** October 27, 2026
+**Effective date:** November 1, 2026
 
 Pi Browser Agent is a Chrome extension that provides an AI assistant for the page the user is viewing. This policy explains what information Pi Browser Agent handles, why it is handled, where it is stored, and when it is shared.
 
@@ -20,6 +20,10 @@ Pi Browser Agent stores credentials supplied for user-selected AI providers. Dep
 ### Prompts and conversations
 
 Pi Browser Agent handles prompts, editable voice transcripts, attached images, model responses, reasoning when supplied by the model, tool calls, tool results, and related error messages. A user can annotate a completed screenshot locally; the editable strokes and unsent rendered preview remain in memory, and the new image is shared only after **Send**. The original screenshot is not modified. Conversation messages are stored locally so users can resume sessions, subject to the retention and per-session size limits described below.
+
+A user can also draw freehand marks over a live, approved HTTP(S) page while the conversation is idle. Pen choices and raw strokes remain in memory and are not sent to the model or saved in a session. Drawing alone makes no screenshot or provider request. Explicit **Send** uses existing screenshot consent to capture one ordinary PNG of the visible page, including the marks and a slight 1% shield tint. The image can contain sensitive visible content, including visible iframe pixels. This does not inspect iframe DOM or change page-owned content. Live page content can move beneath marks; marks do not automatically follow elements.
+
+If capture fails, editable marks remain only when the original page context and protection are safe. After a later submission failure, the PNG preview and text remain for manual retry without another capture. Unconfirmed surface cleanup blocks sending until removal is confirmed. Cancellation or page/context/protection changes discard unsent strokes; raw strokes are not recoverable after the page or panel closes. A sent PNG goes to the selected provider and is retained like other conversation images. Removing the drawing surface does not delete a sent image or authorize a browser action. See [page drawing and verification status](docs/page-annotation.md).
 
 ### Current-page information
 
@@ -88,8 +92,8 @@ Pi Browser Agent does not sell user data, transfer it to data brokers or adverti
 - Provider credentials, MCP server configurations and tokens, installed skill records (including disabled bodies), settings, the active session identifier, approved origins, and Convenient approval fingerprints remain in `chrome.storage.local` until removed, cleared, or extension data is deleted.
 - An undelivered context-menu selection and Balanced approval fingerprints remain in `chrome.storage.session` until consumed, cleared, or the browser session ends.
 - Conversation records are stored in the extension's IndexedDB database. Pi Browser Agent retains at most 50 sessions and limits each serialized session record to 5 MB. If a session exceeds that limit, Pi Browser Agent first replaces embedded images with omission placeholders and then, if necessary, removes the oldest messages until the record fits. The Side Panel reports this loss to the user.
-- Partial streaming output, unsent pasted or annotated image previews, editable annotation strokes, unsent selected-element chips, live picker/operation state, and skill source/candidate/review data are kept only in memory for the relevant Side Panel, Settings page, page, or worker lifetime.
-- Sent selected-element JSON is stored as untrusted user-message text. Sent annotated images are embedded like other user images; an original screenshot and its annotated copy can both consume session storage.
+- Partial streaming output, unsent pasted or annotated image previews, editable screenshot/page-drawing strokes and pen choices, unsent selected-element chips, live picker/page-drawing/operation state, and skill source/candidate/review data are kept only in memory for the relevant Side Panel, Settings page, page, or worker lifetime.
+- Sent selected-element JSON is stored as untrusted user-message text. Sent annotated images are embedded like other user images; an original screenshot and its annotated copy can both consume session storage. Live-page drawing adds one image, without a separate unmarked screenshot or persisted raw strokes. Deleting the containing session removes its local embedded image; session restore does not recreate a drawing surface or resend it.
 
 Users can delete individual sessions, select **Clear all session data**, remove provider credentials, revoke Chrome permissions, or uninstall the extension. Removing local data does not delete information already processed by an external provider; requests concerning provider-held data must be directed to that provider.
 

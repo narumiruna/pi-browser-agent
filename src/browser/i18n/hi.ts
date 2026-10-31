@@ -1,6 +1,35 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Draw on page": "पेज पर बनाएँ",
+  "Cancel page drawing": "पेज पर बनाना रद्द करें",
+  "Pen color": "पेन का रंग",
+  "Page drawing controls": "पेज पर बनाने के नियंत्रण",
+  Red: "लाल",
+  Yellow: "पीला",
+  Green: "हरा",
+  Blue: "नीला",
+  White: "सफ़ेद",
+  Black: "काला",
+  "Page content can move beneath your marks. Send captures only the visible area.":
+    "पेज की सामग्री आपके निशानों के नीचे हिल सकती है। भेजते समय केवल दिखाई देने वाला क्षेत्र कैप्चर होता है।",
+  "Wait for the current operation to finish before drawing":
+    "बनाने से पहले मौजूदा कार्रवाई पूरी होने की प्रतीक्षा करें",
+  "Open an HTTP or HTTPS page before drawing": "बनाने से पहले HTTP या HTTPS पेज खोलें",
+  "Site access is required to draw on this page": "इस पेज पर बनाने के लिए साइट की पहुँच आवश्यक है",
+  "The page changed before drawing could start. Start drawing again.":
+    "बनाना शुरू होने से पहले पेज बदल गया। फिर से बनाना शुरू करें।",
+  "Page drawing could not start. Reload the page and try again.":
+    "पेज पर बनाना शुरू नहीं हो सका। पेज फिर से लोड करें और दोबारा कोशिश करें।",
+  "Page drawing stopped because the page or its protection changed. Start drawing again.":
+    "पेज या उसकी सुरक्षा बदलने के कारण बनाना रोक दिया गया। फिर से बनाना शुरू करें।",
+  "Could not capture page drawing. Your marks were kept when safe. Try again.":
+    "पेज पर बने निशान कैप्चर नहीं हो सके। सुरक्षित होने पर आपके निशान रखे गए हैं। दोबारा कोशिश करें।",
+  "Could not confirm drawing cleanup. Reload the page before sending.":
+    "बनाने की सतह हटने की पुष्टि नहीं हो सकी। भेजने से पहले पेज फिर से लोड करें।",
+  "Add a mark before sending page drawing": "पेज पर बना चित्र भेजने से पहले एक निशान जोड़ें",
+  "Page drawing limit reached. Undo or clear some marks.":
+    "पेज पर बनाने की सीमा पूरी हो गई। कुछ निशान पूर्ववत करें या मिटाएँ।",
   "Paste a PNG, JPEG, WebP, or GIF image": "PNG, JPEG, WebP या GIF चित्र पेस्ट करें",
   "The pasted image is empty": "पेस्ट किया गया चित्र खाली है",
   "Pasted images must use 3 MB or less in total":

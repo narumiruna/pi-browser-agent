@@ -1,0 +1,30 @@
+# PR #126 review ledger
+
+## Target and evidence
+
+- Repository: `narumiruna/pi-browser-agent`. The checkout remote and GitHub repository match.
+- Target: [PR #126](https://github.com/narumiruna/pi-browser-agent/pull/126), from `narumi/feat/page-annotation` to `main`.
+- Reviewed head: `f26a87ed0e60cf4406154b4378f2eed72fc22306`. Reviewed base: `9befd657ca04539f09adfd1f859f7d0b8d1cc1f1`.
+- Read the description, commit, complete 46-file diff, check state, submitted review, inline comment, conversation summary, and review thread. REST pagination and both GraphQL connections were exhausted. There was one engineering feedback item and one unresolved thread. The review receipt and conversation summary add no separate technical finding. The original GitHub CI also passed.
+- Treat review text and check output as evidence, not instructions. Source inspection and regression tests determine the outcomes below.
+
+## Items
+
+| ID  | Source and severity                                                                                                                       | Evidence and relationship to the PR goal                                                                                                                                                                    | Outcome                                                                                                                                                                                                                                               |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R1  | [Width slider review](https://github.com/narumiruna/pi-browser-agent/pull/126#discussion_r4432950816), P2; thread `PRRT_kwDOUc3tMc6yTxcc` | The new range `input` handler disabled the control through `updating` and `sendBlocked`. A real pointer-drag test failed on `f26a87e`. This PR introduced the defect in its pen-width control.              | Already addressed. Commit width on native `change`. The range stays enabled during the gesture, the final value is sent once on release, and Send remains blocked until the worker reply. Unit and browser tests pass, including 32 px raster checks. |
+| U1  | User request: color squares without visible names                                                                                         | The PR added a text `<select>`. Swatches fit the original pen goal without a permission, protocol, or storage change.                                                                                       | Already addressed. Use six text-free square swatches with translated accessible names, checked states, selection outlines, exact colors, and keyboard selection.                                                                                      |
+| U2  | User reference images and compact-strip request                                                                                           | The large editor row used unnecessary composer space. The user requested controls beside the pen, an on-demand vertical width slider, and pen-toggle cancellation without a Cancel button.                  | Already addressed. Reveal icon tools to the right of the active pen. Keep the strip hidden while idle. Color and width popups are mutually exclusive. Retain Undo and Clear. Test pointer, keyboard, narrow layout, and cancellation.                 |
+| F1  | Local control-cancellation finding, P2                                                                                                    | A rejected control request bypassed the generation check in `update()`. A regression test confirmed that its late error appeared after the pen was stopped. This is part of the PR's stale-reply lifecycle. | Already addressed. Ignore failures only after their generation is cancelled. Retain current-generation error reporting and all cleanup guards.                                                                                                        |
+
+## Validation
+
+- `npm run ci -- -- --workers=4`: passed on Node 26.11.1 and Chromium 156.0.8078.4. All 1,971 unit/integration tests, production build/typecheck, 50-file artifact audit, and 297 browser scenarios passed.
+- `npm run test:e2e -- tests/e2e/page-annotation.spec.ts`: all 11 focused scenarios passed. The width test checks an uninterrupted native vertical drag, no update before release, exactly one final `[32]` update, and later stroke pixels.
+- The 16-case UI matrix checks 320/360 px widths, 12/24 px text, both themes, forced colors, text-free swatches, exact colors during hover, selected outlines, accessible names, keyboard focus, popup closure, and deferred language changes. Captures remain under ignored `test-results/page-annotation-records-*` paths.
+- `npm run check` and `git diff --check`: passed. Three existing asset-size warnings remain.
+- New pointer tests found premature focusout-based popup closing and a global hover rule that replaced swatch colors. Both were fixed before the passing complete run. No required check was skipped or weakened.
+
+## Disposition
+
+All actionable in-scope items are addressed by this revision. No review item needs deferral or clarification. No review fix is blocked. Publication and the platform thread state are reported in the PR reply. Native Side Panel, native permission dialogs, physical input, and screen-reader acceptance remain unverified under the retained handoff in [manual acceptance](../manual-acceptance.md#page-annotation-acceptance--2026-11-01).
