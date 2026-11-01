@@ -112,7 +112,7 @@ export class ClarificationRun {
   private questionSequence = 0
   private pending?: { card: PendingClarification; settle: (answer?: ClarificationAnswer) => void }
   private active = true
-  private elementContextValid = true
+  private readonly invalidTargetIds = new Set<string>()
 
   constructor(
     private readonly sessionId: string,
@@ -124,6 +124,8 @@ export class ClarificationRun {
   includeTargets(targets: readonly ClarificationTarget[]): void {
     if (this.pending) throw new Error("Answer or stop the pending question first")
     for (const target of targets) {
+      // An invalid identity cannot be rebound, including as a different attachment kind.
+      if (this.invalidTargetIds.has(target.id)) continue
       const index = this.targets.findIndex((item) => item.id === target.id)
       if (index < 0) this.targets.push(structuredClone(target))
       else this.targets[index] = structuredClone(target)
@@ -179,11 +181,7 @@ export class ClarificationRun {
     if (exact(value, ["optionId"]) && typeof value.optionId === "string") {
       const option = pending.card.options.find((option) => option.id === value.optionId)
       if (!option) throw new Error("Invalid clarification answer")
-      if (
-        option.attachmentId &&
-        !this.elementContextValid &&
-        this.targets.some((target) => target.id === option.attachmentId && target.element)
-      )
+      if (option.attachmentId && this.invalidTargetIds.has(option.attachmentId))
         throw new Error("The target context changed")
     } else if (!exact(value, ["other"]) || !text(value.other, CLARIFICATION_LIMITS.other)) {
       throw new Error("Invalid clarification answer")
@@ -193,12 +191,12 @@ export class ClarificationRun {
   }
 
   invalidateElements(): void {
-    this.elementContextValid = false
+    for (const target of this.targets) {
+      if (target.element) this.invalidTargetIds.add(target.id)
+    }
     if (
       this.pending?.card.options.some(
-        (option) =>
-          option.attachmentId &&
-          this.targets.some((target) => target.id === option.attachmentId && target.element),
+        (option) => option.attachmentId && this.invalidTargetIds.has(option.attachmentId),
       )
     )
       this.abort()
@@ -222,11 +220,8 @@ export class ClarificationRun {
         throw new Error("Clarification is no longer available")
       const request = parseClarification(args, new Set(this.targets.map((target) => target.id)))
       if (
-        !this.elementContextValid &&
         request.options.some(
-          (option) =>
-            option.attachmentId &&
-            this.targets.some((target) => target.id === option.attachmentId && target.element),
+          (option) => option.attachmentId && this.invalidTargetIds.has(option.attachmentId),
         )
       )
         throw new Error("The target context changed")

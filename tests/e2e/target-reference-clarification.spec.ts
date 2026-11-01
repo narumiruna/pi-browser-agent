@@ -473,6 +473,108 @@ test("a paired element context change during preparation sends nothing and prese
   }
 })
 
+test("a fresh current-page element pair can be clarified after same-run navigation and steering", async () => {
+  const h = await launchExtensionHarness()
+  let releaseFirst: (() => void) | undefined
+  try {
+    const requests: CodexRequest[] = []
+    let initial: UserContextManifest | undefined
+    let current: UserContextManifest | undefined
+    await h.context.route(CODEX_RESPONSES_URL, async (route) => {
+      const request = route.request().postDataJSON() as CodexRequest
+      const index = requests.push(request)
+      if (index === 1) {
+        initial = manifest(request)
+        await new Promise<void>((resolve) => {
+          releaseFirst = resolve
+        })
+      } else if (index === 2) current = manifest(request)
+      await route.fulfill({
+        status: 200,
+        contentType: "text/event-stream",
+        body:
+          index === 1
+            ? finalTextResponse(index, "Continuing with your instruction")
+            : index === 2
+              ? toolCallResponse(index, "request_user_input", {
+                  question: "Which current-page result?",
+                  options: [
+                    { label: "Current element", attachmentId: current?.pair?.targetId },
+                    { label: "Earlier image", attachmentId: initial?.pair?.referenceId },
+                    { label: "Current image", attachmentId: current?.pair?.referenceId },
+                  ],
+                })
+              : finalTextResponse(index, "Current page pair understood"),
+      })
+    })
+    await configureMockCodex(h)
+    await pairFixture(h)
+    const page = h.controller
+    await paste(page)
+    await selectElement(h, "#pair-element-1", 1)
+    const oldId = await page.locator(".selected-element-chip").getAttribute("data-attachment-id")
+    await page
+      .locator(".selected-element-chip")
+      .getByRole("button", { name: "Use as target", exact: true })
+      .click()
+    await page
+      .locator(".pasted-image")
+      .getByRole("button", { name: "Use as reference", exact: true })
+      .click()
+    await submit(page, "Review the initial A pair")
+    await expect.poll(() => requests.length).toBe(1)
+    await expect(page.locator("#abort")).toBeVisible()
+    await expect(page.locator(".selected-element-chip")).toHaveCount(0)
+    await expect(page.locator("#clarification-card")).toBeHidden()
+    await h.fixturePage.goto(`${h.fixtureUrl}?paired-steering-context=b`)
+    await h.fixturePage.bringToFront()
+    await expect(page.locator("#element-picker")).toBeEnabled()
+    await selectElement(h, "#complete", 1)
+    await paste(page)
+    const freshId = await page.locator(".selected-element-chip").getAttribute("data-attachment-id")
+    const imageId = await page.locator(".pasted-image").getAttribute("data-attachment-id")
+    expect(freshId).not.toBe(oldId)
+    await page
+      .locator(".selected-element-chip")
+      .getByRole("button", { name: "Use as target", exact: true })
+      .click()
+    await page
+      .locator(".pasted-image")
+      .getByRole("button", { name: "Use as reference", exact: true })
+      .click()
+    await submit(page, "Compare the current B element and image")
+    await expect(page.locator(".selected-element-chip")).toHaveCount(0)
+    await expect(page.locator("#pasted-images img")).toHaveCount(0)
+    expect(requests).toHaveLength(1)
+    releaseFirst?.()
+    const card = page.locator("#clarification-card")
+    await expect(card).toBeVisible()
+    expect(current?.pair).toEqual({ targetId: freshId, referenceId: imageId })
+    expect(current?.attachments.find((attachment) => attachment.id === freshId)).toMatchObject({
+      kind: "element",
+      untrustedPageContext: {
+        id: "complete",
+        pageUrl: `${h.fixtureUrl}?paired-steering-context=b`,
+      },
+    })
+    expect(current?.attachments.some((attachment) => attachment.id === oldId)).toBe(false)
+    await expect(card.locator("img")).toHaveCount(2)
+    expect(requests).toHaveLength(2)
+    await card.getByRole("radio", { name: /Current element/ }).check()
+    await page.locator("#clarification-answer").click()
+    await finished(page, "Current page pair understood")
+    expect(requests).toHaveLength(3)
+    await expect(page.locator("#transcript .message.user")).toHaveCount(2)
+    await expect(h.fixturePage.locator("#result")).toHaveText("idle")
+    expect(await pairCaptures(h)).toBe(0)
+    expect(await pairReads(h)).toBe(0)
+    expect(h.pageErrors).toEqual([])
+  } finally {
+    releaseFirst?.()
+    await h.close()
+  }
+})
+
 test("image pair IDs reach the provider; explicit selection resumes once and history stays inactive", async () => {
   const h = await launchExtensionHarness()
   try {

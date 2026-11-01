@@ -48,7 +48,11 @@ const call = (name: string, id = name, args: JsonObject = {}) => ({
   arguments: args,
 })
 
-async function setup(batches: AssistantMessage["content"][], interactive = true) {
+async function setup(
+  batches: AssistantMessage["content"][],
+  interactive = true,
+  firstReply?: Promise<void>,
+) {
   let card: PendingClarification | undefined
   const events: string[] = []
   const warnings: string[] = []
@@ -97,8 +101,12 @@ async function setup(batches: AssistantMessage["content"][], interactive = true)
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
       },
     }
-    stream.push({ type: "done", reason: toolUse ? "toolUse" : "stop", message })
-    stream.end()
+    const finish = () => {
+      stream.push({ type: "done", reason: toolUse ? "toolUse" : "stop", message })
+      stream.end()
+    }
+    if (firstReply && streams === 1) void firstReply.then(finish)
+    else finish()
     return stream
   }
   return {
@@ -463,6 +471,98 @@ describe("run-scoped clarification integration", () => {
       await run
       expect(s.streams()).toBe(element ? 1 : 2)
       expect(s.card()).toBeUndefined()
+      expect(fetch).not.toHaveBeenCalled()
+    },
+  )
+
+  test.each([false, true])(
+    "same-run steering can clarify fresh page elements after context invalidation (initial element=%s)",
+    async (initialElement) => {
+      let release!: () => void
+      const firstReply = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const args = (id: string): JsonObject => ({
+        question: "Which current target?",
+        options: [
+          { label: "Current element", attachmentId: id },
+          { label: "Earlier image", attachmentId: "reference-a" },
+          { label: "New image", attachmentId: "reference-b" },
+        ],
+      })
+      const s = await setup(
+        [
+          [{ type: "text", text: "Still working" }],
+          ...(initialElement ? [[call("request_user_input", "old-question", args("old"))]] : []),
+          [call("request_user_input", "fresh-question", args("fresh"))],
+        ],
+        true,
+        firstReply,
+      )
+      const image = { type: "image" as const, mimeType: "image/png", data: "YQ==" }
+      const prompt = vi.spyOn(s.runtime.agent, "prompt")
+      const run = s.runtime.submit(
+        "Initial task",
+        "steer",
+        initialElement ? [image] : [image, image],
+        initialElement ? [selectedTarget()] : [],
+        true,
+        undefined,
+        {
+          imageIds: initialElement ? ["reference-a"] : ["initial-image", "reference-a"],
+          elementIds: initialElement ? ["old"] : [],
+          pair: { targetId: initialElement ? "old" : "initial-image", referenceId: "reference-a" },
+        },
+      )
+      await vi.waitFor(() => expect(s.streams()).toBe(1))
+      expect(s.card()).toBeUndefined()
+      s.runtime.invalidateClarificationTargets()
+      const fresh = {
+        ...selectedTarget(),
+        id: "current-b",
+        pageUrl: "https://example.test/context-b",
+      }
+      expect(
+        await s.runtime.submit(
+          "Use the current B pair",
+          "steer",
+          [image],
+          [fresh],
+          true,
+          undefined,
+          {
+            imageIds: ["reference-b"],
+            elementIds: ["fresh"],
+            pair: { targetId: "fresh", referenceId: "reference-b" },
+          },
+        ),
+      ).toBe("steer")
+      if (initialElement)
+        expect(
+          await s.runtime.submit("Cannot rebind old A", "steer", [], [fresh], true, undefined, {
+            imageIds: [],
+            elementIds: ["old"],
+          }),
+        ).toBe("steer")
+      release()
+      const card = await s.waiting()
+      expect(card.toolCallId).toBe("fresh-question")
+      expect(card.generation).toBe(1)
+      expect(card.targets.find((target) => target.id === "fresh")).toMatchObject({
+        element: true,
+        summary: "button#current-b",
+      })
+      expect(card.targets.filter((target) => target.image)).toHaveLength(2)
+      expect(card.targets.some((target) => target.id === "old")).toBe(false)
+      expect(s.runtime.answerClarification(card, { optionId: "option-1" })).toBe(true)
+      await run
+      expect(prompt).toHaveBeenCalledOnce()
+      expect(s.streams()).toBe(initialElement ? 4 : 3)
+      if (initialElement)
+        expect(JSON.stringify(s.runtime.agent.state.messages)).toContain(
+          "The target context changed",
+        )
+      expect(s.confirm).not.toHaveBeenCalled()
       expect(fetch).not.toHaveBeenCalled()
     },
   )

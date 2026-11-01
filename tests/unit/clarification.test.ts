@@ -117,6 +117,76 @@ describe("clarification contracts and callback ownership", () => {
     expect((await result).isError).not.toBe(true)
   })
 
+  test.each([true, false])(
+    "fresh element IDs work after context changes without reviving an old ID (element alias=%s)",
+    async (elementAlias) => {
+      let card: PendingClarification | undefined
+      const image = { type: "image" as const, data: "YQ==", mimeType: "image/png" }
+      const run = new ClarificationRun(
+        "session",
+        1,
+        [
+          { id: "old", summary: "Context A", element: true },
+          { id: "image", summary: "Reference", element: false, image },
+        ],
+        (value) => {
+          card = value
+        },
+      )
+      run.invalidateElements()
+      run.includeTargets([
+        { id: "fresh", summary: "Context B", element: true },
+        {
+          id: "old",
+          summary: "Do not rebind",
+          element: elementAlias,
+          ...(elementAlias ? {} : { image }),
+        },
+      ])
+      const question = (id: string) => ({
+        question: "Which target?",
+        options: [
+          { label: "Element", attachmentId: id },
+          { label: "Image", attachmentId: "image" },
+        ],
+      })
+      const rejectStale = async (id: string) => {
+        const result = Promise.resolve(run.tool().execute(`stale-${id}`, question(id))).then(
+          (value) => ({ value }),
+          (error: unknown) => ({ error }),
+        )
+        const presented = card !== undefined
+        if (presented) run.abort()
+        const settled = await result
+        expect(presented).toBe(false)
+        expect(settled).toHaveProperty("error.message", "The target context changed")
+      }
+      await rejectStale("old")
+      const waiting = Promise.resolve(run.tool().execute("fresh-question", question("fresh"))).then(
+        (value) => ({ value }),
+        (error: unknown) => ({ error }),
+      )
+      if (!card) expect(await waiting).not.toHaveProperty("error")
+      expect(card?.targets.map((target) => target.id)).toEqual(["image", "fresh"])
+      expect(card?.targets.find((target) => target.id === "fresh")?.summary).toBe("Context B")
+      expect(run.answer(required(card), { optionId: "option-1" })).toBe(true)
+      expect(await waiting).not.toHaveProperty("error")
+      expect(await waiting).not.toMatchObject({ value: { isError: true } })
+      run.invalidateElements()
+      run.includeTargets([{ id: "fresh", summary: "Do not revive B", element: true }])
+      await rejectStale("fresh")
+      run.includeTargets([{ id: "newest", summary: "Context C", element: true }])
+      const last = Promise.resolve(run.tool().execute("newest-question", question("newest"))).then(
+        (value) => ({ value }),
+        (error: unknown) => ({ error }),
+      )
+      if (!card) expect(await last).not.toHaveProperty("error")
+      expect(run.answer(required(card), { optionId: "option-2" })).toBe(true)
+      expect(await last).not.toHaveProperty("error")
+      expect(await last).not.toMatchObject({ value: { isError: true } })
+    },
+  )
+
   test("guards all siblings, rejects duplicate batches, and allows at most three calls", () => {
     const { run } = setup()
     const calls = batch(["browser_click", "request_user_input", "mcp_call"])

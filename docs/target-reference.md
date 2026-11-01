@@ -26,7 +26,7 @@ While a question is pending:
 - A later answer cannot settle an older question.
 - Interface-language changes wait until the active run finishes.
 
-Stop, panel close, credential removal in this or another conversation, or run cancellation cancels the callback. A pending-only trusted storage listener checks selected-provider presence; a guarded metadata read covers a removal before registration. Both are disposed when the question settles and cannot affect a later run. A page-context change cancels a question linked to a submitted element. An image-only question can remain active in the same run. Cancellation does not undo an action that already ran.
+Stop, panel close, credential removal in this or another conversation, or run cancellation cancels the callback. A pending-only trusted storage listener checks selected-provider presence; a guarded metadata read covers a removal before registration. Both are disposed when the question settles and cannot affect a later run. A page-context change cancels a question linked to a submitted element. An image-only question can remain active in the same run. After a page change without a pending question, you can select a fresh current-page element and image pair and send **Add instruction**. Later questions can use those new IDs in the same run. Previously invalidated element IDs cannot be rebound or revived by a later submission. Cancellation does not undo an action that already ran.
 
 ## Tool and context contracts
 
