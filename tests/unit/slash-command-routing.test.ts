@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs"
 import type { AuthType } from "@earendil-works/pi-ai"
 import { JSDOM } from "jsdom"
 import { afterEach, describe, expect, test, vi } from "vitest"
+import type { PendingClarification } from "../../src/browser/agent/clarification.js"
 import type { BrowserAgentRuntime, RuntimeCallbacks } from "../../src/browser/agent/runtime.js"
 import type { BrowserConfiguration } from "../../src/browser/configuration.js"
 import { requestHostPermissions } from "../../src/browser/permissions.js"
@@ -248,10 +249,57 @@ async function setup() {
     enter,
     idle,
     expectNoRun,
+    clarify: (card: PendingClarification) => callbacks.onClarification?.(card),
   }
 }
 
 describe("initializeConversationPage slash-command routing", () => {
+  test("a question keeps the native active-microphone stop button usable without continuing the agent", async () => {
+    const voice = { active: false, start: vi.fn(), stop: vi.fn(), toggle: vi.fn(), abort: vi.fn() }
+    vi.mocked(createVoiceInput).mockReturnValue(voice as unknown as VoiceInputController)
+    vi.mocked(getMicrophonePermissionState).mockResolvedValue("granted")
+    const ui = await setup()
+    const callbacks = vi.mocked(createVoiceInput).mock.calls[0]?.[0]
+    if (!callbacks) throw new Error("Missing voice callbacks")
+    voice.start.mockImplementation(() => {
+      voice.active = true
+      callbacks.onListeningChange(true)
+    })
+    voice.stop.mockImplementation(() => {
+      voice.active = false
+      callbacks.onListeningChange(false)
+    })
+    ui.runtime.agent.state.isStreaming = true
+    const button = ui.element<HTMLButtonElement>("voice-input")
+    button.click()
+    await vi.waitFor(() => expect(voice.start).toHaveBeenCalledOnce())
+    expect(voice.active).toBe(true)
+    ui.runtime.isAwaitingClarification = true
+    ui.clarify({
+      sessionId: "current",
+      generation: 1,
+      toolCallId: "question",
+      questionSequence: 1,
+      question: "Which result?",
+      options: [
+        { id: "option-1", label: "First" },
+        { id: "option-2", label: "Second" },
+      ],
+      targets: [],
+    })
+    expect(button.disabled).toBe(false)
+    expect(button.getAttribute("aria-pressed")).toBe("true")
+    button.click()
+    expect(voice.stop).toHaveBeenCalledOnce()
+    expect(voice.start).toHaveBeenCalledOnce()
+    expect(getMicrophonePermissionState).toHaveBeenCalledOnce()
+    expect(ui.tabs.create).not.toHaveBeenCalled()
+    expect(voice.active).toBe(false)
+    expect(button.disabled).toBe(true)
+    expect(ui.element("clarification-card").hidden).toBe(false)
+    ui.expectNoRun()
+  })
+
   test.each(["pending", "granted", "prompt"])(
     "a pending clarification blocks direct voice start before or after permission lookup (%s)",
     async (state) => {

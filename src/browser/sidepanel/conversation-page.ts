@@ -385,7 +385,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       voiceInputStarting ||
       voiceInput?.active === true
     voiceButton.disabled =
-      runtime.isAwaitingClarification ||
+      (runtime.isAwaitingClarification && !voiceInput?.active) ||
       voiceInput === undefined ||
       regionCapture?.occupied === true ||
       pageAnnotation?.occupied === true ||
@@ -1033,12 +1033,12 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   }
 
   async function startVoiceInput(): Promise<void> {
-    if (runtime.isAwaitingClarification)
-      throw new Error(t("Answer or stop the pending question first"))
     if (!voiceInput || voiceInput.active) {
       voiceInput?.toggle(promptInput.value)
       return
     }
+    if (runtime.isAwaitingClarification)
+      throw new Error(t("Answer or stop the pending question first"))
     voiceInputStarting = true
     updateSendButton()
     try {
