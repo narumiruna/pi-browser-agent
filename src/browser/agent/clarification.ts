@@ -14,7 +14,6 @@ export interface ClarificationTarget {
   image?: ImageContent
   element: boolean
   imagePosition?: number
-  pinNumber?: number
 }
 export interface ClarificationRequest {
   question: string

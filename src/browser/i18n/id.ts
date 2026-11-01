@@ -28,6 +28,7 @@ export default {
   "Region capture is unavailable on this page": "Tangkapan area tidak tersedia di halaman ini",
   "Could not preview the region. Select again or retry.":
     "Pratinjau area gagal. Pilih lagi atau coba ulang.",
+  "Image {number}": "Gambar {number}",
   "Use as target": "Gunakan sebagai target",
   "Use as reference": "Gunakan sebagai referensi",
   "Target: {target}": "Target: {target}",

@@ -24,6 +24,7 @@ export default {
   "The page changed. Select a new region.": "頁面已變更。請選取新區域。",
   "Region capture is unavailable on this page": "此頁面無法使用區域擷取",
   "Could not preview the region. Select again or retry.": "無法預覽區域。請重新選取或再試一次。",
+  "Image {number}": "圖片 {number}",
   "Use as target": "設為目標",
   "Use as reference": "設為參考",
   "Target: {target}": "目標：{target}",

@@ -27,6 +27,7 @@ export default {
   "Region capture is unavailable on this page": "Không thể chụp vùng trên trang này",
   "Could not preview the region. Select again or retry.":
     "Không thể xem trước vùng. Hãy chọn lại hoặc thử lại.",
+  "Image {number}": "Ảnh {number}",
   "Use as target": "Dùng làm mục tiêu",
   "Use as reference": "Dùng làm tham chiếu",
   "Target: {target}": "Mục tiêu: {target}",

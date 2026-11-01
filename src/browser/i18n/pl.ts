@@ -29,6 +29,7 @@ export default {
     "Przechwytywanie obszaru jest niedostępne na tej stronie",
   "Could not preview the region. Select again or retry.":
     "Nie można wyświetlić obszaru. Wybierz ponownie lub spróbuj jeszcze raz.",
+  "Image {number}": "Obraz {number}",
   "Use as target": "Użyj jako celu",
   "Use as reference": "Użyj jako odniesienia",
   "Target: {target}": "Cel: {target}",

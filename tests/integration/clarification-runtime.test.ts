@@ -454,7 +454,6 @@ describe("run-scoped clarification integration", () => {
         elements,
         true,
         undefined,
-        [],
         { imageIds: element ? [] : ["known"], elementIds: element ? ["known"] : [] },
       )
       const card = await s.waiting()
@@ -513,7 +512,6 @@ describe("run-scoped clarification integration", () => {
       elements,
       true,
       undefined,
-      [],
       submitted,
     )
     await vi.waitFor(() => expect(release).toBeDefined())
@@ -532,25 +530,62 @@ describe("run-scoped clarification integration", () => {
     expect(fetch).not.toHaveBeenCalled()
   })
 
-  test("an unavailable clarification still blocks every valid sibling", async () => {
-    const dispatch = vi.fn(async () => ({ content: [], details: {} }))
-    vi.spyOn(McpManager.prototype, "prepare").mockResolvedValue([
-      {
-        name: "browser_side_effect",
-        label: "Action",
-        description: "Action",
+  test.each(["malformed", "obsolete pin", "duplicate", "unavailable"])(
+    "%s clarification blocks all browser/MCP siblings in every source order",
+    async (scenario) => {
+      const dispatch = vi.fn(async () => ({ content: [], details: {} }))
+      const tools: AgentTool[] = ["browser_side_effect", "mcp_remote"].map((name) => ({
+        name,
+        label: name,
+        description: name,
         parameters: Type.Object({}),
         execute: dispatch,
-      },
-    ])
-    const s = await setup(
-      [[call("browser_side_effect"), call("request_user_input", "question", request)]],
-      false,
-    )
-    await s.runtime.submit("Ask")
-    expect(dispatch).not.toHaveBeenCalled()
-    expect(s.card()).toBeUndefined()
-  })
+        replay: "never",
+      }))
+      vi.spyOn(McpManager.prototype, "prepare").mockResolvedValue(tools)
+      const args =
+        scenario === "malformed"
+          ? {}
+          : scenario === "obsolete pin"
+            ? {
+                ...request,
+                options: [
+                  { label: "Old target", attachmentId: "11111111-1111-4111-8111-111111111111" },
+                  { label: "Other" },
+                ],
+              }
+            : request
+      const calls = [
+        call("browser_side_effect"),
+        call("request_user_input", "question", args),
+        call("mcp_remote"),
+        ...(scenario === "duplicate"
+          ? [call("request_user_input", "second-question", request)]
+          : []),
+      ]
+      const permutations = <T>(items: T[]): T[][] =>
+        items.length < 2
+          ? [items]
+          : items.flatMap((item, index) =>
+              permutations(items.filter((_, i) => i !== index)).map((rest) => [item, ...rest]),
+            )
+      for (const batch of permutations(calls)) {
+        const s = await setup([batch], scenario !== "unavailable")
+        await s.runtime.newSession()
+        await s.runtime.submit("Ask without authorizing siblings")
+        expect(dispatch).not.toHaveBeenCalled()
+        expect(s.confirm).not.toHaveBeenCalled()
+        expect(fetch).not.toHaveBeenCalled()
+        expect(s.card()).toBeUndefined()
+        expect(
+          s.runtime.agent.state.messages.filter((message) => message.role === "toolResult"),
+        ).toHaveLength(calls.length)
+        await s.runtime.shutdown()
+        runtimes.delete(s.runtime)
+      }
+    },
+    60_000,
+  )
 
   test("ordinary tool batches keep baseline persistence-failure behavior", async () => {
     const dispatch = vi.fn(async () => ({ content: [], details: {} }))

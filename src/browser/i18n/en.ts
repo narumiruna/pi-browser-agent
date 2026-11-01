@@ -27,6 +27,7 @@ export const english = {
   "Region capture is unavailable on this page": "Region capture is unavailable on this page",
   "Could not preview the region. Select again or retry.":
     "Could not preview the region. Select again or retry.",
+  "Image {number}": "Image {number}",
   "Use as target": "Use as target",
   "Use as reference": "Use as reference",
   "Target: {target}": "Target: {target}",

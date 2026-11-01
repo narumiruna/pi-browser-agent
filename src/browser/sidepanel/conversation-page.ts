@@ -25,11 +25,6 @@ import {
 } from "../runtime/element-context.js"
 import { pageCapabilityFrom, type RuntimeEvent, sendRuntimeRequest } from "../runtime/messages.js"
 import type { PageCapability } from "../runtime/page-capability.js"
-import {
-  composerTargetBytes,
-  type PointCommentPin,
-  samePointCommentTargets,
-} from "../runtime/point-comments.js"
 import { createUserContextManifest } from "../runtime/target-reference.js"
 import { type JsonObject, RuntimeError, type TabContext } from "../runtime/types.js"
 import { getTreeItems } from "../sessions/session-tree.js"
@@ -143,7 +138,6 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       if (
         runtime.isAwaitingClarification ||
         regionCapture?.occupied ||
-        pointComments?.occupied ||
         pageAnnotation?.occupied ||
         annotationSubmissionAbort
       ) {
@@ -165,9 +159,6 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   let commandResumePending = false
   let commandInProgress = false
   let activeSubmissionGuard: object | undefined
-  let pairedPinSubmission:
-    | { guard: object; ids: ReadonlySet<string>; signal: AbortSignal }
-    | undefined
   let pendingSubmission: { guard: object; accept: () => void } | undefined
   let pendingPasteOperations = 0
   let imageAttachmentQueue = Promise.resolve()
@@ -408,7 +399,6 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     languageWatcher?.flush()
     elementPickerButton.disabled =
       runtime.isAwaitingClarification ||
-      pointComments?.occupied === true ||
       regionCapture?.occupied === true ||
       pageAnnotation?.occupied === true ||
       activeSubmissionGuard !== undefined ||
@@ -428,7 +418,6 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   function releaseSubmissionGuard(guard: object): void {
     if (activeSubmissionGuard !== guard) return
     activeSubmissionGuard = undefined
-    if (pairedPinSubmission?.guard === guard) pairedPinSubmission = undefined
     updateSendButton()
   }
 
@@ -529,14 +518,10 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     const focused = document.activeElement as HTMLElement | null
     const role = focused?.dataset.pairRole
     const attachmentId = focused?.dataset.attachmentId
-    const retainPreparedPins =
-      pairedPinSubmission?.guard === activeSubmissionGuard &&
-      pairedPinSubmission !== undefined &&
-      !pairedPinSubmission.signal.aborted
     pairComposer.refresh([
       ...composerImages.map((image, index) => ({
         id: image.id,
-        label: t("Pasted image {number}", { number: index + 1 }),
+        label: t("Image {number}", { number: index + 1 }),
         active: true,
       })),
       ...selectedElements.map((selected) => ({
@@ -544,25 +529,14 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
         label: selectedElementLabel(selected.context),
         active: true,
       })),
-      ...(pointComments?.pins ?? []).map((pin) => ({
-        id: pin.id,
-        label: `${t("Comment {number}", { number: pin.number })} — ${pin.label}`,
-        active: pin.active,
-        retained:
-          pointComments?.reselectingId === pin.id ||
-          Boolean(retainPreparedPins && pairedPinSubmission?.ids.has(pin.id)),
-      })),
     ])
     for (const host of [
       ...pastedImages.querySelectorAll<HTMLElement>("[data-attachment-id]"),
       ...selectedElementsOutput.querySelectorAll<HTMLElement>("[data-attachment-id]"),
-      ...document.querySelectorAll<HTMLElement>(
-        "#point-comment-cards .point-comment-card[data-pin-id]",
-      ),
     ]) {
-      if (!host.matches(".pasted-image, .selected-element-chip, .point-comment-card")) continue
+      if (!host.matches(".pasted-image, .selected-element-chip")) continue
       host.querySelector(".pair-actions")?.remove()
-      host.append(pairComposer.controls(host.dataset.pinId ?? host.dataset.attachmentId ?? ""))
+      host.append(pairComposer.controls(host.dataset.attachmentId ?? ""))
     }
     if (
       role &&
@@ -1314,9 +1288,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       context: structuredClone(selected.context),
       tabContext: { ...selected.tabContext },
     }))
-    let submittedPins: PointCommentPin[] = []
     try {
-      if (withPointComments && pointComments) submittedPins = pointComments.snapshot()
       if (submittedPair)
         createUserContextManifest(
           {
@@ -1326,23 +1298,12 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
           },
           submittedImages.map((image) => image.content),
           submittedElements.map((element) => element.context),
-          submittedPins,
         )
     } catch (error) {
       setError(error)
       return
     }
-    if (withPointComments && !text && !pointComments?.pins.some((pin) => pin.note.trim())) {
-      setError(t("Write a note or a task before sending point comments"))
-      return
-    }
-    if (
-      !text &&
-      submittedImages.length === 0 &&
-      submittedElements.length === 0 &&
-      !withAnnotation &&
-      !withPointComments
-    )
+    if (!text && submittedImages.length === 0 && submittedElements.length === 0 && !withAnnotation)
       return
     if ((submittedImages.length > 0 || withAnnotation) && !runtime.model.input.includes("image")) {
       setError(t("{model} does not support image input", { model: runtime.model.name }))
@@ -1373,12 +1334,6 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       }
     }
     activeSubmissionGuard = submissionGuard
-    if (submittedPair && withPointComments && annotationAbort)
-      pairedPinSubmission = {
-        guard: submissionGuard,
-        ids: new Set(submittedPins.map((pin) => pin.id)),
-        signal: annotationAbort.signal,
-      }
     updateSendButton()
     void run(async () => {
       try {
@@ -1449,10 +1404,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
         const accept = (): void => {
           if (activeSubmissionGuard !== submissionGuard) return
           if (annotationSubmissionAbort === annotationAbort) annotationSubmissionAbort = undefined
-          pairComposer.accept(
-            new Set([...submittedImageIds, ...submittedElementIds, ...submittedPinIds]),
-          )
-          pointComments?.accept(submittedPinIds)
+          pairComposer.accept(new Set([...submittedImageIds, ...submittedElementIds]))
           composerImages = composerImages.filter((image) => !submittedImageIds.has(image.id))
           selectedElements = selectedElements.filter(
             (element) => !submittedElementIds.has(element.id),
@@ -1472,13 +1424,13 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
           usePage,
         ] as const
         const submission = submittedPair
-          ? runtime.submit(...submissionArgs, assertSubmission, submittedPins, {
+          ? runtime.submit(...submissionArgs, assertSubmission, {
               imageIds: submittedImages.map((image) => image.id),
               elementIds: submittedElements.map((element) => element.id),
               pair: submittedPair,
             })
-          : withAnnotation || withPointComments
-            ? runtime.submit(...submissionArgs, assertSubmission, submittedPins)
+          : withAnnotation
+            ? runtime.submit(...submissionArgs, assertSubmission)
             : runtime.submit(...submissionArgs)
         const mode = await submission
         if (mode !== "prompt") {
@@ -1506,8 +1458,6 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   async function clearElementComposerContext(): Promise<void> {
     if (runtime.isAwaitingClarification)
       throw new Error(t("Answer or stop the pending question first"))
-    if ((pointComments?.pins.length ?? 0) > 0 || pointComments?.occupied)
-      throw new Error(t("Remove comment cards before changing sessions"))
     pairComposer.clear()
     cancelAnnotationSubmission()
     if (regionCapture?.occupied) await regionCapture.cancel(false)

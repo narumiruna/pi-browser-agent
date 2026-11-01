@@ -294,9 +294,17 @@ The shared drawing proof retains main's arrow-direction, arrowhead, rectangle-ou
 
 ## Target-reference and clarification acceptance — 2026-11-01
 
-Status: implementation, self-review, and final integrated CI passed on parent `d1aaa931660027b4f16fa0d8f69476bab2595c04`. Native UI, assistive technology, and real-provider acceptance remain unverified. Automated plan completion does not establish product acceptance or release readiness.
+Status: pin-free feature preparation is in progress on the old parent `d1aaa931660027b4f16fa0d8f69476bab2595c04`. That parent still contains point-comment code. Current checks do not establish a pin-free shipping tree or integration with the rebuilt region parent. Native UI, assistive technology, and real-provider acceptance remain unverified.
 
-### Automated evidence
+### Pin-free scope
+
+Pair candidates are only images and existing selected-element chips. Region crops use normal image attachments. Pin variants, notes, submission parameters, reselection, and reserved-ID retention are removed from this feature. Unknown historical pin IDs cannot open a question or dispatch sibling actions. The full final-parent check, build, browser tests, and CI remain required after the coordinated rebase.
+
+Preparatory checks on the old parent: `npm run check` passed; seven focused unit/integration files passed all 123 tests, including four locked-SDK proofs. Logs are `/tmp/target-reference-pin-free-prep-check.log` and `/tmp/target-reference-pin-free-prep-unit.log`. The new all-order test initially reused saved history between permutations; creating an independent session for each permutation corrected that fixture failure. `npm run build` completed the browser bundle and production compilation, then failed typecheck on six parent-owned point-comment calls that still pass pins as argument seven (`/tmp/target-reference-pin-free-prep-build.log`). Those parent tests are not changed by this preparatory feature commit. This is not a passing build or integration gate; no browser test or full CI was run on this old-parent source.
+
+### Historical automated evidence
+
+All evidence below predates the pin-free rebuild. It records the earlier pin-era parent and earlier development checkpoints, not new verification of the rebuilt branch.
 
 - Environment: Node 26.11.1, Playwright 1.64.1, headless Chrome for Testing 156.0.8078.4, and locked pi-agent-core/pi-ai 1.4.0.
 - The locked-SDK proof passed four focused tests before production implementation. It covers both call orders and parallel/sequential scheduling, invalid and duplicate questions, a delayed pending callback, and abort without deadlock. Browser and MCP sibling dispatch counts stay zero. A supported `finishTurn` abort/end boundary keeps the provider stream count at one on cancellation; normal explicit answers continue to a second stream once.
@@ -325,7 +333,7 @@ Status: implementation, self-review, and final integrated CI passed on parent `d
    - Release restriction: do not claim provider-wide compatibility from automated fixtures. No live or paid provider request is authorized by this implementation work.
 2. **Native Side Panel and accessibility**
    - Role: release tester or accessibility reviewer.
-   - Prerequisites: stable Chrome, a dedicated profile, the production build in the actual browser-owned Side Panel, harmless page/image/pin fixtures, and a screen reader with recorded version.
+   - Prerequisites: stable Chrome, a dedicated profile, the production build in the actual browser-owned Side Panel, harmless page/image/selected-element fixtures, including an attached region crop, and a screen reader with recorded version.
    - Action: select target/reference roles by keyboard and pointer; remove and repair a member; answer via radio choices and Other; use Stop while waiting. Repeat at 320–360 px, 12/24 px text, light/dark appearance, forced colors, and after native tab/window changes and full Chrome restart.
    - Expected result: clear role and question labels, visible focus, announced question/error/state changes, no clipped controls, no automatic answer, preserved newer drafts, reliable cancellation, and inactive restored history. Native permission dialogs remain separate from Answer.
    - Unverified behavior: browser-owned UI, physical-device interaction, actual assistive-technology output, and subjective usability are not proved by headless extension-page tests.

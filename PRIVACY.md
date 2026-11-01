@@ -47,7 +47,7 @@ Native select-option reads are a narrow label-only exception to the form-content
 
 ### Target/reference pairs and clarification answers
 
-Users can label two submitted attachments as a target and a reference. These labels, attachment IDs, submitted image positions, pin notes, and bounded selected-page context go to the selected model provider as ordinary user-message data. References use already attached images or current-page targets; pair controls do not fetch arbitrary reference URLs or read background tabs.
+Users can label two submitted attachments as a target and a reference. These labels, attachment IDs, submitted image positions, and bounded selected-element context go to the selected model provider as ordinary user-message data. References use already attached images or existing selected-element chips; pair controls do not fetch arbitrary reference URLs or read background tabs.
 
 The agent can ask one local clarification question through the selected provider’s normal tool-call stream. Selecting an option or typing text does not submit it until the user selects **Answer**. That answer returns to the same run and can be stored with the question in the conversation. It does not approve browser or remote actions. There is no additional question service, provider, or credential.
 

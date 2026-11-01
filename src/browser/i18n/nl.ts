@@ -28,6 +28,7 @@ export default {
   "Region capture is unavailable on this page": "Gebiedsopname is niet beschikbaar op deze pagina",
   "Could not preview the region. Select again or retry.":
     "Het gebied kon niet worden weergegeven. Selecteer opnieuw of probeer het nogmaals.",
+  "Image {number}": "Afbeelding {number}",
   "Use as target": "Als doel gebruiken",
   "Use as reference": "Als referentie gebruiken",
   "Target: {target}": "Doel: {target}",

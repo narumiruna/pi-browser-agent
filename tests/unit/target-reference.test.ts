@@ -50,25 +50,21 @@ describe("target/reference manifest", () => {
       expect(() => createUserContextManifest(input as SubmittedContext, images, [])).toThrow()
   })
 
-  test("keeps pin notes separate from validated untrusted page fields and requires ordinary task text only for pairs", () => {
-    const pin = {
-      id: "11111111-1111-4111-8111-111111111111",
-      number: 1,
-      note: "Match <script> this",
-      context: selectedTarget(),
-    }
+  test("keeps validated element fields untrusted and requires ordinary task text only for pairs", () => {
+    const element = selectedTarget()
     const manifest = createUserContextManifest(
-      { imageIds: ["image-a"], elementIds: [], pair: { targetId: pin.id, referenceId: "image-a" } },
+      {
+        imageIds: ["image-a"],
+        elementIds: ["element-a"],
+        pair: { targetId: "element-a", referenceId: "image-a" },
+      },
       images.slice(0, 1),
-      [],
-      [pin],
+      [element],
     )
     expect(manifest.attachments[1]).toEqual({
-      id: pin.id,
-      kind: "pin",
-      number: 1,
-      userNote: pin.note,
-      untrustedPageContext: pin.context,
+      id: "element-a",
+      kind: "element",
+      untrustedPageContext: element,
     })
     expect(composeSubmittedContext("Match the style", manifest)).toContain(USER_CONTEXT_HEADER)
     expect(() => composeSubmittedContext(" ", manifest)).toThrow()
@@ -86,55 +82,47 @@ describe("target/reference manifest", () => {
       "Plain request",
     )
     expect(() =>
-      createUserContextManifest({ imageIds: [], elementIds: [pin.id] }, [], [pin.context], [pin]),
+      createUserContextManifest({ imageIds: ["same"], elementIds: ["same"] }, images.slice(0, 1), [
+        element,
+      ]),
     ).toThrow()
   })
 
   test("charges one combined 16KiB UTF-8 budget including every wrapper and role", () => {
     const manifest = createUserContextManifest(submitted, images, [])
-    const pin = {
-      id: "pin",
-      kind: "pin" as const,
-      number: 1,
-      userNote: "",
-      untrustedPageContext: selectedTarget(),
+    const element = {
+      id: "element",
+      kind: "element" as const,
+      untrustedPageContext: { ...selectedTarget(), text: "" },
     }
-    manifest.attachments.push(pin)
+    manifest.attachments.push(element)
     const bytes = new TextEncoder().encode(`\n\n${serializeUserContext(manifest)}`).byteLength
-    pin.userNote = "a".repeat(16 * 1024 - bytes)
+    element.untrustedPageContext.text = "a".repeat(16 * 1024 - bytes)
     expect(new TextEncoder().encode(`\n\n${serializeUserContext(manifest)}`).byteLength).toBe(
       16 * 1024,
     )
-    pin.userNote += "a"
+    element.untrustedPageContext.text += "a"
     expect(() => serializeUserContext(manifest)).toThrow(/16 KiB/)
-    pin.userNote = "界".repeat(Math.floor((16 * 1024 - bytes) / 3) + 1)
+    element.untrustedPageContext.text = "界".repeat(Math.floor((16 * 1024 - bytes) / 3) + 1)
     expect(() => serializeUserContext(manifest)).toThrow(/16 KiB/)
   })
 
-  test("uses the actual pin UUID, unique-number and note contracts", () => {
-    const pin = {
-      id: "11111111-1111-4111-8111-111111111111",
-      number: 1,
-      note: "",
-      context: selectedTarget(),
-    }
-    for (const invalid of [
-      { ...pin, id: "not-a-pin-id" },
-      { ...pin, note: "a".repeat(513) },
-      { ...pin, number: 1_000_001 },
-      { ...pin, extra: true },
-    ])
+  test("rejects obsolete pin metadata and IDs instead of creating a compatibility attachment", () => {
+    for (const extra of [{ pins: [] }, { userNote: "Old note" }, { kind: "pin" }])
       expect(() =>
-        createUserContextManifest({ imageIds: [], elementIds: [] }, [], [], [invalid]),
-      ).toThrow()
+        createUserContextManifest({ ...submitted, ...extra } as SubmittedContext, images, []),
+      ).toThrow(/Invalid submitted/)
     expect(() =>
       createUserContextManifest(
-        { imageIds: [], elementIds: [] },
+        { ...submitted, pair: { targetId: "obsolete-pin-id", referenceId: "image-a" } },
+        images,
         [],
-        [],
-        [pin, { ...pin, id: "22222222-2222-4222-8222-222222222222" }],
       ),
-    ).toThrow()
+    ).toThrow(/distinct target/)
+    expect(createUserContextManifest(submitted, images, []).attachments).toEqual([
+      { id: "image-a", kind: "image", imagePosition: 1 },
+      { id: "image-b", kind: "image", imagePosition: 2 },
+    ])
   })
 
   test("reuses the four-image/3 MB raster-only composer boundary", () => {
@@ -171,14 +159,11 @@ describe("target/reference manifest", () => {
     const input = { imageIds: [], elementIds: elements.map((_, index) => `element-${index}`) }
     expect(createUserContextManifest(input, [], elements).attachments).toHaveLength(5)
     expect(() =>
-      createUserContextManifest(input, [], elements, [
-        {
-          id: "11111111-1111-4111-8111-111111111111",
-          number: 1,
-          note: "",
-          context: selectedTarget(),
-        },
-      ]),
+      createUserContextManifest(
+        { imageIds: [], elementIds: [...input.elementIds, "sixth"] },
+        [],
+        [...elements, selectedTarget()],
+      ),
     ).toThrow()
     expect(() =>
       createUserContextManifest(

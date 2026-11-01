@@ -24,12 +24,6 @@ import {
   serializeSelectedElementContext,
 } from "../runtime/element-context.js"
 import {
-  type PointCommentPin,
-  parsePointCommentPins,
-  serializePointComments,
-  validateComposerTargets,
-} from "../runtime/point-comments.js"
-import {
   composeSubmittedContext,
   createUserContextManifest,
   type SubmittedContext,
@@ -494,7 +488,6 @@ export class BrowserAgentRuntime {
     elements: SelectedElementContext[] = [],
     usePage = true,
     assertSubmission?: () => void,
-    pins: PointCommentPin[] = [],
     submittedContext?: SubmittedContext,
   ): Promise<SubmissionMode> {
     assertSubmission?.()
@@ -509,24 +502,13 @@ export class BrowserAgentRuntime {
     if (this.configuration.isChangingAuth)
       throw new Error("Wait for the authentication change to finish")
     this.assertImageInput(images)
-    const validatedPins = parsePointCommentPins(pins)
-    if (validatedPins.length && !text.trim() && !validatedPins.some((pin) => pin.note.trim()))
-      throw new Error("Write a note or a task before sending point comments")
-    if (validatedPins.length && this.agent.state.isStreaming)
-      throw new Error("Point comments require an idle conversation")
     if (submittedContext) images = structuredClone(images)
     const manifest = submittedContext
-      ? createUserContextManifest(submittedContext, images, elements, validatedPins)
+      ? createUserContextManifest(submittedContext, images, elements)
       : undefined
-    if (!manifest) validateComposerTargets(elements, validatedPins)
     const content = manifest
       ? composeSubmittedContext(text, manifest)
-      : [
-          composeElementContext(text, elements),
-          ...(validatedPins.length ? [serializePointComments(validatedPins)] : []),
-        ]
-          .filter(Boolean)
-          .join("\n\n")
+      : composeElementContext(text, elements)
     const targets =
       manifest?.attachments.map((attachment) => ({
         id: attachment.id,
@@ -540,16 +522,8 @@ export class BrowserAgentRuntime {
               image: structuredClone(images[attachment.imagePosition - 1]),
               imagePosition: attachment.imagePosition,
             }
-          : attachment.kind === "pin"
-            ? { pinNumber: attachment.number }
-            : {}),
-      })) ??
-      validatedPins.map((pin) => ({
-        id: pin.id,
-        element: true,
-        pinNumber: pin.number,
-        summary: `${pin.context.tagName}${pin.context.id ? `#${pin.context.id}` : ""}`,
-      }))
+          : {}),
+      })) ?? []
     if (this.preparing) throw new Error("Wait for skill and remote MCP discovery to finish")
     if (!this.agent.state.isStreaming) {
       if (this.shuttingDown) throw new Error("The panel is shutting down")

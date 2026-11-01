@@ -30,6 +30,7 @@ export default {
     "Bereichserfassung ist auf dieser Seite nicht verfügbar",
   "Could not preview the region. Select again or retry.":
     "Bereichsvorschau fehlgeschlagen. Erneut auswählen oder versuchen.",
+  "Image {number}": "Bild {number}",
   "Use as target": "Als Ziel verwenden",
   "Use as reference": "Als Referenz verwenden",
   "Target: {target}": "Ziel: {target}",

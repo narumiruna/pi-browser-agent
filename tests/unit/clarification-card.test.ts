@@ -126,7 +126,7 @@ describe("local question card", () => {
 })
 
 describe("pair composer", () => {
-  test("intentional reselect/submit retention keeps roles but never makes an inactive member selectable", () => {
+  test("invalidating an element clears only its role and never restores it automatically", () => {
     const s = setup()
     const root = required(s.document.querySelector<HTMLElement>("#pair"))
     const pair = new TargetReferenceComposer(
@@ -135,35 +135,57 @@ describe("pair composer", () => {
       () => false,
     )
     const items = [
-      { id: "pin", label: "Comment 1", active: true, retained: false },
-      { id: "image", label: "Image 1", active: true, retained: false },
+      { id: "element", label: "button#buy", active: true },
+      { id: "image", label: "Image 1", active: true },
     ]
     pair.refresh(items)
     required(
-      pair.controls("pin").querySelector<HTMLButtonElement>('[data-pair-role="targetId"]'),
+      pair.controls("element").querySelector<HTMLButtonElement>('[data-pair-role="targetId"]'),
     ).click()
     required(
       pair.controls("image").querySelector<HTMLButtonElement>('[data-pair-role="referenceId"]'),
     ).click()
     required(items[0]).active = false
-    required(items[0]).retained = true
     pair.refresh(items)
-    expect(pair.snapshot()).toEqual({ targetId: "pin", referenceId: "image" })
+    expect(pair.complete).toBe(false)
+    expect(root.textContent).toContain("Target: Not selected")
+    expect(root.textContent).toContain("Reference: Image 1")
     expect(
-      required(pair.controls("pin").querySelector<HTMLButtonElement>('[data-pair-role="targetId"]'))
-        .disabled,
+      required(
+        pair.controls("element").querySelector<HTMLButtonElement>('[data-pair-role="targetId"]'),
+      ).disabled,
     ).toBe(true)
     required(items[0]).active = true
-    required(items[0]).retained = false
-    required(items[0]).label = "Comment 1 — replacement"
-    pair.refresh(items)
-    expect(pair.snapshot()?.targetId).toBe("pin")
-    expect(root.textContent).toContain("replacement")
-    required(items[0]).active = false
     pair.refresh(items)
     expect(pair.complete).toBe(false)
     expect(() => pair.snapshot()).toThrow()
   })
+
+  test("roles are distinct and accepted IDs do not clear a newer pair member", () => {
+    const s = setup()
+    const root = required(s.document.querySelector<HTMLElement>("#pair"))
+    const pair = new TargetReferenceComposer(
+      root,
+      () => undefined,
+      () => false,
+    )
+    const items = ["old", "reference", "new"].map((id) => ({ id, label: id, active: true }))
+    pair.refresh(items)
+    const select = (id: string, role: string) =>
+      required(pair.controls(id).querySelector<HTMLButtonElement>(`[data-pair-role="${role}"]`))
+    select("old", "targetId").click()
+    expect(select("old", "referenceId").disabled).toBe(true)
+    select("reference", "referenceId").click()
+    const snapshot = pair.snapshot()
+    select("new", "targetId").click()
+    expect(snapshot).toEqual({ targetId: "old", referenceId: "reference" })
+    pair.accept(new Set(["old", "reference"]))
+    expect(pair.complete).toBe(false)
+    pair.refresh(items.filter((item) => item.id === "new"))
+    expect(root.textContent).toContain("Target: new")
+    expect(root.textContent).toContain("Reference: Not selected")
+  })
+
   test("keeps IDs stable through reorder/deletion and never selects a replacement", () => {
     const s = setup()
     let blocked = false

@@ -28,6 +28,7 @@ export default {
   "Region capture is unavailable on this page": "Снимок области недоступен на этой странице",
   "Could not preview the region. Select again or retry.":
     "Не удалось показать область. Выберите заново или повторите попытку.",
+  "Image {number}": "Изображение {number}",
   "Use as target": "Использовать как цель",
   "Use as reference": "Использовать как образец",
   "Target: {target}": "Цель: {target}",

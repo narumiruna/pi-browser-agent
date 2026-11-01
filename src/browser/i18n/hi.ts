@@ -25,6 +25,7 @@ export default {
   "Region capture is unavailable on this page": "इस पेज पर क्षेत्र कैप्चर उपलब्ध नहीं है",
   "Could not preview the region. Select again or retry.":
     "क्षेत्र का पूर्वावलोकन नहीं हो सका। फिर चुनें या पुनः प्रयास करें।",
+  "Image {number}": "चित्र {number}",
   "Use as target": "लक्ष्य के रूप में उपयोग करें",
   "Use as reference": "संदर्भ के रूप में उपयोग करें",
   "Target: {target}": "लक्ष्य: {target}",

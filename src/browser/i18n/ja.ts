@@ -28,6 +28,7 @@ export default {
   "Region capture is unavailable on this page": "このページでは範囲のキャプチャを利用できません",
   "Could not preview the region. Select again or retry.":
     "範囲をプレビューできませんでした。選択し直すか再試行してください。",
+  "Image {number}": "画像 {number}",
   "Use as target": "対象として使用",
   "Use as reference": "参照として使用",
   "Target: {target}": "対象: {target}",

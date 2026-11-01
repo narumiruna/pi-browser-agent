@@ -23,6 +23,7 @@ export default {
   "The page changed. Select a new region.": "หน้าเปลี่ยนไปแล้ว เลือกพื้นที่ใหม่",
   "Region capture is unavailable on this page": "การจับภาพพื้นที่ใช้ไม่ได้ในหน้านี้",
   "Could not preview the region. Select again or retry.": "แสดงตัวอย่างพื้นที่ไม่ได้ เลือกใหม่หรือลองอีกครั้ง",
+  "Image {number}": "ภาพ {number}",
   "Use as target": "ใช้เป็นเป้าหมาย",
   "Use as reference": "ใช้เป็นข้อมูลอ้างอิง",
   "Target: {target}": "เป้าหมาย: {target}",

@@ -29,6 +29,7 @@ export default {
     "La captura de región no está disponible en esta página",
   "Could not preview the region. Select again or retry.":
     "No se pudo mostrar la región. Selecciona de nuevo o reintenta.",
+  "Image {number}": "Imagen {number}",
   "Use as target": "Usar como objetivo",
   "Use as reference": "Usar como referencia",
   "Target: {target}": "Objetivo: {target}",

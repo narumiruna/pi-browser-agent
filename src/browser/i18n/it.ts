@@ -29,6 +29,7 @@ export default {
     "La cattura di un’area non è disponibile su questa pagina",
   "Could not preview the region. Select again or retry.":
     "Impossibile visualizzare l’area. Seleziona di nuovo o riprova.",
+  "Image {number}": "Immagine {number}",
   "Use as target": "Usa come destinazione",
   "Use as reference": "Usa come riferimento",
   "Target: {target}": "Destinazione: {target}",

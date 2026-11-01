@@ -71,10 +71,8 @@ export class ClarificationCard {
       if (target) {
         const summary = document.createElement("small")
         const description = target.imagePosition
-          ? t("Pasted image {number}", { number: target.imagePosition })
-          : target.pinNumber
-            ? `${t("Comment {number}", { number: target.pinNumber })} — ${target.summary}`
-            : target.summary
+          ? t("Image {number}", { number: target.imagePosition })
+          : target.summary
         summary.textContent = description
         label.append(summary)
         const src = target.image && imageContentSource(target.image)

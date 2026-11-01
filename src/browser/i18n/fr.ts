@@ -29,6 +29,7 @@ export default {
     "La capture de zone n’est pas disponible sur cette page",
   "Could not preview the region. Select again or retry.":
     "Impossible d’afficher la zone. Sélectionnez à nouveau ou réessayez.",
+  "Image {number}": "Image {number}",
   "Use as target": "Utiliser comme cible",
   "Use as reference": "Utiliser comme référence",
   "Target: {target}": "Cible : {target}",

@@ -28,6 +28,7 @@ export default {
   "Region capture is unavailable on this page": "Bu sayfada bölge yakalama kullanılamıyor",
   "Could not preview the region. Select again or retry.":
     "Bölge önizlemesi oluşturulamadı. Yeniden seçin veya tekrar deneyin.",
+  "Image {number}": "Resim {number}",
   "Use as target": "Hedef olarak kullan",
   "Use as reference": "Referans olarak kullan",
   "Target: {target}": "Hedef: {target}",
