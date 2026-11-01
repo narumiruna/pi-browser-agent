@@ -1,6 +1,24 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Comment on elements": "評論元素",
+  "Comment {number}": "評論 {number}",
+  "Inactive target": "目標已失效",
+  "Describe the requested change": "說明所需的變更",
+  Remove: "移除",
+  "Reselect target": "重新選取目標",
+  "Use note only": "僅使用備註",
+  "Remove, reselect, or convert inactive comments before sending":
+    "傳送前請移除、重新選取或轉換失效的評論",
+  "Wait for the current operation to finish before commenting": "請等目前的操作完成後再評論",
+  "Attach up to five page targets": "最多附加五個頁面目標",
+  "Open an HTTP or HTTPS page before commenting": "評論前請開啟 HTTP 或 HTTPS 頁面",
+  "Site access is required to comment on this page": "評論此頁面需要網站存取權",
+  "The page changed. Select comment targets again.": "頁面已變更。請重新選取評論目標。",
+  "Could not confirm comment cleanup. Reload the page before sending.":
+    "無法確認已移除評論顯示。傳送前請重新載入頁面。",
+  "Write a note or a task before sending point comments": "傳送評論前請輸入備註或工作",
+  "Remove comment cards before changing sessions": "切換工作階段前請移除評論卡片",
   "Draw on page": "在頁面上繪圖",
   "Cancel page drawing": "取消頁面繪圖",
   "Pen color": "筆觸顏色",

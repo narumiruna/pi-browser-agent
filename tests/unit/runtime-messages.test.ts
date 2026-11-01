@@ -26,6 +26,10 @@ describe("internal runtime messages", () => {
         ref: string
         checked: boolean
       }>()
+    } else if (request.method === "pointComments.reselect") {
+      expectTypeOf(request.params).toEqualTypeOf<{ clientId: string; id: string; number: number }>()
+    } else if (request.method === "pointComments.stop") {
+      expectTypeOf(request.params).toEqualTypeOf<{ clientId: string; submit?: true }>()
     } else if (request.method === "page.waitFor") {
       if ("text" in request.params) expectTypeOf(request.params.text).toEqualTypeOf<string>()
       else expectTypeOf(request.params.selector).toEqualTypeOf<string>()

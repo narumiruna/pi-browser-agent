@@ -99,6 +99,18 @@ Explicit Send snapshots the session, text, image IDs, and drawing generation und
 
 The live page can move beneath marks; there is no DOM tracking or change to page-owned content/layout/top-layer state. Context, scroll, viewport/zoom, protection, permission, expiry, disconnect, and restart changes invalidate drawing and pending submission. Pen choices and raw strokes stay in memory; sent PNGs use ordinary transcript image storage without a schema change. The protected-capture proof verifies painted marks, zoom alignment, and input interception in Chrome. The submission guard also runs after asynchronous skill and MCP preparation; Escape before acceptance prevents provider dispatch. See [feature contract](page-annotation.md) and [acceptance](manual-acceptance.md#page-annotation-acceptance--2026-11-01).
 
+### Point comments
+
+`sidepanel/point-comments.ts` owns memory-only numbered cards, trusted user notes, stable UUIDs, inactive-card recovery, and accepted-ID clearing. The existing serialized picker takes an explicit pin mode; one-shot selection and shortcut token consumption remain unchanged. Only trusted numbers and geometry enter badge painting, never notes.
+
+`runtime/point-comments.ts` defines the version-1 `{version:1,pins:[{id,number,note,context}]}` envelope and shared validation. Nested element contexts remain version 1. Pins and ordinary chips share five targets and 16 KiB of serialized context, including headers, notes, IDs, and wrappers; each context retains 8 KiB and each note is limited to 512 UTF-16 units.
+
+`PointCommentsWorker` owns fixed validated `pointComments.start/remove/reselect/clear/stop` UI requests. Tokens bind a panel client, exact tab context, generation, sequence, and five-minute expiry. Top-frame notifications require acknowledgment before another selection. Inactive-card identities reserve slots during explicit reselection; reservations contain no notes. Cleanup is serialized, token-specific, and retains the original target. Failed cleanup remains blocking until confirmed removal.
+
+Send snapshots the cards and attachments. An injected synchronous `submit` control validates actual nodes, effective visibility, geometry, viewport, and protection immediately before removing the surface and returning the targets. Worker and panel guards then reject changed context or cancellation, including asynchronous skill/MCP preparation. Only accepted submitted IDs clear. Preparation failure retains inactive notes, not live metadata. No screenshot is automatic, and text-only models are supported.
+
+Actual nodes stay in the isolated world. Removed, replaced, hidden, or moved nodes invalidate the session; no selector relocates a badge. Context, focus, scroll/zoom, permission, expiry, disconnect, and restart changes also invalidate it. Sent notes and separately labeled untrusted page context become ordinary user-message history, never live targets or mutation authorization. See [feature contract](point-comments.md).
+
 ### Remote MCP clients
 
 `src/browser/mcp/` owns endpoint policy, versioned configuration/token stores, the bundled SDK transport, interpreted schema validation, discovery, and tool adaptation. `mcp-settings.ts` owns server controls; `BrowserAgentRuntime` prepares a new MCP declaration snapshot before an explicitly submitted run. MCP tools are independent of page context and the browser-only tool preference list.

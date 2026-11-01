@@ -4,6 +4,7 @@ import {
   validPageAnnotationParams,
 } from "./page-annotation.js"
 import type { PageCapability } from "./page-capability.js"
+import { validPointCommentsParams } from "./point-comments.js"
 import {
   type ElementTarget,
   type JsonObject,
@@ -25,6 +26,11 @@ export const RUNTIME_METHODS = [
   "pageAnnotation.update",
   "pageAnnotation.capture",
   "pageAnnotation.stop",
+  "pointComments.start",
+  "pointComments.remove",
+  "pointComments.reselect",
+  "pointComments.clear",
+  "pointComments.stop",
   "requests.cancel",
   "page.getVisibleText",
   "page.listElements",
@@ -97,6 +103,17 @@ type RuntimeParams = {
   "pageAnnotation.update": PageAnnotationUpdate
   "pageAnnotation.capture": { clientId: string }
   "pageAnnotation.stop": { clientId: string }
+  "pointComments.start": {
+    clientId: string
+    capacity: number
+    nextNumber: number
+    replace?: { id: string; number: number }
+    reserved?: { id: string; number: number }[]
+  }
+  "pointComments.remove": { clientId: string; id: string }
+  "pointComments.reselect": { clientId: string; id: string; number: number }
+  "pointComments.clear": { clientId: string }
+  "pointComments.stop": { clientId: string; submit?: true }
   "requests.cancel": { requestId: string }
   "page.getVisibleText": { selector?: string; offset?: number }
   "page.listElements": ElementDiscoveryParams
@@ -140,6 +157,8 @@ export interface RuntimeEvent {
     | "elementPicker.started"
     | "pageAnnotation.changed"
     | "pageAnnotation.cancelled"
+    | "pointComments.selected"
+    | "pointComments.cancelled"
     | "operation.progress"
     | "selection.queued"
     | "settings.saved"
@@ -231,6 +250,12 @@ function isBoundedInteger(value: unknown, maximum: number, minimum = 0): value i
 
 function hasValidParams(method: RuntimeMethod, params: Record<string, unknown>): boolean {
   switch (method) {
+    case "pointComments.start":
+    case "pointComments.remove":
+    case "pointComments.reselect":
+    case "pointComments.clear":
+    case "pointComments.stop":
+      return validPointCommentsParams(method, params)
     case "pageAnnotation.start":
     case "pageAnnotation.update":
     case "pageAnnotation.capture":
@@ -405,7 +430,7 @@ function isRuntimeRequest(value: unknown): value is RuntimeRequest {
     isRecord(value.params) &&
     isJsonValue(value.params) &&
     hasValidParams(value.method, value.params) &&
-    (!value.method.startsWith("pageAnnotation.") ||
+    (!(value.method.startsWith("pageAnnotation.") || value.method.startsWith("pointComments.")) ||
       (hasOnlyKeys(value, ["kind", "requestId", "method", "params", "tabContext", "confirmed"]) &&
         (value.tabContext === undefined ||
           (isRecord(value.tabContext) &&

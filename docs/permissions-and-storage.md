@@ -27,6 +27,16 @@ Pen choices, raw strokes, surface tokens, and revisions stay in memory only. Eac
 
 Capture creates one ordinary composer PNG containing the visible page, marks, and slight 1% shield tint. Cleanup must complete before the agent starts. Safe capture failure preserves editable marks; later submission failure retains the PNG preview and text for manual retry without recapture. Unconfirmed cleanup blocks Send until removal is confirmed. A URL or context-epoch change alone is not removal evidence. Sent images use the existing transcript image format and retention; raw strokes do not accompany them. The existing screenshot editor and queued images remain unchanged. Automated evidence and unverified native/device checks are recorded in [manual acceptance](manual-acceptance.md#page-annotation-acceptance--2026-11-01).
 
+## Point comment permissions and memory
+
+[Point comments](point-comments.md) use existing exact current-site approval and add no permission, setting, dependency, or storage schema. Starting and editing make no screenshot or provider request. Explicit Send transmits notes and bounded element descriptions, with optional separately attached images, to the selected provider. It requires no screenshot permission.
+
+Unsent notes, cards, node identities, UUIDs, display numbers, tokens, and slot reservations stay in memory. Notes remain in the trusted panel; only badge numbers and geometry reach the page surface. Pins and ordinary chips share five targets and 16 KiB of serialized context including notes and wrapper overhead; each note has at most 512 UTF-16 units and each nested context retains 8 KiB.
+
+Cancellation and context/target/protection changes retain inactive cards but discard their live metadata. Inactive cards block Send until removed, explicitly reselected, or converted to note-only composer text. The five-minute surface must be removed with confirmed cleanup before agent submission. Failures retain notes for explicit recovery; nothing is automatically resent. Pre-dispatch access denial needs no page cleanup.
+
+Sent notes and nested untrusted context use normal user-message history and the existing session retention limits. History cannot recreate a live target, permission, or action. Deleting a session removes its local text but cannot delete provider-held data. See [verification and unverified native/device behavior](manual-acceptance.md#point-comment-acceptance--2026-11-01).
+
 ## Optional API permissions
 
 | Permission  | Purpose                                                                                             |

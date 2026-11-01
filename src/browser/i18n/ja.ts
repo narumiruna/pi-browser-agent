@@ -1,6 +1,30 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Comment on elements": "要素にコメント",
+  "Comment {number}": "コメント {number}",
+  "Inactive target": "無効な対象",
+  "Describe the requested change": "変更内容を入力",
+  Remove: "削除",
+  "Reselect target": "対象を再選択",
+  "Use note only": "メモのみ使用",
+  "Remove, reselect, or convert inactive comments before sending":
+    "送信する前に無効なコメントを削除、再選択、またはメモに変換してください",
+  "Wait for the current operation to finish before commenting":
+    "現在の操作が終了してからコメントしてください",
+  "Attach up to five page targets": "ページの対象は5件まで添付できます",
+  "Open an HTTP or HTTPS page before commenting":
+    "コメントする前に HTTP または HTTPS のページを開いてください",
+  "Site access is required to comment on this page":
+    "このページにコメントするにはサイトへのアクセス権が必要です",
+  "The page changed. Select comment targets again.":
+    "ページが変更されました。コメントの対象を再選択してください。",
+  "Could not confirm comment cleanup. Reload the page before sending.":
+    "コメント表示の削除を確認できません。送信する前にページを再読み込みしてください。",
+  "Write a note or a task before sending point comments":
+    "送信する前にメモまたはタスクを入力してください",
+  "Remove comment cards before changing sessions":
+    "セッションを変更する前にコメントカードを削除してください",
   "Draw on page": "ページに描画",
   "Cancel page drawing": "ページへの描画をキャンセル",
   "Pen color": "ペンの色",

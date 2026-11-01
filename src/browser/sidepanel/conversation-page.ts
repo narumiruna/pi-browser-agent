@@ -21,10 +21,14 @@ import {
   ELEMENT_PICKER_LIMITS,
   parseSelectedElementContext,
   type SelectedElementContext,
-  selectedElementContextBytes,
 } from "../runtime/element-context.js"
 import { pageCapabilityFrom, type RuntimeEvent, sendRuntimeRequest } from "../runtime/messages.js"
 import type { PageCapability } from "../runtime/page-capability.js"
+import {
+  composerTargetBytes,
+  type PointCommentPin,
+  samePointCommentTargets,
+} from "../runtime/point-comments.js"
 import { type JsonObject, RuntimeError, type TabContext } from "../runtime/types.js"
 import { getTreeItems } from "../sessions/session-tree.js"
 import { SETTINGS_KEY } from "../storage.js"
@@ -46,6 +50,7 @@ import {
 } from "./images.js"
 import { TranscriptRenderer } from "./message-rendering.js"
 import { PageAnnotationController } from "./page-annotation.js"
+import { PointCommentsController } from "./point-comments.js"
 import { ScreenshotAnnotationController } from "./screenshot-annotation.js"
 import { SessionPicker } from "./session-picker.js"
 import { SessionTreeDialog } from "./session-tree-dialog.js"
@@ -127,10 +132,11 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   const voiceStatus = element<HTMLElement>("voice-status")
   let screenshotAnnotation: ScreenshotAnnotationController | undefined
   let pageAnnotation: PageAnnotationController | undefined
+  let pointComments: PointCommentsController | undefined
   let annotationSubmissionAbort: AbortController | undefined
   const transcriptRenderer = new TranscriptRenderer(transcript, {
     onAnnotateScreenshot(image) {
-      if (pageAnnotation?.occupied || annotationSubmissionAbort) {
+      if (pointComments?.occupied || pageAnnotation?.occupied || annotationSubmissionAbort) {
         setError(t("Wait for the current operation to finish before drawing"))
         return
       }
@@ -354,6 +360,8 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   function updateSendButton(): void {
     const navigationBusy =
       commandInProgress ||
+      (pointComments?.pins.length ?? 0) > 0 ||
+      pointComments?.occupied === true ||
       pageAnnotation?.occupied === true ||
       annotationSubmissionAbort !== undefined
     newSessionButton.disabled = navigationBusy
@@ -366,30 +374,39 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       pendingPasteOperations > 0 ||
       pickerActive ||
       pickerStarting ||
+      pointComments?.sendBlocked === true ||
       pageAnnotation?.sendBlocked === true ||
       (pageAnnotation?.active === true && !pageAnnotation.hasMarks) ||
       voiceInputStarting ||
       voiceInput?.active === true
     voiceButton.disabled =
       voiceInput === undefined ||
+      pointComments?.occupied === true ||
       pageAnnotation?.occupied === true ||
       activeSubmissionGuard !== undefined ||
       pickerActive ||
       pickerStarting ||
       voiceInputStarting
-    queueInstructionButton.disabled = sendButton.disabled
+    queueInstructionButton.disabled =
+      sendButton.disabled ||
+      pointComments?.occupied === true ||
+      (pointComments?.pins.length ?? 0) > 0
     const pageToolsUnavailable = runtime.agent.state.isStreaming && !runtime.usesPageContext
     grantSiteButton.disabled = currentTabContext === undefined || pageToolsUnavailable
     languageWatcher?.flush()
     elementPickerButton.disabled =
+      pointComments?.occupied === true ||
       pageAnnotation?.occupied === true ||
       activeSubmissionGuard !== undefined ||
       pickerStarting ||
       voiceInputStarting ||
       voiceInput?.active === true ||
       (!pickerActive && (currentTabContext === undefined || pageToolsUnavailable)) ||
-      (!pickerActive && selectedElements.length >= ELEMENT_PICKER_LIMITS.elements)
+      (!pickerActive &&
+        selectedElements.length + (pointComments?.pins.length ?? 0) >=
+          ELEMENT_PICKER_LIMITS.elements)
     pageAnnotation?.refresh()
+    pointComments?.refresh()
   }
 
   function releaseSubmissionGuard(guard: object): void {
@@ -498,6 +515,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       !pickerActive &&
       !pickerStarting &&
       !pickerStopping &&
+      !pointComments?.occupied &&
       !voiceInputStarting &&
       !voiceInput?.active &&
       pendingPasteOperations === 0 &&
@@ -507,6 +525,35 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     onChange: updateSendButton,
     onCancel: cancelAnnotationSubmission,
     onError: setError,
+  })
+
+  pointComments = new PointCommentsController({
+    getContext: refreshTabContext,
+    getElements: () => selectedElements.map((selected) => selected.context),
+    requestSiteAccess,
+    canStart: () =>
+      !disposed &&
+      !runtime.isBusy &&
+      !authentication?.isBusy &&
+      !activeSubmissionGuard &&
+      !commandInProgress &&
+      !pickerActive &&
+      !pickerStarting &&
+      !pickerStopping &&
+      !pageAnnotation?.occupied &&
+      !voiceInputStarting &&
+      !voiceInput?.active &&
+      pendingPasteOperations === 0 &&
+      currentTabContext !== undefined &&
+      document.querySelector("dialog[open]") === null,
+    onChange: updateSendButton,
+    onCancel: cancelAnnotationSubmission,
+    onError: setError,
+    appendText: (text) => {
+      promptInput.value = [promptInput.value, text].filter(Boolean).join("\n\n")
+      resizePromptInput()
+      promptInput.focus()
+    },
   })
 
   function cancelAnnotationSubmission(): void {
@@ -602,7 +649,10 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     const context = parseSelectedElementContext(value)
     const tabContext = tabContextFrom(source)
     if (!tabContext) throw new Error(t("Selected element is missing its page context"))
-    if (selectedElements.length >= ELEMENT_PICKER_LIMITS.elements) {
+    if (
+      selectedElements.length + (pointComments?.pins.length ?? 0) >=
+      ELEMENT_PICKER_LIMITS.elements
+    ) {
       throw new Error(
         t("Attach up to {count} selected elements", { count: ELEMENT_PICKER_LIMITS.elements }),
       )
@@ -619,7 +669,10 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       return
     }
     const next = [...selectedElements.map((selected) => selected.context), context]
-    if (selectedElementContextBytes(next) > ELEMENT_PICKER_LIMITS.composerBytes) {
+    if (
+      composerTargetBytes(next, pointComments?.active ? pointComments.snapshot() : []) >
+      ELEMENT_PICKER_LIMITS.composerBytes
+    ) {
       throw new Error(t("Selected element context exceeds the 16 KB composer limit"))
     }
     selectedElements.push({ context, id: crypto.randomUUID(), tabContext })
@@ -740,10 +793,11 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   function assertPickerActionAvailable(): void {
     if (
       activeSubmissionGuard !== undefined ||
+      pointComments?.occupied === true ||
       pageAnnotation?.occupied === true ||
       voiceInputStarting ||
       voiceInput?.active === true ||
-      selectedElements.length >= ELEMENT_PICKER_LIMITS.elements
+      selectedElements.length + (pointComments?.pins.length ?? 0) >= ELEMENT_PICKER_LIMITS.elements
     ) {
       throw new Error(
         t(
@@ -939,12 +993,17 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       pendingPasteOperations > 0 ||
       pickerActive ||
       pickerStarting ||
+      pointComments?.occupied === true ||
       pageAnnotation?.occupied === true ||
       voiceInputStarting ||
       voiceInput?.active
     )
       throw new Error(t("Wait for the current operation to finish before using a command"))
-    if (composerImages.length > 0 || selectedElements.length > 0) {
+    if (
+      composerImages.length > 0 ||
+      selectedElements.length > 0 ||
+      (pointComments?.pins.length ?? 0) > 0
+    ) {
       throw new Error(t("Remove images and selected elements before using a command"))
     }
   }
@@ -1125,6 +1184,10 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       setError(t("Wait for the pasted image preview before sending"))
       return
     }
+    const withPointComments =
+      pointComments?.active === true || (pointComments?.pins.length ?? 0) > 0
+    if (pointComments?.sendBlocked) return
+    if (withPointComments && (runtime.isBusy || queueAfterCurrentTask)) return
     const withAnnotation = pageAnnotation?.active === true
     if (pageAnnotation?.sendBlocked) return
     if (withAnnotation && !pageAnnotation?.hasMarks) {
@@ -1142,7 +1205,24 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       context: structuredClone(selected.context),
       tabContext: { ...selected.tabContext },
     }))
-    if (!text && submittedImages.length === 0 && submittedElements.length === 0 && !withAnnotation)
+    let submittedPins: PointCommentPin[] = []
+    try {
+      if (withPointComments && pointComments) submittedPins = pointComments.snapshot()
+    } catch (error) {
+      setError(error)
+      return
+    }
+    if (withPointComments && !text && !pointComments?.pins.some((pin) => pin.note.trim())) {
+      setError(t("Write a note or a task before sending point comments"))
+      return
+    }
+    if (
+      !text &&
+      submittedImages.length === 0 &&
+      submittedElements.length === 0 &&
+      !withAnnotation &&
+      !withPointComments
+    )
       return
     if ((submittedImages.length > 0 || withAnnotation) && !runtime.model.input.includes("image")) {
       setError(t("{model} does not support image input", { model: runtime.model.name }))
@@ -1155,7 +1235,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     const submittedWhileStreaming = runtime.agent.state.isStreaming
     const sessionId = runtime.activeSession.id
     const model = runtime.model
-    const annotationAbort = withAnnotation ? new AbortController() : undefined
+    const annotationAbort = withAnnotation || withPointComments ? new AbortController() : undefined
     annotationSubmissionAbort = annotationAbort
     const submissionGuard = {}
     const assertSubmission = (): void => {
@@ -1182,9 +1262,16 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
         }
         assertSubmission()
         const { context: submissionTabContext, usePage } = await requestRunAccess(
-          submittedElements.length > 0 || withAnnotation,
+          submittedElements.length > 0 || withAnnotation || withPointComments,
         )
         assertSubmission()
+        if (
+          withPointComments &&
+          (!pointComments?.tabContext ||
+            !submissionTabContext ||
+            !sameTabContext(pointComments.tabContext, submissionTabContext))
+        )
+          throw new Error(t("The page changed. Select comment targets again."))
         if (withAnnotation) {
           const drawingContext = pageAnnotation?.tabContext
           if (
@@ -1235,11 +1322,28 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
           await pageAnnotation.stop(false)
           assertSubmission()
         }
+        if (withPointComments && pointComments && annotationAbort) {
+          const preparedPins = await pointComments.prepareSubmission(annotationAbort.signal)
+          assertSubmission()
+          if (
+            !samePointCommentTargets(
+              preparedPins.map(({ note: _note, ...target }) => target),
+              submittedPins.map(({ note: _note, ...target }) => target),
+            ) ||
+            preparedPins.some(
+              (pin) =>
+                submittedPins.find((submitted) => submitted.id === pin.id)?.note !== pin.note,
+            )
+          )
+            throw new Error(t("The page changed. Select comment targets again."))
+        }
+        const submittedPinIds = new Set(submittedPins.map((pin) => pin.id))
         const submittedImageIds = new Set(submittedImages.map((image) => image.id))
         const submittedElementIds = new Set(submittedElements.map((element) => element.id))
         const accept = (): void => {
           if (activeSubmissionGuard !== submissionGuard) return
           if (annotationSubmissionAbort === annotationAbort) annotationSubmissionAbort = undefined
+          pointComments?.accept(submittedPinIds)
           composerImages = composerImages.filter((image) => !submittedImageIds.has(image.id))
           selectedElements = selectedElements.filter(
             (element) => !submittedElementIds.has(element.id),
@@ -1258,9 +1362,10 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
           submittedElements.map((element) => element.context),
           usePage,
         ] as const
-        const submission = withAnnotation
-          ? runtime.submit(...submissionArgs, assertSubmission)
-          : runtime.submit(...submissionArgs)
+        const submission =
+          withAnnotation || withPointComments
+            ? runtime.submit(...submissionArgs, assertSubmission, submittedPins)
+            : runtime.submit(...submissionArgs)
         const mode = await submission
         if (mode !== "prompt") {
           accept()
@@ -1285,6 +1390,8 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   }
 
   async function clearElementComposerContext(): Promise<void> {
+    if ((pointComments?.pins.length ?? 0) > 0 || pointComments?.occupied)
+      throw new Error(t("Remove comment cards before changing sessions"))
     cancelAnnotationSubmission()
     if (pageAnnotation?.occupied) await pageAnnotation.stop()
     if (pickerActive || pickerStarting) await stopElementPicker().catch(() => undefined)
@@ -1292,7 +1399,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   }
 
   async function openSettingsTab(accept?: () => void): Promise<void> {
-    if (pageAnnotation?.occupied || annotationSubmissionAbort)
+    if (pointComments?.occupied || pageAnnotation?.occupied || annotationSubmissionAbort)
       throw new Error(t("Wait for the current operation to finish before drawing"))
     voiceInput?.abort()
     const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true })
@@ -1347,7 +1454,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
 
   voiceInput = createVoiceInput({
     onTranscript(text) {
-      if (pageAnnotation?.occupied || annotationSubmissionAbort) return
+      if (pointComments?.occupied || pageAnnotation?.occupied || annotationSubmissionAbort) return
       promptInput.value = text
       resizePromptInput()
     },
@@ -1379,7 +1486,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     void run(toggleElementPicker, setError)
   })
   voiceButton.addEventListener("click", () => {
-    if (pageAnnotation?.occupied || annotationSubmissionAbort) return
+    if (pointComments?.occupied || pageAnnotation?.occupied || annotationSubmissionAbort) return
     if (voiceInput?.active) {
       setError()
       voiceInput.stop()
@@ -1483,6 +1590,13 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   document.addEventListener(
     "keydown",
     (event) => {
+      if (event.key === "Escape" && pointComments?.occupied) {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        cancelAnnotationSubmission()
+        void pointComments.stop().catch(setError)
+        return
+      }
       if (event.key === "Escape" && pageAnnotation?.toolsPopupOpen) {
         event.preventDefault()
         event.stopImmediatePropagation()
@@ -1528,6 +1642,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     const event = message as Partial<RuntimeEvent>
     if (event.kind !== "event") return false
     pageAnnotation?.onEvent(event as RuntimeEvent)
+    pointComments?.onEvent(event as RuntimeEvent)
     if (event.name === "settings.saved" && event.payload?.settingsContextId === settingsContextId) {
       void run(async () => {
         await runtime.syncSettings({
@@ -1626,6 +1741,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     screenshotAnnotation?.close()
     cancelAnnotationSubmission()
     if (pageAnnotation?.occupied) void pageAnnotation.stop().catch(() => undefined)
+    if (pointComments?.occupied) void pointComments.stop().catch(() => undefined)
     treeDialog.close()
     if (pickerActive || pickerStarting) void stopElementPicker().catch(() => undefined)
     authentication?.abort()
@@ -1642,6 +1758,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       pickerActive ||
       pickerStarting ||
       Boolean(pickerStopping) ||
+      pointComments?.occupied === true ||
       pageAnnotation?.occupied === true ||
       voiceInputStarting ||
       Boolean(voiceInput?.active) ||
@@ -1666,6 +1783,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       elementPickerButton.ariaLabel = t("Select page element")
       elementPickerButton.title = pickerButtonTitle(false, pickerShortcut)
       pageAnnotation?.refresh()
+      pointComments?.refresh()
       renderRunStatus()
       renderPageCapability()
       renderMessages()
@@ -1709,6 +1827,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     error: setError,
     disconnected() {
       cancelAnnotationSubmission()
+      pointComments?.disconnected()
       if (pageAnnotation?.occupied) void pageAnnotation.stop().catch(setError)
       if (pickerActive || pickerStarting) {
         // Wake the replacement worker and wait for cleanup before clearing the active UI.

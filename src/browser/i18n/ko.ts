@@ -1,6 +1,29 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Comment on elements": "요소에 댓글 달기",
+  "Comment {number}": "댓글 {number}",
+  "Inactive target": "비활성 대상",
+  "Describe the requested change": "요청한 변경 내용 입력",
+  Remove: "제거",
+  "Reselect target": "대상 다시 선택",
+  "Use note only": "메모만 사용",
+  "Remove, reselect, or convert inactive comments before sending":
+    "보내기 전에 비활성 댓글을 제거하거나 대상을 다시 선택하거나 메모로 변환하세요",
+  "Wait for the current operation to finish before commenting":
+    "현재 작업이 끝난 후 댓글을 작성하세요",
+  "Attach up to five page targets": "페이지 대상을 최대 5개 첨부하세요",
+  "Open an HTTP or HTTPS page before commenting":
+    "댓글을 달기 전에 HTTP 또는 HTTPS 페이지를 여세요",
+  "Site access is required to comment on this page":
+    "이 페이지에 댓글을 달려면 사이트 접근 권한이 필요합니다",
+  "The page changed. Select comment targets again.":
+    "페이지가 변경되었습니다. 댓글 대상을 다시 선택하세요.",
+  "Could not confirm comment cleanup. Reload the page before sending.":
+    "댓글 표시 제거를 확인하지 못했습니다. 보내기 전에 페이지를 새로고침하세요.",
+  "Write a note or a task before sending point comments":
+    "댓글을 보내기 전에 메모 또는 작업을 입력하세요",
+  "Remove comment cards before changing sessions": "세션을 변경하기 전에 댓글 카드를 제거하세요",
   "Draw on page": "페이지에 그리기",
   "Cancel page drawing": "페이지 그리기 취소",
   "Pen color": "펜 색상",

@@ -1,6 +1,29 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Comment on elements": "Comentar elementos",
+  "Comment {number}": "Comentario {number}",
+  "Inactive target": "Destino inactivo",
+  "Describe the requested change": "Describe el cambio solicitado",
+  Remove: "Quitar",
+  "Reselect target": "Volver a seleccionar",
+  "Use note only": "Usar solo la nota",
+  "Remove, reselect, or convert inactive comments before sending":
+    "Quita, vuelve a seleccionar o convierte los comentarios inactivos antes de enviar",
+  "Wait for the current operation to finish before commenting":
+    "Espera a que termine la operación actual antes de comentar",
+  "Attach up to five page targets": "Adjunta hasta cinco destinos de página",
+  "Open an HTTP or HTTPS page before commenting": "Abre una página HTTP o HTTPS antes de comentar",
+  "Site access is required to comment on this page":
+    "Se necesita acceso al sitio para comentar en esta página",
+  "The page changed. Select comment targets again.":
+    "La página cambió. Vuelve a seleccionar los destinos.",
+  "Could not confirm comment cleanup. Reload the page before sending.":
+    "No se pudo confirmar la eliminación de los comentarios. Recarga la página antes de enviar.",
+  "Write a note or a task before sending point comments":
+    "Escribe una nota o tarea antes de enviar comentarios",
+  "Remove comment cards before changing sessions":
+    "Quita las tarjetas de comentarios antes de cambiar de sesión",
   "Draw on page": "Dibujar en la página",
   "Cancel page drawing": "Cancelar el dibujo en la página",
   "Pen color": "Color del lápiz",

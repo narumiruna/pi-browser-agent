@@ -1,6 +1,25 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Comment on elements": "แสดงความคิดเห็นต่อองค์ประกอบ",
+  "Comment {number}": "ความคิดเห็น {number}",
+  "Inactive target": "เป้าหมายไม่ทำงาน",
+  "Describe the requested change": "อธิบายการเปลี่ยนแปลงที่ต้องการ",
+  Remove: "นำออก",
+  "Reselect target": "เลือกเป้าหมายอีกครั้ง",
+  "Use note only": "ใช้เฉพาะบันทึก",
+  "Remove, reselect, or convert inactive comments before sending":
+    "นำความคิดเห็นที่ไม่ทำงานออก เลือกเป้าหมายใหม่ หรือแปลงเป็นบันทึกก่อนส่ง",
+  "Wait for the current operation to finish before commenting":
+    "รอให้การดำเนินการปัจจุบันเสร็จก่อนแสดงความคิดเห็น",
+  "Attach up to five page targets": "แนบเป้าหมายในหน้าได้สูงสุดห้ารายการ",
+  "Open an HTTP or HTTPS page before commenting": "เปิดหน้า HTTP หรือ HTTPS ก่อนแสดงความคิดเห็น",
+  "Site access is required to comment on this page": "ต้องมีสิทธิ์เข้าถึงเว็บไซต์เพื่อแสดงความคิดเห็นในหน้านี้",
+  "The page changed. Select comment targets again.": "หน้าเปลี่ยนไปแล้ว เลือกเป้าหมายความคิดเห็นอีกครั้ง",
+  "Could not confirm comment cleanup. Reload the page before sending.":
+    "ยืนยันการนำความคิดเห็นออกไม่ได้ โหลดหน้าใหม่ก่อนส่ง",
+  "Write a note or a task before sending point comments": "เขียนบันทึกหรืองานก่อนส่งความคิดเห็น",
+  "Remove comment cards before changing sessions": "นำการ์ดความคิดเห็นออกก่อนเปลี่ยนเซสชัน",
   "Draw on page": "วาดบนหน้าเว็บ",
   "Cancel page drawing": "ยกเลิกการวาดบนหน้าเว็บ",
   "Pen color": "สีปากกา",

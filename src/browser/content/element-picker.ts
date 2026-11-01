@@ -1,4 +1,5 @@
 import type { SelectedElementContext } from "../runtime/element-context.js"
+import type { PointCommentsMode } from "../runtime/point-comments.js"
 import type { JsonObject, TabContext } from "../runtime/types.js"
 
 export type ElementPickerOperation = "start" | "stop"
@@ -37,11 +38,13 @@ export async function executeElementPicker(
     selector: number
     text: number
   },
+  pins?: PointCommentsMode,
 ): Promise<ElementPickerOperationResult> {
   type PickerState = {
     cleanup: () => void
     currentTag: string
     token: string
+    pinControl?: (operation: string, id?: string, number?: number) => JsonObject
   }
   const isolated = globalThis as typeof globalThis & {
     __piBrowserAgentElementPicker?: PickerState
@@ -344,7 +347,7 @@ export async function executeElementPicker(
     padding: "0",
     "pointer-events": "auto",
     position: "fixed",
-    "touch-action": "pan-x pan-y",
+    "touch-action": pins ? "none" : "pan-x pan-y",
     visibility: "visible",
     width: "calc(100vw + 1px)",
     zoom: "1",
@@ -424,6 +427,9 @@ export async function executeElementPicker(
       border: 2px solid #5b5bd6; background: rgb(91 91 214 / 16%);
       box-shadow: 0 0 0 1px rgb(255 255 255 / 80%); border-radius: 2px;
     }
+    .pin { position: fixed; pointer-events: none; border: 2px solid white; border-radius: 50%;
+      min-width: 24px; height: 24px; text-align: center; background: #3838b0; color: white;
+      font: bold 16px/24px system-ui; box-shadow: 0 1px 4px #222; }
     #label {
       position: fixed; display: none; pointer-events: none; max-width: min(360px, 90vw);
       padding: 4px 7px; border-radius: 4px; color: white; background: #20212a;
@@ -437,6 +443,85 @@ export async function executeElementPicker(
   label.id = "label"
   shadow.append(style, highlight, label)
 
+  const targets = new Map<
+    string,
+    { node: Element; number: number; context: SelectedElementContext; badge: HTMLElement }
+  >()
+  let sequence = 0
+  let selecting = false
+  let nextNumber = pins?.nextNumber ?? 1
+  let replacement = pins?.replace
+  const reserved = new Map(
+    (pins?.reserved ?? (pins?.replace ? [pins.replace] : [])).map(({ id, number }) => [id, number]),
+  )
+  const initialViewport = {
+    width: innerWidth,
+    height: innerHeight,
+    x: scrollX,
+    y: scrollY,
+    dpr: devicePixelRatio,
+    scale: window.visualViewport?.scale ?? 1,
+    zoom: cssZoom(parent),
+  }
+  let guardFrame = 0
+  const effectivelyVisible = (element: Element): boolean => {
+    if (getComputedStyle(element).visibility !== "visible") return false
+    let current: Element | null = element
+    for (let depth = 0; current && depth < 64; depth++) {
+      const style = getComputedStyle(current)
+      if (style.display === "none" || style.contentVisibility === "hidden") return false
+      if (style.display !== "contents") {
+        if (Number.parseFloat(style.opacity || "1") <= 0 || style.filter.length > 4_096)
+          return false
+        for (const [, amount] of style.filter.matchAll(
+          /url\("(?:[^"\\]|\\.)*"\)|opacity\(([^)]+)\)/g,
+        ))
+          if (Number.parseFloat(amount ?? "") === 0) return false
+      }
+      try {
+        if (
+          current.matches(":modal") ||
+          current.matches(":popover-open") ||
+          current.matches(":fullscreen")
+        )
+          return true
+      } catch {
+        /* Older DOM test environments do not implement top-layer selectors. */
+      }
+      const root: Node = current.getRootNode()
+      current =
+        current.assignedSlot ??
+        current.parentElement ??
+        (root instanceof ShadowRoot ? root.host : null)
+    }
+    return current === null
+  }
+  const targetsIntact = (): boolean => {
+    for (const target of targets.values()) {
+      const rect = boundsFor(target.node)
+      if (
+        !target.node.isConnected ||
+        !effectivelyVisible(target.node) ||
+        Object.entries(target.context.rect).some(
+          ([key, value]) => Math.abs((rect[key as keyof DOMRect] as number) - value) > 0.5,
+        )
+      )
+        return false
+      const x = Math.max(0, Math.min(innerWidth - 1, rect.left + rect.width / 2))
+      const y = Math.max(0, Math.min(innerHeight - 1, rect.top + rect.height / 2))
+      const hit = hitTest(x, y)
+      if (!hit || (hit !== target.node && !target.node.contains(hit))) return false
+    }
+    return true
+  }
+  const viewportIntact = (): boolean =>
+    innerWidth === initialViewport.width &&
+    innerHeight === initialViewport.height &&
+    scrollX === initialViewport.x &&
+    scrollY === initialViewport.y &&
+    devicePixelRatio === initialViewport.dpr &&
+    (window.visualViewport?.scale ?? 1) === initialViewport.scale &&
+    cssZoom(parent) === initialViewport.zoom
   const controller = new AbortController()
   let current: Element | null = null
   let lastPoint: { x: number; y: number } | undefined
@@ -527,6 +612,8 @@ export async function executeElementPicker(
     finishStartup?.()
     if (frame) cancelAnimationFrame(frame)
     if (expiryTimer) clearTimeout(expiryTimer)
+    if (guardFrame) cancelAnimationFrame(guardFrame)
+    targets.clear()
     controller.abort()
     observer.disconnect()
     if (runtimeStopListener) chrome.runtime.onMessage.removeListener(runtimeStopListener)
@@ -551,14 +638,26 @@ export async function executeElementPicker(
     finished = true
     cleanup()
     resultDelivery = chrome.runtime
-      .sendMessage({
-        kind: "element-picker-result",
-        token,
-        tabContext: expectedContext,
-        status,
-        ...(element ? { element } : {}),
-        ...(reason ? { reason } : {}),
-      })
+      .sendMessage(
+        pins
+          ? {
+              kind: "point-comments-result",
+              token,
+              tabContext: expectedContext,
+              generation: pins.generation,
+              sequence: ++sequence,
+              status: "cancelled",
+              reason: reason ?? "capture-failed",
+            }
+          : {
+              kind: "element-picker-result",
+              token,
+              tabContext: expectedContext,
+              status,
+              ...(element ? { element } : {}),
+              ...(reason ? { reason } : {}),
+            },
+      )
       .catch(() => undefined)
   }
   const track = (event: MouseEvent): void => {
@@ -587,14 +686,52 @@ export async function executeElementPicker(
     const selected = hitTest(event.clientX, event.clientY) ?? eventTarget ?? current
     if (selected) {
       try {
-        notify("selected", contextFor(selected))
+        if (!pins) notify("selected", contextFor(selected))
+        else if (
+          !selecting &&
+          effectivelyVisible(selected) &&
+          (replacement || targets.size + reserved.size < pins.capacity) &&
+          !Array.from(targets.values()).some((target) => target.node === selected)
+        ) {
+          selecting = true
+          const context = contextFor(selected)
+          const id = replacement?.id ?? crypto.randomUUID()
+          const number = replacement?.number ?? nextNumber++
+          replacement = undefined
+          reserved.delete(id)
+          const old = targets.get(id)
+          old?.badge.remove()
+          const badge = document.createElement("span")
+          badge.className = "pin"
+          badge.textContent = String(number)
+          badge.style.left = `${Math.max(0, Math.min(innerWidth - 28, context.rect.left))}px`
+          badge.style.top = `${Math.max(0, Math.min(innerHeight - 28, context.rect.top))}px`
+          shadow.append(badge)
+          targets.set(id, { node: selected, number, context, badge })
+          resultDelivery = chrome.runtime
+            .sendMessage({
+              kind: "point-comments-result",
+              token,
+              tabContext: expectedContext,
+              generation: pins.generation,
+              sequence: ++sequence,
+              status: "selected",
+              target: { id, number, context },
+            })
+            .then((response) => {
+              if (!response?.ok || response.result?.accepted !== true)
+                notify("cancelled", undefined, "delivery-failed")
+              selecting = false
+            })
+            .catch(() => notify("cancelled", undefined, "delivery-failed"))
+        }
       } catch {
         notify("cancelled", undefined, "capture-failed")
       }
     }
   }
   const blockPointer = (event: PointerEvent): void => {
-    if (event.pointerType === "touch") event.stopImmediatePropagation()
+    if (!pins && event.pointerType === "touch") event.stopImmediatePropagation()
     else block(event)
   }
 
@@ -622,7 +759,8 @@ export async function executeElementPicker(
         typeof message === "object" &&
         message !== null &&
         "kind" in message &&
-        message.kind === "element-picker-stop"
+        message.kind === "element-picker-stop" &&
+        !pins
       ) {
         cleanup()
       }
@@ -639,10 +777,24 @@ export async function executeElementPicker(
   window.addEventListener("click", select, { capture: true, signal: controller.signal })
   for (const name of ["auxclick", "dblclick", "contextmenu", "dragstart"])
     window.addEventListener(name, block, { capture: true, signal: controller.signal })
-  window.addEventListener("scroll", scheduleRefresh, { capture: true, signal: controller.signal })
+  window.addEventListener(
+    "scroll",
+    pins ? () => notify("cancelled", undefined, "viewport-changed") : scheduleRefresh,
+    { capture: true, signal: controller.signal },
+  )
+  if (pins)
+    window.addEventListener("wheel", block, {
+      capture: true,
+      passive: false,
+      signal: controller.signal,
+    })
   window.addEventListener(
     "resize",
     () => {
+      if (pins) {
+        notify("cancelled", undefined, "viewport-changed")
+        return
+      }
       fitShield()
       if (!shieldIntact()) notify("cancelled", undefined, "overlay-tampered")
       else scheduleRefresh()
@@ -710,7 +862,64 @@ export async function executeElementPicker(
     () => notify("cancelled", undefined, "timeout"),
     Math.max(1_000, limits.lifetimeMs),
   )
-  isolated.__piBrowserAgentElementPicker = { cleanup, currentTag: "", token }
+  isolated.__piBrowserAgentElementPicker = {
+    cleanup,
+    currentTag: "",
+    token,
+    ...(pins
+      ? {
+          pinControl: (operation: string, id?: string, number?: number): JsonObject => {
+            if (operation === "stop") {
+              cleanup()
+              return { active: false }
+            }
+            if (cleaned || !shieldIntact() || !viewportIntact() || !targetsIntact()) {
+              notify("cancelled", undefined, "target-changed")
+              return { active: false }
+            }
+            if (operation === "remove" && id) {
+              targets.get(id)?.badge.remove()
+              targets.delete(id)
+              reserved.delete(id)
+              if (replacement?.id === id) replacement = undefined
+            }
+            if (operation === "clear") {
+              for (const target of targets.values()) target.badge.remove()
+              targets.clear()
+              reserved.clear()
+              replacement = undefined
+            }
+            if (operation === "reselect" && id && number) {
+              targets.get(id)?.badge.remove()
+              targets.delete(id)
+              replacement = { id, number }
+              reserved.set(id, number)
+            }
+            const result = {
+              active: operation !== "submit",
+              sequence,
+              targets: Array.from(targets, ([id, target]) => ({
+                id,
+                number: target.number,
+                context: target.context,
+              })),
+            }
+            if (operation === "submit") cleanup()
+            return result
+          },
+        }
+      : {}),
+  }
+  if (pins) {
+    const guard = (): void => {
+      if (cleaned) return
+      if (!viewportIntact()) notify("cancelled", undefined, "viewport-changed")
+      else if (!shieldIntact()) notify("cancelled", undefined, "overlay-tampered")
+      else if (!targetsIntact()) notify("cancelled", undefined, "target-changed")
+      if (!cleaned) guardFrame = requestAnimationFrame(guard)
+    }
+    guardFrame = requestAnimationFrame(guard)
+  }
   // Out-of-process iframe input routing uses the last committed compositor frame.
   // Do not acknowledge startup until a frame containing the shield can be committed.
   await new Promise<void>((resolve) => {

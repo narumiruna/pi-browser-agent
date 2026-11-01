@@ -1,5 +1,27 @@
 // English source messages are stable catalog keys. Use them only for trusted presentation.
 export const english = {
+  "Comment on elements": "Comment on elements",
+  "Comment {number}": "Comment {number}",
+  "Inactive target": "Inactive target",
+  "Describe the requested change": "Describe the requested change",
+  Remove: "Remove",
+  "Reselect target": "Reselect target",
+  "Use note only": "Use note only",
+  "Remove, reselect, or convert inactive comments before sending":
+    "Remove, reselect, or convert inactive comments before sending",
+  "Wait for the current operation to finish before commenting":
+    "Wait for the current operation to finish before commenting",
+  "Attach up to five page targets": "Attach up to five page targets",
+  "Open an HTTP or HTTPS page before commenting": "Open an HTTP or HTTPS page before commenting",
+  "Site access is required to comment on this page":
+    "Site access is required to comment on this page",
+  "The page changed. Select comment targets again.":
+    "The page changed. Select comment targets again.",
+  "Could not confirm comment cleanup. Reload the page before sending.":
+    "Could not confirm comment cleanup. Reload the page before sending.",
+  "Write a note or a task before sending point comments":
+    "Write a note or a task before sending point comments",
+  "Remove comment cards before changing sessions": "Remove comment cards before changing sessions",
   "Draw on page": "Draw on page",
   "Cancel page drawing": "Cancel page drawing",
   "Pen color": "Pen color",

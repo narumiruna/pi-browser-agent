@@ -1,6 +1,30 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Comment on elements": "Elementen becommentariëren",
+  "Comment {number}": "Opmerking {number}",
+  "Inactive target": "Inactief doel",
+  "Describe the requested change": "Beschrijf de gewenste wijziging",
+  Remove: "Verwijderen",
+  "Reselect target": "Doel opnieuw selecteren",
+  "Use note only": "Alleen notitie gebruiken",
+  "Remove, reselect, or convert inactive comments before sending":
+    "Verwijder inactieve opmerkingen, selecteer doelen opnieuw of zet ze om vóór verzending",
+  "Wait for the current operation to finish before commenting":
+    "Wacht tot de huidige bewerking klaar is voordat u opmerkingen maakt",
+  "Attach up to five page targets": "Voeg maximaal vijf paginadoelen toe",
+  "Open an HTTP or HTTPS page before commenting":
+    "Open een HTTP- of HTTPS-pagina voordat u opmerkingen maakt",
+  "Site access is required to comment on this page":
+    "Sitetoegang is nodig om deze pagina te becommentariëren",
+  "The page changed. Select comment targets again.":
+    "De pagina is gewijzigd. Selecteer de doelen opnieuw.",
+  "Could not confirm comment cleanup. Reload the page before sending.":
+    "Verwijdering van opmerkingen kon niet worden bevestigd. Herlaad de pagina vóór verzending.",
+  "Write a note or a task before sending point comments":
+    "Schrijf een notitie of taak voordat u opmerkingen verzendt",
+  "Remove comment cards before changing sessions":
+    "Verwijder opmerkingskaarten voordat u van sessie wisselt",
   "Draw on page": "Op de pagina tekenen",
   "Cancel page drawing": "Tekenen op de pagina annuleren",
   "Pen color": "Penkleur",

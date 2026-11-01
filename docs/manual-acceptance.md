@@ -244,6 +244,41 @@ The native width-drag regression first failed on `f26a87e`: the range became dis
    - Unverified behavior: synthetic Pointer Events, DOM accessibility attributes, and screenshots do not prove physical-device handling, human visual quality, or actual screen-reader output. Unavailable devices remain explicitly unverified.
    - Release restriction: do not claim physical touch/pen or screen-reader support has been verified until observations are recorded. Preserve existing accessibility/native-UI release requirements and record failures separately; automated success is not manual acceptance.
 
+## Point comment acceptance — 2026-11-01
+
+Status: automated verification passed. Native UI, physical input, screen-reader output, and live-provider compatibility remain unverified. See [point comments](point-comments.md). Existing release restrictions and the [Chrome 116 baseline limitation](#known-minimum-version-baseline-limitation) remain unchanged.
+
+### Automated evidence
+
+The final `npm run ci -- -- --workers=2` passed on Node 26.11.1 and Chromium 156.0.8078.4: formatting/lint checks, all 2022 unit/integration tests in 77 files, browser-boundary probe, production build/typecheck, 50-file artifact audit, and all 331 browser scenarios (6.3 minutes). No mandatory gate was skipped or waived. `git diff --check` passed. The current Biome schema-version notice and three existing asset-size warnings are informational. Final gate logs are `/tmp/point-comments-ci-complete.log` and `/tmp/point-comments-ci-complete.exit` (0). The focused six-file unit/integration command passed 87 tests; the two point-comment browser files passed 34 scenarios. No permission, dependency, or storage migration was added.
+
+Before production integration, `npm run build` and the serialized test-only proof in `tests/e2e/point-comments-proof.spec.ts` passed on Chromium 156.0.8078.4. The proof selects repeatedly in a modal with a cross-origin iframe at CSS zoom 0.9 × 1.25. Badges remain visible while the panel edits a note; later selections do not activate targets or consume the one-shot picker.
+
+Focused validation covers fixed request/envelope shapes, sender and ownership checks, monotonic acknowledgments, shared five-target/16 KiB limits, 512 UTF-16-unit notes, canonical target comparison, stable first/non-last replacement, all-five and mixed-chip inactive recovery, effective hidden targets, atomic final node validation/removal, repeated cleanup failure/recovery, stale startup/results, worker restart, cancellation during preparation, and accepted-ID draft protection. Provider responses use only the temporary-copy harness and mocks. No paid request, external write, push, PR, release, or publication is part of these checks.
+
+A reviewed full run exposed an existing annotation-prototype startup race: only two of three clicks reached its shield. The trace showed the first click was missing before capture. The test-only correction validates harmless unshielded iframe activation, resets it, flushes compositor paint with a discarded viewport screenshot, and requires the first intercepted click before starting native capture. Its fixture now sets a transparent modal backdrop so the controlled white pixel remains 252/252/252 under the 1% shield tint. The corrected proof passed 20/20 repetitions with two workers, preserving exact three-click counts, before/during/after timestamps, pixel alignment, and no-activation assertions. No production screenshot or input path was added. Failure evidence remains in `/tmp/point-comments-ci-reviewed.log` and `/tmp/point-comments-ci-reviewed-annotation-proof-failure/trace.zip`; strict repetition is in `/tmp/point-comments-annotation-proof-strict-final.log`. The intermediate strict-run pixel failure, before the controlled backdrop was set, remains in `/tmp/point-comments-annotation-proof-strict-repeat.log`.
+
+Dependency checks retain one unrelated development-tool advisory: `npm audit --json` reports high-severity `follow-redirects@1.16.1` (GHSA-mrwp-f3q8-3g9p), through Axios and the Extension CLI. `npm audit --omit=dev --json` passes with zero vulnerabilities. The dependency manifests and lockfile are unchanged from `aa17a1b`; no dependency update was added to this feature. Report this build-tool advisory for separate maintainer review.
+
+The focused command `PLAYWRIGHT_HTML_OPEN=never npm run test:e2e -- tests/e2e/point-comments.spec.ts tests/e2e/point-comments-proof.spec.ts --workers=2 --reporter=html` passed all 34 scenarios and retained 13 harmless PNG captures in ignored `playwright-report/data/`. The local `playwright-report/index.html` identifies each capture. They include five cards/badges, narrow keyboard editing, 320/360 px layouts at 12/24 px text in both themes, and forced colors. No image is committed. These captures and geometry assertions do not establish subjective readability or native/device acceptance.
+
+### Retained external handoff
+
+1. **Native Side Panel, permission UI, and stable Chrome**
+   - Role: release reviewer.
+   - Prerequisites: a successful production build in a dedicated stable-Chrome profile and controlled HTTP(S) fixtures with modals, cross-origin iframes, hidden/moving/replaced targets, and harmless content. Record Chrome and OS versions. Any account setup or real provider request requires separate account-owner authorization; do not supply credentials in chat or capture them.
+   - Action: use the actual browser-owned Side Panel. Select five targets, edit notes, remove and reselect the first/non-last cards, cancel, recover all inactive cards, and convert one note to text. Exercise native site-access decline/grant/revocation, real window changes, panel close/reopen, and restart. Test Send with notes alone, general text, and separately attached images only with an authorized test provider.
+   - Expected result: numbers, UUID relationships, and notes stay paired; no target activates or screenshot occurs automatically. Inactive cards block structured submission. Notes remain after preparation failure, and unconfirmed cleanup blocks Send until confirmed removal. Pre-start access denial leaves ordinary chat usable. No history restore or restart recreates a live target or replays an action.
+   - Unverified behavior: browser-owned panel focus/layout, native prompts/revocation, stable-Chrome behavior, and live-provider compatibility are not established by headless extension-page tests.
+   - Release restriction: record required native/stable-Chrome observations before claiming acceptance. Resolve observed input-protection, permission, or draft-loss defects before release. Automated plan completion does not waive existing release requirements.
+2. **Assistive technology, physical input, visual and language review**
+   - Role: accessibility/device reviewer and maintainer-appointed language reviewers.
+   - Prerequisites: the successful build, harmless fixtures, available physical mouse/keyboard/touch/pen hardware and screen reader, and all 18 application catalogs. Record browser, OS, device, and assistive-technology versions.
+   - Action: select targets with available devices; edit multiline notes, navigate card actions by keyboard, and check labels, focus, inactive state, errors, and status announcements. Review badge/card readability at 320/360 px, 12/24 px text, light/dark themes, and forced colors. Review new note/recovery labels in each translated locale, including Portuguese and Brazilian Portuguese separately.
+   - Expected result: no page activation, unwanted gesture, lost note, or mismatched number; controls stay reachable and named, and recovery/data-sharing labels retain their English safety meaning.
+   - Unverified behavior: actual assistive-technology output, physical-device selection, subjective visual quality, and native-language accuracy are not proved by synthetic input, catalog parity, or captures. Unavailable devices remain explicitly unverified.
+   - Release restriction: do not claim device, screen-reader, visual, or linguistic approval from automated results. Preserve existing manual release requirements and resolve reported safety-copy or input failures before publishing affected behavior.
+
 ## Procedure
 
 1. **Clean setup and Side Panel header**

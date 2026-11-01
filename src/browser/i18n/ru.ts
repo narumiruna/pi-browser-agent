@@ -1,6 +1,29 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Comment on elements": "Комментировать элементы",
+  "Comment {number}": "Комментарий {number}",
+  "Inactive target": "Неактивная цель",
+  "Describe the requested change": "Опишите нужное изменение",
+  Remove: "Удалить",
+  "Reselect target": "Выбрать цель заново",
+  "Use note only": "Использовать только заметку",
+  "Remove, reselect, or convert inactive comments before sending":
+    "Перед отправкой удалите неактивные комментарии, выберите цели заново или преобразуйте их в заметки",
+  "Wait for the current operation to finish before commenting":
+    "Дождитесь завершения текущей операции перед комментированием",
+  "Attach up to five page targets": "Прикрепите не более пяти целей страницы",
+  "Open an HTTP or HTTPS page before commenting":
+    "Перед комментированием откройте страницу HTTP или HTTPS",
+  "Site access is required to comment on this page": "Для комментариев нужен доступ к этому сайту",
+  "The page changed. Select comment targets again.":
+    "Страница изменилась. Выберите цели комментариев заново.",
+  "Could not confirm comment cleanup. Reload the page before sending.":
+    "Не удалось подтвердить удаление комментариев. Перезагрузите страницу перед отправкой.",
+  "Write a note or a task before sending point comments":
+    "Перед отправкой комментариев напишите заметку или задачу",
+  "Remove comment cards before changing sessions":
+    "Удалите карточки комментариев перед сменой сеанса",
   "Draw on page": "Рисовать на странице",
   "Cancel page drawing": "Отменить рисование на странице",
   "Pen color": "Цвет пера",

@@ -1,6 +1,29 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Comment on elements": "Komentari elemen",
+  "Comment {number}": "Komentar {number}",
+  "Inactive target": "Target tidak aktif",
+  "Describe the requested change": "Jelaskan perubahan yang diminta",
+  Remove: "Hapus",
+  "Reselect target": "Pilih ulang target",
+  "Use note only": "Gunakan catatan saja",
+  "Remove, reselect, or convert inactive comments before sending":
+    "Hapus, pilih ulang, atau ubah komentar tidak aktif sebelum mengirim",
+  "Wait for the current operation to finish before commenting":
+    "Tunggu operasi saat ini selesai sebelum berkomentar",
+  "Attach up to five page targets": "Lampirkan hingga lima target halaman",
+  "Open an HTTP or HTTPS page before commenting":
+    "Buka halaman HTTP atau HTTPS sebelum berkomentar",
+  "Site access is required to comment on this page":
+    "Akses situs diperlukan untuk mengomentari halaman ini",
+  "The page changed. Select comment targets again.":
+    "Halaman berubah. Pilih ulang target komentar.",
+  "Could not confirm comment cleanup. Reload the page before sending.":
+    "Penghapusan komentar tidak dapat dipastikan. Muat ulang halaman sebelum mengirim.",
+  "Write a note or a task before sending point comments":
+    "Tulis catatan atau tugas sebelum mengirim komentar",
+  "Remove comment cards before changing sessions": "Hapus kartu komentar sebelum mengganti sesi",
   "Draw on page": "Gambar di halaman",
   "Cancel page drawing": "Batalkan menggambar di halaman",
   "Pen color": "Warna pena",

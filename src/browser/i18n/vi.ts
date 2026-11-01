@@ -1,6 +1,28 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Comment on elements": "Nhận xét phần tử",
+  "Comment {number}": "Nhận xét {number}",
+  "Inactive target": "Mục tiêu không hoạt động",
+  "Describe the requested change": "Mô tả thay đổi cần thực hiện",
+  Remove: "Xóa",
+  "Reselect target": "Chọn lại mục tiêu",
+  "Use note only": "Chỉ dùng ghi chú",
+  "Remove, reselect, or convert inactive comments before sending":
+    "Xóa, chọn lại hoặc chuyển nhận xét không hoạt động thành ghi chú trước khi gửi",
+  "Wait for the current operation to finish before commenting":
+    "Đợi thao tác hiện tại kết thúc trước khi nhận xét",
+  "Attach up to five page targets": "Đính kèm tối đa năm mục tiêu trên trang",
+  "Open an HTTP or HTTPS page before commenting": "Mở trang HTTP hoặc HTTPS trước khi nhận xét",
+  "Site access is required to comment on this page":
+    "Cần quyền truy cập trang web để nhận xét trên trang này",
+  "The page changed. Select comment targets again.":
+    "Trang đã thay đổi. Hãy chọn lại mục tiêu nhận xét.",
+  "Could not confirm comment cleanup. Reload the page before sending.":
+    "Không thể xác nhận đã xóa nhận xét. Tải lại trang trước khi gửi.",
+  "Write a note or a task before sending point comments":
+    "Viết ghi chú hoặc nhiệm vụ trước khi gửi nhận xét",
+  "Remove comment cards before changing sessions": "Xóa thẻ nhận xét trước khi đổi phiên",
   "Draw on page": "Vẽ trên trang",
   "Cancel page drawing": "Hủy vẽ trên trang",
   "Pen color": "Màu bút",

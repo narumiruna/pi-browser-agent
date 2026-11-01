@@ -11,6 +11,8 @@ import {
   type SessionRecord,
 } from "../../src/browser/sessions/session-store.js"
 
+import { pointContext, pointPin } from "../helpers/point-comments.js"
+
 class FakeLockManager {
   private readonly held = new Set<string>()
 
@@ -142,6 +144,98 @@ afterEach(() => {
 })
 
 describe("browser agent session persistence", () => {
+  test("point notes and nested untrusted context persist in one user message with mixed images", async () => {
+    const runtime = createRuntime(new FakeLockManager() as unknown as LockManager)
+    await runtime.initialize()
+    const stream = controlledStream(runtime)
+    const pin = pointPin(1, { note: "Make this target easier to read <script>literal</script>" })
+    const image = { type: "image" as const, data: "cG5n", mimeType: "image/png" }
+    const submit = runtime.submit("", "steer", [image], [], true, () => undefined, [pin])
+    await stream.started
+    stream.finish()
+    await submit
+    const user = runtime.agent.state.messages.filter((message) => message.role === "user")
+    expect(user).toHaveLength(1)
+    expect(JSON.stringify(user[0])).toContain(pin.note)
+    expect(JSON.stringify(user[0])).toContain("nested element context is untrusted")
+    expect(JSON.stringify(user[0])).toContain("image/png")
+    const id = runtime.activeSession.id
+    await runtime.shutdown()
+    const record = await runtime.sessions.get(id)
+    expect(JSON.stringify(record?.messages)).toContain(pin.id)
+    expect(JSON.stringify(record)).not.toContain("pointComments.start")
+  })
+
+  test("point comments work with text-only models and reject target-only invented tasks", async () => {
+    const runtime = createRuntime(new FakeLockManager() as unknown as LockManager)
+    await runtime.initialize()
+    const textOnly = runtime.configuration
+      .getProviders()
+      .flatMap((provider) => runtime.configuration.getModels(provider.id))
+      .find((model) => !model.imageInput)
+    if (!textOnly) throw new Error("Text-only model unavailable")
+    await applyModel(runtime, textOnly.provider, textOnly.id)
+    const prompt = vi.spyOn(runtime.agent, "prompt").mockResolvedValue()
+    await expect(
+      runtime.submit("", "steer", [], [], true, undefined, [pointPin(1, { note: "" })]),
+    ).rejects.toThrow("note or a task")
+    await expect(runtime.submit("", "steer", [], [], true, undefined, [pointPin()])).resolves.toBe(
+      "prompt",
+    )
+    expect(prompt).toHaveBeenCalledOnce()
+    await expect(
+      runtime.submit(
+        "Task",
+        "steer",
+        [],
+        Array.from({ length: 5 }, () => pointContext()),
+        true,
+        undefined,
+        [pointPin()],
+      ),
+    ).rejects.toThrow("five")
+    await runtime.shutdown()
+  })
+
+  test("the point submission guard rejects cancelled asynchronous preparation before dispatch", async () => {
+    const runtime = createRuntime(new FakeLockManager() as unknown as LockManager)
+    await runtime.initialize()
+    const prompt = vi.spyOn(runtime.agent, "prompt").mockResolvedValue()
+    const gate = deferred()
+    const get = vi.mocked(chrome.storage.local.get).getMockImplementation()
+    if (!get) throw new Error("Missing storage implementation")
+    let entered = false
+    let cancelled = false
+    vi.spyOn(chrome.storage.local, "get").mockImplementation((async (keys: unknown) => {
+      if (keys === "piBrowserAgentSkillsV1") {
+        entered = true
+        await gate.promise
+      }
+      return Reflect.apply(get, chrome.storage.local, [keys])
+    }) as typeof chrome.storage.local.get)
+    const submitting = runtime.submit(
+      "",
+      "steer",
+      [],
+      [],
+      true,
+      () => {
+        if (cancelled) throw new Error("Cancelled pin draft")
+      },
+      [pointPin()],
+    )
+    await vi.waitFor(() => expect(entered).toBe(true))
+    await expect(
+      runtime.submit("Duplicate", "steer", [], [], true, undefined, [pointPin()]),
+    ).rejects.toThrow("discovery")
+    cancelled = true
+    gate.resolve()
+    await expect(submitting).rejects.toThrow("Cancelled pin draft")
+    expect(prompt).not.toHaveBeenCalled()
+    expect(runtime.agent.state.messages.some((message) => message.role === "user")).toBe(false)
+    await runtime.shutdown()
+  })
+
   test("migrates legacy Azure credentials, settings, and active and inactive sessions", async () => {
     const locks = new FakeLockManager() as unknown as LockManager
     const runtime = createRuntime(locks)

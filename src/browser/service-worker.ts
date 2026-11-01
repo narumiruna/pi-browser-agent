@@ -6,6 +6,7 @@ import {
 } from "./content/element-picker.js"
 import { executePageAnnotation, stopPageAnnotationInjection } from "./content/page-annotation.js"
 import { executePageOperation, type PageOperation } from "./content/page-operations.js"
+import { executePointCommentsControl } from "./content/point-comments.js"
 import { assertTabContext } from "./content/tab-context.js"
 import { installElementPickerShortcut } from "./element-picker-shortcut.js"
 import { CONTEXT_MENU_TITLES } from "./i18n/context-menu.js"
@@ -18,6 +19,7 @@ import {
   hasScreenshotPermission,
   SCREENSHOT_HOST_PERMISSION,
 } from "./permissions.js"
+import { PointCommentsWorker } from "./point-comments-worker.js"
 import { waitForCondition } from "./runtime/condition-wait.js"
 import { ELEMENT_PICKER_LIMITS, parseSelectedElementContext } from "./runtime/element-context.js"
 import { parseRuntimeRequest, type RuntimeEvent, type RuntimeRequest } from "./runtime/messages.js"
@@ -28,6 +30,7 @@ import {
 } from "./runtime/page-annotation.js"
 import { classifyPage, type PageCapability } from "./runtime/page-capability.js"
 import { boundPageTextResult, type PageTextResult } from "./runtime/page-text.js"
+import { POINT_COMMENTS_LIMITS, parsePointCommentsNotification } from "./runtime/point-comments.js"
 import {
   ELEMENT_LIMITS,
   type ElementSnapshot,
@@ -70,6 +73,7 @@ let pendingSelectionTake: Promise<JsonValue> = Promise.resolve(null)
 const pageAnnotation = new PageAnnotationWorker({
   async beforeStart() {
     await initialization
+    await pointComments.cancel("replaced", undefined, undefined, false)
     elementPickerOperationVersion += 1
     await stopActiveElementPicker("page-annotation", false)
   },
@@ -150,6 +154,82 @@ const pageAnnotation = new PageAnnotationWorker({
     })
   },
 })
+const pointComments = new PointCommentsWorker({
+  async beforeStart() {
+    await initialization
+    await pageAnnotation.cancel("replaced")
+    elementPickerOperationVersion++
+    await stopActiveElementPicker("point-comments", false)
+  },
+  async context(expected) {
+    await initialization
+    const context = await refreshBoundContext()
+    assertTabContext(expected, context)
+    return context
+  },
+  async windowId(context) {
+    return (await chrome.tabs.get(context.tabId)).windowId
+  },
+  async validate(context, signal) {
+    if (signal?.aborted)
+      throw new RuntimeError("REQUEST_CANCELLED", "Point comments were cancelled")
+    assertTabContext(context, await refreshBoundContext())
+    if (!(await hasHostPermission(context.url)))
+      throw new RuntimeError("PERMISSION_DENIED", "Current site access was revoked")
+    await assertReadableDocument(context, signal)
+    assertTabContext(context, await refreshBoundContext())
+    if (signal?.aborted)
+      throw new RuntimeError("REQUEST_CANCELLED", "Point comments were cancelled")
+  },
+  async start(session) {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: session.context.tabId },
+      world: "ISOLATED",
+      func: executeElementPicker,
+      args: [
+        "start",
+        session.token,
+        session.context,
+        { ...ELEMENT_PICKER_LIMITS, lifetimeMs: POINT_COMMENTS_LIMITS.lifetimeMs },
+        session.mode,
+      ],
+    })
+    return results[0]?.result
+  },
+  async control(session, operation, id, number) {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: session.context.tabId },
+      world: "ISOLATED",
+      func: executePointCommentsControl,
+      args:
+        number !== undefined
+          ? [operation, session.token, id as string, number]
+          : id !== undefined
+            ? [operation, session.token, id]
+            : [operation, session.token],
+    })
+    return results[0]?.result ?? { active: false }
+  },
+  async cleanup(context, token) {
+    try {
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: context.tabId },
+        world: "ISOLATED",
+        func: executePointCommentsControl,
+        args: token === undefined ? ["stop"] : ["stop", token],
+      })
+      if (results[0]?.result?.active === false) return
+    } catch {
+      const tabs = await chrome.tabs.query({})
+      if (!tabs.some((tab) => tab.id === context.tabId)) return
+    }
+    throw new RuntimeError(
+      "INTERNAL_ERROR",
+      "Could not confirm point comments cleanup. Reload the page and try again.",
+    )
+  },
+  emit: emitEvent,
+})
 const initialization = initialize()
 const pickerShortcut = installElementPickerShortcut({
   async validate(tab) {
@@ -164,6 +244,7 @@ const pickerShortcut = installElementPickerShortcut({
   },
   stop(windowId) {
     pageAnnotation.disconnect(windowId)
+    pointComments.disconnect(windowId)
     // Record disconnects even while the start is still looking up its owning window.
     startingElementPicker?.disconnectedWindows.add(windowId)
     if (startingElementPicker?.windowId === windowId) elementPickerOperationVersion += 1
@@ -243,6 +324,7 @@ async function stopActiveElementPicker(reason: string, emit = true): Promise<voi
 
 function clearBoundTab(page: PageCapability = { kind: "none", title: "" }): void {
   pageAnnotation.contextChanged("tab-context-cleared")
+  pointComments.contextChanged("tab-context-cleared")
   elementPickerOperationVersion += 1
   if (activeElementPicker) void stopActiveElementPicker("tab-context-cleared")
   if (boundContext) {
@@ -272,7 +354,10 @@ function setBoundTab(tab: chrome.tabs.Tab | undefined): TabContext | undefined {
   }
   elementPickerOperationVersion += 1
   if (activeElementPicker) void stopActiveElementPicker("tab-changed")
-  if (boundContext) pageAnnotation.contextChanged("tab-changed")
+  if (boundContext) {
+    pageAnnotation.contextChanged("tab-changed")
+    pointComments.contextChanged("tab-changed")
+  }
   if (boundContext) contextEpoch = Math.max(contextEpoch, boundContext.epoch) + 1
   elementSnapshot = undefined
   boundContext = { tabId: tab.id, url: tab.url, epoch: contextEpoch }
@@ -358,6 +443,14 @@ async function initialize(): Promise<void> {
   if (context) {
     await notifyInjectedElementPickerToStop(context)
     await pageAnnotation.orphanCleanup(context).catch(() => undefined)
+    await chrome.scripting
+      .executeScript({
+        target: { tabId: context.tabId },
+        world: "ISOLATED",
+        func: executePointCommentsControl,
+        args: ["stop"],
+      })
+      .catch(() => undefined)
   }
 }
 
@@ -1053,6 +1146,12 @@ async function dispatch(request: RuntimeRequest, signal: AbortSignal): Promise<J
     )
   }
   if (request.method === "pageAnnotation.stop") return pageAnnotation.stop(request)
+  if (request.method === "pointComments.start")
+    return pointComments.start(
+      { ...request, tabContext: request.tabContext ?? currentBoundContext() },
+      signal,
+    )
+  if (request.method === "pointComments.stop") return pointComments.stop(request, signal)
   await initialization
   if (signal.aborted) throw new RuntimeError("REQUEST_CANCELLED", "Browser request was cancelled")
   let result: JsonValue
@@ -1079,7 +1178,13 @@ async function dispatch(request: RuntimeRequest, signal: AbortSignal): Promise<J
     case "pageAnnotation.capture":
       result = await pageAnnotation.capture(request, signal)
       break
+    case "pointComments.remove":
+    case "pointComments.clear":
+    case "pointComments.reselect":
+      result = await pointComments.control(request, signal)
+      break
     case "elementPicker.start":
+      await pointComments.cancel("replaced")
       await pageAnnotation.cancel("replaced")
       result = await startElementPicker(request)
       break
@@ -1211,6 +1316,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   if (navigation) {
     pickerShortcut.invalidate(tabId)
     pageAnnotation.navigation(tabId)
+    pointComments.navigation(tabId)
   }
   if (!navigation) {
     if (changeInfo.title !== undefined) {
@@ -1233,6 +1339,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
 
 chrome.tabs.onActivated.addListener(() => {
   pageAnnotation.contextChanged("tab-activated")
+  pointComments.contextChanged("tab-activated")
   waitContextVersion += 1
   pickerShortcut.invalidate()
   elementPickerOperationVersion += 1
@@ -1243,6 +1350,7 @@ chrome.tabs.onActivated.addListener(() => {
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   pageAnnotation.navigation(tabId)
+  pointComments.navigation(tabId)
   pickerShortcut.invalidate(tabId)
   if (boundContext?.tabId === tabId) {
     waitContextVersion += 1
@@ -1253,6 +1361,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 
 chrome.windows.onFocusChanged.addListener((windowId) => {
   pageAnnotation.contextChanged("window-focus-changed")
+  pointComments.contextChanged("window-focus-changed")
   waitContextVersion += 1
   pickerShortcut.invalidate()
   elementPickerOperationVersion += 1
@@ -1431,6 +1540,7 @@ async function acceptElementPickerResult(
 
 chrome.permissions.onRemoved?.addListener(() => {
   void pageAnnotation.accessChanged().catch(() => undefined)
+  void pointComments.accessChanged().catch(() => undefined)
   const picker = activeElementPicker
   if (!picker) return
   void hasHostPermission(picker.context.url)
@@ -1444,6 +1554,26 @@ chrome.permissions.onRemoved?.addListener(() => {
 })
 
 chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
+  if (
+    typeof message === "object" &&
+    message !== null &&
+    "kind" in message &&
+    message.kind === "point-comments-result"
+  ) {
+    void Promise.resolve()
+      .then(() => pointComments.notification(parsePointCommentsNotification(message), sender))
+      .then((result) => sendResponse({ ok: true, result }))
+      .catch((error) =>
+        sendResponse({
+          ok: false,
+          error: (error instanceof RuntimeError
+            ? error
+            : new RuntimeError("INVALID_REQUEST", "Invalid point comments notification")
+          ).toData(),
+        }),
+      )
+    return true
+  }
   if (
     typeof message === "object" &&
     message !== null &&
@@ -1512,7 +1642,10 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
   let request: RuntimeRequest
   try {
     request = parseRuntimeRequest(message)
-    if (request.method.startsWith("pageAnnotation.")) {
+    if (
+      request.method.startsWith("pageAnnotation.") ||
+      request.method.startsWith("pointComments.")
+    ) {
       const path = chrome.runtime.getManifest().side_panel?.default_path
       const source = new URL(sender.url ?? "about:blank")
       if (
@@ -1546,7 +1679,18 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
       { once: true },
     )
   }
+  if (request.method.startsWith("pointComments.") && "clientId" in request.params) {
+    const clientId = request.params.clientId
+    controller.signal.addEventListener(
+      "abort",
+      () => {
+        void pointComments.cancel("cancelled", undefined, clientId).catch(() => undefined)
+      },
+      { once: true },
+    )
+  }
   const reportsProgress =
+    !request.method.startsWith("pointComments.") &&
     !request.method.startsWith("pageAnnotation.") &&
     !["elementPicker.start", "elementPicker.stop", "requests.cancel"].includes(request.method)
   if (request.method !== "requests.cancel") {

@@ -1,6 +1,26 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Comment on elements": "तत्वों पर टिप्पणी करें",
+  "Comment {number}": "टिप्पणी {number}",
+  "Inactive target": "निष्क्रिय लक्ष्य",
+  "Describe the requested change": "चाहा गया बदलाव लिखें",
+  Remove: "हटाएँ",
+  "Reselect target": "लक्ष्य फिर चुनें",
+  "Use note only": "केवल नोट का उपयोग करें",
+  "Remove, reselect, or convert inactive comments before sending":
+    "भेजने से पहले निष्क्रिय टिप्पणियाँ हटाएँ, फिर चुनें या नोट में बदलें",
+  "Wait for the current operation to finish before commenting":
+    "टिप्पणी करने से पहले वर्तमान प्रक्रिया पूरी होने दें",
+  "Attach up to five page targets": "पृष्ठ के अधिकतम पाँच लक्ष्य संलग्न करें",
+  "Open an HTTP or HTTPS page before commenting": "टिप्पणी करने से पहले HTTP या HTTPS पृष्ठ खोलें",
+  "Site access is required to comment on this page":
+    "इस पृष्ठ पर टिप्पणी करने के लिए साइट की अनुमति चाहिए",
+  "The page changed. Select comment targets again.": "पृष्ठ बदल गया है। टिप्पणी के लक्ष्य फिर चुनें।",
+  "Could not confirm comment cleanup. Reload the page before sending.":
+    "टिप्पणियाँ हटने की पुष्टि नहीं हो सकी। भेजने से पहले पृष्ठ फिर लोड करें।",
+  "Write a note or a task before sending point comments": "टिप्पणियाँ भेजने से पहले नोट या कार्य लिखें",
+  "Remove comment cards before changing sessions": "सत्र बदलने से पहले टिप्पणी कार्ड हटाएँ",
   "Draw on page": "पेज पर बनाएँ",
   "Cancel page drawing": "पेज पर बनाना रद्द करें",
   "Pen color": "पेन का रंग",

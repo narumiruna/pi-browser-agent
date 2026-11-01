@@ -1,6 +1,30 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Comment on elements": "Öğelere yorum ekle",
+  "Comment {number}": "Yorum {number}",
+  "Inactive target": "Etkin olmayan hedef",
+  "Describe the requested change": "İstenen değişikliği açıklayın",
+  Remove: "Kaldır",
+  "Reselect target": "Hedefi yeniden seç",
+  "Use note only": "Yalnızca notu kullan",
+  "Remove, reselect, or convert inactive comments before sending":
+    "Göndermeden önce etkin olmayan yorumları kaldırın, yeniden seçin veya nota dönüştürün",
+  "Wait for the current operation to finish before commenting":
+    "Yorum eklemeden önce geçerli işlemin bitmesini bekleyin",
+  "Attach up to five page targets": "En fazla beş sayfa hedefi ekleyin",
+  "Open an HTTP or HTTPS page before commenting":
+    "Yorum eklemeden önce bir HTTP veya HTTPS sayfası açın",
+  "Site access is required to comment on this page":
+    "Bu sayfaya yorum eklemek için site erişimi gerekir",
+  "The page changed. Select comment targets again.":
+    "Sayfa değişti. Yorum hedeflerini yeniden seçin.",
+  "Could not confirm comment cleanup. Reload the page before sending.":
+    "Yorumların kaldırıldığı doğrulanamadı. Göndermeden önce sayfayı yeniden yükleyin.",
+  "Write a note or a task before sending point comments":
+    "Yorumları göndermeden önce bir not veya görev yazın",
+  "Remove comment cards before changing sessions":
+    "Oturum değiştirmeden önce yorum kartlarını kaldırın",
   "Draw on page": "Sayfada çiz",
   "Cancel page drawing": "Sayfada çizimi iptal et",
   "Pen color": "Kalem rengi",

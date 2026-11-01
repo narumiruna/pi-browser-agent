@@ -1329,6 +1329,47 @@ body[data-page="waiting"]:not([data-busy="true"]) .status-dot {
   display: none;
 }
 
+.point-comment-cards {
+  display: grid;
+  gap: 8px;
+  max-height: 36vh;
+  overflow-y: auto;
+}
+
+.point-comment-cards[hidden] {
+  display: none;
+}
+
+.point-comment-card {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  min-width: 0;
+}
+
+.point-comment-card label {
+  overflow-wrap: anywhere;
+  width: 100%;
+}
+.point-comment-card textarea {
+  width: 100%;
+  min-width: 0;
+  resize: vertical;
+}
+.point-comment-action {
+  font-size: 12px;
+  padding: 4px 8px;
+}
+.point-comment-card[data-active="false"] {
+  border-style: dashed;
+}
+.point-comment-status {
+  font-size: 12px;
+}
+
 .selected-elements {
   display: flex;
   gap: 6px;
