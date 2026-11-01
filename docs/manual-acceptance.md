@@ -294,7 +294,7 @@ The shared drawing proof retains main's arrow-direction, arrowhead, rectangle-ou
 
 ## Target-reference and clarification acceptance — 2026-11-01
 
-Status: the feature is rebased onto the pin-free region checkpoint `f97439d7ff0bacfb367c3e98eca60cf1d97a6b35`. Focused checks and the production build pass. Browser tests and final-parent full CI are still pending. Native UI, assistive technology, and real-provider acceptance remain unverified.
+Status: the feature is rebased onto the pin-free region checkpoint `f97439d7ff0bacfb367c3e98eca60cf1d97a6b35`. Focused checks, the production build, and 57 mocked browser scenarios pass at feature checkpoint `a8c365ae563876aa24c8f49eabed7e095b4c0214`. Final-parent synchronization and full CI are still pending. Native UI, assistive technology, and real-provider acceptance remain unverified.
 
 ### Pin-free scope
 
@@ -304,7 +304,11 @@ Pair candidates are only images and existing selected-element chips. Region crop
 
 `npm ci`, `npm run check`, all 196 tests in ten focused unit/integration files, and `npm run build` passed after rebase. The build includes typecheck, the browser-boundary probe, and the 50-file artifact audit. Logs are `/tmp/target-reference-pin-free-npm-ci.log` and `/tmp/target-reference-pin-free-focused-{check,unit,build}.log`. Four locked-SDK scheduling proofs and all clarification identity/credential/persistence regressions remain. Invalid, obsolete-pin-ID, duplicate, and unavailable questions reject browser/MCP siblings in every source order. The type contract limits attachment kinds to image/element and places optional submission metadata at argument seven. Source and runtime-method absence tests pass. Five individually valid selected elements plus an image are tested at the exact 16 KiB wrapper budget.
 
-Review found a direct voice-start path that relied on a disabled button during a question. Guards before and after microphone permission lookup now reject it; three focused regressions verify zero microphone start, permission-tab creation, and provider dispatch. The parent region/numeric source and tests are unchanged in this feature. Main's arrow/rectangle controls remain in the shipped panel. The pin foundation is not an ancestor, and no point-comment source file is present. No Playwright or full CI result is claimed yet on this rebuilt source.
+Review found a direct voice-start path that relied on a disabled button during a question. Guards before and after microphone permission lookup now reject it; three focused regressions verify zero microphone start, permission-tab creation, and provider dispatch. The parent region/numeric source and tests are unchanged in this feature. The `main` branch's arrow/rectangle controls remain in the shipped panel. The pin foundation is not an ancestor, and no point-comment source file is present.
+
+The focused command `npm run test:e2e -- tests/e2e/target-reference-clarification.spec.ts tests/e2e/region-capture.spec.ts tests/e2e/session-tree.spec.ts tests/e2e/slash-commands.spec.ts --workers=2` passed all 57 scenarios with one output writer (`/tmp/target-reference-pin-free-focused-e2e.log`, exit 0). All 13 feature scenarios remain. They include an actual 160 × 110 crop with a non-last selected-element target, exact IDs and roles, failed preparation and newer drafts, stale-element preparation with zero dispatch, element-linked navigation cancellation, image-only question survival after a tab-context change, and pasted pairs with zero capture or page read. Stop/restart, cross-context credential removal, explicit option/Other answers, reused call IDs, inactive history, keyboard flow, narrow widths, both themes, forced colors, and separate remote approval remain covered.
+
+Full own-feature diff review found no remaining material defect after the voice guard fix. Source, tests, documentation, and all 18 catalog deltas were inspected against the exact region checkpoint. No worker protocol, permission, confirmation policy, endpoint, dependency, storage migration, parent region/numeric change, or plan delta was added. This evidence does not replace the required full CI on the final parent and code.
 
 ### Historical preparatory checks
 
