@@ -1,6 +1,23 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Reset page pinch zoom before capturing a region":
+    "範囲をキャプチャする前にページのピンチズームをリセットしてください",
+  "Capture region": "範囲をキャプチャ",
+  "Cancel region capture": "範囲のキャプチャをキャンセル",
+  "Retry region cleanup": "範囲選択の削除を再試行",
+  "Retry region attachment": "範囲の添付を再試行",
+  "Chrome temporarily captures the full viewport. Only the crop leaves the worker. Drag to attach a crop. Arrow keys move; Shift+Arrow resizes; Alt uses 1 px. Enter attaches; Escape cancels.":
+    "Chrome は一時的に表示領域全体をキャプチャします。ワーカーから出るのは切り抜いた画像だけです。 ドラッグして切り抜きを添付します。矢印キーで移動、Shift+矢印キーでサイズ変更、Alt で 1 px 単位にします。Enter で添付、Escape でキャンセルします。",
+  "Finish or cancel region capture before sending":
+    "送信前に範囲のキャプチャを完了するかキャンセルしてください",
+  "Could not confirm region cleanup. Reload the page before sending.":
+    "範囲選択の削除を確認できませんでした。送信前にページを再読み込みしてください。",
+  "The page changed. Select a new region.": "ページが変わりました。新しい範囲を選択してください。",
+  "Region capture is unavailable on this page": "このページでは範囲のキャプチャを利用できません",
+  "Could not capture the region. Select again or retry.":
+    "範囲をキャプチャできませんでした。選択し直すか再試行してください。",
+
   "Draw on page": "ページに描画",
   "Cancel page drawing": "ページへの描画をキャンセル",
   "Pen color": "ペンの色",

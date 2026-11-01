@@ -46,6 +46,7 @@ import {
 } from "./images.js"
 import { TranscriptRenderer } from "./message-rendering.js"
 import { PageAnnotationController } from "./page-annotation.js"
+import { RegionCaptureController } from "./region-capture.js"
 import { ScreenshotAnnotationController } from "./screenshot-annotation.js"
 import { SessionPicker } from "./session-picker.js"
 import { SessionTreeDialog } from "./session-tree-dialog.js"
@@ -127,10 +128,11 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   const voiceStatus = element<HTMLElement>("voice-status")
   let screenshotAnnotation: ScreenshotAnnotationController | undefined
   let pageAnnotation: PageAnnotationController | undefined
+  let regionCapture: RegionCaptureController | undefined
   let annotationSubmissionAbort: AbortController | undefined
   const transcriptRenderer = new TranscriptRenderer(transcript, {
     onAnnotateScreenshot(image) {
-      if (pageAnnotation?.occupied || annotationSubmissionAbort) {
+      if (regionCapture?.occupied || pageAnnotation?.occupied || annotationSubmissionAbort) {
         setError(t("Wait for the current operation to finish before drawing"))
         return
       }
@@ -354,6 +356,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   function updateSendButton(): void {
     const navigationBusy =
       commandInProgress ||
+      regionCapture?.occupied === true ||
       pageAnnotation?.occupied === true ||
       annotationSubmissionAbort !== undefined
     newSessionButton.disabled = navigationBusy
@@ -366,12 +369,14 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       pendingPasteOperations > 0 ||
       pickerActive ||
       pickerStarting ||
+      regionCapture?.sendBlocked === true ||
       pageAnnotation?.sendBlocked === true ||
       (pageAnnotation?.active === true && !pageAnnotation.hasMarks) ||
       voiceInputStarting ||
       voiceInput?.active === true
     voiceButton.disabled =
       voiceInput === undefined ||
+      regionCapture?.occupied === true ||
       pageAnnotation?.occupied === true ||
       activeSubmissionGuard !== undefined ||
       pickerActive ||
@@ -382,6 +387,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     grantSiteButton.disabled = currentTabContext === undefined || pageToolsUnavailable
     languageWatcher?.flush()
     elementPickerButton.disabled =
+      regionCapture?.occupied === true ||
       pageAnnotation?.occupied === true ||
       activeSubmissionGuard !== undefined ||
       pickerStarting ||
@@ -390,6 +396,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       (!pickerActive && (currentTabContext === undefined || pageToolsUnavailable)) ||
       (!pickerActive && selectedElements.length >= ELEMENT_PICKER_LIMITS.elements)
     pageAnnotation?.refresh()
+    regionCapture?.refresh()
   }
 
   function releaseSubmissionGuard(guard: object): void {
@@ -495,6 +502,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       !authentication?.isBusy &&
       !activeSubmissionGuard &&
       !commandInProgress &&
+      !regionCapture?.occupied &&
       !pickerActive &&
       !pickerStarting &&
       !pickerStopping &&
@@ -506,6 +514,45 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       document.querySelector("dialog[open]") === null,
     onChange: updateSendButton,
     onCancel: cancelAnnotationSubmission,
+    onError: setError,
+  })
+
+  regionCapture = new RegionCaptureController({
+    getContext: refreshTabContext,
+    getSessionId: () => runtime.activeSession.id,
+    requestSiteAccess,
+    canStart: () =>
+      !disposed &&
+      !runtime.isBusy &&
+      !authentication?.isBusy &&
+      !activeSubmissionGuard &&
+      !commandInProgress &&
+      !pageAnnotation?.occupied &&
+      !pickerActive &&
+      !pickerStarting &&
+      !pickerStopping &&
+      !voiceInputStarting &&
+      !voiceInput?.active &&
+      pendingPasteOperations === 0 &&
+      currentTabContext !== undefined &&
+      document.querySelector("dialog[open]") === null,
+    preflight() {
+      if (!runtime.model.input.includes("image"))
+        throw new Error(t("{model} does not support image input", { model: runtime.model.name }))
+      if (composerImages.length >= MAX_PASTED_IMAGES)
+        throw new Error(t("Attach up to {count} images at a time", { count: MAX_PASTED_IMAGES }))
+      const remaining =
+        MAX_PASTED_IMAGE_BYTES -
+        composerImages.reduce((total, image) => total + image.byteLength, 0)
+      if (remaining < 1) throw new Error(t("Composer images must use 3 MB or less in total"))
+      return remaining
+    },
+    confirm: (error, signal) => confirmation(error.message, error.details, signal),
+    async onAttach(image, accept) {
+      await attachComposerImages([image], "annotation", accept)
+    },
+    focusComposer: () => promptInput.focus(),
+    onChange: updateSendButton,
     onError: setError,
   })
 
@@ -740,6 +787,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   function assertPickerActionAvailable(): void {
     if (
       activeSubmissionGuard !== undefined ||
+      regionCapture?.occupied === true ||
       pageAnnotation?.occupied === true ||
       voiceInputStarting ||
       voiceInput?.active === true ||
@@ -939,6 +987,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       pendingPasteOperations > 0 ||
       pickerActive ||
       pickerStarting ||
+      regionCapture?.occupied === true ||
       pageAnnotation?.occupied === true ||
       voiceInputStarting ||
       voiceInput?.active
@@ -1090,6 +1139,10 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   }
 
   function submitPrompt(queueAfterCurrentTask = false): void {
+    if (regionCapture?.sendBlocked) {
+      setError(t("Finish or cancel region capture before sending"))
+      return
+    }
     const draft = promptInput.value
     const parsed = parseSlashCommand(draft)
     if (parsed.kind === "invalid") {
@@ -1286,13 +1339,14 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
 
   async function clearElementComposerContext(): Promise<void> {
     cancelAnnotationSubmission()
+    if (regionCapture?.occupied) await regionCapture.cancel(false)
     if (pageAnnotation?.occupied) await pageAnnotation.stop()
     if (pickerActive || pickerStarting) await stopElementPicker().catch(() => undefined)
     clearSelectedElements()
   }
 
   async function openSettingsTab(accept?: () => void): Promise<void> {
-    if (pageAnnotation?.occupied || annotationSubmissionAbort)
+    if (regionCapture?.occupied || pageAnnotation?.occupied || annotationSubmissionAbort)
       throw new Error(t("Wait for the current operation to finish before drawing"))
     voiceInput?.abort()
     const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true })
@@ -1347,7 +1401,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
 
   voiceInput = createVoiceInput({
     onTranscript(text) {
-      if (pageAnnotation?.occupied || annotationSubmissionAbort) return
+      if (regionCapture?.occupied || pageAnnotation?.occupied || annotationSubmissionAbort) return
       promptInput.value = text
       resizePromptInput()
     },
@@ -1379,7 +1433,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     void run(toggleElementPicker, setError)
   })
   voiceButton.addEventListener("click", () => {
-    if (pageAnnotation?.occupied || annotationSubmissionAbort) return
+    if (regionCapture?.occupied || pageAnnotation?.occupied || annotationSubmissionAbort) return
     if (voiceInput?.active) {
       setError()
       voiceInput.stop()
@@ -1409,6 +1463,10 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     resizePromptInput()
   })
   promptInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && event.repeat && !event.shiftKey && !event.isComposing) {
+      event.preventDefault()
+      return
+    }
     if (commandMenu.handleKeyDown(event)) return
     if (event.key === "Escape" && runtime.agent.state.isStreaming) {
       event.preventDefault()
@@ -1483,6 +1541,12 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   document.addEventListener(
     "keydown",
     (event) => {
+      if (event.key === "Escape" && regionCapture?.occupied) {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        void regionCapture.cancel().catch(setError)
+        return
+      }
       if (event.key === "Escape" && pageAnnotation?.toolsPopupOpen) {
         event.preventDefault()
         event.stopImmediatePropagation()
@@ -1528,6 +1592,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     const event = message as Partial<RuntimeEvent>
     if (event.kind !== "event") return false
     pageAnnotation?.onEvent(event as RuntimeEvent)
+    regionCapture?.onEvent(event as RuntimeEvent)
     if (event.name === "settings.saved" && event.payload?.settingsContextId === settingsContextId) {
       void run(async () => {
         await runtime.syncSettings({
@@ -1624,6 +1689,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     observedTranscriptElements.clear()
     voiceInput?.abort()
     screenshotAnnotation?.close()
+    regionCapture?.dispose()
     cancelAnnotationSubmission()
     if (pageAnnotation?.occupied) void pageAnnotation.stop().catch(() => undefined)
     treeDialog.close()
@@ -1642,6 +1708,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       pickerActive ||
       pickerStarting ||
       Boolean(pickerStopping) ||
+      regionCapture?.occupied === true ||
       pageAnnotation?.occupied === true ||
       voiceInputStarting ||
       Boolean(voiceInput?.active) ||
@@ -1666,6 +1733,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       elementPickerButton.ariaLabel = t("Select page element")
       elementPickerButton.title = pickerButtonTitle(false, pickerShortcut)
       pageAnnotation?.refresh()
+      regionCapture?.refresh()
       renderRunStatus()
       renderPageCapability()
       renderMessages()
@@ -1709,6 +1777,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     error: setError,
     disconnected() {
       cancelAnnotationSubmission()
+      if (regionCapture?.occupied) void regionCapture.cancel(false).catch(setError)
       if (pageAnnotation?.occupied) void pageAnnotation.stop().catch(setError)
       if (pickerActive || pickerStarting) {
         // Wake the replacement worker and wait for cleanup before clearing the active UI.

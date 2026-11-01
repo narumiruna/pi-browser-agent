@@ -1758,6 +1758,10 @@ dialog::backdrop {
   max-width: 100%;
 }
 
+#region-capture[aria-pressed="true"] {
+  color: var(--accent);
+}
+
 .screenshot-annotation-dialog {
   width: min(920px, calc(100vw - 24px));
   max-height: calc(100vh - 24px);

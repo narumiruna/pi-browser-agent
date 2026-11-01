@@ -1,6 +1,24 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Reset page pinch zoom before capturing a region":
+    "Réinitialisez le zoom par pincement de la page avant de capturer une zone",
+  "Capture region": "Capturer une zone",
+  "Cancel region capture": "Annuler la capture de zone",
+  "Retry region cleanup": "Réessayer le nettoyage de la zone",
+  "Retry region attachment": "Réessayer de joindre la zone",
+  "Chrome temporarily captures the full viewport. Only the crop leaves the worker. Drag to attach a crop. Arrow keys move; Shift+Arrow resizes; Alt uses 1 px. Enter attaches; Escape cancels.":
+    "Chrome capture temporairement toute la zone visible. Seule la partie recadrée quitte le worker. Faites glisser pour joindre un recadrage. Les flèches déplacent ; Shift+flèche redimensionne ; Alt utilise un pas de 1 px. Enter joint ; Escape annule.",
+  "Finish or cancel region capture before sending":
+    "Terminez ou annulez la capture de zone avant l’envoi",
+  "Could not confirm region cleanup. Reload the page before sending.":
+    "La suppression de la sélection n’a pas pu être confirmée. Rechargez la page avant l’envoi.",
+  "The page changed. Select a new region.": "La page a changé. Sélectionnez une nouvelle zone.",
+  "Region capture is unavailable on this page":
+    "La capture de zone n’est pas disponible sur cette page",
+  "Could not capture the region. Select again or retry.":
+    "Impossible de capturer la zone. Sélectionnez-la à nouveau ou réessayez.",
+
   "Draw on page": "Dessiner sur la page",
   "Cancel page drawing": "Annuler le dessin sur la page",
   "Pen color": "Couleur du stylo",

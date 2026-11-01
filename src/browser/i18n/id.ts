@@ -1,6 +1,23 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Reset page pinch zoom before capturing a region":
+    "Atur ulang zoom cubit halaman sebelum mengambil area",
+  "Capture region": "Tangkap area",
+  "Cancel region capture": "Batalkan tangkapan area",
+  "Retry region cleanup": "Coba lagi pembersihan area",
+  "Retry region attachment": "Coba lagi melampirkan area",
+  "Chrome temporarily captures the full viewport. Only the crop leaves the worker. Drag to attach a crop. Arrow keys move; Shift+Arrow resizes; Alt uses 1 px. Enter attaches; Escape cancels.":
+    "Chrome menangkap seluruh area tampilan untuk sementara. Hanya potongan gambar yang keluar dari worker. Seret untuk melampirkan potongan gambar. Panah memindahkan; Shift+panah mengubah ukuran; Alt memakai langkah 1 px. Enter melampirkan; Escape membatalkan.",
+  "Finish or cancel region capture before sending":
+    "Selesaikan atau batalkan tangkapan area sebelum mengirim",
+  "Could not confirm region cleanup. Reload the page before sending.":
+    "Penghapusan pilihan area tidak dapat dikonfirmasi. Muat ulang halaman sebelum mengirim.",
+  "The page changed. Select a new region.": "Halaman berubah. Pilih area baru.",
+  "Region capture is unavailable on this page": "Tangkapan area tidak tersedia di halaman ini",
+  "Could not capture the region. Select again or retry.":
+    "Area tidak dapat ditangkap. Pilih lagi atau coba kembali.",
+
   "Draw on page": "Gambar di halaman",
   "Cancel page drawing": "Batalkan menggambar di halaman",
   "Pen color": "Warna pena",

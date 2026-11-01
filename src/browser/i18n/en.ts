@@ -1,5 +1,22 @@
 // English source messages are stable catalog keys. Use them only for trusted presentation.
 export const english = {
+  "Reset page pinch zoom before capturing a region":
+    "Reset page pinch zoom before capturing a region",
+  "Capture region": "Capture region",
+  "Cancel region capture": "Cancel region capture",
+  "Retry region cleanup": "Retry region cleanup",
+  "Retry region attachment": "Retry region attachment",
+  "Chrome temporarily captures the full viewport. Only the crop leaves the worker. Drag to attach a crop. Arrow keys move; Shift+Arrow resizes; Alt uses 1 px. Enter attaches; Escape cancels.":
+    "Chrome temporarily captures the full viewport. Only the crop leaves the worker. Drag to attach a crop. Arrow keys move; Shift+Arrow resizes; Alt uses 1 px. Enter attaches; Escape cancels.",
+  "Finish or cancel region capture before sending":
+    "Finish or cancel region capture before sending",
+  "Could not confirm region cleanup. Reload the page before sending.":
+    "Could not confirm region cleanup. Reload the page before sending.",
+  "The page changed. Select a new region.": "The page changed. Select a new region.",
+  "Region capture is unavailable on this page": "Region capture is unavailable on this page",
+  "Could not capture the region. Select again or retry.":
+    "Could not capture the region. Select again or retry.",
+
   "Draw on page": "Draw on page",
   "Cancel page drawing": "Cancel page drawing",
   "Pen color": "Pen color",

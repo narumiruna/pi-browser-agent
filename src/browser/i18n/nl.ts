@@ -1,6 +1,23 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Reset page pinch zoom before capturing a region":
+    "Stel de knijpzoom van de pagina opnieuw in voordat u een gebied vastlegt",
+  "Capture region": "Gebied vastleggen",
+  "Cancel region capture": "Gebiedsopname annuleren",
+  "Retry region cleanup": "Opruimen van gebied opnieuw proberen",
+  "Retry region attachment": "Gebied opnieuw bijvoegen",
+  "Chrome temporarily captures the full viewport. Only the crop leaves the worker. Drag to attach a crop. Arrow keys move; Shift+Arrow resizes; Alt uses 1 px. Enter attaches; Escape cancels.":
+    "Chrome legt tijdelijk het volledige zichtbare gebied vast. Alleen de uitsnede verlaat de worker. Sleep om een uitsnede bij te voegen. Pijlen verplaatsen; Shift+pijl wijzigt het formaat; Alt gebruikt stappen van 1 px. Enter voegt bij; Escape annuleert.",
+  "Finish or cancel region capture before sending":
+    "Voltooi of annuleer de gebiedsopname voordat u verzendt",
+  "Could not confirm region cleanup. Reload the page before sending.":
+    "Verwijdering van de gebiedsselectie kon niet worden bevestigd. Herlaad de pagina voordat u verzendt.",
+  "The page changed. Select a new region.": "De pagina is gewijzigd. Selecteer een nieuw gebied.",
+  "Region capture is unavailable on this page": "Gebiedsopname is niet beschikbaar op deze pagina",
+  "Could not capture the region. Select again or retry.":
+    "Het gebied kon niet worden vastgelegd. Selecteer opnieuw of probeer het nogmaals.",
+
   "Draw on page": "Op de pagina tekenen",
   "Cancel page drawing": "Tekenen op de pagina annuleren",
   "Pen color": "Penkleur",

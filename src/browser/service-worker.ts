@@ -6,6 +6,7 @@ import {
 } from "./content/element-picker.js"
 import { executePageAnnotation, stopPageAnnotationInjection } from "./content/page-annotation.js"
 import { executePageOperation, type PageOperation } from "./content/page-operations.js"
+import { executeRegionCapture, stopRegionCaptureInjection } from "./content/region-capture.js"
 import { assertTabContext } from "./content/tab-context.js"
 import { installElementPickerShortcut } from "./element-picker-shortcut.js"
 import { CONTEXT_MENU_TITLES } from "./i18n/context-menu.js"
@@ -18,6 +19,7 @@ import {
   hasScreenshotPermission,
   SCREENSHOT_HOST_PERMISSION,
 } from "./permissions.js"
+import { RegionCaptureWorker } from "./region-capture-worker.js"
 import { waitForCondition } from "./runtime/condition-wait.js"
 import { ELEMENT_PICKER_LIMITS, parseSelectedElementContext } from "./runtime/element-context.js"
 import { parseRuntimeRequest, type RuntimeEvent, type RuntimeRequest } from "./runtime/messages.js"
@@ -28,6 +30,7 @@ import {
 } from "./runtime/page-annotation.js"
 import { classifyPage, type PageCapability } from "./runtime/page-capability.js"
 import { boundPageTextResult, type PageTextResult } from "./runtime/page-text.js"
+import { parseRegionCaptureNotification, REGION_CAPTURE_LIMITS } from "./runtime/region-capture.js"
 import {
   ELEMENT_LIMITS,
   type ElementSnapshot,
@@ -70,6 +73,8 @@ let pendingSelectionTake: Promise<JsonValue> = Promise.resolve(null)
 const pageAnnotation = new PageAnnotationWorker({
   async beforeStart() {
     await initialization
+    if (regionCapture.occupied)
+      throw new RuntimeError("INVALID_REQUEST", "Finish region capture before page drawing")
     elementPickerOperationVersion += 1
     await stopActiveElementPicker("page-annotation", false)
   },
@@ -150,6 +155,85 @@ const pageAnnotation = new PageAnnotationWorker({
     })
   },
 })
+const regionCapture = new RegionCaptureWorker({
+  async beforeStart() {
+    await initialization
+    if (pageAnnotation.occupied)
+      throw new RuntimeError("INVALID_REQUEST", "Finish page drawing before region capture")
+    elementPickerOperationVersion += 1
+    await stopActiveElementPicker("region-capture", false)
+  },
+  async context(expected) {
+    await initialization
+    const context = await refreshBoundContext()
+    assertTabContext(expected, context)
+    return context
+  },
+  async windowId(context) {
+    return (await chrome.tabs.get(context.tabId)).windowId
+  },
+  async validate(context, signal) {
+    if (signal?.aborted) throw new RuntimeError("REQUEST_CANCELLED", "Region capture was cancelled")
+    const current = await refreshBoundContext()
+    assertTabContext(context, current)
+    if (!(await hasHostPermission(context.url)))
+      throw new RuntimeError("PERMISSION_DENIED", "Current site access was revoked")
+    await assertReadableDocument(context, signal)
+    const latest = await refreshBoundContext()
+    assertTabContext(context, latest)
+    if (signal?.aborted) throw new RuntimeError("REQUEST_CANCELLED", "Region capture was cancelled")
+  },
+  async execute(operation, session) {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: session.context.tabId },
+      world: "ISOLATED",
+      func: executeRegionCapture,
+      args: [operation, session.token, session.context, REGION_CAPTURE_LIMITS],
+    })
+    return results[0]?.result
+  },
+  async cleanup(context, token) {
+    if (typeof chrome.tabs.sendMessage === "function") {
+      const acknowledgement = await chrome.tabs
+        .sendMessage(
+          context.tabId,
+          { kind: "region-capture-stop", ...(token ? { token } : {}) },
+          { frameId: 0 },
+        )
+        .catch(() => undefined)
+      if (acknowledgement?.active === false) return
+    }
+    try {
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: context.tabId },
+        world: "ISOLATED",
+        func: stopRegionCaptureInjection,
+        args: token === undefined ? [] : [token],
+      })
+      const outcome = results[0]?.result
+      if (outcome?.ok && outcome.result.active === false) return
+    } catch {
+      // URL and epoch changes do not prove document replacement (for example, history.pushState).
+      // Only a successful all-tab lookup can confirm that the target no longer exists.
+      const tabs = await chrome.tabs.query({})
+      if (!tabs.some((tab) => tab.id === context.tabId)) return
+    }
+    throw new RuntimeError(
+      "INTERNAL_ERROR",
+      "Could not confirm region capture cleanup. Reload the page and try again.",
+    )
+  },
+  emit: emitEvent,
+  capturePermission: assertScreenshotPermission,
+  capture(request, context) {
+    return captureVisible({
+      ...request,
+      method: "page.captureVisible",
+      params: {},
+      tabContext: context,
+    })
+  },
+})
 const initialization = initialize()
 const pickerShortcut = installElementPickerShortcut({
   async validate(tab) {
@@ -164,6 +248,7 @@ const pickerShortcut = installElementPickerShortcut({
   },
   stop(windowId) {
     pageAnnotation.disconnect(windowId)
+    regionCapture.disconnect(windowId)
     // Record disconnects even while the start is still looking up its owning window.
     startingElementPicker?.disconnectedWindows.add(windowId)
     if (startingElementPicker?.windowId === windowId) elementPickerOperationVersion += 1
@@ -243,6 +328,7 @@ async function stopActiveElementPicker(reason: string, emit = true): Promise<voi
 
 function clearBoundTab(page: PageCapability = { kind: "none", title: "" }): void {
   pageAnnotation.contextChanged("tab-context-cleared")
+  regionCapture.contextChanged("tab-context-cleared")
   elementPickerOperationVersion += 1
   if (activeElementPicker) void stopActiveElementPicker("tab-context-cleared")
   if (boundContext) {
@@ -272,7 +358,10 @@ function setBoundTab(tab: chrome.tabs.Tab | undefined): TabContext | undefined {
   }
   elementPickerOperationVersion += 1
   if (activeElementPicker) void stopActiveElementPicker("tab-changed")
-  if (boundContext) pageAnnotation.contextChanged("tab-changed")
+  if (boundContext) {
+    pageAnnotation.contextChanged("tab-changed")
+    regionCapture.contextChanged("tab-changed")
+  }
   if (boundContext) contextEpoch = Math.max(contextEpoch, boundContext.epoch) + 1
   elementSnapshot = undefined
   boundContext = { tabId: tab.id, url: tab.url, epoch: contextEpoch }
@@ -358,6 +447,7 @@ async function initialize(): Promise<void> {
   if (context) {
     await notifyInjectedElementPickerToStop(context)
     await pageAnnotation.orphanCleanup(context).catch(() => undefined)
+    await regionCapture.orphanCleanup(context).catch(() => undefined)
   }
 }
 
@@ -1046,6 +1136,12 @@ async function stopElementPicker(
 
 async function dispatch(request: RuntimeRequest, signal: AbortSignal): Promise<JsonValue> {
   // Reserve startup before initialization or picker cleanup can yield to stop/disconnect.
+  if (request.method === "regionCapture.start")
+    return regionCapture.start(
+      { ...request, tabContext: request.tabContext ?? currentBoundContext() },
+      signal,
+    )
+  if (request.method === "regionCapture.stop") return regionCapture.stop(request)
   if (request.method === "pageAnnotation.start") {
     return pageAnnotation.start(
       { ...request, tabContext: request.tabContext ?? currentBoundContext() },
@@ -1079,7 +1175,12 @@ async function dispatch(request: RuntimeRequest, signal: AbortSignal): Promise<J
     case "pageAnnotation.capture":
       result = await pageAnnotation.capture(request, signal)
       break
+
+    case "regionCapture.capture":
+      result = await regionCapture.capture(request, signal)
+      break
     case "elementPicker.start":
+      await regionCapture.cancel("replaced")
       await pageAnnotation.cancel("replaced")
       result = await startElementPicker(request)
       break
@@ -1211,6 +1312,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   if (navigation) {
     pickerShortcut.invalidate(tabId)
     pageAnnotation.navigation(tabId)
+    regionCapture.navigation(tabId)
   }
   if (!navigation) {
     if (changeInfo.title !== undefined) {
@@ -1233,6 +1335,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
 
 chrome.tabs.onActivated.addListener(() => {
   pageAnnotation.contextChanged("tab-activated")
+  regionCapture.contextChanged("tab-activated")
   waitContextVersion += 1
   pickerShortcut.invalidate()
   elementPickerOperationVersion += 1
@@ -1243,6 +1346,7 @@ chrome.tabs.onActivated.addListener(() => {
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   pageAnnotation.navigation(tabId)
+  regionCapture.navigation(tabId)
   pickerShortcut.invalidate(tabId)
   if (boundContext?.tabId === tabId) {
     waitContextVersion += 1
@@ -1253,6 +1357,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 
 chrome.windows.onFocusChanged.addListener((windowId) => {
   pageAnnotation.contextChanged("window-focus-changed")
+  regionCapture.contextChanged("window-focus-changed")
   waitContextVersion += 1
   pickerShortcut.invalidate()
   elementPickerOperationVersion += 1
@@ -1431,6 +1536,7 @@ async function acceptElementPickerResult(
 
 chrome.permissions.onRemoved?.addListener(() => {
   void pageAnnotation.accessChanged().catch(() => undefined)
+  void regionCapture.accessChanged().catch(() => undefined)
   const picker = activeElementPicker
   if (!picker) return
   void hasHostPermission(picker.context.url)
@@ -1444,6 +1550,26 @@ chrome.permissions.onRemoved?.addListener(() => {
 })
 
 chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
+  if (
+    typeof message === "object" &&
+    message !== null &&
+    "kind" in message &&
+    message.kind === "region-capture-state"
+  ) {
+    void Promise.resolve()
+      .then(() => regionCapture.notification(parseRegionCaptureNotification(message), sender))
+      .then((result) => sendResponse({ ok: true, result }))
+      .catch(() =>
+        sendResponse({
+          ok: false,
+          error: new RuntimeError(
+            "INVALID_REQUEST",
+            "Invalid region capture notification",
+          ).toData(),
+        }),
+      )
+    return true
+  }
   if (
     typeof message === "object" &&
     message !== null &&
@@ -1512,7 +1638,10 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
   let request: RuntimeRequest
   try {
     request = parseRuntimeRequest(message)
-    if (request.method.startsWith("pageAnnotation.")) {
+    if (
+      request.method.startsWith("pageAnnotation.") ||
+      request.method.startsWith("regionCapture.")
+    ) {
       const path = chrome.runtime.getManifest().side_panel?.default_path
       const source = new URL(sender.url ?? "about:blank")
       if (
@@ -1546,7 +1675,19 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
       { once: true },
     )
   }
+
+  if (request.method.startsWith("regionCapture.") && "clientId" in request.params) {
+    const clientId = request.params.clientId
+    controller.signal.addEventListener(
+      "abort",
+      () => {
+        void regionCapture.cancel("cancelled", undefined, clientId).catch(() => undefined)
+      },
+      { once: true },
+    )
+  }
   const reportsProgress =
+    !request.method.startsWith("regionCapture.") &&
     !request.method.startsWith("pageAnnotation.") &&
     !["elementPicker.start", "elementPicker.stop", "requests.cancel"].includes(request.method)
   if (request.method !== "requests.cancel") {

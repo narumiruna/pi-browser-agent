@@ -150,6 +150,8 @@
           aria-live="polite"
           hidden
         ></div>
+
+        <span id="region-capture-help" class="visually-hidden">Chrome temporarily captures the full viewport. Only the crop leaves the worker. Drag to attach a crop. Arrow keys move; Shift+Arrow resizes; Alt uses 1 px. Enter attaches; Escape cancels.</span>
         <span id="page-pen-help" class="visually-hidden">Page content can move beneath your marks. Send captures only the visible area.</span>
         <textarea
           id="prompt"
@@ -228,6 +230,9 @@
                 <button id="page-pen-clear" type="button" class="icon-button page-pen-tool" aria-label="Clear" disabled><svg class="radix-icon" viewBox="0 0 15 15" aria-hidden="true"><path d="M2 4h11M5 4V2h5v2M3.5 4l.75 9h6.5l.75-9M6 6v5M9 6v5"/></svg></button>
               </fieldset>
             </div>
+            <button type="button" id="region-capture" class="icon-button" aria-label="Capture region" title="Capture region" aria-pressed="false" aria-describedby="region-capture-help">
+              <svg class="radix-icon" viewBox="0 0 15 15" aria-hidden="true"><path d="M1.5 5V1.5H5m5 0h3.5V5m0 5v3.5H10m-5 0H1.5V10M4.5 4.5h6v6h-6Z" /></svg>
+            </button>
             <button type="button" id="abort" class="stop-button" hidden>Stop</button>
             <button
               type="button"

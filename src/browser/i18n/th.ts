@@ -1,6 +1,21 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Reset page pinch zoom before capturing a region": "รีเซ็ตการซูมด้วยนิ้วของหน้าก่อนจับภาพพื้นที่",
+  "Capture region": "จับภาพพื้นที่",
+  "Cancel region capture": "ยกเลิกการจับภาพพื้นที่",
+  "Retry region cleanup": "ลองล้างการเลือกพื้นที่อีกครั้ง",
+  "Retry region attachment": "ลองแนบภาพพื้นที่อีกครั้ง",
+  "Chrome temporarily captures the full viewport. Only the crop leaves the worker. Drag to attach a crop. Arrow keys move; Shift+Arrow resizes; Alt uses 1 px. Enter attaches; Escape cancels.":
+    "Chrome จับภาพพื้นที่แสดงผลทั้งหมดชั่วคราว เฉพาะภาพที่ครอบตัดเท่านั้นที่ออกจากเวิร์กเกอร์ ลากเพื่อแนบภาพที่ครอบตัด ปุ่มลูกศรใช้ย้าย Shift+ลูกศรใช้ปรับขนาด Alt ใช้ขั้นละ 1 px กด Enter เพื่อแนบและ Escape เพื่อยกเลิก",
+  "Finish or cancel region capture before sending": "เสร็จสิ้นหรือยกเลิกการจับภาพพื้นที่ก่อนส่ง",
+  "Could not confirm region cleanup. Reload the page before sending.":
+    "ยืนยันการลบพื้นที่ที่เลือกไม่ได้ โหลดหน้าใหม่ก่อนส่ง",
+  "The page changed. Select a new region.": "หน้าเปลี่ยนไปแล้ว เลือกพื้นที่ใหม่",
+  "Region capture is unavailable on this page": "การจับภาพพื้นที่ใช้ไม่ได้ในหน้านี้",
+  "Could not capture the region. Select again or retry.":
+    "ไม่สามารถจับภาพพื้นที่ได้ โปรดเลือกใหม่หรือลองอีกครั้ง",
+
   "Draw on page": "วาดบนหน้าเว็บ",
   "Cancel page drawing": "ยกเลิกการวาดบนหน้าเว็บ",
   "Pen color": "สีปากกา",

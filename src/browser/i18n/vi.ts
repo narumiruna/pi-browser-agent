@@ -1,6 +1,22 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Reset page pinch zoom before capturing a region":
+    "Đặt lại mức thu phóng bằng cử chỉ chụm của trang trước khi chụp vùng",
+  "Capture region": "Chụp vùng",
+  "Cancel region capture": "Hủy chụp vùng",
+  "Retry region cleanup": "Thử dọn vùng lần nữa",
+  "Retry region attachment": "Thử đính kèm vùng lần nữa",
+  "Chrome temporarily captures the full viewport. Only the crop leaves the worker. Drag to attach a crop. Arrow keys move; Shift+Arrow resizes; Alt uses 1 px. Enter attaches; Escape cancels.":
+    "Chrome tạm thời chụp toàn bộ vùng hiển thị. Chỉ ảnh đã cắt được đưa ra khỏi worker. Kéo để đính kèm ảnh cắt. Phím mũi tên di chuyển; Shift+mũi tên đổi kích thước; Alt dùng bước 1 px. Enter đính kèm; Escape hủy.",
+  "Finish or cancel region capture before sending": "Hoàn tất hoặc hủy chụp vùng trước khi gửi",
+  "Could not confirm region cleanup. Reload the page before sending.":
+    "Không thể xác nhận việc xóa vùng chọn. Hãy tải lại trang trước khi gửi.",
+  "The page changed. Select a new region.": "Trang đã thay đổi. Hãy chọn vùng mới.",
+  "Region capture is unavailable on this page": "Không thể chụp vùng trên trang này",
+  "Could not capture the region. Select again or retry.":
+    "Không thể chụp vùng. Hãy chọn lại hoặc thử lại.",
+
   "Draw on page": "Vẽ trên trang",
   "Cancel page drawing": "Hủy vẽ trên trang",
   "Pen color": "Màu bút",

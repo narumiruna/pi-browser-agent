@@ -1,6 +1,23 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Reset page pinch zoom before capturing a region":
+    "Сбросьте масштаб страницы, изменённый жестом, перед захватом области",
+  "Capture region": "Снимок области",
+  "Cancel region capture": "Отменить захват области",
+  "Retry region cleanup": "Повторить очистку области",
+  "Retry region attachment": "Повторить прикрепление области",
+  "Chrome temporarily captures the full viewport. Only the crop leaves the worker. Drag to attach a crop. Arrow keys move; Shift+Arrow resizes; Alt uses 1 px. Enter attaches; Escape cancels.":
+    "Chrome временно захватывает всю видимую область. Из worker выходит только обрезанное изображение. Перетащите, чтобы прикрепить обрезанное изображение. Стрелки перемещают; Shift+стрелка меняет размер; Alt задаёт шаг 1 px. Enter прикрепляет; Escape отменяет.",
+  "Finish or cancel region capture before sending":
+    "Завершите или отмените снимок области перед отправкой",
+  "Could not confirm region cleanup. Reload the page before sending.":
+    "Не удалось подтвердить удаление выделения. Перезагрузите страницу перед отправкой.",
+  "The page changed. Select a new region.": "Страница изменилась. Выберите новую область.",
+  "Region capture is unavailable on this page": "Снимок области недоступен на этой странице",
+  "Could not capture the region. Select again or retry.":
+    "Не удалось захватить область. Выберите её снова или повторите попытку.",
+
   "Draw on page": "Рисовать на странице",
   "Cancel page drawing": "Отменить рисование на странице",
   "Pen color": "Цвет пера",

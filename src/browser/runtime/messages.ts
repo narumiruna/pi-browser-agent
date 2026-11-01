@@ -4,6 +4,7 @@ import {
   validPageAnnotationParams,
 } from "./page-annotation.js"
 import type { PageCapability } from "./page-capability.js"
+import { type RegionOwner, validRegionCaptureParams } from "./region-capture.js"
 import {
   type ElementTarget,
   type JsonObject,
@@ -25,6 +26,10 @@ export const RUNTIME_METHODS = [
   "pageAnnotation.update",
   "pageAnnotation.capture",
   "pageAnnotation.stop",
+
+  "regionCapture.start",
+  "regionCapture.capture",
+  "regionCapture.stop",
   "requests.cancel",
   "page.getVisibleText",
   "page.listElements",
@@ -97,6 +102,10 @@ type RuntimeParams = {
   "pageAnnotation.update": PageAnnotationUpdate
   "pageAnnotation.capture": { clientId: string }
   "pageAnnotation.stop": { clientId: string }
+
+  "regionCapture.start": RegionOwner
+  "regionCapture.capture": RegionOwner & { maxBytes: number; selectionRevision: number }
+  "regionCapture.stop": RegionOwner
   "requests.cancel": { requestId: string }
   "page.getVisibleText": { selector?: string; offset?: number }
   "page.listElements": ElementDiscoveryParams
@@ -140,6 +149,8 @@ export interface RuntimeEvent {
     | "elementPicker.started"
     | "pageAnnotation.changed"
     | "pageAnnotation.cancelled"
+    | "regionCapture.changed"
+    | "regionCapture.cancelled"
     | "operation.progress"
     | "selection.queued"
     | "settings.saved"
@@ -231,6 +242,10 @@ function isBoundedInteger(value: unknown, maximum: number, minimum = 0): value i
 
 function hasValidParams(method: RuntimeMethod, params: Record<string, unknown>): boolean {
   switch (method) {
+    case "regionCapture.start":
+    case "regionCapture.capture":
+    case "regionCapture.stop":
+      return validRegionCaptureParams(method, params)
     case "pageAnnotation.start":
     case "pageAnnotation.update":
     case "pageAnnotation.capture":
@@ -405,7 +420,7 @@ function isRuntimeRequest(value: unknown): value is RuntimeRequest {
     isRecord(value.params) &&
     isJsonValue(value.params) &&
     hasValidParams(value.method, value.params) &&
-    (!value.method.startsWith("pageAnnotation.") ||
+    (!(value.method.startsWith("pageAnnotation.") || value.method.startsWith("regionCapture.")) ||
       (hasOnlyKeys(value, ["kind", "requestId", "method", "params", "tabContext", "confirmed"]) &&
         (value.tabContext === undefined ||
           (isRecord(value.tabContext) &&

@@ -1,6 +1,21 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Reset page pinch zoom before capturing a region": "क्षेत्र कैप्चर करने से पहले पेज का पिंच ज़ूम रीसेट करें",
+  "Capture region": "क्षेत्र कैप्चर करें",
+  "Cancel region capture": "क्षेत्र कैप्चर रद्द करें",
+  "Retry region cleanup": "क्षेत्र चयन हटाने का फिर प्रयास करें",
+  "Retry region attachment": "क्षेत्र जोड़ने का फिर प्रयास करें",
+  "Chrome temporarily captures the full viewport. Only the crop leaves the worker. Drag to attach a crop. Arrow keys move; Shift+Arrow resizes; Alt uses 1 px. Enter attaches; Escape cancels.":
+    "Chrome अस्थायी रूप से पूरा दृश्य क्षेत्र कैप्चर करता है। केवल काटी गई छवि वर्कर से बाहर जाती है। काटी गई छवि जोड़ने के लिए खींचें। तीर कुंजियाँ खिसकाती हैं; Shift+तीर आकार बदलता है; Alt से 1 px का चरण होता है। Enter जोड़ता है; Escape रद्द करता है।",
+  "Finish or cancel region capture before sending": "भेजने से पहले क्षेत्र कैप्चर पूरा या रद्द करें",
+  "Could not confirm region cleanup. Reload the page before sending.":
+    "क्षेत्र चयन हटाने की पुष्टि नहीं हो सकी। भेजने से पहले पेज दोबारा लोड करें।",
+  "The page changed. Select a new region.": "पेज बदल गया है। नया क्षेत्र चुनें।",
+  "Region capture is unavailable on this page": "इस पेज पर क्षेत्र कैप्चर उपलब्ध नहीं है",
+  "Could not capture the region. Select again or retry.":
+    "क्षेत्र कैप्चर नहीं हो सका। फिर चुनें या दोबारा प्रयास करें।",
+
   "Draw on page": "पेज पर बनाएँ",
   "Cancel page drawing": "पेज पर बनाना रद्द करें",
   "Pen color": "पेन का रंग",

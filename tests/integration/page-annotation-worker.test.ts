@@ -361,12 +361,14 @@ describe("page annotation service worker routing", () => {
   test("pending startup owns its target before the document lookup completes", async () => {
     const f = await serviceFixture()
     const probe = deferred<void>()
+    const entered = vi.fn()
     f.script.mockImplementationOnce(async () => {
+      entered()
       await probe.promise
       return [{ result: "text/html" }]
     })
     const starting = f.request("pageAnnotation.start", startRequest().params)
-    await vi.waitFor(() => expect(f.script).toHaveBeenCalledTimes(2))
+    await vi.waitFor(() => expect(entered).toHaveBeenCalledOnce())
     f.reload()
     probe.resolve(undefined)
     await expect(starting).resolves.toMatchObject({

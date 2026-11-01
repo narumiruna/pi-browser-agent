@@ -1,6 +1,25 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Reset page pinch zoom before capturing a region":
+    "Setzen Sie den Pinch-Zoom der Seite zurück, bevor Sie einen Bereich erfassen",
+  "Capture region": "Bereich erfassen",
+  "Cancel region capture": "Bereichsaufnahme abbrechen",
+  "Retry region cleanup": "Bereichsbereinigung erneut versuchen",
+  "Retry region attachment": "Bereich erneut anhängen",
+  "Chrome temporarily captures the full viewport. Only the crop leaves the worker. Drag to attach a crop. Arrow keys move; Shift+Arrow resizes; Alt uses 1 px. Enter attaches; Escape cancels.":
+    "Chrome erfasst vorübergehend den gesamten sichtbaren Bereich. Nur der Ausschnitt verlässt den Worker. Ziehen, um einen Ausschnitt anzuhängen. Pfeiltasten verschieben; Shift+Pfeil ändert die Größe; Alt verwendet 1-px-Schritte. Enter hängt an; Escape bricht ab.",
+  "Finish or cancel region capture before sending":
+    "Bereichserfassung vor dem Senden beenden oder abbrechen",
+  "Could not confirm region cleanup. Reload the page before sending.":
+    "Die Entfernung der Bereichsauswahl konnte nicht bestätigt werden. Seite vor dem Senden neu laden.",
+  "The page changed. Select a new region.":
+    "Die Seite hat sich geändert. Einen neuen Bereich auswählen.",
+  "Region capture is unavailable on this page":
+    "Bereichserfassung ist auf dieser Seite nicht verfügbar",
+  "Could not capture the region. Select again or retry.":
+    "Der Bereich konnte nicht aufgenommen werden. Erneut auswählen oder versuchen.",
+
   "Draw on page": "Auf der Seite zeichnen",
   "Cancel page drawing": "Zeichnen auf der Seite abbrechen",
   "Pen color": "Stiftfarbe",

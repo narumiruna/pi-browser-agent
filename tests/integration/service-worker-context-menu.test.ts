@@ -55,7 +55,7 @@ describe("service worker visible-tab targeting", () => {
       }): Promise<Array<{ result: unknown }>> =>
         func.name === "readDocumentContentType"
           ? [{ result: "text/html" }]
-          : func.name === "stopPageAnnotationInjection"
+          : ["stopPageAnnotationInjection", "stopRegionCaptureInjection"].includes(func.name)
             ? [{ result: { ok: true, result: { active: false } } }]
             : [],
     )

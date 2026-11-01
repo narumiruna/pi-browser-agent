@@ -61,6 +61,10 @@ export class PageAnnotationWorker {
 
   constructor(private readonly deps: Dependencies) {}
 
+  get occupied(): boolean {
+    return !!this.active || !!this.starting || this.dirty.size > 0
+  }
+
   private cancelled(): never {
     throw new RuntimeError("REQUEST_CANCELLED", "Page drawing was cancelled or replaced")
   }
