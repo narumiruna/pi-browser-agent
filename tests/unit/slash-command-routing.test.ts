@@ -7,6 +7,11 @@ import type { BrowserConfiguration } from "../../src/browser/configuration.js"
 import { requestHostPermissions } from "../../src/browser/permissions.js"
 import type { RuntimeRequest } from "../../src/browser/runtime/messages.js"
 import { initializeConversationPage } from "../../src/browser/sidepanel/conversation-page.js"
+import {
+  createVoiceInput,
+  getMicrophonePermissionState,
+  type VoiceInputController,
+} from "../../src/browser/sidepanel/voice-input.js"
 
 const { createRuntime } = vi.hoisted(() => ({ createRuntime: vi.fn() }))
 
@@ -26,7 +31,7 @@ vi.mock("../../src/browser/permissions.js", () => ({
   requestScreenshotPermission: vi.fn(async () => true),
 }))
 vi.mock("../../src/browser/sidepanel/voice-input.js", () => ({
-  createVoiceInput: () => undefined,
+  createVoiceInput: vi.fn(),
   getMicrophonePermissionState: vi.fn(),
 }))
 vi.mock("../../src/browser/sidepanel/message-rendering.js", () => ({
@@ -70,6 +75,8 @@ afterEach(() => {
   }
   vi.unstubAllGlobals()
   vi.clearAllMocks()
+  vi.mocked(createVoiceInput).mockReset()
+  vi.mocked(getMicrophonePermissionState).mockReset()
 })
 
 async function setup() {
@@ -152,8 +159,14 @@ async function setup() {
     agent: { state: { messages: [], isStreaming: false, thinkingLevel: "off" } },
     isPreparing: false,
     busy: false,
+    isAwaitingClarification: false,
     get isBusy() {
-      return this.busy || this.isPreparing || this.agent.state.isStreaming
+      return (
+        this.busy ||
+        this.isAwaitingClarification ||
+        this.isPreparing ||
+        this.agent.state.isStreaming
+      )
     },
     usesPageContext: true,
     initialize: vi.fn(async () => {}),
@@ -239,6 +252,35 @@ async function setup() {
 }
 
 describe("initializeConversationPage slash-command routing", () => {
+  test.each(["pending", "granted", "prompt"])(
+    "a pending clarification blocks direct voice start before or after permission lookup (%s)",
+    async (state) => {
+      const voice = {
+        active: false,
+        start: vi.fn(),
+        stop: vi.fn(),
+        toggle: vi.fn(),
+        abort: vi.fn(),
+      }
+      vi.mocked(createVoiceInput).mockReturnValue(voice as unknown as VoiceInputController)
+      const permission = deferred<PermissionState>()
+      vi.mocked(getMicrophonePermissionState).mockReturnValue(permission.promise)
+      const ui = await setup()
+      if (state === "pending") ui.runtime.isAwaitingClarification = true
+      ui.element("voice-input").dispatchEvent(new ui.dom.window.Event("click"))
+      if (state !== "pending") {
+        await vi.waitFor(() => expect(getMicrophonePermissionState).toHaveBeenCalledOnce())
+        ui.runtime.isAwaitingClarification = true
+        permission.resolve(state === "granted" ? "granted" : "prompt")
+      }
+      await vi.waitFor(() => expect(ui.error.textContent).toContain("pending question"))
+      expect(voice.start).not.toHaveBeenCalled()
+      expect(ui.tabs.create).not.toHaveBeenCalled()
+      if (state === "pending") expect(getMicrophonePermissionState).not.toHaveBeenCalled()
+      ui.expectNoRun()
+    },
+  )
+
   test("opens Settings from current model and thinking state after tab lookup", async () => {
     const ui = await setup()
     const gate = deferred<{ id: number }[]>()

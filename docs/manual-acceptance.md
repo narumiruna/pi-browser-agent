@@ -294,11 +294,19 @@ The shared drawing proof retains main's arrow-direction, arrowhead, rectangle-ou
 
 ## Target-reference and clarification acceptance — 2026-11-01
 
-Status: pin-free feature preparation is in progress on the old parent `d1aaa931660027b4f16fa0d8f69476bab2595c04`. That parent still contains point-comment code. Current checks do not establish a pin-free shipping tree or integration with the rebuilt region parent. Native UI, assistive technology, and real-provider acceptance remain unverified.
+Status: the feature is rebased onto the pin-free region checkpoint `f97439d7ff0bacfb367c3e98eca60cf1d97a6b35`. Focused checks and the production build pass. Browser tests and final-parent full CI are still pending. Native UI, assistive technology, and real-provider acceptance remain unverified.
 
 ### Pin-free scope
 
-Pair candidates are only images and existing selected-element chips. Region crops use normal image attachments. Pin variants, notes, submission parameters, reselection, and reserved-ID retention are removed from this feature. Unknown historical pin IDs cannot open a question or dispatch sibling actions. The full final-parent check, build, browser tests, and CI remain required after the coordinated rebase.
+Pair candidates are only images and existing selected-element chips. Region crops use normal image attachments. Pin variants, notes, submission parameters, reselection, and reserved-ID retention are removed from this feature. Unknown historical pin IDs cannot open a question or dispatch sibling actions. The final-parent browser tests and full CI remain required.
+
+### Current pin-free automated evidence
+
+`npm ci`, `npm run check`, all 196 tests in ten focused unit/integration files, and `npm run build` passed after rebase. The build includes typecheck, the browser-boundary probe, and the 50-file artifact audit. Logs are `/tmp/target-reference-pin-free-npm-ci.log` and `/tmp/target-reference-pin-free-focused-{check,unit,build}.log`. Four locked-SDK scheduling proofs and all clarification identity/credential/persistence regressions remain. Invalid, obsolete-pin-ID, duplicate, and unavailable questions reject browser/MCP siblings in every source order. The type contract limits attachment kinds to image/element and places optional submission metadata at argument seven. Source and runtime-method absence tests pass. Five individually valid selected elements plus an image are tested at the exact 16 KiB wrapper budget.
+
+Review found a direct voice-start path that relied on a disabled button during a question. Guards before and after microphone permission lookup now reject it; three focused regressions verify zero microphone start, permission-tab creation, and provider dispatch. The parent region/numeric source and tests are unchanged in this feature. Main's arrow/rectangle controls remain in the shipped panel. The pin foundation is not an ancestor, and no point-comment source file is present. No Playwright or full CI result is claimed yet on this rebuilt source.
+
+### Historical preparatory checks
 
 Preparatory checks on the old parent: `npm run check` passed; seven focused unit/integration files passed all 123 tests, including four locked-SDK proofs. Logs are `/tmp/target-reference-pin-free-prep-check.log` and `/tmp/target-reference-pin-free-prep-unit.log`. The new all-order test initially reused saved history between permutations; creating an independent session for each permutation corrected that fixture failure. `npm run build` completed the browser bundle and production compilation, then failed typecheck on six parent-owned point-comment calls that still pass pins as argument seven (`/tmp/target-reference-pin-free-prep-build.log`). Those parent tests are not changed by this preparatory feature commit. This is not a passing build or integration gate; no browser test or full CI was run on this old-parent source.
 

@@ -1,6 +1,8 @@
 import type { ImageContent } from "@earendil-works/pi-ai"
-import { describe, expect, test } from "vitest"
+import { describe, expect, expectTypeOf, test } from "vitest"
+import type { BrowserAgentRuntime } from "../../src/browser/agent/runtime.js"
 import {
+  type ContextAttachment,
   composeSubmittedContext,
   createUserContextManifest,
   retainPairIds,
@@ -18,6 +20,16 @@ const pair = { targetId: "image-a", referenceId: "image-b" }
 const submitted = { imageIds: ["image-a", "image-b"], elementIds: [], pair }
 
 describe("target/reference manifest", () => {
+  test("exposes only image/element kinds and metadata as submit argument seven", () => {
+    expectTypeOf<ContextAttachment["kind"]>().toEqualTypeOf<"image" | "element">()
+    expectTypeOf<Parameters<BrowserAgentRuntime["submit"]>[6]>().toEqualTypeOf<
+      SubmittedContext | undefined
+    >()
+    expectTypeOf<Parameters<BrowserAgentRuntime["submit"]>["length"]>().toEqualTypeOf<
+      1 | 2 | 3 | 4 | 5 | 6 | 7
+    >()
+  })
+
   test("maps immutable image IDs to submitted positions, not old composer positions", () => {
     const first = createUserContextManifest(submitted, images, [])
     expect(first.attachments).toEqual([
@@ -105,6 +117,39 @@ describe("target/reference manifest", () => {
     expect(() => serializeUserContext(manifest)).toThrow(/16 KiB/)
     element.untrustedPageContext.text = "界".repeat(Math.floor((16 * 1024 - bytes) / 3) + 1)
     expect(() => serializeUserContext(manifest)).toThrow(/16 KiB/)
+  })
+
+  test("applies the wrapper budget to five individually valid selected elements plus an image", () => {
+    const elements = Array.from({ length: 5 }, () => ({
+      ...selectedTarget(),
+      text: "a".repeat(512),
+      cssSelector: "a".repeat(2048),
+    }))
+    const metadata = {
+      imageIds: ["image"],
+      elementIds: elements.map((_, index) => `element-${index}`),
+      pair: { targetId: "element-0", referenceId: "image" },
+    }
+    const initial = createUserContextManifest(metadata, images.slice(0, 1), elements)
+    let remaining =
+      16 * 1024 - new TextEncoder().encode(`\n\n${serializeUserContext(initial)}`).byteLength
+    expect(remaining).toBeGreaterThan(0)
+    for (const element of elements) {
+      const size = Math.min(remaining, 256)
+      element.attributes.alt = "a".repeat(size)
+      remaining -= size
+    }
+    expect(remaining).toBe(0)
+    const manifest = createUserContextManifest(metadata, images.slice(0, 1), elements)
+    expect(new TextEncoder().encode(`\n\n${serializeUserContext(manifest)}`).byteLength).toBe(
+      16 * 1024,
+    )
+    const last = elements.at(-1)
+    if (!last) throw new Error("Missing final element")
+    last.attributes.title = "a"
+    expect(() => createUserContextManifest(metadata, images.slice(0, 1), elements)).toThrow(
+      /16 KiB/,
+    )
   })
 
   test("rejects obsolete pin metadata and IDs instead of creating a compatibility attachment", () => {

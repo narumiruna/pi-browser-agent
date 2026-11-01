@@ -1033,6 +1033,8 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   }
 
   async function startVoiceInput(): Promise<void> {
+    if (runtime.isAwaitingClarification)
+      throw new Error(t("Answer or stop the pending question first"))
     if (!voiceInput || voiceInput.active) {
       voiceInput?.toggle(promptInput.value)
       return
@@ -1041,6 +1043,8 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     updateSendButton()
     try {
       const permission = await getMicrophonePermissionState().catch(() => "prompt" as const)
+      if (runtime.isAwaitingClarification)
+        throw new Error(t("Answer or stop the pending question first"))
       if (permission !== "granted") {
         await chrome.tabs.create({ url: microphoneAccessUrl() })
         throw new Error(
