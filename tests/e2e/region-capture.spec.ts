@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test"
+import type { RegionRectangle } from "../../src/browser/runtime/region-capture.js"
 import {
   configureMockCodex,
   type ExtensionHarness,
@@ -18,6 +19,9 @@ type Probe = typeof globalThis & {
   restoreRegionCleanup?: () => void
   regionMethods?: string[]
   regionPermissionEntered?: boolean
+  regionRectangles?: (RegionRectangle | null)[]
+  regionReplies?: number
+  releaseRegionRequest?: () => void
 }
 let harness: ExtensionHarness
 let requests: CodexRequest[]
@@ -180,6 +184,43 @@ async function releaseCapture() {
     .poll(() => harness.controller.evaluate(() => (globalThis as Probe).regionSettled))
     .toBe(true)
 }
+async function gateRegionRequests(method: "regionCapture.update" | "regionCapture.start") {
+  await harness.controller.evaluate((method) => {
+    const probe = globalThis as Probe
+    probe.regionRectangles = []
+    probe.regionReplies = 0
+    const original = chrome.runtime.sendMessage.bind(chrome.runtime)
+    chrome.runtime.sendMessage = (async (message: {
+      method?: string
+      params?: { rectangle?: RegionRectangle }
+    }) => {
+      if (message.method !== method) return original(message)
+      // Delay update dispatch, but let start install the real surface before delaying its reply.
+      const response = method === "regionCapture.start" ? await original(message) : undefined
+      const gate = new Promise<void>((resolve) => {
+        probe.releaseRegionRequest = resolve
+      })
+      probe.regionRectangles?.push(message.params?.rectangle ?? null)
+      await gate
+      const result = method === "regionCapture.start" ? response : await original(message)
+      probe.regionReplies = (probe.regionReplies ?? 0) + 1
+      return result
+    }) as typeof chrome.runtime.sendMessage
+  }, method)
+}
+const rectangles = () =>
+  harness.controller.evaluate(() => (globalThis as Probe).regionRectangles ?? [])
+async function releaseRegionRequest(replies: number) {
+  await harness.controller.evaluate(() => (globalThis as Probe).releaseRegionRequest?.())
+  await expect
+    .poll(() => harness.controller.evaluate(() => (globalThis as Probe).regionReplies))
+    .toBe(replies)
+}
+async function typeNumber(value: string) {
+  await harness.controller.keyboard.press("ControlOrMeta+A")
+  await harness.controller.keyboard.press("Backspace")
+  await harness.controller.keyboard.type(value)
+}
 async function setLanguage(page: Page, language: string) {
   await page.evaluate(async (language) => {
     const stored = await chrome.storage.local.get("piBrowserAgentSettings")
@@ -280,6 +321,119 @@ test("numeric-only selection, Cancel, and explicit Retake never submit automatic
   await harness.controller.locator("#region-preview-cancel").click()
   await stopped()
   await expect(harness.controller.locator("#pasted-images img")).toHaveCount(0)
+  expect(requests).toHaveLength(0)
+})
+
+test("numeric keyboard focus and latest draft survive delayed updates before exact ROI capture", async () => {
+  await start()
+  await gateRegionRequests("regionCapture.update")
+  const page = harness.controller
+  const x = page.locator("#region-x")
+  const y = page.locator("#region-y")
+  const width = page.locator("#region-width")
+  const height = page.locator("#region-height")
+  const action = page.locator("#region-preview-action")
+  await expect(x).toBeFocused()
+  await typeNumber("100")
+  await page.keyboard.press("Tab")
+  await expect.poll(rectangles).toHaveLength(1)
+  // This is native Tab, not a focus() call or a synthetic change event.
+  await expect(y).toBeFocused()
+  for (const field of [x, y, width, height]) await expect(field).toBeEnabled()
+  await expect(action).toBeDisabled()
+  await typeNumber("120")
+  await page.keyboard.press("Tab")
+  await expect(width).toBeFocused()
+  await typeNumber("210")
+  await page.keyboard.press("Tab")
+  await expect(height).toBeFocused()
+  await typeNumber("160")
+  await page.keyboard.press("Shift+Tab")
+  await expect(width).toBeFocused()
+  await typeNumber("200")
+  await height.click()
+  await expect(height).toBeFocused()
+  await typeNumber("")
+  await expect(height).toHaveAttribute("aria-invalid", "true")
+  expect(await rectangles()).toHaveLength(1)
+  await releaseRegionRequest(1)
+  // An old notification and reply must not replace a newer invalid draft.
+  await expect(x).toHaveValue("100")
+  await expect(y).toHaveValue("120")
+  await expect(width).toHaveValue("200")
+  await expect(height).toHaveValue("")
+  await expect(height).toBeFocused()
+  await expect(action).toBeDisabled()
+  expect(await rectangles()).toHaveLength(1)
+  await typeNumber("160")
+  await page.keyboard.press("Shift+Tab")
+  await expect(width).toBeFocused()
+  await expect.poll(rectangles).toHaveLength(2)
+  expect((await rectangles())[1]).toEqual({ x: 100, y: 120, width: 200, height: 160 })
+  await expect(action).toBeDisabled()
+  expect(await captures()).toBe(0)
+  expect(requests).toHaveLength(0)
+  await releaseRegionRequest(2)
+  await expect(width).toBeFocused()
+  await expect(action).toBeEnabled()
+  await page.keyboard.press("Shift+Tab")
+  await expect(y).toBeFocused()
+  for (const next of [width, height, action]) {
+    await page.keyboard.press("Tab")
+    await expect(next).toBeFocused()
+  }
+  await page.keyboard.press("Enter")
+  await expect(page.locator("#region-preview-dialog")).toBeVisible()
+  await attach()
+  const crop = (await page.locator("#pasted-images img").getAttribute("src")) as string
+  expect(await pixels(crop)).toEqual({
+    width: 200,
+    height: 160,
+    outside: 0,
+    outline: 0,
+    green: 31_600,
+    red: 400,
+  })
+  expect(await captures()).toBe(1)
+  expect(requests).toHaveLength(0)
+  expect(harness.pageErrors).toEqual([])
+})
+
+test("a completed drag before a delayed start reply keeps displayed values equal to captured ROI", async () => {
+  await gateRegionRequests("regionCapture.start")
+  await harness.controller.locator("#region-capture").click()
+  await expect.poll(rectangles).toHaveLength(1)
+  await expect(harness.fixturePage.locator(HOST)).toHaveCount(1)
+  const page = harness.fixturePage
+  await page.mouse.move(100, 120)
+  await page.mouse.down()
+  await page.mouse.move(300, 280, { steps: 4 })
+  await page.mouse.up()
+  await expect(harness.controller.locator("#region-height")).toHaveValue("160")
+  await releaseRegionRequest(1)
+  for (const [key, value] of [
+    ["x", "100"],
+    ["y", "120"],
+    ["width", "200"],
+    ["height", "160"],
+  ]) {
+    await expect(harness.controller.locator(`#region-${key}`)).toBeEnabled()
+    await expect(harness.controller.locator(`#region-${key}`)).toHaveValue(value as string)
+  }
+  await preview()
+  await attach()
+  const crop = (await harness.controller
+    .locator("#pasted-images img")
+    .getAttribute("src")) as string
+  expect(await pixels(crop)).toEqual({
+    width: 200,
+    height: 160,
+    outside: 0,
+    outline: 0,
+    green: 31_600,
+    red: 400,
+  })
+  expect(await captures()).toBe(1)
   expect(requests).toHaveLength(0)
 })
 

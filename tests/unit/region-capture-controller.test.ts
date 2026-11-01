@@ -21,10 +21,12 @@ const png =
 let dom: JSDOM
 function deferred<T>() {
   let resolve: (value: T) => void = () => undefined
-  const promise = new Promise<T>((done) => {
+  let reject: (error: Error) => void = () => undefined
+  const promise = new Promise<T>((done, fail) => {
     resolve = done
+    reject = fail
   })
-  return { promise, resolve }
+  return { promise, resolve, reject }
 }
 function setup() {
   dom = new JSDOM(
@@ -100,6 +102,10 @@ function setup() {
     options,
     request,
     input,
+    edit: (key: string, value: string) => {
+      input(key).value = value
+      input(key).dispatchEvent(new dom.window.Event("input", { bubbles: true }))
+    },
     event,
     selecting,
     session: (id: string) => {
@@ -136,6 +142,204 @@ describe("region capture panel controller", () => {
       "regionCapture.update",
     ])
     expect(f.controller.sendBlocked).toBe(true)
+  })
+  test("serializes and coalesces valid changes without disabling fields or moving focus", async () => {
+    const f = setup()
+    await f.selecting()
+    f.request.mockClear()
+    const original = f.request.getMockImplementation() as typeof sendRuntimeRequest
+    const gate = deferred<void>()
+    f.request.mockImplementationOnce(async (...args) => {
+      await gate.promise
+      return original(...args)
+    })
+    f.edit("x", "100")
+    const pending = f.controller.updateRectangle()
+    f.input("y").focus()
+    f.edit("y", "120")
+    await f.controller.updateRectangle()
+    f.edit("width", "180")
+    await f.controller.updateRectangle()
+    for (const key of ["x", "y", "width", "height"]) expect(f.input(key).disabled).toBe(false)
+    expect(dom.window.document.activeElement).toBe(f.input("y"))
+    expect(f.request).toHaveBeenCalledOnce()
+    expect(button("region-preview-action").disabled).toBe(true)
+    await f.controller.preview()
+    f.controller.onEvent(
+      f.event({ ...blank, rectangle: { x: 100, y: 0, width: 200, height: 150 }, revision: 2 }),
+    )
+    expect(f.input("y").value).toBe("120")
+    expect(f.input("width").value).toBe("180")
+    gate.resolve()
+    await pending
+    expect(f.request.mock.calls.map(([, params]) => params?.rectangle)).toEqual([
+      { x: 100, y: 0, width: 200, height: 150 },
+      { x: 100, y: 120, width: 180, height: 150 },
+    ])
+    expect(dom.window.document.activeElement).toBe(f.input("y"))
+    expect(button("region-preview-action").disabled).toBe(false)
+  })
+  test("an older reply preserves a newer uncommitted draft and blocks Preview", async () => {
+    const f = setup()
+    await f.selecting()
+    const original = f.request.getMockImplementation() as typeof sendRuntimeRequest
+    const gate = deferred<void>()
+    f.request.mockImplementationOnce(async (...args) => {
+      await gate.promise
+      return original(...args)
+    })
+    f.edit("x", "100")
+    const pending = f.controller.updateRectangle()
+    f.edit("y", "120.50")
+    gate.resolve()
+    await pending
+    expect(f.input("y").value).toBe("120.50")
+    expect(button("region-preview-action").disabled).toBe(true)
+    await f.controller.preview()
+    expect(f.request.mock.calls.some(([method]) => method === "regionCapture.capture")).toBe(false)
+    await f.controller.updateRectangle()
+    expect(f.input("y").value).toBe("120.50")
+    expect(button("region-preview-action").disabled).toBe(false)
+  })
+  test("an invalid draft survives an older notification and reply and clears queued edits", async () => {
+    const f = setup()
+    await f.selecting()
+    f.request.mockClear()
+    const original = f.request.getMockImplementation() as typeof sendRuntimeRequest
+    const gate = deferred<void>()
+    f.request.mockImplementationOnce(async (...args) => {
+      await gate.promise
+      return original(...args)
+    })
+    f.edit("x", "100")
+    const pending = f.controller.updateRectangle()
+    f.edit("y", "120")
+    await f.controller.updateRectangle()
+    f.edit("height", "")
+    f.controller.onEvent(
+      f.event({ ...blank, rectangle: { x: 100, y: 0, width: 200, height: 150 }, revision: 2 }),
+    )
+    gate.resolve()
+    await pending
+    expect(f.input("height").value).toBe("")
+    expect(f.input("height").getAttribute("aria-invalid")).toBe("true")
+    expect(f.request).toHaveBeenCalledOnce()
+    expect(button("region-preview-action").disabled).toBe(true)
+    f.edit("height", "160")
+    await f.controller.updateRectangle()
+    expect(f.request).toHaveBeenLastCalledWith(
+      "regionCapture.update",
+      expect.objectContaining({ rectangle: { x: 100, y: 120, width: 200, height: 160 } }),
+      expect.anything(),
+    )
+    expect(button("region-preview-action").disabled).toBe(false)
+  })
+  test("blur commits a restored valid draft even when native change is omitted", async () => {
+    const f = setup()
+    await f.selecting()
+    f.request.mockClear()
+    const original = f.request.getMockImplementation() as typeof sendRuntimeRequest
+    const gate = deferred<void>()
+    f.request.mockImplementationOnce(async (...args) => {
+      await gate.promise
+      return original(...args)
+    })
+    f.edit("x", "100")
+    const pending = f.controller.updateRectangle()
+    f.edit("height", "160")
+    await f.controller.updateRectangle()
+    f.input("height").focus()
+    f.edit("height", "")
+    gate.resolve()
+    await pending
+    f.edit("height", "160")
+    expect(button("region-preview-action").disabled).toBe(true)
+    // No change event: the final value equals the value present when focus arrived.
+    f.input("height").blur()
+    await vi.waitFor(() => expect(button("region-preview-action").disabled).toBe(false))
+    expect(f.request.mock.calls.map(([, params]) => params?.rectangle)).toEqual([
+      { x: 100, y: 0, width: 200, height: 150 },
+      { x: 100, y: 0, width: 200, height: 160 },
+    ])
+  })
+  test("failed updates discard the queue without replay and require a new explicit edit", async () => {
+    const f = setup()
+    await f.selecting()
+    f.request.mockClear()
+    const gate = deferred<JsonValue>()
+    f.request.mockImplementationOnce(async () => gate.promise)
+    f.edit("x", "100")
+    const pending = f.controller.updateRectangle()
+    f.edit("y", "120")
+    await f.controller.updateRectangle()
+    gate.reject(new Error("update failed"))
+    await expect(pending).rejects.toThrow("update failed")
+    expect(f.request).toHaveBeenCalledOnce()
+    expect(f.input("y").value).toBe("120")
+    expect(button("region-preview-action").disabled).toBe(true)
+    f.input("y").focus()
+    f.input("y").blur()
+    await f.controller.preview()
+    expect(f.request).toHaveBeenCalledOnce()
+    await f.controller.updateRectangle()
+    expect(f.request).toHaveBeenCalledTimes(2)
+    expect(button("region-preview-action").disabled).toBe(false)
+  })
+  test("a page drag replaces queued numeric edits and disables fields only while dragging", async () => {
+    const f = setup()
+    await f.selecting()
+    f.request.mockClear()
+    const gate = deferred<JsonValue>()
+    f.request.mockImplementationOnce(async () => gate.promise)
+    f.edit("x", "100")
+    const pending = f.controller.updateRectangle()
+    f.edit("y", "120")
+    await f.controller.updateRectangle()
+    const rectangle = { x: 50, y: 60, width: 70, height: 80 }
+    f.controller.onEvent(f.event({ ...blank, rectangle, dragging: true, revision: 4 }))
+    for (const key of ["x", "y", "width", "height"]) expect(f.input(key).disabled).toBe(true)
+    f.controller.onEvent(f.event({ ...blank, rectangle, revision: 5 }))
+    for (const key of ["x", "y", "width", "height"]) expect(f.input(key).disabled).toBe(false)
+    expect(f.input("x").value).toBe("50")
+    gate.resolve({
+      ...f.event(blank).payload,
+      state: { ...blank, rectangle: { x: 100, y: 0, width: 200, height: 150 }, revision: 2 },
+    })
+    await pending
+    expect(f.request).toHaveBeenCalledOnce()
+    expect(f.input("x").value).toBe("50")
+    expect(button("region-preview-action").disabled).toBe(false)
+  })
+  test("a completed drag before the start reply is not replaced by defaults or older revisions", async () => {
+    const f = setup()
+    const original = f.request.getMockImplementation() as typeof sendRuntimeRequest
+    const gate = deferred<void>()
+    f.request.mockImplementationOnce(async (...args) => {
+      const result = await original(...args)
+      await gate.promise
+      return result
+    })
+    const starting = f.controller.start()
+    await vi.waitFor(() => expect(f.request).toHaveBeenCalled())
+    const rectangle = { x: 100, y: 120, width: 200, height: 160 }
+    f.controller.onEvent(f.event({ ...blank, rectangle, dragging: true, revision: 2 }))
+    f.controller.onEvent(f.event({ ...blank, rectangle, revision: 3 }))
+    gate.resolve()
+    await starting
+    for (const [key, value] of Object.entries(rectangle)) {
+      expect(f.input(key).value).toBe(String(value))
+      expect(f.input(key).disabled).toBe(false)
+    }
+    expect(button("region-preview-action").disabled).toBe(false)
+    f.controller.onEvent(f.event(blank))
+    expect(f.input("x").value).toBe("100")
+    await f.controller.preview()
+    expect(
+      f.request.mock.calls.filter(([method]) => method === "regionCapture.update"),
+    ).toHaveLength(0)
+    expect(
+      f.request.mock.calls.filter(([method]) => method === "regionCapture.capture"),
+    ).toHaveLength(1)
   })
   test("site denial with no grants sends no start or stop and leaves ordinary chat unblocked", async () => {
     const f = setup()
@@ -345,10 +549,17 @@ describe("region capture panel controller", () => {
     const newer = deferred<JsonValue>()
     f.request.mockImplementationOnce(async () => newer.promise)
     const replacement = f.controller.updateRectangle()
-    expect(f.input("x").disabled).toBe(true)
+    f.edit("x", "80")
+    await f.controller.updateRectangle()
+    expect(f.input("x").disabled).toBe(false)
+    expect(button("region-preview-action").disabled).toBe(true)
+    const calls = f.request.mock.calls.length
     older.resolve({ invalid: "old update" })
     await updating
-    expect(f.input("x").disabled).toBe(true)
+    expect(f.input("x").disabled).toBe(false)
+    expect(f.input("x").value).toBe("80")
+    expect(button("region-preview-action").disabled).toBe(true)
+    expect(f.request.mock.calls).toHaveLength(calls)
     await f.controller.cancel()
     newer.resolve({ invalid: "cancelled replacement" })
     await replacement

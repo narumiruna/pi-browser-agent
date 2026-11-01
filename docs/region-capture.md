@@ -9,6 +9,7 @@ Region capture limits the attached image, not all agent context. Text, selected-
 1. Wait for an idle conversation and open an accessible HTTP(S) page in the active tab of the focused Chrome window.
 2. Select **Capture region**. Approve exact current-site access if requested. Starting selection does not capture or contact a provider.
 3. Drag a rectangle, or use the labeled **X**, **Y**, **Width**, and **Height** number inputs. Coordinates use CSS pixels from the viewport's top-left corner. Each side must be at least 8 CSS pixels. You can select again before capture.
+   - Use Tab, Shift+Tab, or a pointer to move between fields. Fields stay editable during numeric updates. Preview stays blocked until the shown values are valid and match the applied rectangle. Older update replies do not replace a newer or invalid draft.
 4. Select **Preview region**. The selected model must accept images, and the composer must have capacity for one more image. A failed preflight preserves the selection.
    - If screenshot access is missing, use the existing screenshot confirmation. Its **Confirm** gesture requests optional Chrome `<all_urls>` access. Denial does not capture or contact a provider.
 5. Inspect the static crop. Select **Attach** to add one ordinary composer image, **Retake** to discard it and start a fresh current-page selection, or **Cancel** to discard it.

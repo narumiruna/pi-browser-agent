@@ -61,6 +61,10 @@ export class RegionCaptureController {
   private mayHaveDispatchedStart = false
   private stopping?: Promise<void>
   private updating = false
+  private pendingRectangle?: RegionRectangle
+  private fieldVersion = 0
+  private committedFieldVersion = 0
+  private fieldsDirty = false
   private invalidFields = false
   private crop?: Blob
   private previewUrl?: string
@@ -89,10 +93,17 @@ export class RegionCaptureController {
     })
     for (const field of Object.values(this.fields)) {
       field.addEventListener("input", () => {
+        ++this.fieldVersion
+        this.fieldsDirty = true
+        this.pendingRectangle = undefined
         this.invalidFields = !this.validFields()
         this.refresh()
       })
       field.addEventListener("change", () => this.run(() => this.updateRectangle()))
+      field.addEventListener("blur", () => {
+        // Native change can be omitted after returning to the value present at focus.
+        if (this.committedFieldVersion !== this.fieldVersion) this.run(() => this.updateRectangle())
+      })
     }
     this.refresh()
   }
@@ -130,8 +141,14 @@ export class RegionCaptureController {
   }
   private remember(state: RegionCaptureState): void {
     if (state.active && this.state.active && state.revision < this.state.revision) return
+    if (state.active && (state.dragging || (this.state.active && this.state.dragging))) {
+      // A new page gesture replaces the numeric draft, not an update acknowledgment.
+      this.committedFieldVersion = ++this.fieldVersion
+      this.fieldsDirty = false
+      this.pendingRectangle = undefined
+    }
     this.state = state
-    if (state.active && state.rectangle) {
+    if (state.active && state.rectangle && !this.fieldsDirty) {
       for (const key of ["x", "y", "width", "height"] as const)
         this.fields[key].value = String(state.rectangle[key])
       this.invalidFields = false
@@ -144,6 +161,13 @@ export class RegionCaptureController {
       width: this.fields.width.valueAsNumber,
       height: this.fields.height.valueAsNumber,
     }
+  }
+  private fieldsMatch(rectangle: RegionRectangle | null): boolean {
+    const draft = this.fieldRectangle()
+    return (
+      !!rectangle &&
+      (["x", "y", "width", "height"] as const).every((key) => draft[key] === rectangle[key])
+    )
   }
   private validFields(): boolean {
     return (
@@ -158,8 +182,7 @@ export class RegionCaptureController {
     this.button.disabled = !this.occupied && !this.options.canStart()
     this.selection.hidden =
       ["idle", "preview", "attaching"].includes(this.phase) && !this.cleanupRequired
-    const editable =
-      this.phase === "selecting" && !this.updating && this.state.active && !this.state.dragging
+    const editable = this.phase === "selecting" && this.state.active && !this.state.dragging
     for (const [key, field] of Object.entries(this.fields)) {
       field.disabled = !editable
       field.setAttribute("aria-invalid", String(this.invalidFields))
@@ -167,7 +190,11 @@ export class RegionCaptureController {
         field.max = String(key === "x" || key === "width" ? this.state.width : this.state.height)
     }
     this.previewButton.disabled = !(
-      (editable && this.state.active && !!this.state.rectangle && !this.invalidFields) ||
+      (editable &&
+        !this.updating &&
+        this.state.active &&
+        this.fieldsMatch(this.state.rectangle) &&
+        !this.invalidFields) ||
       (this.crop && this.cleanupRequired && !this.stopping)
     )
     this.attachButton.disabled = this.phase !== "preview" || this.cleanupRequired || !this.crop
@@ -180,6 +207,9 @@ export class RegionCaptureController {
     if (!this.options.canStart())
       throw new Error(t("Finish or cancel region capture before sending"))
     const generation = ++this.generation
+    this.fieldsDirty = false
+    this.committedFieldVersion = this.fieldVersion
+    this.invalidFields = false
     this.owner = { clientId: crypto.randomUUID(), operationId: crypto.randomUUID() }
     this.sessionId = this.options.getSessionId()
     this.abort = new AbortController()
@@ -210,9 +240,11 @@ export class RegionCaptureController {
       const state = this.resultState(value)
       if (!state.active) throw new Error(t("Region capture is unavailable on this page"))
       this.remember(state)
-      this.fields.x.value = this.fields.y.value = "0"
-      this.fields.width.value = String(Math.min(200, state.width))
-      this.fields.height.value = String(Math.min(150, state.height))
+      if (this.state.active && !this.state.rectangle && !this.fieldsDirty) {
+        this.fields.x.value = this.fields.y.value = "0"
+        this.fields.width.value = String(Math.min(200, this.state.width))
+        this.fields.height.value = String(Math.min(150, this.state.height))
+      }
       this.cleanupRequired = false
       this.phase = "selecting"
       this.changed()
@@ -230,40 +262,60 @@ export class RegionCaptureController {
   }
 
   async updateRectangle(): Promise<void> {
-    if (this.phase !== "selecting" || this.updating || !this.owner || !this.context) return
-    const rectangle = this.fieldRectangle()
     if (
+      this.phase !== "selecting" ||
+      !this.owner ||
+      !this.context ||
       !this.state.active ||
-      !validRegionRectangle(rectangle, this.state.width, this.state.height)
-    ) {
-      this.invalidFields = true
+      this.state.dragging
+    )
+      return
+    this.committedFieldVersion = ++this.fieldVersion
+    this.fieldsDirty = true
+    this.pendingRectangle = undefined
+    this.invalidFields = !this.validFields()
+    if (this.invalidFields) {
       this.changed()
       throw new Error(t("Select a region at least 8 CSS pixels wide and high"))
     }
+    this.pendingRectangle = this.fieldRectangle()
+    if (this.updating) {
+      this.changed()
+      return
+    }
     const generation = this.generation
-    const focused = document.activeElement
     this.updating = true
     this.changed()
     try {
-      const value = await this.request(
-        "regionCapture.update",
-        { ...this.owner, rectangle },
-        { tabContext: this.context, signal: this.abort?.signal },
-      )
-      this.assertCurrent(generation)
-      this.remember(this.resultState(value))
+      while (this.pendingRectangle) {
+        const rectangle = this.pendingRectangle
+        const version = this.fieldVersion
+        this.pendingRectangle = undefined
+        const value = await this.request(
+          "regionCapture.update",
+          { ...this.owner, rectangle },
+          { tabContext: this.context, signal: this.abort?.signal },
+        )
+        this.assertCurrent(generation)
+        this.remember(this.resultState(value))
+        if (
+          version === this.fieldVersion &&
+          this.state.active &&
+          this.fieldsMatch(this.state.rectangle)
+        )
+          this.fieldsDirty = false
+      }
     } catch (error) {
-      if (generation === this.generation) throw error
+      if (generation === this.generation) {
+        // A failed request never drains or replays queued edits.
+        this.pendingRectangle = undefined
+        throw error
+      }
     } finally {
-      if (generation === this.generation) this.updating = false
-      this.changed()
-      if (
-        generation === this.generation &&
-        focused instanceof HTMLInputElement &&
-        !focused.disabled &&
-        document.activeElement === document.body
-      )
-        focused.focus({ preventScroll: true })
+      if (generation === this.generation) {
+        this.updating = false
+        this.changed()
+      }
     }
   }
 
@@ -310,6 +362,7 @@ export class RegionCaptureController {
       !this.context ||
       !this.state.active ||
       !this.state.rectangle ||
+      !this.fieldsMatch(this.state.rectangle) ||
       this.state.dragging ||
       this.invalidFields
     )
@@ -426,6 +479,7 @@ export class RegionCaptureController {
 
   async cancel(restoreFocus = true): Promise<void> {
     ++this.generation
+    this.pendingRectangle = undefined
     this.abort?.abort()
     this.dropPreview()
     try {
@@ -436,6 +490,7 @@ export class RegionCaptureController {
       this.abort = undefined
       this.cleanupRequired = false
       this.updating = false
+      this.fieldsDirty = false
       this.invalidFields = false
       this.phase = "idle"
       this.state = { active: false }
