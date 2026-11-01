@@ -257,7 +257,7 @@ The UI scenario retains 32 ignored captures under `test-results/page-annotation-
 
 ## Region capture acceptance — 2026-11-01
 
-Status: the pin-free rebuild passes the focused automated checks below. The final isolated full CI is pending. Native UI, physical-device, screen-reader, and live-provider acceptance remain unverified. See [region capture](region-capture.md). Existing native-UI release restrictions and the [Chrome 116 baseline limitation](#known-minimum-version-baseline-limitation) remain in force.
+Status: the pin-free rebuild passes the focused automated checks and final isolated full CI below. Native UI, physical-device, screen-reader, and live-provider acceptance remain unverified. See [region capture](region-capture.md). Existing native-UI release restrictions and the [Chrome 116 baseline limitation](#known-minimum-version-baseline-limitation) remain in force.
 
 ### Pin-free rebuild evidence
 
@@ -274,6 +274,10 @@ The former pin-overlap scenario now checks real drawing/region worker and panel 
 The shared drawing proof retains main's arrow-direction, arrowhead, rectangle-outline, empty-interior, pixel-alignment, exact three-click, timestamp, and no-activation assertions. Only test fixture stabilization was reapplied: a real discarded compositor screenshot, acknowledgment of the first intercepted click before native capture, and a controlled transparent modal backdrop. No production drawing feature or screenshot path was copied from the pin branch. The 20 strict repetitions passed without weakening an assertion.
 
 `git diff --check` and `npm audit --omit=dev` passed; the production audit reports zero vulnerabilities. Full `npm audit --json` reports the known one high development-only `follow-redirects` advisory, GHSA-mrwp-f3q8-3g9p (exit 1). Dependencies, manifest permissions, and persistent storage are unchanged. The existing Biome schema notice and three bundle-budget warnings remain informational. Proof/UI captures use ignored `test-results/` paths; no image is committed. Automated evidence does not establish native/device, linguistic, screen-reader, or live-provider acceptance.
+
+The final isolated `npm run ci -- -- --workers=2` passed at checkpoint `f97439d7ff0bacfb367c3e98eca60cf1d97a6b35`: formatting/lint, all 2,167 unit/integration tests in 78 files, browser-boundary probe, production build/typecheck, 50-file artifact audit, and all 326 browser scenarios (6.6 minutes). Logs are `/tmp/region-without-pins-ci.log`, `/tmp/region-without-pins-ci.exit` (0), and `/tmp/region-without-pins-ci.sha`. No concurrent Playwright output writer ran in this worktree. No mandatory check failed, was skipped, or was waived. Final proof/UI captures were recreated under ignored `test-results/` paths.
+
+Complete integration-diff review found no remaining material defect. Main's drawing/picker source, shape contracts, surface/controller tests, and production drawing scenarios are unchanged. Review verified worker-only source transport, inward crop bounds, owner/generation checks, original-target cleanup, pre-dispatch denial, region/drawing startup exclusion, numeric draft/focus behavior, unsupported point-comment requests, and retained native release restrictions. This final evidence update changes documentation only; the tested source and tests remain identical to the checkpoint. Local backup and original published branch refs remain unchanged. Publication and PR updates are a separate maintainer action.
 
 ### Retained external handoff
 
