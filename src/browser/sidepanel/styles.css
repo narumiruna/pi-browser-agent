@@ -2030,34 +2030,59 @@ dialog p {
 }
 
 .pair-actions {
-  display: flex;
-  flex-wrap: wrap;
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.pasted-image .pair-actions {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+}
+
+button.pair-menu-trigger {
+  width: 22px;
+  height: 22px;
+  min-height: 22px;
+  padding: 2px;
+  background: var(--surface);
+}
+
+.pair-actions-menu {
+  box-sizing: border-box;
+  position: fixed;
+  inset: auto;
+  width: max-content;
+  max-width: calc(100vw - 16px);
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+}
+
+.pair-actions-menu:popover-open {
+  display: grid;
   gap: 3px;
 }
 
-.pair-actions button,
+.pair-actions-menu button {
+  min-width: 0;
+  padding: 5px 8px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+.pair-actions-menu [aria-checked="true"] {
+  border-color: var(--accent);
+  font-weight: 700;
+}
+
 .target-reference-pair button {
   min-height: 26px;
   padding: 3px 5px;
   font-size: 0.7rem;
-}
-
-.pair-actions button[aria-pressed="true"] {
-  border: 2px solid var(--accent);
-  font-weight: 700;
-}
-
-.pasted-image:has(.pair-actions) {
-  width: 150px;
-  height: auto;
-}
-
-.pasted-image:has(.pair-actions) img {
-  width: 72px;
-  height: 72px;
-}
-
-.selected-element-chip:has(.pair-actions) {
-  flex-wrap: wrap;
-  border-radius: 8px;
 }

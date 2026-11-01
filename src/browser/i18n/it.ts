@@ -18,6 +18,7 @@ export default {
     "La cattura di un’area non è disponibile su questa pagina",
   "Could not capture the region. Select again or retry.":
     "Impossibile acquisire l’area. Seleziona di nuovo o riprova.",
+  "Attachment actions": "Azioni allegato",
   "Image {number}": "Immagine {number}",
   "Use as target": "Usa come destinazione",
   "Use as reference": "Usa come riferimento",

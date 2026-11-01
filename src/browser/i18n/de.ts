@@ -19,6 +19,7 @@ export default {
     "Bereichserfassung ist auf dieser Seite nicht verfügbar",
   "Could not capture the region. Select again or retry.":
     "Der Bereich konnte nicht aufgenommen werden. Erneut auswählen oder versuchen.",
+  "Attachment actions": "Anhangaktionen",
   "Image {number}": "Bild {number}",
   "Use as target": "Als Ziel verwenden",
   "Use as reference": "Als Referenz verwenden",

@@ -5,8 +5,10 @@ Use a target/reference pair to identify what the task concerns and what it shoul
 ## Compose a pair
 
 1. Attach images or select page elements with the existing element picker.
-2. Select **Use as target** on one attachment card and **Use as reference** on a different card.
+2. Open the **Attachment actions** icon menu on one card and select **Use as target**. Open the menu on a different card and select **Use as reference**.
 3. Check the pair summary. Enter ordinary task text, then select **Send**.
+
+Attachment menus are closed by default. Enter, Space, Up Arrow, or Down Arrow opens the focused icon menu. Up Arrow, Down Arrow, Home, and End move between available roles. Escape or an outside click closes the menu. Role selection returns focus to the attachment icon. Ordinary previews keep their compact size.
 
 One message supports one pair. Roles use immutable attachment IDs, not card positions or CSS selectors. Removing or invalidating a member clears that role. A page-context change clears selected elements and their roles. Send stays unavailable until you repair the pair or select **Clear pair**. Pi does not choose a replacement. Successful submission clears only accepted attachment IDs and their roles; a failed preparation retains the draft for an explicit retry. A guarded snapshot binds the outgoing task, IDs, and image positions. Asynchronous preparation cannot silently use newer draft text or stale element context.
 

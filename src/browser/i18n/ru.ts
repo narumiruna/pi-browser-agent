@@ -17,6 +17,7 @@ export default {
   "Region capture is unavailable on this page": "Снимок области недоступен на этой странице",
   "Could not capture the region. Select again or retry.":
     "Не удалось захватить область. Выберите её снова или повторите попытку.",
+  "Attachment actions": "Действия с вложением",
   "Image {number}": "Изображение {number}",
   "Use as target": "Использовать как цель",
   "Use as reference": "Использовать как образец",

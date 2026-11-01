@@ -545,13 +545,8 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       !focused.isConnected &&
       document.activeElement === document.body
     ) {
-      for (const button of document.querySelectorAll<HTMLButtonElement>(".pair-actions button")) {
-        if (
-          button.dataset.pairRole === role &&
-          button.dataset.attachmentId === attachmentId &&
-          !button.disabled
-        )
-          button.focus()
+      for (const button of document.querySelectorAll<HTMLButtonElement>(".pair-menu-trigger")) {
+        if (button.dataset.attachmentId === attachmentId && !button.disabled) button.focus()
       }
     }
     sendButton.disabled ||=

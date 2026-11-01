@@ -18,6 +18,7 @@ export default {
     "La capture de zone n’est pas disponible sur cette page",
   "Could not capture the region. Select again or retry.":
     "Impossible de capturer la zone. Sélectionnez-la à nouveau ou réessayez.",
+  "Attachment actions": "Actions de la pièce jointe",
   "Image {number}": "Image {number}",
   "Use as target": "Utiliser comme cible",
   "Use as reference": "Utiliser comme référence",

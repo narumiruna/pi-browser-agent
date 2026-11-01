@@ -15,6 +15,7 @@ export default {
   "Region capture is unavailable on this page": "การจับภาพพื้นที่ใช้ไม่ได้ในหน้านี้",
   "Could not capture the region. Select again or retry.":
     "ไม่สามารถจับภาพพื้นที่ได้ โปรดเลือกใหม่หรือลองอีกครั้ง",
+  "Attachment actions": "การดำเนินการกับไฟล์แนบ",
   "Image {number}": "ภาพ {number}",
   "Use as target": "ใช้เป็นเป้าหมาย",
   "Use as reference": "ใช้เป็นข้อมูลอ้างอิง",

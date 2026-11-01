@@ -18,6 +18,7 @@ export default {
     "Przechwytywanie obszaru jest niedostępne na tej stronie",
   "Could not capture the region. Select again or retry.":
     "Nie udało się przechwycić obszaru. Zaznacz ponownie lub spróbuj jeszcze raz.",
+  "Attachment actions": "Działania załącznika",
   "Image {number}": "Obraz {number}",
   "Use as target": "Użyj jako celu",
   "Use as reference": "Użyj jako odniesienia",

@@ -18,6 +18,7 @@ export default {
     "La captura de región no está disponible en esta página",
   "Could not capture the region. Select again or retry.":
     "No se pudo capturar la región. Seleccione de nuevo o reintente.",
+  "Attachment actions": "Acciones del archivo adjunto",
   "Image {number}": "Imagen {number}",
   "Use as target": "Usar como objetivo",
   "Use as reference": "Usar como referencia",

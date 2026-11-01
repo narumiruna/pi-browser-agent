@@ -186,6 +186,40 @@ describe("pair composer", () => {
     expect(root.textContent).toContain("Reference: Not selected")
   })
 
+  test("renders closed named menus and rejects stale actions after blocking or removal", () => {
+    const s = setup()
+    let blocked = false
+    const changed = vi.fn()
+    const pair = new TargetReferenceComposer(
+      required(s.document.querySelector<HTMLElement>("#pair")),
+      changed,
+      () => blocked,
+    )
+    pair.refresh([{ id: "image", label: "Image 1", active: true }])
+    const controls = pair.controls("image")
+    const trigger = required(controls.querySelector<HTMLButtonElement>(".pair-menu-trigger"))
+    const menu = required(controls.querySelector<HTMLElement>('[role="menu"]'))
+    expect(trigger.title).toBe("Attachment actions")
+    expect(trigger.getAttribute("aria-label")).toBe(trigger.title)
+    expect(trigger.getAttribute("aria-expanded")).toBe("false")
+    expect(trigger.getAttribute("popovertarget")).toBe(menu.id)
+    expect(menu.getAttribute("popover")).toBe("auto")
+    expect(menu.querySelectorAll('[role="menuitemradio"]')).toHaveLength(2)
+    const target = required(menu.querySelector<HTMLButtonElement>('[data-pair-role="targetId"]'))
+    blocked = true
+    target.click()
+    expect(pair.snapshot()).toBeUndefined()
+    expect(changed).not.toHaveBeenCalled()
+    expect(
+      required(pair.controls("image").querySelector<HTMLButtonElement>("button")).disabled,
+    ).toBe(true)
+    blocked = false
+    pair.refresh([])
+    target.click()
+    expect(pair.snapshot()).toBeUndefined()
+    expect(changed).not.toHaveBeenCalled()
+  })
+
   test("keeps IDs stable through reorder/deletion and never selects a replacement", () => {
     const s = setup()
     let blocked = false

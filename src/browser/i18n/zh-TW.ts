@@ -14,6 +14,7 @@ export default {
   "The page changed. Select a new region.": "頁面已變更。請選取新區域。",
   "Region capture is unavailable on this page": "此頁面無法使用區域擷取",
   "Could not capture the region. Select again or retry.": "無法擷取區域。請重新選取或再試一次。",
+  "Attachment actions": "附件操作",
   "Image {number}": "圖片 {number}",
   "Use as target": "設為目標",
   "Use as reference": "設為參考",

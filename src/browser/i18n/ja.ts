@@ -17,6 +17,7 @@ export default {
   "Region capture is unavailable on this page": "このページでは範囲のキャプチャを利用できません",
   "Could not capture the region. Select again or retry.":
     "範囲をキャプチャできませんでした。選択し直すか再試行してください。",
+  "Attachment actions": "添付ファイルの操作",
   "Image {number}": "画像 {number}",
   "Use as target": "対象として使用",
   "Use as reference": "参照として使用",

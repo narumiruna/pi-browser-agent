@@ -16,6 +16,7 @@ export default {
   "Region capture is unavailable on this page": "이 페이지에서는 영역 캡처를 사용할 수 없습니다",
   "Could not capture the region. Select again or retry.":
     "영역을 캡처하지 못했습니다. 다시 선택하거나 재시도하세요.",
+  "Attachment actions": "첨부 파일 작업",
   "Image {number}": "이미지 {number}",
   "Use as target": "대상으로 사용",
   "Use as reference": "참조로 사용",
