@@ -1758,58 +1758,6 @@ dialog::backdrop {
   max-width: 100%;
 }
 
-/* Region selection and static preview contain no page-owned controls. */
-.region-selection {
-  padding: 8px;
-  max-height: 45vh;
-  overflow: auto;
-  border-bottom: 1px solid var(--border);
-}
-
-.region-fields {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-}
-
-.region-fields label {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-}
-
-.region-fields input {
-  width: 100%;
-  min-width: 0;
-  box-sizing: border-box;
-}
-
-.region-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.region-preview-dialog {
-  width: min(600px, calc(100vw - 32px));
-  max-height: calc(100vh - 32px);
-  box-sizing: border-box;
-  overflow: auto;
-}
-
-.region-preview-content {
-  display: grid;
-  min-width: 0;
-  gap: 8px;
-}
-
-#region-preview-image {
-  display: block;
-  max-width: 100%;
-  max-height: 50vh;
-  object-fit: contain;
-}
-
 #region-capture[aria-pressed="true"] {
   color: var(--accent);
 }
@@ -1883,12 +1831,6 @@ dialog p {
   margin: 6px 0 16px;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
-}
-
-.region-selection p,
-.region-preview-content p {
-  margin: 6px 0;
-  overflow-wrap: anywhere;
 }
 
 .auth-method-options {

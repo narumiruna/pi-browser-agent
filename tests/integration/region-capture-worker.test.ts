@@ -6,7 +6,6 @@ import {
   REGION_CAPTURE_LIMITS,
   type RegionCaptureOperation,
   type RegionCaptureState,
-  type RegionRectangle,
 } from "../../src/browser/runtime/region-capture.js"
 import { RuntimeError } from "../../src/browser/runtime/types.js"
 
@@ -21,6 +20,7 @@ const active = {
   dragging: false,
   frozen: false,
   revision: 1,
+  committedRevision: 1,
   width: 800,
   height: 600,
 }
@@ -57,39 +57,37 @@ const stopRequest = (): RuntimeRequest<"regionCapture.stop"> => ({
 const captureRequest = (): RuntimeRequest<"regionCapture.capture"> => ({
   ...startRequest(),
   method: "regionCapture.capture",
-  params: { ...owner, maxBytes: 3_000_000 },
-})
-const updateRequest = (): RuntimeRequest<"regionCapture.update"> => ({
-  ...startRequest(),
-  method: "regionCapture.update",
-  params: { ...owner, rectangle: active.rectangle },
+  params: { ...owner, maxBytes: 3_000_000, selectionRevision: active.committedRevision },
 })
 function fixture() {
   let token = ""
   let state: RegionCaptureState = { ...active }
   const deps = {
-    beforeStart: vi.fn(async () => undefined),
+    beforeStart: vi.fn(async (): Promise<void> => undefined),
     context: vi.fn(async () => context),
     windowId: vi.fn(async () => 3),
     validate: vi.fn(async (): Promise<void> => undefined),
-    execute: vi.fn(
-      async (
-        operation: RegionCaptureOperation,
-        session: { token: string },
-        rectangle?: RegionRectangle,
-      ) => {
-        token = session.token
-        if (state.active) {
-          if (operation === "freeze" && !state.dragging && state.rectangle)
-            state = { ...state, frozen: true, revision: state.revision + 1 }
-          if (operation === "resume")
-            state = { ...state, frozen: false, revision: state.revision + 1 }
-          if (operation === "update" && rectangle)
-            state = { ...state, rectangle, revision: state.revision + 1 }
-        }
-        return { ok: true, result: state }
-      },
-    ),
+    execute: vi.fn(async (operation: RegionCaptureOperation, session: { token: string }) => {
+      token = session.token
+      if (state.active) {
+        if (
+          operation === "freeze" &&
+          !state.frozen &&
+          !state.dragging &&
+          state.rectangle &&
+          state.committedRevision === state.revision
+        )
+          state = { ...state, frozen: true, revision: state.revision + 1 }
+        if (operation === "resume")
+          state = {
+            ...state,
+            frozen: false,
+            committedRevision: null,
+            revision: state.revision + 1,
+          }
+      }
+      return { ok: true, result: state }
+    }),
     cleanup: vi.fn(async (_context: typeof context, _token?: string): Promise<void> => undefined),
     emit: vi.fn(),
     capturePermission: vi.fn(async (_confirmed?: boolean): Promise<void> => undefined),
@@ -128,10 +126,10 @@ afterEach(() => {
 })
 
 describe("region capture worker ownership and failure paths", () => {
-  test("start/update never capture; capture returns crop only with immutable operation identity", async () => {
+  test("start and notifications never capture; requested capture returns only the crop", async () => {
     const f = fixture()
     await f.worker.start(startRequest())
-    await f.worker.update(updateRequest())
+    await f.worker.notification(f.notification(), sender)
     expect(f.deps.capture).not.toHaveBeenCalled()
     expect(cropRegionPng).not.toHaveBeenCalled()
     const result = await f.worker.capture(captureRequest())
@@ -140,7 +138,7 @@ describe("region capture worker ownership and failure paths", () => {
     expect(cropRegionPng).toHaveBeenCalledWith(
       source,
       active.rectangle,
-      expect.objectContaining({ frozen: true }),
+      expect.objectContaining({ frozen: true, committedRevision: 1, revision: 2 }),
       3_000_000,
       expect.any(Function),
     )
@@ -159,8 +157,10 @@ describe("region capture worker ownership and failure paths", () => {
     },
   )
   test.each([
-    { ...active, dragging: true },
-    { ...active, rectangle: null },
+    { ...active, dragging: true, committedRevision: null },
+    { ...active, rectangle: null, committedRevision: null },
+    { ...active, committedRevision: null },
+    { ...active, frozen: true },
   ])("never freezes or captures incomplete selection %j", async (state) => {
     const f = fixture()
     await f.worker.start(startRequest())
@@ -168,6 +168,116 @@ describe("region capture worker ownership and failure paths", () => {
     await expect(f.worker.capture(captureRequest())).rejects.toMatchObject({
       code: "INVALID_REQUEST",
     })
+    expect(f.deps.capture).not.toHaveBeenCalled()
+    expect(f.deps.capturePermission).not.toHaveBeenCalled()
+    expect(f.deps.execute.mock.calls.some(([action]) => action === "freeze")).toBe(false)
+  })
+  test.each([null, 99])(
+    "a forged high-revision hint (commit=%s) cannot authorize capture or poison later selection",
+    async (committedRevision) => {
+      const f = fixture()
+      await f.worker.start(startRequest())
+      f.deps.emit.mockClear()
+      f.state({ ...active, revision: 5, committedRevision: null })
+      await f.worker.notification(
+        f.notification({ ...active, revision: 99, committedRevision }),
+        sender,
+      )
+      expect(f.deps.emit).not.toHaveBeenCalled()
+      expect(f.deps.capture).not.toHaveBeenCalled()
+      expect(f.deps.capturePermission).not.toHaveBeenCalled()
+      const request = captureRequest()
+      request.params.selectionRevision = 99
+      await expect(f.worker.capture(request)).rejects.toMatchObject({ code: "INVALID_REQUEST" })
+      expect(f.deps.capturePermission).not.toHaveBeenCalled()
+      expect(f.deps.capture).not.toHaveBeenCalled()
+      f.state({ ...active, revision: 6, committedRevision: 6 })
+      await f.worker.notification(f.notification(), sender)
+      expect(f.deps.emit).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          payload: expect.objectContaining({ state: expect.objectContaining({ revision: 6 }) }),
+        }),
+      )
+      request.params.selectionRevision = 6
+      await expect(f.worker.capture(request)).resolves.toMatchObject(cropped)
+      expect(f.deps.capture).toHaveBeenCalledOnce()
+    },
+  )
+  test("a completed hint with forged geometry is not forwarded", async () => {
+    const f = fixture()
+    await f.worker.start(startRequest())
+    f.deps.emit.mockClear()
+    await f.worker.notification(
+      f.notification({ ...active, rectangle: { ...active.rectangle, x: 50 } }),
+      sender,
+    )
+    expect(f.deps.emit).not.toHaveBeenCalled()
+    expect(f.deps.capturePermission).not.toHaveBeenCalled()
+    await f.worker.notification(f.notification(), sender)
+    expect(f.deps.emit).toHaveBeenCalledOnce()
+    expect(f.deps.capture).not.toHaveBeenCalled()
+  })
+  test("completed geometry compares scalar values across transport property orders", async () => {
+    const f = fixture()
+    await f.worker.start(startRequest())
+    f.deps.emit.mockClear()
+    f.state({
+      ...active,
+      rectangle: { height: 160, width: 200, y: 120, x: 100 },
+    })
+    await f.worker.notification(f.notification(active), sender)
+    expect(f.deps.emit).toHaveBeenCalledOnce()
+    await expect(f.worker.capture(captureRequest())).resolves.toMatchObject(cropped)
+    expect(f.deps.capture).toHaveBeenCalledOnce()
+  })
+  test.each([0, 1, 4])(
+    "rejects stale or future selection revision %s before consent",
+    async (revision) => {
+      const f = fixture()
+      await f.worker.start(startRequest())
+      f.state({ ...active, revision: 3, committedRevision: 3 })
+      const request = captureRequest()
+      request.params.selectionRevision = revision
+      await expect(f.worker.capture(request)).rejects.toMatchObject({ code: "INVALID_REQUEST" })
+      expect(f.deps.capturePermission).not.toHaveBeenCalled()
+      expect(f.deps.capture).not.toHaveBeenCalled()
+    },
+  )
+  test.each([
+    { ...active, revision: 2, committedRevision: 2 },
+    { ...active, committedRevision: null },
+    { ...active, rectangle: { ...active.rectangle, x: 101 } },
+    { ...active, width: 801 },
+  ])("rechecks commit and geometry after consent %j", async (changed) => {
+    const f = fixture()
+    await f.worker.start(startRequest())
+    f.deps.capturePermission.mockImplementationOnce(async () => {
+      expect(f.deps.execute).toHaveBeenLastCalledWith("state", expect.anything())
+      f.state(changed)
+    })
+    await expect(f.worker.capture(captureRequest())).rejects.toMatchObject({
+      code: "STALE_CONTEXT",
+    })
+    expect(f.deps.capture).not.toHaveBeenCalled()
+    expect(f.deps.execute.mock.calls.some(([action]) => action === "freeze")).toBe(false)
+  })
+  test.each([
+    { committedRevision: 0 },
+    { revision: 3 },
+    { rectangle: { ...active.rectangle, x: 101 } },
+    { width: 801 },
+  ])("binds freeze to the requested commit, rectangle and viewport %j", async (changed) => {
+    const f = fixture()
+    await f.worker.start(startRequest())
+    const execute = f.deps.execute.getMockImplementation()
+    if (!execute) throw new Error("Missing fixture execute")
+    f.deps.execute.mockImplementation(async (...args) => {
+      const value = await execute(...args)
+      return args[0] === "freeze" && value.result.active
+        ? { ...value, result: { ...value.result, ...changed } }
+        : value
+    })
+    await expect(f.worker.capture(captureRequest())).rejects.toThrow("freeze")
     expect(f.deps.capture).not.toHaveBeenCalled()
   })
   test("requires a frozen painted selection before the native capture", async () => {
@@ -187,23 +297,114 @@ describe("region capture worker ownership and failure paths", () => {
       code: "CONFIRMATION_REQUIRED",
     })
     expect(f.deps.capture).not.toHaveBeenCalled()
+    expect(f.deps.execute.mock.calls.some(([action]) => action === "freeze")).toBe(false)
+    expect(f.deps.execute.mock.calls.some(([action]) => action === "resume")).toBe(false)
     await expect(f.worker.capture({ ...captureRequest(), confirmed: true })).resolves.toMatchObject(
       cropped,
     )
     expect(f.deps.capture).toHaveBeenCalledOnce()
   })
   test.each(["native", "crop"])(
-    "%s failure resumes safe selection without source fallback",
+    "%s failure clears completion without source fallback or replay",
     async (step) => {
       const f = fixture()
       await f.worker.start(startRequest())
       if (step === "native") f.deps.capture.mockRejectedValueOnce(new Error("capture failed"))
       else vi.mocked(cropRegionPng).mockRejectedValueOnce(new Error("crop failed"))
       await expect(f.worker.capture(captureRequest())).rejects.toThrow("failed")
-      expect(f.deps.execute).toHaveBeenLastCalledWith("resume", expect.anything(), undefined)
+      expect(f.deps.execute).toHaveBeenLastCalledWith("resume", expect.anything())
+      expect(f.deps.emit).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          payload: expect.objectContaining({
+            state: expect.objectContaining({ frozen: false, committedRevision: null }),
+          }),
+        }),
+      )
+      expect(f.deps.capture).toHaveBeenCalledOnce()
+      // Even a replayed committed-state hint cannot restore a consumed capture attempt.
+      f.state({ ...active })
+      await f.worker.notification(f.notification(), sender)
+      await expect(f.worker.capture(captureRequest())).rejects.toThrow("already captured")
       expect(f.deps.capture).toHaveBeenCalledOnce()
     },
   )
+  test("rechecks the protected commit after freeze and before native capture", async () => {
+    const f = fixture()
+    await f.worker.start(startRequest())
+    let checks = 0
+    f.deps.capturePermission.mockImplementation(async () => {
+      if (++checks === 2) f.state({ ...active, frozen: true, revision: 2, committedRevision: 0 })
+    })
+    await expect(f.worker.capture(captureRequest())).rejects.toMatchObject({
+      code: "STALE_CONTEXT",
+    })
+    expect(f.deps.capture).not.toHaveBeenCalled()
+    expect(cropRegionPng).not.toHaveBeenCalled()
+  })
+  test("does not replay a consumed attempt if the capture dependency denies its final checks", async () => {
+    const f = fixture()
+    await f.worker.start(startRequest())
+    f.deps.capture.mockRejectedValueOnce(new RuntimeError("CONFIRMATION_REQUIRED", "confirm"))
+    await expect(f.worker.capture(captureRequest())).rejects.toMatchObject({
+      code: "CONFIRMATION_REQUIRED",
+    })
+    await expect(f.worker.capture({ ...captureRequest(), confirmed: true })).rejects.toThrow(
+      "already captured",
+    )
+    expect(f.deps.capture).toHaveBeenCalledOnce()
+    expect(cropRegionPng).not.toHaveBeenCalled()
+  })
+  test.each([
+    { label: "null", value: null },
+    { label: "array", value: [] },
+    { label: "missing URL", value: {} },
+    { label: "non-string URL", value: { dataUrl: 1 } },
+  ])("rejects malformed source $label without fallback or replay", async ({ value }) => {
+    const f = fixture()
+    await f.worker.start(startRequest())
+    f.deps.capture.mockResolvedValueOnce(value as unknown as { dataUrl: string })
+    await expect(f.worker.capture(captureRequest())).rejects.toThrow("Invalid region source image")
+    expect(cropRegionPng).not.toHaveBeenCalled()
+    await expect(f.worker.capture(captureRequest())).rejects.toThrow("already captured")
+    expect(f.deps.capture).toHaveBeenCalledOnce()
+  })
+  test("consumes a revision once before capture, including concurrent or later duplicates", async () => {
+    const f = fixture()
+    await f.worker.start(startRequest())
+    const gate = deferred<{ dataUrl: string }>()
+    f.deps.capture.mockReturnValueOnce(gate.promise)
+    const pending = f.worker.capture(captureRequest())
+    await vi.waitFor(() => expect(f.deps.capture).toHaveBeenCalledOnce())
+    const permissionCalls = f.deps.capturePermission.mock.calls.length
+    await expect(f.worker.capture(captureRequest())).rejects.toThrow("already captured")
+    gate.resolve({ dataUrl: source })
+    await pending
+    await expect(f.worker.capture(captureRequest())).rejects.toThrow("already captured")
+    const stale = captureRequest()
+    stale.params.selectionRevision = 0
+    await expect(f.worker.capture(stale)).rejects.toThrow("already captured")
+    expect(f.deps.capture).toHaveBeenCalledOnce()
+    // The crop guards recheck permission, but duplicate requests do not.
+    const completedCalls = f.deps.capturePermission.mock.calls.length
+    expect(completedCalls).toBeGreaterThanOrEqual(permissionCalls)
+    await expect(f.worker.capture(captureRequest())).rejects.toThrow("already captured")
+    expect(f.deps.capturePermission).toHaveBeenCalledTimes(completedCalls)
+  })
+  test("allows only a newer genuine commit after a failed native capture", async () => {
+    const f = fixture()
+    await f.worker.start(startRequest())
+    f.deps.capture.mockRejectedValueOnce(new Error("capture failed"))
+    await expect(f.worker.capture(captureRequest())).rejects.toThrow("capture failed")
+    f.state({ ...active, revision: 5, committedRevision: 5 })
+    const next = captureRequest()
+    next.params.selectionRevision = 5
+    await expect(f.worker.capture(next)).resolves.toMatchObject(cropped)
+    expect(f.deps.capture).toHaveBeenCalledTimes(2)
+    f.state({ ...active, revision: 3, committedRevision: 3 })
+    next.params.selectionRevision = 3
+    await expect(f.worker.capture(next)).rejects.toThrow("already captured")
+    expect(f.deps.capture).toHaveBeenCalledTimes(2)
+  })
   test.each([false, true])(
     "screenshot revocation invalidates frozen ownership (pending crop %s)",
     async (pendingCrop) => {
@@ -265,6 +466,77 @@ describe("region capture worker ownership and failure paths", () => {
     gate.resolve()
     await rejection
     expect(f.deps.execute.mock.calls.some(([operation]) => operation === "resume")).toBe(false)
+  })
+  test("stop accepts confirmed removal for the same owner without a second orphan injection", async () => {
+    const f = fixture()
+    await f.worker.start(startRequest())
+    await f.worker.cancel("access-revoked")
+    f.deps.cleanup.mockClear()
+    f.deps.cleanup.mockRejectedValue(new Error("Original receiver is gone after confirmed removal"))
+    await expect(f.worker.stop(stopRequest())).resolves.toEqual({ active: false })
+    expect(f.deps.cleanup).not.toHaveBeenCalled()
+  })
+  test.each(["client", "operation", "tab", "url", "epoch"])(
+    "confirmed removal cannot acknowledge a different %s binding",
+    async (field) => {
+      const f = fixture()
+      await f.worker.start(startRequest())
+      await f.worker.cancel("access-revoked")
+      f.deps.cleanup.mockRejectedValue(new Error("No new removal confirmation"))
+      const request = stopRequest()
+      if (field === "tab") request.tabContext = { ...context, tabId: context.tabId + 1 }
+      else if (field === "url") request.tabContext = { ...context, url: `${context.url}changed` }
+      else if (field === "epoch") request.tabContext = { ...context, epoch: context.epoch + 1 }
+      else request.params[field === "client" ? "clientId" : "operationId"] = crypto.randomUUID()
+      await expect(f.worker.stop(request)).rejects.toThrow()
+    },
+  )
+  test("stop waits for in-flight removal confirmation and does not clean twice", async () => {
+    const f = fixture()
+    await f.worker.start(startRequest())
+    f.deps.cleanup.mockClear()
+    const gate = deferred<void>()
+    f.deps.cleanup.mockReturnValueOnce(gate.promise)
+    const cancelling = f.worker.cancel("access-revoked")
+    let finished = false
+    const stopping = f.worker.stop(stopRequest()).then((value) => {
+      finished = true
+      return value
+    })
+    await vi.waitFor(() => expect(f.deps.cleanup).toHaveBeenCalledOnce())
+    expect(finished).toBe(false)
+    gate.resolve()
+    await cancelling
+    await expect(stopping).resolves.toEqual({ active: false })
+    expect(f.deps.cleanup).toHaveBeenCalledOnce()
+  })
+  test("confirmed removal cannot acknowledge a pending replacement", async () => {
+    const f = fixture()
+    await f.worker.start(startRequest())
+    await f.worker.cancel("access-revoked")
+    const gate = deferred<void>()
+    f.deps.beforeStart.mockReturnValueOnce(gate.promise)
+    const stopping = f.worker.stop(stopRequest())
+    const starting = f.worker.start({
+      ...startRequest(),
+      params: { ...owner, operationId: crypto.randomUUID() },
+    })
+    await expect(stopping).rejects.toMatchObject({ code: "REQUEST_CANCELLED" })
+    await vi.waitFor(() => expect(f.deps.beforeStart).toHaveBeenCalledTimes(2))
+    gate.resolve()
+    await starting
+  })
+  test("reusing owner IDs still requires removal of the new surface", async () => {
+    const f = fixture()
+    await f.worker.start(startRequest())
+    const previous = f.token()
+    await f.worker.cancel("access-revoked")
+    await f.worker.start(startRequest())
+    expect(f.token()).not.toBe(previous)
+    f.deps.cleanup.mockClear()
+    await expect(f.worker.stop(stopRequest())).resolves.toEqual({ active: false })
+    expect(f.deps.cleanup).toHaveBeenCalledOnce()
+    expect(f.deps.cleanup).toHaveBeenCalledWith(context, f.token())
   })
   test("stop during a pending capture discards its late full-viewport result", async () => {
     const f = fixture()
@@ -381,16 +653,27 @@ describe("region capture worker ownership and failure paths", () => {
     ).rejects.toMatchObject({ code: "PERMISSION_DENIED" })
     expect(f.deps.capture).not.toHaveBeenCalled()
   })
+  test.each(["token", "context"])("rejects a notification with stale %s binding", async (field) => {
+    const f = fixture()
+    await f.worker.start(startRequest())
+    const message = f.notification()
+    if (field === "token") message.token = crypto.randomUUID()
+    else message.tabContext = { ...context, epoch: context.epoch + 1 }
+    await expect(f.worker.notification(message, sender)).rejects.toMatchObject({
+      code: field === "token" ? "PERMISSION_DENIED" : "STALE_CONTEXT",
+    })
+    expect(f.deps.capture).not.toHaveBeenCalled()
+    expect(f.deps.capturePermission).not.toHaveBeenCalled()
+  })
   test("out-of-order notification validation never restores an old rectangle revision", async () => {
     const f = fixture()
     await f.worker.start(startRequest())
     const gate = deferred<void>()
     f.deps.validate.mockReturnValueOnce(gate.promise)
-    const pending = f.worker.notification(
-      f.notification({ ...active, dragging: true, revision: 2 }),
-      sender,
-    )
-    await f.worker.notification(f.notification({ ...active, revision: 3 }), sender)
+    f.state({ ...active, revision: 2, committedRevision: 2 })
+    const pending = f.worker.notification(f.notification(), sender)
+    f.state({ ...active, revision: 3, committedRevision: 3 })
+    await f.worker.notification(f.notification(), sender)
     gate.resolve()
     await pending
     expect(f.deps.emit).toHaveBeenLastCalledWith(
@@ -411,7 +694,7 @@ async function serviceFixture() {
   ) => boolean
   let revoked: () => void = () => undefined
   let allowed = true
-  let state = { ...active }
+  let state: Extract<RegionCaptureState, { active: true }> = { ...active }
   const tab = { id: 1, url: context.url, windowId: 3, active: true, title: "Fixture" }
   const emit = vi.fn(async () => undefined)
   const script = vi.fn(async (options: { func: { name: string }; args?: unknown[] }) => {
@@ -422,7 +705,7 @@ async function serviceFixture() {
       if (options.args?.[0] === "freeze")
         state = { ...state, frozen: true, revision: state.revision + 1 }
       if (options.args?.[0] === "resume")
-        state = { ...state, frozen: false, revision: state.revision + 1 }
+        state = { ...state, frozen: false, committedRevision: null, revision: state.revision + 1 }
       return [{ result: { ok: true, result: state } }]
     }
     return []
@@ -514,6 +797,19 @@ describe("service worker region routing", () => {
     const f = await serviceFixture()
     await expect(f.request("regionCapture.start")).resolves.toMatchObject({ ok: true })
     expect(f.capture).not.toHaveBeenCalled()
+    expect(f.script).toHaveBeenCalledWith(
+      expect.objectContaining({
+        func: expect.objectContaining({ name: "executeRegionCapture" }),
+        args: ["start", expect.any(String), expect.any(Object), REGION_CAPTURE_LIMITS],
+      }),
+    )
+    await expect(
+      f.request("regionCapture.update", { ...owner, rectangle: active.rectangle } as typeof owner),
+    ).resolves.toMatchObject({ ok: false, error: { code: "INVALID_REQUEST" } })
+    await expect(
+      f.request("regionCapture.capture", { ...owner, maxBytes: 3_000_000 } as typeof owner),
+    ).resolves.toMatchObject({ ok: false, error: { code: "INVALID_REQUEST" } })
+    expect(f.capture).not.toHaveBeenCalled()
     await expect(
       f.request("regionCapture.stop", owner, {
         id: "extension",
@@ -551,6 +847,7 @@ describe("service worker region routing", () => {
         pending = f.request("regionCapture.capture", {
           ...owner,
           maxBytes: 3_000_000,
+          selectionRevision: 1,
         } as typeof owner)
         await vi.waitFor(() =>
           expect(
@@ -577,7 +874,11 @@ describe("service worker region routing", () => {
         ),
       )
       await expect(
-        f.request("regionCapture.capture", { ...owner, maxBytes: 3_000_000 } as typeof owner),
+        f.request("regionCapture.capture", {
+          ...owner,
+          maxBytes: 3_000_000,
+          selectionRevision: 1,
+        } as typeof owner),
       ).resolves.toMatchObject({ ok: false })
     },
   )

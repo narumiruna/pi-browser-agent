@@ -4,32 +4,21 @@ export default {
   "Reset page pinch zoom before capturing a region":
     "Setzen Sie den Pinch-Zoom der Seite zurück, bevor Sie einen Bereich erfassen",
   "Capture region": "Bereich erfassen",
-  "Select a region": "Bereich auswählen",
-  "Drag on the page or enter CSS pixels. Minimum: 8 × 8.":
-    "Auf der Seite ziehen oder CSS-Pixel eingeben. Minimum: 8 × 8.",
-  X: "X",
-  Y: "Y",
-  Width: "Breite",
-  Height: "Höhe",
-  "Chrome temporarily captures the full viewport. Only the crop leaves the worker.":
-    "Chrome erfasst vorübergehend den gesamten sichtbaren Bereich. Nur der Ausschnitt verlässt den Worker.",
-  "Preview region": "Bereich vorschauen",
-  "Region preview": "Bereichsvorschau",
-  "Only this crop is attached. Text, selected elements, history, and approved page reads can include other content.":
-    "Nur dieser Ausschnitt wird angehängt. Text, ausgewählte Elemente, Verlauf und genehmigte Seitenabfragen können andere Inhalte enthalten.",
-  Retake: "Neu aufnehmen",
+  "Cancel region capture": "Bereichsaufnahme abbrechen",
+  "Retry region cleanup": "Bereichsbereinigung erneut versuchen",
+  "Retry region attachment": "Bereich erneut anhängen",
+  "Chrome temporarily captures the full viewport. Only the crop leaves the worker. Drag to attach a crop. Arrow keys move; Shift+Arrow resizes; Alt uses 1 px. Enter attaches; Escape cancels.":
+    "Chrome erfasst vorübergehend den gesamten sichtbaren Bereich. Nur der Ausschnitt verlässt den Worker. Ziehen, um einen Ausschnitt anzuhängen. Pfeiltasten verschieben; Shift+Pfeil ändert die Größe; Alt verwendet 1-px-Schritte. Enter hängt an; Escape bricht ab.",
   "Finish or cancel region capture before sending":
     "Bereichserfassung vor dem Senden beenden oder abbrechen",
-  "Select a region at least 8 CSS pixels wide and high":
-    "Einen Bereich mit mindestens 8 CSS-Pixeln Breite und Höhe auswählen",
   "Could not confirm region cleanup. Reload the page before sending.":
     "Die Entfernung der Bereichsauswahl konnte nicht bestätigt werden. Seite vor dem Senden neu laden.",
   "The page changed. Select a new region.":
     "Die Seite hat sich geändert. Einen neuen Bereich auswählen.",
   "Region capture is unavailable on this page":
     "Bereichserfassung ist auf dieser Seite nicht verfügbar",
-  "Could not preview the region. Select again or retry.":
-    "Bereichsvorschau fehlgeschlagen. Erneut auswählen oder versuchen.",
+  "Could not capture the region. Select again or retry.":
+    "Der Bereich konnte nicht aufgenommen werden. Erneut auswählen oder versuchen.",
 
   "Draw on page": "Auf der Seite zeichnen",
   "Cancel page drawing": "Zeichnen auf der Seite abbrechen",

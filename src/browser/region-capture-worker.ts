@@ -22,6 +22,7 @@ type Session = {
   expiresAt: number
   operationId: string
   state: RegionCaptureState
+  capturedRevision: number
   timer?: ReturnType<typeof setTimeout>
   busy: boolean
 }
@@ -42,7 +43,6 @@ type Dependencies = {
   execute: (
     operation: RegionCaptureOperation,
     session: Pick<Session, "token" | "context">,
-    rectangle?: RegionRectangle,
   ) => Promise<unknown>
   cleanup: (context: TabContext, token?: string) => Promise<void>
   emit: (event: RuntimeEvent) => void
@@ -53,6 +53,17 @@ type Dependencies = {
   ) => Promise<JsonValue>
 }
 
+function sameRectangle(left: RegionRectangle | null, right: RegionRectangle | null): boolean {
+  return (
+    left !== null &&
+    right !== null &&
+    left.x === right.x &&
+    left.y === right.y &&
+    left.width === right.width &&
+    left.height === right.height
+  )
+}
+
 /** Memory-only ownership. The content surface does not authorize capture or a new owner. */
 export class RegionCaptureWorker {
   private active?: Session
@@ -60,6 +71,7 @@ export class RegionCaptureWorker {
   private version = 0
   private cleanupQueue: Promise<void> = Promise.resolve()
   private dirty = new Map<string, Session>()
+  private cleanedOwner?: Pick<Session, "clientId" | "operationId" | "context">
 
   constructor(private readonly deps: Dependencies) {}
 
@@ -101,6 +113,11 @@ export class RegionCaptureWorker {
       .then(async () => {
         await this.deps.cleanup(session.context, session.token)
         this.dirty.delete(session.token)
+        this.cleanedOwner = {
+          clientId: session.clientId,
+          operationId: session.operationId,
+          context: { ...session.context },
+        }
       })
     return this.cleanupQueue
   }
@@ -222,8 +239,11 @@ export class RegionCaptureWorker {
         expiresAt: Date.now() + REGION_CAPTURE_LIMITS.lifetimeMs,
         operationId: request.params.operationId,
         state: { active: false },
+        capturedRevision: -1,
         busy: false,
       }
+      // A new possible surface invalidates removal proof for any earlier operation.
+      this.cleanedOwner = undefined
       // Own the token before injection. Content can report state before startup returns.
       this.active = session
       session.timer = setTimeout(() => {
@@ -267,9 +287,8 @@ export class RegionCaptureWorker {
   private async execute(
     operation: RegionCaptureOperation,
     session: Session,
-    rectangle?: RegionRectangle,
   ): Promise<RegionCaptureState> {
-    const value = await this.deps.execute(operation, session, rectangle)
+    const value = await this.deps.execute(operation, session)
     if (
       typeof value !== "object" ||
       value === null ||
@@ -317,39 +336,6 @@ export class RegionCaptureWorker {
     this.assertOwner(session, signal)
   }
 
-  async update(
-    request: RuntimeRequest<"regionCapture.update">,
-    signal?: AbortSignal,
-  ): Promise<JsonValue> {
-    const session = this.owner(request.params.clientId, request.params.operationId)
-    assertTabContext(request.tabContext, session.context)
-    if (session.busy) throw new RuntimeError("INVALID_REQUEST", "Region capture is busy")
-    session.busy = true
-    try {
-      await this.guard(session, signal)
-      const state = await this.execute("update", session, request.params.rectangle)
-      this.assertOwner(session, signal)
-      if (!state.active) {
-        await this.cancel("protection-lost")
-        this.cancelled()
-      }
-      await this.guard(session, signal)
-      this.remember(session, state)
-      return { clientId: session.clientId, operationId: session.operationId, state: session.state }
-    } catch (error) {
-      if (this.active === session) {
-        await this.cancel(
-          error instanceof RuntimeError && error.code === "PERMISSION_DENIED"
-            ? "access-revoked"
-            : "protection-lost",
-        ).catch(() => undefined)
-      }
-      throw error
-    } finally {
-      session.busy = false
-    }
-  }
-
   async stop(request: RuntimeRequest<"regionCapture.stop">): Promise<JsonValue> {
     const clientId = request.params.clientId
     if (
@@ -372,10 +358,17 @@ export class RegionCaptureWorker {
         await this.clean(session)
     }
     if (!hadOwner && this.dirty.size === 0) {
-      // Cleanup is not a page read: a restarted panel can retain a surface in another window.
-      const target = request.tabContext ?? (await this.deps.context())
       if (this.active || this.starting) this.cancelled()
-      await this.orphanCleanup(target)
+      const cleaned = this.cleanedOwner
+      if (cleaned?.clientId === clientId && cleaned.operationId === request.params.operationId) {
+        // Reuse only confirmed token removal, never DOM absence or a changed context.
+        assertTabContext(request.tabContext, cleaned.context)
+      } else {
+        // A worker restart has no removal proof and still requires original-target cleanup.
+        const target = request.tabContext ?? (await this.deps.context())
+        if (this.active || this.starting) this.cancelled()
+        await this.orphanCleanup(target)
+      }
     }
     return { active: false }
   }
@@ -386,20 +379,53 @@ export class RegionCaptureWorker {
   ): Promise<JsonValue> {
     const session = this.owner(request.params.clientId, request.params.operationId)
     assertTabContext(request.tabContext, session.context)
+    const selectionRevision = request.params.selectionRevision
+    if (selectionRevision <= session.capturedRevision)
+      throw new RuntimeError("INVALID_REQUEST", "This region selection was already captured")
     if (session.busy) throw new RuntimeError("INVALID_REQUEST", "Region capture is busy")
     session.busy = true
     try {
       await this.guard(session, signal)
-      await this.deps.capturePermission(request.confirmed)
-      await this.guard(session, signal)
-      // The state operation independently verifies the live surface's protection.
+      // Notifications are hints. Only independently read, protected state can authorize capture.
       const before = await this.execute("state", session)
       this.assertOwner(session, signal)
-      if (!before.active || !before.rectangle || before.dragging || before.frozen)
-        throw new RuntimeError("INVALID_REQUEST", "Select a region before capture")
+      if (
+        !before.active ||
+        !before.rectangle ||
+        before.dragging ||
+        before.frozen ||
+        before.committedRevision !== selectionRevision ||
+        before.revision !== selectionRevision
+      )
+        throw new RuntimeError("INVALID_REQUEST", "Complete a new region selection before capture")
+      await this.deps.capturePermission(request.confirmed)
+      await this.guard(session, signal)
+      const confirmed = await this.execute("state", session)
+      this.assertOwner(session, signal)
+      if (
+        !confirmed.active ||
+        confirmed.frozen ||
+        confirmed.dragging ||
+        confirmed.committedRevision !== selectionRevision ||
+        confirmed.revision !== before.revision ||
+        !sameRectangle(confirmed.rectangle, before.rectangle) ||
+        confirmed.width !== before.width ||
+        confirmed.height !== before.height
+      )
+        throw new RuntimeError("STALE_CONTEXT", "Region selection changed during confirmation")
       const frozen = await this.execute("freeze", session)
       await this.guard(session, signal)
-      if (!frozen.active || !frozen.frozen || frozen.dragging || !frozen.rectangle)
+      if (
+        !frozen.active ||
+        !frozen.frozen ||
+        frozen.dragging ||
+        !frozen.rectangle ||
+        frozen.committedRevision !== selectionRevision ||
+        frozen.revision !== before.revision + 1 ||
+        !sameRectangle(frozen.rectangle, before.rectangle) ||
+        frozen.width !== before.width ||
+        frozen.height !== before.height
+      )
         throw new RuntimeError("INVALID_REQUEST", "Region capture could not freeze the selection")
       this.remember(session, frozen)
       const assertFrozen = async (): Promise<void> => {
@@ -411,7 +437,8 @@ export class RegionCaptureWorker {
           !state.active ||
           !state.frozen ||
           state.dragging ||
-          JSON.stringify(state.rectangle) !== JSON.stringify(frozen.rectangle) ||
+          state.committedRevision !== selectionRevision ||
+          !sameRectangle(state.rectangle, frozen.rectangle) ||
           state.revision !== frozen.revision ||
           state.width !== frozen.width ||
           state.height !== frozen.height
@@ -419,6 +446,8 @@ export class RegionCaptureWorker {
           throw new RuntimeError("STALE_CONTEXT", "Region capture changed during capture")
       }
       await assertFrozen()
+      // Consume before the native capture attempt, including attempts that fail or are cancelled.
+      session.capturedRevision = selectionRevision
       let image = await this.deps.capture(request, session.context)
       await assertFrozen()
       if (
@@ -488,12 +517,27 @@ export class RegionCaptureWorker {
       throw new RuntimeError("PERMISSION_DENIED", "Invalid region capture notification")
     this.assertOwner(session)
     assertTabContext(message.tabContext, session.context)
+    if (message.state.active && (message.state.committedRevision === null || message.state.frozen))
+      return { accepted: true }
     await this.guard(session)
     if (!message.state.active) {
       // Do not await startup or cleanup: startup can be waiting for this acknowledgement.
       void this.cancel(message.reason ?? "page").catch(() => undefined)
     } else {
-      this.remember(session, message.state)
+      // Do not let an unverified hint replace authoritative state or poison later revisions.
+      const state = await this.execute("state", session)
+      await this.guard(session)
+      if (
+        state.active &&
+        !state.frozen &&
+        !state.dragging &&
+        state.committedRevision === message.state.committedRevision &&
+        state.revision === message.state.revision &&
+        state.width === message.state.width &&
+        state.height === message.state.height &&
+        sameRectangle(state.rectangle, message.state.rectangle)
+      )
+        this.remember(session, state)
     }
     return { accepted: true }
   }

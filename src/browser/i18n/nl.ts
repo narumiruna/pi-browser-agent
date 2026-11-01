@@ -4,30 +4,19 @@ export default {
   "Reset page pinch zoom before capturing a region":
     "Stel de knijpzoom van de pagina opnieuw in voordat u een gebied vastlegt",
   "Capture region": "Gebied vastleggen",
-  "Select a region": "Selecteer een gebied",
-  "Drag on the page or enter CSS pixels. Minimum: 8 × 8.":
-    "Sleep op de pagina of voer CSS-pixels in. Minimum: 8 × 8.",
-  X: "X",
-  Y: "Y",
-  Width: "Breedte",
-  Height: "Hoogte",
-  "Chrome temporarily captures the full viewport. Only the crop leaves the worker.":
-    "Chrome legt tijdelijk het volledige zichtbare gebied vast. Alleen de uitsnede verlaat de worker.",
-  "Preview region": "Gebied bekijken",
-  "Region preview": "Gebiedsvoorbeeld",
-  "Only this crop is attached. Text, selected elements, history, and approved page reads can include other content.":
-    "Alleen deze uitsnede wordt bijgevoegd. Tekst, geselecteerde elementen, geschiedenis en goedgekeurde paginalezingen kunnen andere inhoud bevatten.",
-  Retake: "Opnieuw vastleggen",
+  "Cancel region capture": "Gebiedsopname annuleren",
+  "Retry region cleanup": "Opruimen van gebied opnieuw proberen",
+  "Retry region attachment": "Gebied opnieuw bijvoegen",
+  "Chrome temporarily captures the full viewport. Only the crop leaves the worker. Drag to attach a crop. Arrow keys move; Shift+Arrow resizes; Alt uses 1 px. Enter attaches; Escape cancels.":
+    "Chrome legt tijdelijk het volledige zichtbare gebied vast. Alleen de uitsnede verlaat de worker. Sleep om een uitsnede bij te voegen. Pijlen verplaatsen; Shift+pijl wijzigt het formaat; Alt gebruikt stappen van 1 px. Enter voegt bij; Escape annuleert.",
   "Finish or cancel region capture before sending":
     "Voltooi of annuleer de gebiedsopname voordat u verzendt",
-  "Select a region at least 8 CSS pixels wide and high":
-    "Selecteer een gebied van minstens 8 CSS-pixels breed en hoog",
   "Could not confirm region cleanup. Reload the page before sending.":
     "Verwijdering van de gebiedsselectie kon niet worden bevestigd. Herlaad de pagina voordat u verzendt.",
   "The page changed. Select a new region.": "De pagina is gewijzigd. Selecteer een nieuw gebied.",
   "Region capture is unavailable on this page": "Gebiedsopname is niet beschikbaar op deze pagina",
-  "Could not preview the region. Select again or retry.":
-    "Het gebied kon niet worden weergegeven. Selecteer opnieuw of probeer het nogmaals.",
+  "Could not capture the region. Select again or retry.":
+    "Het gebied kon niet worden vastgelegd. Selecteer opnieuw of probeer het nogmaals.",
 
   "Draw on page": "Op de pagina tekenen",
   "Cancel page drawing": "Tekenen op de pagina annuleren",

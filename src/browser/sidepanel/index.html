@@ -151,22 +151,7 @@
           hidden
         ></div>
 
-        <section id="region-selection" class="region-selection" aria-labelledby="region-selection-title" hidden>
-          <strong id="region-selection-title">Select a region</strong>
-          <p>Drag on the page or enter CSS pixels. Minimum: 8 × 8.</p>
-          <div class="region-fields">
-            <label for="region-x">X<input id="region-x" type="number" min="0" step="any" value="0" /></label>
-            <label for="region-y">Y<input id="region-y" type="number" min="0" step="any" value="0" /></label>
-            <label for="region-width">Width<input id="region-width" type="number" min="8" step="any" value="200" /></label>
-            <label for="region-height">Height<input id="region-height" type="number" min="8" step="any" value="150" /></label>
-          </div>
-          <p>Chrome temporarily captures the full viewport. Only the crop leaves the worker.</p>
-          <div class="region-actions">
-            <button id="region-preview-action" type="button">Preview region</button>
-            <button id="region-cancel" type="button">Cancel</button>
-          </div>
-        </section>
-
+        <span id="region-capture-help" class="visually-hidden">Chrome temporarily captures the full viewport. Only the crop leaves the worker. Drag to attach a crop. Arrow keys move; Shift+Arrow resizes; Alt uses 1 px. Enter attaches; Escape cancels.</span>
         <span id="page-pen-help" class="visually-hidden">Page content can move beneath your marks. Send captures only the visible area.</span>
         <textarea
           id="prompt"
@@ -245,7 +230,7 @@
                 <button id="page-pen-clear" type="button" class="icon-button page-pen-tool" aria-label="Clear" disabled><svg class="radix-icon" viewBox="0 0 15 15" aria-hidden="true"><path d="M2 4h11M5 4V2h5v2M3.5 4l.75 9h6.5l.75-9M6 6v5M9 6v5"/></svg></button>
               </fieldset>
             </div>
-            <button type="button" id="region-capture" class="icon-button" aria-label="Capture region" title="Capture region" aria-pressed="false">
+            <button type="button" id="region-capture" class="icon-button" aria-label="Capture region" title="Capture region" aria-pressed="false" aria-describedby="region-capture-help">
               <svg class="radix-icon" viewBox="0 0 15 15" aria-hidden="true"><path d="M1.5 5V1.5H5m5 0h3.5V5m0 5v3.5H10m-5 0H1.5V10M4.5 4.5h6v6h-6Z" /></svg>
             </button>
             <button type="button" id="abort" class="stop-button" hidden>Stop</button>
@@ -664,19 +649,6 @@
       <p id="session-tree-error" role="alert"></p>
       <div class="dialog-actions">
         <button type="button" id="session-tree-cancel" data-tree-cancel class="subtle">Cancel</button>
-      </div>
-    </dialog>
-
-    <dialog id="region-preview-dialog" class="region-preview-dialog" aria-labelledby="region-preview-title" aria-describedby="region-preview-disclosure">
-      <div class="region-preview-content">
-        <h2 id="region-preview-title">Region preview</h2>
-        <img id="region-preview-image" alt="Region preview" />
-        <p id="region-preview-disclosure">Only this crop is attached. Text, selected elements, history, and approved page reads can include other content.</p>
-        <div class="region-actions">
-          <button id="region-attach" type="button" class="primary">Attach</button>
-          <button id="region-retake" type="button">Retake</button>
-          <button id="region-preview-cancel" type="button">Cancel</button>
-        </div>
       </div>
     </dialog>
 

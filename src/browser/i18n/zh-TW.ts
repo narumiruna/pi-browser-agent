@@ -3,27 +3,17 @@ import type { Catalog } from "./en.js"
 export default {
   "Reset page pinch zoom before capturing a region": "擷取區域前請重設頁面的雙指縮放",
   "Capture region": "擷取區域",
-  "Select a region": "選取區域",
-  "Drag on the page or enter CSS pixels. Minimum: 8 × 8.":
-    "在頁面上拖曳或輸入 CSS 像素。最小：8 × 8。",
-  X: "X",
-  Y: "Y",
-  Width: "寬度",
-  Height: "高度",
-  "Chrome temporarily captures the full viewport. Only the crop leaves the worker.":
-    "Chrome 會暫時擷取整個可視範圍。只有裁切後的影像會離開 worker。",
-  "Preview region": "預覽區域",
-  "Region preview": "區域預覽",
-  "Only this crop is attached. Text, selected elements, history, and approved page reads can include other content.":
-    "只會附加此裁切影像。文字、選取的元素、歷程記錄和已核准的頁面讀取可能包含其他內容。",
-  Retake: "重新擷取",
+  "Cancel region capture": "取消區域擷取",
+  "Retry region cleanup": "重試移除區域選取",
+  "Retry region attachment": "重試附加區域影像",
+  "Chrome temporarily captures the full viewport. Only the crop leaves the worker. Drag to attach a crop. Arrow keys move; Shift+Arrow resizes; Alt uses 1 px. Enter attaches; Escape cancels.":
+    "Chrome 會暫時擷取整個可視範圍。只有裁切後的影像會離開 worker。 拖曳即可附加裁切影像。方向鍵移動；Shift+方向鍵調整大小；Alt 使用 1 px 單位。Enter 附加；Escape 取消。",
   "Finish or cancel region capture before sending": "傳送前請完成或取消區域擷取",
-  "Select a region at least 8 CSS pixels wide and high": "請選取寬度與高度各至少 8 CSS 像素的區域",
   "Could not confirm region cleanup. Reload the page before sending.":
     "無法確認已移除區域選取。傳送前請重新載入頁面。",
   "The page changed. Select a new region.": "頁面已變更。請選取新區域。",
   "Region capture is unavailable on this page": "此頁面無法使用區域擷取",
-  "Could not preview the region. Select again or retry.": "無法預覽區域。請重新選取或再試一次。",
+  "Could not capture the region. Select again or retry.": "無法擷取區域。請重新選取或再試一次。",
 
   "Draw on page": "在頁面上繪圖",
   "Cancel page drawing": "取消頁面繪圖",

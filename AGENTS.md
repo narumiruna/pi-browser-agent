@@ -28,6 +28,16 @@
 - Separate responsibilities only when this makes the code easier to understand, test, or change independently.
 - Use `biome.json` as the source for formatting and lint rules.
 
+## User interface
+
+- Reuse existing composer controls, attachment previews, and layout before adding feature-specific UI.
+- Prefer compact icon buttons with existing sizes and spacing for feature actions.
+  - Give each icon button an accessible name and a tooltip.
+- Put secondary options in a small icon-triggered menu or popover that is closed by default.
+- Show mode-specific options only while that mode is active.
+- Do not add a dedicated panel, card, coordinate form, or explanatory block when existing or compact contextual controls can complete the same task.
+- Preserve keyboard operation, visible focus, cancellation, and required permission and action confirmations when reducing UI.
+
 ## Commands
 
 - Never run commands that open an interactive editor, pager, REPL, TUI, or prompt.

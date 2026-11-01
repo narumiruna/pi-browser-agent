@@ -4,30 +4,19 @@ export default {
   "Reset page pinch zoom before capturing a region":
     "Bir bölge yakalamadan önce sayfanın sıkıştırma yakınlaştırmasını sıfırlayın",
   "Capture region": "Bölgeyi yakala",
-  "Select a region": "Bir bölge seçin",
-  "Drag on the page or enter CSS pixels. Minimum: 8 × 8.":
-    "Sayfada sürükleyin veya CSS pikseli girin. En az: 8 × 8.",
-  X: "X",
-  Y: "Y",
-  Width: "Genişlik",
-  Height: "Yükseklik",
-  "Chrome temporarily captures the full viewport. Only the crop leaves the worker.":
-    "Chrome geçici olarak tüm görünüm alanını yakalar. Worker dışına yalnızca kırpılmış görüntü çıkar.",
-  "Preview region": "Bölge önizlemesi",
-  "Region preview": "Bölge önizlemesi",
-  "Only this crop is attached. Text, selected elements, history, and approved page reads can include other content.":
-    "Yalnızca bu kırpılmış görüntü eklenir. Metin, seçili öğeler, geçmiş ve onaylı sayfa okumaları başka içerik içerebilir.",
-  Retake: "Yeniden çek",
+  "Cancel region capture": "Bölge yakalamayı iptal et",
+  "Retry region cleanup": "Bölge temizliğini yeniden dene",
+  "Retry region attachment": "Bölge eklemeyi yeniden dene",
+  "Chrome temporarily captures the full viewport. Only the crop leaves the worker. Drag to attach a crop. Arrow keys move; Shift+Arrow resizes; Alt uses 1 px. Enter attaches; Escape cancels.":
+    "Chrome geçici olarak tüm görünüm alanını yakalar. Worker dışına yalnızca kırpılmış görüntü çıkar. Kırpılmış görüntüyü eklemek için sürükleyin. Oklar taşır; Shift+ok boyutlandırır; Alt 1 px adım kullanır. Enter ekler; Escape iptal eder.",
   "Finish or cancel region capture before sending":
     "Göndermeden önce bölge yakalamayı bitirin veya iptal edin",
-  "Select a region at least 8 CSS pixels wide and high":
-    "En az 8 CSS pikseli genişliğinde ve yüksekliğinde bir bölge seçin",
   "Could not confirm region cleanup. Reload the page before sending.":
     "Bölge seçiminin kaldırıldığı doğrulanamadı. Göndermeden önce sayfayı yeniden yükleyin.",
   "The page changed. Select a new region.": "Sayfa değişti. Yeni bir bölge seçin.",
   "Region capture is unavailable on this page": "Bu sayfada bölge yakalama kullanılamıyor",
-  "Could not preview the region. Select again or retry.":
-    "Bölge önizlemesi oluşturulamadı. Yeniden seçin veya tekrar deneyin.",
+  "Could not capture the region. Select again or retry.":
+    "Bölge yakalanamadı. Yeniden seçin veya tekrar deneyin.",
 
   "Draw on page": "Sayfada çiz",
   "Cancel page drawing": "Sayfada çizimi iptal et",
