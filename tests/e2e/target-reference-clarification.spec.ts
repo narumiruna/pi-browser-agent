@@ -139,6 +139,13 @@ test("image pair IDs reach the provider; explicit selection resumes once and his
     await expect(page.locator("#page-pen")).toBeDisabled()
     await expect(card.locator("#clarification-answer")).toBeDisabled()
     await page.locator("#prompt").fill("Keep my next draft")
+    await page.evaluate(async () => {
+      const key = "piBrowserAgentSettings"
+      const current = (await chrome.storage.local.get(key))[key] as Record<string, unknown>
+      await chrome.storage.local.set({ [key]: { ...current, language: "ja" } })
+    })
+    await expect(page.locator("html")).toHaveAttribute("lang", "en")
+    await expect(card.getByRole("heading", { name: "Question from Pi", exact: true })).toBeVisible()
     const radio = card.getByRole("radio", { name: /Reference image/ })
     await radio.focus()
     await radio.press("Space")
@@ -146,10 +153,12 @@ test("image pair IDs reach the provider; explicit selection resumes once and his
     await card.locator("#clarification-answer").focus()
     await card.locator("#clarification-answer").press("Enter")
     await finished(page, "Pair understood")
+    await expect(page.locator("html")).toHaveAttribute("lang", "ja")
     expect(requests).toHaveLength(2)
     expect(JSON.stringify(requests[1]?.input)).toContain("option-2")
     expect(JSON.stringify(requests[1]?.input)).toContain("actionApproval")
     await expect(page.locator("#prompt")).toHaveValue("Keep my next draft")
+    await expect(page.locator("#prompt")).toBeFocused()
     await expect(page.locator("#target-reference-pair")).toBeHidden()
     await expect(page.locator("#transcript")).toContainText(question.question)
     await page.reload()
@@ -291,6 +300,61 @@ test("Stop and panel restart cannot revive a pending question or send a late ans
     await expect(h.controller.locator("#transcript")).toContainText(question.question)
     expect(requests).toBe(2)
     await expect(h.controller.locator("#send")).toBeEnabled()
+    expect(h.pageErrors).toEqual([])
+  } finally {
+    await h.close()
+  }
+})
+
+test("credential removal in another conversation cancels the pending question without continuation", async () => {
+  const h = await launchExtensionHarness()
+  try {
+    let requests = 0
+    await h.context.route(CODEX_RESPONSES_URL, async (route) => {
+      requests++
+      await route.fulfill({
+        status: 200,
+        contentType: "text/event-stream",
+        body: toolCallResponse(requests, "request_user_input", question),
+      })
+    })
+    await configureMockCodex(h)
+    const sessionId = await h.controller.locator("#sessions").inputValue()
+    await submit(h.controller)
+    await expect(h.controller.locator("#clarification-card")).toBeVisible()
+    const other = await h.context.newPage()
+    await other.goto(h.controller.url())
+    await waitForConversationReady(other)
+    expect(await other.locator("#sessions").inputValue()).not.toBe(sessionId)
+    await expect(other.locator("#auth-status")).toHaveAttribute("data-logged-in", "true")
+    await other.locator("#account-menu-trigger").click()
+    await other.locator("#logout").click()
+    await expect(h.controller.locator("#clarification-card")).toBeHidden()
+    await expect(h.controller.locator("#abort")).toBeHidden()
+    await expect(h.controller.locator("#auth-status")).toHaveAttribute("data-logged-in", "false")
+    await expect(h.controller.locator("#transcript")).toContainText(question.question)
+    const saved = await h.controller.evaluate(async (id) => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const open = indexedDB.open("pi-browser-agent-sessions", 1)
+        open.onsuccess = () => resolve(open.result)
+        open.onerror = () => reject(open.error)
+      })
+      try {
+        return await new Promise<{ messages: { role: string; isError?: boolean }[] }>(
+          (resolve, reject) => {
+            const get = db.transaction("sessions").objectStore("sessions").get(id)
+            get.onsuccess = () => resolve(get.result)
+            get.onerror = () => reject(get.error)
+          },
+        )
+      } finally {
+        db.close()
+      }
+    }, sessionId)
+    expect(saved.messages.some((message) => message.role === "toolResult" && message.isError)).toBe(
+      true,
+    )
+    expect(requests).toBe(1)
     expect(h.pageErrors).toEqual([])
   } finally {
     await h.close()

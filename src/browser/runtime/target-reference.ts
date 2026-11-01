@@ -70,6 +70,7 @@ export function createUserContextManifest(
   for (const image of images) {
     if (
       !record(image) ||
+      !keys(image, ["type", "data", "mimeType"]) ||
       image.type !== "image" ||
       typeof image.mimeType !== "string" ||
       typeof image.data !== "string" ||

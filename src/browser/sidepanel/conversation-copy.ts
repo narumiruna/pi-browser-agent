@@ -212,6 +212,14 @@ const ACTIVITY_KEYS: Record<string, ActivityKey> = {
 }
 
 export function activityText(name: string, stage: ActivityStage, error = false): string {
+  if (name === "request_user_input")
+    return t(
+      error
+        ? "The question is no longer active"
+        : stage === "active"
+          ? "Question from Pi"
+          : "Answer",
+    )
   const activity =
     ENGLISH_ACTIVITIES[name.startsWith("mcp_") ? "mcp" : (ACTIVITY_KEYS[name] ?? "default")]
   return t(error ? activity.error : activity[stage])

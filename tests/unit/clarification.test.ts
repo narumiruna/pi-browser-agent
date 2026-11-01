@@ -25,10 +25,10 @@ function setup(element = false) {
   )
   return { run, changed, card: () => card }
 }
-function batch(names: string[]) {
+function batch(names: string[], generation = 0) {
   const content = names.map((name, i) => ({
     type: "toolCall",
-    id: `${i}`,
+    id: `${generation}-${i}`,
     name,
     arguments: request,
   }))
@@ -126,7 +126,7 @@ describe("clarification contracts and callback ownership", () => {
       true,
     ])
     for (let i = 0; i < 2; i++) {
-      const next = required(batch(["request_user_input"])[0])
+      const next = required(batch(["request_user_input"], i + 1)[0])
       run.inspect(next.assistantMessage)
       expect(run.beforeToolCall(next)).toBeUndefined()
     }
@@ -134,6 +134,28 @@ describe("clarification contracts and callback ownership", () => {
     const duplicate = setup().run
     for (const context of batch(["request_user_input", "mcp_call", "request_user_input"]))
       expect(duplicate.beforeToolCall(context)?.block).toBe(true)
+  })
+
+  test("repeated model call IDs cannot reopen a question under an old answer key", async () => {
+    const s = setup()
+    const first = required(batch(["request_user_input"])[0])
+    first.toolCall.id = key.toolCallId
+    expect(s.run.beforeToolCall(first)).toBeUndefined()
+    const pending = s.run.tool().execute("question", request)
+    s.run.answer(key, { optionId: "option-1" })
+    await pending
+    const repeated = required(batch(["request_user_input"])[0])
+    repeated.toolCall.id = key.toolCallId
+    expect(s.run.beforeToolCall(repeated)?.block).toBe(true)
+    expect(s.run.answer(key, { optionId: "option-2" })).toBe(false)
+  })
+
+  test("a question ID that collides with a sibling rejects the whole batch", () => {
+    const s = setup()
+    const calls = batch(["browser_click", "request_user_input"])
+    required(calls[0]).toolCall.id = required(calls[1]).toolCall.id
+    for (const context of calls) expect(s.run.beforeToolCall(context)?.block).toBe(true)
+    expect(s.run.waiting).toBe(false)
   })
 
   test("a failed presenter cancels rather than leaving a deadlocked run", async () => {

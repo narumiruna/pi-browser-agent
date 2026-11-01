@@ -75,10 +75,38 @@ function sameKey(left: ClarificationKey, right: ClarificationKey): boolean {
   )
 }
 
+export function createClarificationTool(execute: AgentTool["execute"]): AgentTool {
+  return {
+    name: CLARIFICATION_TOOL,
+    label: "Ask the user",
+    description:
+      "Ask one focused question when the intended target or result is unclear. Supply two to five plain-text options. Optional attachmentId must be from this run's submitted user-context manifest. No default answer. This does not approve actions. Do not combine with other tools: sibling calls are discarded, not deferred.",
+    parameters: Type.Object(
+      {
+        question: Type.String({ minLength: 1, maxLength: CLARIFICATION_LIMITS.question }),
+        options: Type.Array(
+          Type.Object(
+            {
+              label: Type.String({ minLength: 1, maxLength: CLARIFICATION_LIMITS.label }),
+              attachmentId: Type.Optional(Type.String({ minLength: 1, maxLength: 128 })),
+            },
+            { additionalProperties: false },
+          ),
+          { minItems: 2, maxItems: 5 },
+        ),
+      },
+      { additionalProperties: false },
+    ),
+    replay: "never",
+    execute,
+  }
+}
+
 /** Owns one run's local callback. A clarification never produces action approval. */
 export class ClarificationRun {
   private calls = 0
   private readonly batches = new WeakMap<AssistantMessage, boolean>()
+  private readonly questionIds = new Set<string>()
   private pending?: { card: PendingClarification; settle: (answer?: ClarificationAnswer) => void }
   private active = true
   private elementContextValid = true
@@ -110,11 +138,17 @@ export class ClarificationRun {
   inspect(message: AssistantMessage): boolean {
     const previous = this.batches.get(message)
     if (previous !== undefined) return previous
-    const calls = message.content.filter(
-      (part) => part.type === "toolCall" && part.name === CLARIFICATION_TOOL,
-    )
+    const toolCalls = message.content.filter((part) => part.type === "toolCall")
+    const calls = toolCalls.filter((part) => part.name === CLARIFICATION_TOOL)
     this.calls += calls.length
-    const rejected = calls.length > 1 || this.calls > CLARIFICATION_LIMITS.calls
+    const reusedId = calls.some(
+      (call) =>
+        !call.id ||
+        this.questionIds.has(call.id) ||
+        toolCalls.filter((other) => other.id === call.id).length !== 1,
+    )
+    for (const call of calls) this.questionIds.add(call.id)
+    const rejected = calls.length > 1 || reusedId || this.calls > CLARIFICATION_LIMITS.calls
     this.batches.set(message, rejected)
     return rejected
   }
@@ -132,7 +166,7 @@ export class ClarificationRun {
       return {
         block: true,
         reason: rejected
-          ? "Clarification batch rejected: use one question, at most three per run."
+          ? "Clarification batch rejected: use one new question ID, at most three per run."
           : "Sibling call discarded: ask the user first. This call will not be replayed.",
       }
     }
@@ -174,114 +208,92 @@ export class ClarificationRun {
   abort(): void {
     this.active = false
     this.pending?.settle()
+    this.targets.length = 0
   }
 
   tool(): AgentTool {
-    return {
-      name: CLARIFICATION_TOOL,
-      label: "Ask the user",
-      description:
-        "Ask one focused question when the intended target or result is unclear. Supply two to five plain-text options. Optional attachmentId must be from this run's submitted user-context manifest. No default answer. This does not approve actions. Do not combine with other tools: sibling calls are discarded, not deferred.",
-      parameters: Type.Object(
-        {
-          question: Type.String({ minLength: 1, maxLength: CLARIFICATION_LIMITS.question }),
-          options: Type.Array(
-            Type.Object(
-              {
-                label: Type.String({ minLength: 1, maxLength: CLARIFICATION_LIMITS.label }),
-                attachmentId: Type.Optional(Type.String({ minLength: 1, maxLength: 128 })),
-              },
-              { additionalProperties: false },
-            ),
-            { minItems: 2, maxItems: 5 },
-          ),
-        },
-        { additionalProperties: false },
-      ),
-      replay: "never",
-      execute: async (toolCallId, args, signal) => {
-        if (
-          !this.active ||
-          signal?.aborted ||
-          this.pending ||
-          this.calls > CLARIFICATION_LIMITS.calls
+    return createClarificationTool(async (toolCallId, args, signal) => {
+      if (
+        !this.active ||
+        signal?.aborted ||
+        this.pending ||
+        this.calls > CLARIFICATION_LIMITS.calls
+      )
+        throw new Error("Clarification is no longer available")
+      const request = parseClarification(args, new Set(this.targets.map((target) => target.id)))
+      if (
+        !this.elementContextValid &&
+        request.options.some(
+          (option) =>
+            option.attachmentId &&
+            this.targets.some((target) => target.id === option.attachmentId && target.element),
         )
-          throw new Error("Clarification is no longer available")
-        const request = parseClarification(args, new Set(this.targets.map((target) => target.id)))
-        if (
-          !this.elementContextValid &&
-          request.options.some(
-            (option) =>
-              option.attachmentId &&
-              this.targets.some((target) => target.id === option.attachmentId && target.element),
-          )
-        )
-          throw new Error("The target context changed")
-        const card: PendingClarification = {
-          ...request,
-          sessionId: this.sessionId,
-          generation: this.generation,
-          toolCallId,
-          options: request.options.map((option, index) => ({
-            ...option,
-            id: `option-${index + 1}`,
-          })),
-          targets: structuredClone(
-            this.targets.filter((target) =>
-              request.options.some((option) => option.attachmentId === target.id),
-            ),
+      )
+        throw new Error("The target context changed")
+      const card: PendingClarification = {
+        ...request,
+        sessionId: this.sessionId,
+        generation: this.generation,
+        toolCallId,
+        options: request.options.map((option, index) => ({
+          ...option,
+          id: `option-${index + 1}`,
+        })),
+        targets: structuredClone(
+          this.targets.filter((target) =>
+            request.options.some((option) => option.attachmentId === target.id),
           ),
+        ),
+      }
+      const answer = await new Promise<ClarificationAnswer | undefined>((resolve) => {
+        let settled = false
+        const cancel = () => settle()
+        const settle = (value?: ClarificationAnswer) => {
+          if (settled) return
+          settled = true
+          signal?.removeEventListener("abort", cancel)
+          this.pending = undefined
+          resolve(value)
+          try {
+            this.changed(undefined)
+          } catch {
+            /* A disposed view must not retain the callback. */
+          }
         }
-        const answer = await new Promise<ClarificationAnswer | undefined>((resolve) => {
-          let settled = false
-          const cancel = () => settle()
-          const settle = (value?: ClarificationAnswer) => {
-            if (settled) return
-            settled = true
-            signal?.removeEventListener("abort", cancel)
-            this.pending = undefined
-            resolve(value)
-            try {
-              this.changed(undefined)
-            } catch {
-              /* A disposed view must not retain the callback. */
-            }
+        this.pending = { card, settle }
+        signal?.addEventListener("abort", cancel, { once: true })
+        if (signal?.aborted || !this.active) settle()
+        else {
+          try {
+            this.changed(structuredClone(card))
+          } catch {
+            settle()
           }
-          this.pending = { card, settle }
-          signal?.addEventListener("abort", cancel, { once: true })
-          if (signal?.aborted || !this.active) settle()
-          else {
-            try {
-              this.changed(structuredClone(card))
-            } catch {
-              settle()
-            }
-          }
-        })
-        if (!answer || signal?.aborted || !this.active)
-          return {
-            content: [
-              {
-                type: "text",
-                text: "Clarification cancelled. No answer or action approval was given.",
-              },
-            ],
-            details: {},
-            isError: true,
-            terminate: true,
-          }
-        const option =
-          "optionId" in answer
-            ? card.options.find((option) => option.id === answer.optionId)
-            : undefined
-        const result = {
-          version: 1,
-          question: request.question,
-          answer: option ?? answer,
-          actionApproval: false,
         }
-        return { content: [{ type: "text", text: JSON.stringify(result) }], details: {} }
-      },
-    }
+      })
+      if (!answer || signal?.aborted || !this.active)
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Clarification cancelled. No answer or action approval was given.",
+            },
+          ],
+          details: {},
+          isError: true,
+          terminate: true,
+        }
+      const option =
+        "optionId" in answer
+          ? card.options.find((option) => option.id === answer.optionId)
+          : undefined
+      const result = {
+        version: 1,
+        question: request.question,
+        answer: option ?? answer,
+        actionApproval: false,
+      }
+      return { content: [{ type: "text", text: JSON.stringify(result) }], details: {} }
+    })
   }
 }

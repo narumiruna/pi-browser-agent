@@ -526,7 +526,7 @@ test("retains images and selected-element chips when a command is rejected", asy
         () => (window as unknown as ProbeWindow).commandPermissions,
       ),
     ).toEqual([])
-    await harness.controller.locator("#pasted-images button").click()
+    await harness.controller.locator("#pasted-images .remove-pasted-image").click()
     await harness.controller.locator("#element-picker").click()
     await expect(harness.fixturePage.locator("[data-pi-browser-agent-element-picker]")).toHaveCount(
       1,
@@ -598,7 +598,7 @@ test("blocks pending image processing and rechecks attachments before async comm
     await releaseCommandGate(harness.controller)
     await expect(harness.controller.locator("#pasted-images img")).toHaveCount(1)
     await expect(harness.controller.locator("#prompt")).toHaveValue("/new")
-    await harness.controller.locator("#pasted-images button").click()
+    await harness.controller.locator("#pasted-images .remove-pasted-image").click()
 
     const pages = harness.context.pages().length
     await gateSettingsQuery(harness.controller)

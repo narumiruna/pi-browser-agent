@@ -42,6 +42,48 @@ afterEach(() => {
 })
 
 describe("conversation message rendering", () => {
+  test("restored questions and answers remain plain inactive transcript data in production", () => {
+    const document = installDocument()
+    const transcript = document.createElement("div")
+    document.body.append(transcript)
+    const renderer = new TranscriptRenderer(transcript, false)
+    const question = assistantContent([
+      {
+        type: "toolCall",
+        id: "question",
+        name: "request_user_input",
+        arguments: {
+          question: "<script>Which target?</script>",
+          options: [{ label: "First" }, { label: "Second" }],
+        },
+      },
+    ])
+    const answer: AgentMessage = {
+      role: "toolResult",
+      toolCallId: "question",
+      toolName: "request_user_input",
+      timestamp: 2,
+      isError: false,
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            version: 1,
+            question: "Which target?",
+            answer: { id: "option-1", label: "First" },
+            actionApproval: false,
+          }),
+        },
+      ],
+    }
+    for (const session of ["original", "restored-tree-path"]) {
+      renderer.render([structuredClone(question), structuredClone(answer)], session)
+      expect(transcript.textContent).toContain("<script>Which target?</script>")
+      expect(transcript.textContent).toContain("option-1")
+      expect(transcript.querySelectorAll("input,textarea,form,script,a")).toHaveLength(0)
+      expect(transcript.querySelector("#clarification-answer")).toBeNull()
+    }
+  })
   test("keeps answers outside disclosures and preserves toggles, focus, and session boundaries", () => {
     const document = installDocument()
     const transcript = document.createElement("div")

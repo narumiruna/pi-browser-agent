@@ -45,6 +45,14 @@ Rendered-text searches can return bounded snippets, temporary UTF-16 source offs
 
 Native select-option reads are a narrow label-only exception to the form-content exclusion. For a discovered visible single select, the agent can read up to 50 option labels, indices, disabled flags, and label-truncation flags; catalogs above 2,000 options are rejected. Hidden options and options in hidden groups remain excluded. It does not return raw option values, selected flags, selected value, or selected index. Returned labels, text snippets, and other page-tool results can be sent to the selected AI provider and stored in the conversation. No separate background catalog or search history is kept.
 
+### Target/reference pairs and clarification answers
+
+Users can label two submitted attachments as a target and a reference. These labels, attachment IDs, submitted image positions, pin notes, and bounded selected-page context go to the selected model provider as ordinary user-message data. References use already attached images or current-page targets; pair controls do not fetch arbitrary reference URLs or read background tabs.
+
+The agent can ask one local clarification question through the selected provider’s normal tool-call stream. Selecting an option or typing text does not submit it until the user selects **Answer**. That answer returns to the same run and can be stored with the question in the conversation. It does not approve browser or remote actions. There is no additional question service, provider, or credential.
+
+Unsent pair roles and pending choices remain in memory. Stop, panel close, credential removal, or cancellation removes the callback; a page-context change invalidates element-linked answers. Stored questions and answers remain inactive history after restore or tree navigation. They follow the same session retention and deletion rules as other messages. Deleting local history does not delete provider-held data. See [target/reference pairs and questions](docs/target-reference.md).
+
 ### Bookmark information
 
 If the user explicitly confirms a bookmark operation and grants the optional permission, Pi Browser Agent may search bookmark titles and URLs or read a bounded list of recent bookmarks. Every bookmark read requires confirmation or a matching approval for the same operation, query, and limit under the selected confirmation mode. Pi Browser Agent does not create, modify, move, or delete bookmarks.

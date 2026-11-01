@@ -111,6 +111,35 @@ describe("target/reference manifest", () => {
     expect(() => serializeUserContext(manifest)).toThrow(/16 KiB/)
   })
 
+  test("reuses the four-image/3 MB raster-only composer boundary", () => {
+    for (const image of [
+      { ...images[0], mimeType: "image/svg+xml" },
+      { ...images[0], data: "not-base64" },
+      { ...images[0], url: "https://evil.test" },
+    ])
+      expect(() =>
+        createUserContextManifest(
+          { imageIds: ["image"], elementIds: [] },
+          [image as ImageContent],
+          [],
+        ),
+      ).toThrow()
+    expect(() =>
+      createUserContextManifest(
+        { imageIds: ["1", "2", "3", "4", "5"], elementIds: [] },
+        Array.from({ length: 5 }, () => images[0] as ImageContent),
+        [],
+      ),
+    ).toThrow()
+    expect(() =>
+      createUserContextManifest(
+        { imageIds: ["image"], elementIds: [] },
+        [{ type: "image", mimeType: "image/png", data: "AAAA".repeat(1_000_001) }],
+        [],
+      ),
+    ).toThrow(/3 MB/)
+  })
+
   test("shares the five-target bound and rejects malformed nested contexts", () => {
     const elements = Array.from({ length: 5 }, () => selectedTarget())
     const input = { imageIds: [], elementIds: elements.map((_, index) => `element-${index}`) }

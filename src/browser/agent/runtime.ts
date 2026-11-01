@@ -13,6 +13,7 @@ import {
   type Model,
   toToolDeclaration,
 } from "@earendil-works/pi-ai"
+import { CREDENTIALS_KEY } from "../auth/credential-store.js"
 import { safeErrorMessage } from "../auth/redaction.js"
 import { BrowserConfiguration } from "../configuration.js"
 import { McpManager } from "../mcp/manager.js"
@@ -58,6 +59,7 @@ import { type ConfirmationHandler, createBrowserTools } from "./browser-tools.js
 import {
   type ClarificationKey,
   ClarificationRun,
+  createClarificationTool,
   type PendingClarification,
 } from "./clarification.js"
 
@@ -146,6 +148,8 @@ export class BrowserAgentRuntime {
   private skillRun?: SkillRun
   private clarificationRun?: ClarificationRun
   private runGeneration = 0
+  private clarificationPresentation?: ClarificationKey
+  private removeClarificationCredentialWatch?: () => void
   private persistChain: Promise<void> = Promise.resolve()
   private pageToolsEnabled = true
   private treeNavigating = false
@@ -227,12 +231,16 @@ export class BrowserAgentRuntime {
       toolExecution: "parallel",
       beforeToolCall: async (context) => {
         if (
-          this.failedPersistRevision > 0 &&
+          (this.failedPersistRevision > 0 || !this.clarificationRun) &&
           context.assistantMessage.content.some(
             (part) => part.type === "toolCall" && part.name === "request_user_input",
           )
         )
-          return { block: true, reason: "Session persistence failed", terminate: true }
+          return {
+            block: true,
+            reason: "Clarification is unavailable or session persistence failed",
+            terminate: true,
+          }
         return this.clarificationRun?.beforeToolCall(context)
       },
       finishTurn: async (_turn, signal) =>
@@ -272,6 +280,7 @@ export class BrowserAgentRuntime {
 
   async initialize(sessionId?: string): Promise<void> {
     this.assertNotNavigatingTree()
+    if (this.isAwaitingClarification) throw new Error("Answer or stop the pending question first")
     this.currentModel = await this.configuration.initialize()
     this.agent.state.model = this.currentModel
     const preferredId = sessionId ?? (await getActiveSessionId())
@@ -558,18 +567,11 @@ export class BrowserAgentRuntime {
       this.updateAvailableTools()
       this.clarificationRun?.abort()
       this.clarificationRun = this.callbacks.onClarification
-        ? new ClarificationRun(
-            this.session.id,
-            ++this.runGeneration,
-            targets,
-            this.callbacks.onClarification,
+        ? new ClarificationRun(this.session.id, ++this.runGeneration, targets, (card) =>
+            this.presentClarification(card),
           )
         : undefined
-      this.agent.state.tools.push(
-        ...skillRun.tools(),
-        ...remoteTools,
-        ...(this.clarificationRun ? [this.clarificationRun.tool()] : []),
-      )
+      this.agent.state.tools.push(...skillRun.tools(), ...remoteTools)
       this.updateSystemPrompt()
       assertSubmission?.()
       if (images.length > 0) await this.agent.prompt(multimodalUserMessage(content, images))
@@ -680,6 +682,62 @@ export class BrowserAgentRuntime {
     await this.sessionLease.release()
   }
 
+  private presentClarification(card?: PendingClarification): void {
+    this.removeClarificationCredentialWatch?.()
+    this.removeClarificationCredentialWatch = undefined
+    const key = card && {
+      sessionId: card.sessionId,
+      generation: card.generation,
+      toolCallId: card.toolCallId,
+    }
+    this.clarificationPresentation = key
+    if (!card || !key) {
+      this.callbacks.onClarification?.(undefined)
+      return
+    }
+    const providerId = this.currentModel.provider
+    const current = () =>
+      this.clarificationPresentation === key &&
+      this.session.id === key.sessionId &&
+      this.runGeneration === key.generation &&
+      this.currentModel.provider === providerId &&
+      !this.shuttingDown &&
+      this.isAwaitingClarification
+    const changed = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
+      if (area !== "local" || !Object.hasOwn(changes, CREDENTIALS_KEY) || !current()) return
+      const raw = changes[CREDENTIALS_KEY]?.newValue
+      const entry =
+        typeof raw === "object" &&
+        raw !== null &&
+        !Array.isArray(raw) &&
+        Object.hasOwn(raw, providerId)
+          ? (raw as Record<string, unknown>)[providerId]
+          : undefined
+      // Inspect presence/type only. Never forward credential values into the question or run.
+      if (
+        typeof entry !== "object" ||
+        entry === null ||
+        !("type" in entry) ||
+        (entry.type !== "api_key" && entry.type !== "oauth")
+      )
+        this.abort()
+    }
+    chrome.storage.onChanged.addListener(changed)
+    this.removeClarificationCredentialWatch = () => chrome.storage.onChanged.removeListener(changed)
+    this.callbacks.onClarification?.(undefined)
+    // Catch a removal before listener registration. This API returns metadata, not credentials.
+    void this.configuration.credentials
+      .list()
+      .then((providers) => {
+        if (!current()) return
+        if (!providers.some((provider) => provider.providerId === providerId)) this.abort()
+        else this.callbacks.onClarification?.(card)
+      })
+      .catch(() => {
+        if (current()) this.abort()
+      })
+  }
+
   private queueStreamingMessage(
     behavior: StreamingBehavior,
     text: string,
@@ -772,13 +830,21 @@ export class BrowserAgentRuntime {
 
   private availableBrowserTools(): AgentTool[] {
     const enabled = new Set(this.configuration.appSettings.enabledTools)
-    return createBrowserTools(
+    const tools = createBrowserTools(
       this.callbacks.confirm,
       () => this.pageToolsEnabled,
       () => {
         this.pageToolsEnabled = true
       },
     ).filter((tool) => enabled.has(tool.name))
+    if (this.callbacks.onClarification)
+      tools.push(
+        createClarificationTool((...args) => {
+          if (!this.clarificationRun) throw new Error("Clarification is no longer available")
+          return this.clarificationRun.tool().execute(...args)
+        }),
+      )
+    return tools
   }
 
   private updateSystemPrompt(): void {

@@ -292,6 +292,37 @@ The shared drawing proof retains main's arrow-direction, arrowhead, rectangle-ou
    - Unverified behavior: DOM attributes, catalog parity, synthetic events, and screenshots do not prove screen-reader output, native-language accuracy, device handling, or human readability.
    - Release restriction: do not claim screen-reader, physical-device, or linguistic acceptance from automated results. Preserve existing accessibility/native-UI requirements and resolve reported safety-copy defects before publishing an affected locale. No paid/live-provider test is authorized by this handoff.
 
+## Target/reference and clarification acceptance — 2026-11-01
+
+Status: independent automated gates passed on the pre-pin base. Pin integration and final full CI are still in progress. Native UI, assistive technology, and real-provider acceptance remain unverified. Automated completion does not establish product acceptance or release readiness.
+
+### Automated evidence
+
+- Environment: Node 26.11.1, Playwright 1.64.1, headless Chrome for Testing 156.0.8078.4, and locked pi-agent-core/pi-ai 1.4.0.
+- The locked-SDK proof passed four focused tests before production implementation. It covers both call orders and parallel/sequential scheduling, invalid and duplicate questions, a delayed pending callback, and abort without deadlock. Browser and MCP sibling dispatch counts stay zero. A supported `finishTurn` abort/end boundary keeps the provider stream count at one on cancellation; normal explicit answers continue to a second stream once.
+- Latest independent checks: `npm test` passes 2,017 tests in 77 files; `npm run build` passes the browser-boundary probe, typecheck, and 50-file artifact audit. Formatting checks retain only the existing Biome schema-version information. Final integrated full CI remains open.
+- Seven new mocked-stream E2E scenarios pass in `tests/e2e/target-reference-clarification.spec.ts`, including real selected-provider credential removal from a second extension conversation. The pending card disappears, its answer becomes stale, history remains, and the provider stream count stays one. Locale deferral and owned focus restoration also pass. They cover image pair associations, explicit selected/typed answers, invalid IDs, duplicate questions, zero sibling browser/MCP calls, Stop/restart, explicit retry after failed preparation, 320 px keyboard flow, both themes, and forced colors. A later independent MCP call still opens a separate confirmation; decline sends zero remote calls.
+- Unit and runtime tests cover exact keys, Unicode code-point limits, one combined serialized context budget, snapshot isolation, stale keys, double/late Answer, callback disposal, the three-call limit including malformed calls, target-context invalidation, credential removal, shutdown, and persistence failure. A separate regression preserves ordinary tool behavior after an unrelated save failure. Existing histories use ordinary messages, not a callback store.
+- The first pre-pin full CI failed eight browser cases (295/303 passed): three unwanted tree-node count changes, three now-ambiguous generic Remove selectors, one legacy unpaired-context format change, and one standalone capture-proof click count. The tree baseline, specific Remove selectors, and legacy unpaired format were corrected without changing the criteria. The unchanged standalone proof passed in the 14-case focused regression and in the second full CI. No failure was waived or classified as a baseline defect.
+- The second pre-pin `npm run ci -- -- --workers=2` passed 2,011 unit/integration tests and all 303 E2E cases before the later cross-context credential and reused-call-ID review fixes. Those fixes first reproduced in red tests, then passed 30 focused owner/runtime tests, the latest 2,017-test suite, production build, and all seven feature E2E cases. This is not final pin/region integration evidence.
+- Local logs: `/tmp/target-reference-pre-pin-ci.log`, `/tmp/target-reference-pre-pin-ci-2.log`, `/tmp/target-reference-regression-e2e.log`, `/tmp/target-reference-cross-credential-red.log`, `/tmp/target-reference-reused-id-red.log`, `/tmp/target-reference-check.log`, `/tmp/target-reference-unit.log`, `/tmp/target-reference-build.log`, `/tmp/target-reference-e2e.log`, and `/tmp/target-reference-focused.log`. These logs contain mocked fixtures, not live credentials. No screenshots or binary test artifacts are committed.
+
+### Retained external handoff
+
+1. **Supported provider compatibility**
+   - Role: account owner or release tester.
+   - Prerequisites: a production build, approved dedicated provider credentials, authorized request cost, an image-capable supported model, and harmless image/target fixtures.
+   - Action: submit an explicit target/reference task, answer one selected-option question and one typed question, and cancel a third question. Record provider/model/browser versions and each result without tokens or sensitive page data.
+   - Expected result: correct attachment associations, one same-run continuation per explicit Answer, no continuation after Stop, and separate approval for any later protected browser or remote action.
+   - Unverified behavior: real-provider tool-call formatting, image association quality, and question usefulness are not proved by mocked streams.
+   - Release restriction: do not claim provider-wide compatibility from automated fixtures. No live or paid provider request is authorized by this implementation work.
+2. **Native Side Panel and accessibility**
+   - Role: release tester or accessibility reviewer.
+   - Prerequisites: stable Chrome, a dedicated profile, the production build in the actual browser-owned Side Panel, harmless page/image/pin fixtures, and a screen reader with recorded version.
+   - Action: select target/reference roles by keyboard and pointer; remove and repair a member; answer via radio choices and Other; use Stop while waiting. Repeat at 320–360 px, 12/24 px text, light/dark appearance, forced colors, and after native tab/window changes and full Chrome restart.
+   - Expected result: clear role and question labels, visible focus, announced question/error/state changes, no clipped controls, no automatic answer, preserved newer drafts, reliable cancellation, and inactive restored history. Native permission dialogs remain separate from Answer.
+   - Unverified behavior: browser-owned UI, physical-device interaction, actual assistive-technology output, and subjective usability are not proved by headless extension-page tests.
+   - Release restriction: record native/accessibility results before claiming those paths accepted. Preserve existing stable-Chrome and Chrome 116 baseline restrictions elsewhere in this document; agent-plan completion does not waive them.
 
 ## Procedure
 

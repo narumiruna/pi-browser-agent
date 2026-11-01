@@ -35,6 +35,14 @@ Chrome temporarily captures a full-viewport PNG in worker memory. The worker val
 
 Rectangle, token, operation, and unsent cropped-preview state are memory-only. Live selection and pending capture are invalidated by context/geometry/protection/access changes, expiry, panel disconnect, and restart. A finished static preview can survive a later tab change after confirmed cleanup, but not session replacement or disposal. Unconfirmed cleanup blocks Attach and Send until removal is confirmed; retry uses the retained crop without another capture. Sent crops use ordinary embedded-image storage and retention, with no schema migration. Deleting a session removes its local crop, not provider-held data. Cropping does not restrict text, selected elements, history, or separately approved page reads.
 
+## Target/reference and clarification data
+
+[Target/reference pairs and questions](target-reference.md) add no permission, provider endpoint, credential, dependency, storage key, or migration. Pair roles and pending answer choices are memory-only until explicit submission. Page members use their existing current-page checks; image references use already attached raster data. Pair controls and question previews do not capture another image, read a background tab, or fetch a model-selected URL.
+
+The submitted manifest maps immutable IDs to one-based image positions and bounded element/pin context. Pair metadata, pin notes, nested untrusted page fields, all headers, and separating newlines share one 16 KiB UTF-8 budget. Existing five-target and four-image/3,000,000-byte limits remain. The manifest is ordinary user-message text, not system instructions or authorization.
+
+The local question tool shares its question/options with the selected model provider through the normal conversation stream. An explicit Answer returns the selected label/ID or typed answer to that same run. It does not grant browser or remote action approval. Sent manifests, question tool calls, and answer tool results use existing IndexedDB retention and tree limits; there is no separate answer store. Removing the selected credential in any conversation or closing the panel cancels the callback. Pending-only storage observation and the initial presence check stay in the trusted runtime; only provider metadata is used, and no credential payload is forwarded. Settlement disposes the observation, and late work cannot revive controls. Restore and tree navigation never recreate pending controls, live targets, permissions, or automatic tool replay. Delete sessions separately to remove local sent context and answers; provider retention is separate.
+
 ## Optional API permissions
 
 | Permission  | Purpose                                                                                             |

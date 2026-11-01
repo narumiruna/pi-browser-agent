@@ -620,7 +620,7 @@ test("rechecks newer drafts, attachments, and session changes before accepting a
     await expect(page.locator("#pasted-images img")).toHaveCount(1)
     expect(await saved(page)).toEqual(before)
     await dialog(page).press("Escape")
-    await page.locator("#pasted-images button").click()
+    await page.locator("#pasted-images .remove-pasted-image").click()
 
     await openTree(page)
     // A session change can arrive from another UI event while this modal is open.
