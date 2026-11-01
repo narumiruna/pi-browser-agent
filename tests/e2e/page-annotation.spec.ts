@@ -27,7 +27,10 @@ let harness: ExtensionHarness
 let requests: CodexRequest[]
 
 test.beforeEach(async () => {
-  harness = await launchExtensionHarness({ screenshots: true })
+  harness = await launchExtensionHarness({
+    screenshots: true,
+    browserArgs: ["--force-device-scale-factor=1.5"],
+  })
   requests = []
   // No real provider or authentication endpoint is permitted in these scenarios.
   await harness.context.route("https://**/*", (route) => route.abort("blockedbyclient"))
@@ -85,7 +88,13 @@ async function start(): Promise<void> {
   await expect(harness.controller.locator("#page-pen-color")).toBeVisible()
   await expect(harness.controller.locator("#page-pen-width-toggle")).toBeVisible()
   await expect(harness.controller.locator("#page-pen-width")).toBeEnabled()
-  for (const id of ["page-pen-color", "page-pen-width-toggle", "page-pen-undo", "page-pen-clear"])
+  for (const id of [
+    "page-pen-tool",
+    "page-pen-color",
+    "page-pen-width-toggle",
+    "page-pen-undo",
+    "page-pen-clear",
+  ])
     await expect(harness.controller.locator(`#${id}`)).toHaveText("")
   await expect(harness.controller.locator("#page-pen-cancel")).toHaveCount(0)
   await expect(harness.controller.locator("#page-pen")).toHaveAttribute("aria-pressed", "true")
@@ -116,6 +125,16 @@ async function chooseColor(color: string): Promise<void> {
   await expect(trigger).toHaveAttribute("data-color", color)
   await expect(trigger).toHaveAttribute("aria-expanded", "false")
   await expect(harness.controller.locator("#page-pen-palette")).toBeHidden()
+  await expect(trigger).toBeEnabled()
+  await expect(trigger).toBeFocused()
+}
+
+async function chooseTool(tool: "pen" | "arrow" | "rectangle"): Promise<void> {
+  const trigger = harness.controller.locator("#page-pen-tool")
+  await trigger.click()
+  await harness.controller.locator(`#page-pen-tool-menu [data-pen-tool="${tool}"]`).click()
+  await expect(trigger).toHaveAttribute("data-tool", tool)
+  await expect(trigger).toHaveAttribute("aria-expanded", "false")
   await expect(trigger).toBeEnabled()
   await expect(trigger).toBeFocused()
 }
@@ -341,6 +360,108 @@ test("sends marks alone as one colored PNG, clears the draft, and restores only 
   expect(harness.pageErrors).toEqual([])
 })
 
+test("captures mixed freehand, arrow direction and rectangle outline at CSS zoom and DPR 1.5", async () => {
+  const page = harness.fixturePage
+  const cdp = await harness.context.newCDPSession(page)
+  await cdp.send("Emulation.setDeviceMetricsOverride", {
+    width: 1000,
+    height: 700,
+    deviceScaleFactor: 1.5,
+    mobile: false,
+  })
+  await page.evaluate(() => {
+    document.documentElement.style.zoom = "0.9"
+    document.body.innerHTML =
+      '<button id="shape-target" style="position:fixed;left:100px;top:100px;width:250px;height:80px" onclick="document.body.dataset.activated=\'yes\'">Harmless target</button>'
+  })
+  expect(await page.evaluate(() => devicePixelRatio)).toBe(1.5)
+  await start()
+  await chooseTool("arrow")
+  await page.mouse.move(120, 260)
+  await page.mouse.down()
+  await page.mouse.up()
+  await expect(harness.controller.locator("#page-pen-undo")).toBeDisabled()
+  await expect(harness.controller.locator("#send")).toBeDisabled()
+  await page.mouse.down()
+  await page.mouse.move(230, 350)
+  await expect(harness.controller.locator("#page-pen-tool")).toBeDisabled()
+  await expect(harness.controller.locator("#page-pen-undo")).toBeDisabled()
+  await page.mouse.move(360, 260)
+  await page.mouse.up()
+  await expect(harness.controller.locator("#send")).toBeEnabled()
+  await chooseTool("pen")
+  await stroke()
+  await chooseColor("blue")
+  await chooseTool("rectangle")
+  await page.mouse.move(560, 520)
+  await page.mouse.down()
+  await page.mouse.move(420, 380, { steps: 10 })
+  await page.mouse.up()
+  await expect(harness.controller.locator("#send")).toBeEnabled()
+  await page.mouse.click(180, 140) // Before capture: no target activation.
+  await expect(page.locator("body")).not.toHaveAttribute("data-activated", "yes")
+  await gateCapture()
+  await harness.controller.locator("#send").click()
+  await waitCapture() // Native capture has returned; protected response is still pending.
+  await expect(harness.controller.locator("#page-pen-tool")).toBeDisabled()
+  await page.mouse.click(180, 140)
+  await page.mouse.click(180, 140, { button: "right" })
+  await expect(page.locator("body")).not.toHaveAttribute("data-activated", "yes")
+  await expect(page.locator(HOST)).toHaveCount(1)
+  await releaseCapture()
+  await complete()
+  expect(requests).toHaveLength(1)
+  expect(await captures()).toBe(1)
+  const urls = imageUrls(requests[0])
+  expect(urls).toHaveLength(1)
+  const pixels = await page.evaluate(async (source) => {
+    const image = new Image()
+    image.src = source
+    await image.decode()
+    const canvas = document.createElement("canvas")
+    canvas.width = image.width
+    canvas.height = image.height
+    const paint = canvas.getContext("2d")
+    if (!paint) throw new Error("Missing shape PNG decoder")
+    paint.drawImage(image, 0, 0)
+    const sample = (x: number, y: number) => [
+      ...paint.getImageData((x * image.width) / 1000, (y * image.height) / 700, 1, 1).data,
+    ]
+    return {
+      width: image.width,
+      height: image.height,
+      pen: sample(200, 130),
+      arrow: sample(240, 260),
+      head: sample(348, 266),
+      noStartHead: sample(132, 266),
+      noTrail: sample(230, 350),
+      top: sample(500, 380),
+      left: sample(420, 450),
+      right: sample(560, 450),
+      bottom: sample(500, 520),
+      interior: sample(500, 450),
+    }
+  }, urls[0] as string)
+  expect(pixels).toEqual({
+    width: 1500,
+    height: 1050,
+    pen: [239, 68, 68, 255],
+    arrow: [239, 68, 68, 255],
+    head: [239, 68, 68, 255],
+    noStartHead: [252, 252, 252, 255],
+    noTrail: [252, 252, 252, 255],
+    top: [59, 130, 246, 255],
+    left: [59, 130, 246, 255],
+    right: [59, 130, 246, 255],
+    bottom: [59, 130, 246, 255],
+    interior: [252, 252, 252, 255],
+  })
+  console.log(
+    `Production shapes: ${harness.context.browser()?.version()}; CSS zoom 0.9; DPR 1.5; mixed PNG, arrow direction, empty rectangle interior, no preview trail, input shield retained through native capture reply.`,
+  )
+  expect(harness.pageErrors).toEqual([])
+})
+
 test("sends optional text with exactly one annotated input image", async () => {
   await harness.controller.locator("#prompt").fill("Review the blue mark.")
   await start()
@@ -356,6 +477,7 @@ test("sends optional text with exactly one annotated input image", async () => {
 
 test("keeps editable marks after a capture API failure and supports undo, clear, and explicit retry", async () => {
   await start()
+  await chooseTool("arrow")
   await stroke()
   await harness.worker.evaluate(() => {
     const original = chrome.tabs.captureVisibleTab.bind(chrome.tabs)
@@ -373,9 +495,14 @@ test("keeps editable marks after a capture API failure and supports undo, clear,
   await harness.controller.locator("#page-pen-undo").click()
   await expect(harness.controller.locator("#page-pen-clear")).toBeDisabled()
   await expect(harness.controller.locator("#send")).toBeDisabled()
-  await stroke(200)
+  await chooseTool("rectangle")
+  await harness.fixturePage.mouse.move(300, 300)
+  await harness.fixturePage.mouse.down()
+  await harness.fixturePage.mouse.move(120, 200)
+  await harness.fixturePage.mouse.up()
   await harness.controller.locator("#page-pen-clear").click()
   await expect(harness.controller.locator("#page-pen-undo")).toBeDisabled()
+  await chooseTool("pen")
   await stroke(240)
   await harness.controller.locator("#send").click()
   await complete()
@@ -385,6 +512,7 @@ test("keeps editable marks after a capture API failure and supports undo, clear,
 test("retains captured drafts after preparation failure or cancellation; retries never recapture", async () => {
   await harness.controller.locator("#prompt").fill("Keep this draft after preparation fails.")
   await start()
+  await chooseTool("arrow")
   await stroke()
   // Fail the existing public storage API used by run preparation, after capture and cleanup.
   await harness.controller.evaluate(() => {
@@ -690,7 +818,7 @@ async function reachable(page: Page): Promise<void> {
     Math.abs(stripBox.y + stripBox.height / 2 - penBox.y - penBox.height / 2),
   ).toBeLessThanOrEqual(1)
   const controls = page.locator(
-    "#page-pen, #page-pen-color, #page-pen-palette [data-pen-color]:visible, #page-pen-width-toggle, #page-pen-width:visible, #page-pen-undo, #page-pen-clear, #send",
+    "#page-pen, #page-pen-tool, #page-pen-tool-menu [data-pen-tool]:visible, #page-pen-color, #page-pen-palette [data-pen-color]:visible, #page-pen-width-toggle, #page-pen-width:visible, #page-pen-undo, #page-pen-clear, #send",
   )
   for (const control of await controls.all()) {
     await expect(control).toHaveAccessibleName(/\S/)
@@ -758,7 +886,7 @@ async function paletteState(page: Page, selected: string, translated = false): P
 }
 
 test("records narrow UI evidence with color-only named swatches and palette keyboard operation", async () => {
-  test.setTimeout(90_000)
+  test.setTimeout(120_000)
   await start()
   await stroke()
   const page = harness.controller
@@ -775,6 +903,53 @@ test("records narrow UI evidence with color-only named swatches and palette keyb
             )
             await expect(page.locator("html")).toHaveCSS("font-size", `${fontSize}px`)
             await reachable(page)
+            const tool = page.locator("#page-pen-tool")
+            const toolMenu = page.locator("#page-pen-tool-menu")
+            await tool.press("ArrowDown")
+            await expect(toolMenu).toHaveRole("menu")
+            for (const [id, name] of [
+              ["pen", "Freehand"],
+              ["arrow", "Arrow"],
+              ["rectangle", "Rectangle"],
+            ]) {
+              const choice = toolMenu.locator(`[data-pen-tool="${id}"]`)
+              await expect(choice).toHaveRole("menuitemradio")
+              await expect(choice).toHaveAccessibleName(name as string)
+              expect(
+                await choice.locator("span").evaluate((label) => {
+                  const range = document.createRange()
+                  range.selectNodeContents(label)
+                  return range.getClientRects().length
+                }),
+              ).toBe(1)
+            }
+            await page.keyboard.press("Home")
+            await page.keyboard.press("ArrowDown")
+            await expect(toolMenu.locator('[data-pen-tool="arrow"]')).toBeFocused()
+            await page.keyboard.press("Enter")
+            await expect(tool).toHaveAttribute("data-tool", "arrow")
+            await expect(tool).toBeEnabled()
+            await expect(tool).toBeFocused()
+            await tool.press("ArrowUp")
+            await page.keyboard.press("End")
+            await page.keyboard.press("Space")
+            await expect(tool).toHaveAttribute("data-tool", "rectangle")
+            await expect(tool).toBeEnabled()
+            await tool.click()
+            await expect(toolMenu.locator('[data-pen-tool="rectangle"]')).toHaveAttribute(
+              "aria-checked",
+              "true",
+            )
+            await reachable(page)
+            await page.screenshot({
+              path: test
+                .info()
+                .outputPath(`shapes-${width}-${fontSize}-${colorScheme}-${forcedColors}.png`),
+            })
+            await page.keyboard.press("Escape")
+            await expect(toolMenu).toBeHidden()
+            await expect(tool).toBeFocused()
+            await expect(harness.fixturePage.locator(HOST)).toHaveCount(1)
             await page.locator("#page-pen-width-toggle").click()
             await expect(page.locator("#page-pen-width-popup")).toBeVisible()
             const range = page.locator("#page-pen-width")
@@ -862,6 +1037,10 @@ test("records narrow UI evidence with color-only named swatches and palette keyb
             await expect(palette).toBeVisible()
             await page.keyboard.press("Shift+Tab")
             await expect(palette).toBeHidden()
+            await expect(tool).toBeFocused()
+            await tool.press("ArrowDown")
+            await page.keyboard.press("Shift+Tab")
+            await expect(toolMenu).toBeHidden()
             await expect(page.locator("#page-pen")).toBeFocused()
             await expect(harness.fixturePage.locator(HOST)).toHaveCount(1)
           })
@@ -883,6 +1062,9 @@ test("records narrow UI evidence with color-only named swatches and palette keyb
   })
   await expect(page.locator("html")).toHaveAttribute("lang", "en")
   await expect(page.locator("#page-pen")).toHaveAccessibleName("Cancel page drawing")
+  await page.locator("#page-pen-tool").click()
+  await expect(page.locator('[data-pen-tool="rectangle"]')).toHaveAccessibleName("Rectangle")
+  await page.keyboard.press("Escape")
   await page.locator("#page-pen-color").click()
   await paletteState(page, "black")
   await page.keyboard.press("Escape")
@@ -894,6 +1076,12 @@ test("records narrow UI evidence with color-only named swatches and palette keyb
   await expect(page.locator("html")).toHaveAttribute("lang", "zh-TW")
   await expect(page.locator("#page-pen")).toHaveAccessibleName("在頁面上繪圖")
   await start()
+  await expect(page.locator("#page-pen-tool")).toHaveAccessibleName("繪圖工具")
+  await page.locator("#page-pen-tool").click()
+  await expect(page.locator('[data-pen-tool="pen"]')).toHaveAccessibleName("徒手繪圖")
+  await expect(page.locator('[data-pen-tool="arrow"]')).toHaveAccessibleName("箭頭")
+  await expect(page.locator('[data-pen-tool="rectangle"]')).toHaveAccessibleName("矩形")
+  await page.keyboard.press("Escape")
   await expect(page.locator("#page-pen-color")).toHaveAccessibleName("筆觸顏色")
   await page.locator("#page-pen-color").click()
   await paletteState(page, "black", true)

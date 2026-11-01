@@ -4,9 +4,11 @@ import {
   executePageAnnotation,
   stopPageAnnotationInjection,
 } from "../../src/browser/content/page-annotation.js"
+import { PageAnnotationWorker } from "../../src/browser/page-annotation-worker.js"
 import {
   PAGE_ANNOTATION_COLORS,
   PAGE_ANNOTATION_LIMITS,
+  PAGE_ANNOTATION_TOOLS,
   type PageAnnotationOperation,
   type PageAnnotationSettings,
 } from "../../src/browser/runtime/page-annotation.js"
@@ -141,6 +143,29 @@ describe("isolated page annotation surface", () => {
     expect(modal.outerHTML).toBe(before)
     document.documentElement.style.zoom = ""
   })
+  test.each(PAGE_ANNOTATION_TOOLS)(
+    "uses all six colors and 2/8/32 px widths with %s",
+    async (tool) => {
+      await start()
+      await execute("tool", { ...settings, tool })
+      for (const color of Object.keys(
+        PAGE_ANNOTATION_COLORS,
+      ) as (keyof typeof PAGE_ANNOTATION_COLORS)[]) {
+        for (const width of [2, 8, 32]) {
+          await execute("color", { color, width })
+          await execute("width", { color, width })
+          stroke()
+          expect(surface.paint.strokeStyle).toBe(PAGE_ANNOTATION_COLORS[color])
+          expect(surface.paint.lineWidth).toBe(width)
+          expect(await execute("state")).toMatchObject({
+            result: { hasStrokes: true, drawing: false },
+          })
+          await execute("clear")
+        }
+      }
+    },
+  )
+
   test("retains each stroke color and width through redraw, undo, and clear", async () => {
     await start()
     stroke()
@@ -157,6 +182,262 @@ describe("isolated page annotation surface", () => {
     expect(await execute("clear")).toMatchObject({ result: { hasStrokes: false, revision: 8 } })
     expect(await execute("undo")).toMatchObject({ result: { revision: 8 } })
   })
+  test.each([
+    [40, 50, 240, 150],
+    [240, 50, 40, 150],
+    [40, 150, 240, 50],
+    [240, 150, 40, 50],
+  ])("previews a normalized rectangle without a trail: %j", async (x1, y1, x2, y2) => {
+    await start()
+    await execute("tool", { ...settings, tool: "rectangle" })
+    surface.pointer("pointerdown", { clientX: x1, clientY: y1 })
+    for (const fraction of [0.2, 0.4, 0.8])
+      surface.pointer("pointermove", {
+        clientX: x1 + (x2 - x1) * fraction,
+        clientY: y1 + (y2 - y1) * fraction,
+      })
+    expect(await execute("state")).toMatchObject({ result: { drawing: true, hasStrokes: false } })
+    surface.paint.rect.mockClear()
+    surface.pointer("pointermove", { clientX: x2, clientY: y2 })
+    expect(surface.paint.rect).toHaveBeenCalledExactlyOnceWith(40, 50, 200, 100)
+    expect(surface.paint.fill).not.toHaveBeenCalled()
+    surface.pointer("pointerup", { clientX: x2, clientY: y2 })
+    expect(await execute("state")).toMatchObject({ result: { drawing: false, hasStrokes: true } })
+    await execute("undo")
+    expect(await execute("state")).toMatchObject({ result: { hasStrokes: false } })
+  })
+
+  test.each([
+    [100, 120],
+    [-100, 120],
+    [100, -120],
+    [-100, -120],
+    [4, 0],
+    [0, 4],
+  ])("points the bounded arrowhead toward release: %j", async (dx, dy) => {
+    await start()
+    await execute("tool", { ...settings, tool: "arrow" })
+    surface.pointer("pointerdown", { clientX: 300, clientY: 300 })
+    surface.pointer("pointermove", { clientX: 350, clientY: 350 })
+    surface.paint.lineTo.mockClear()
+    surface.pointer("pointerup", { clientX: 300 + dx, clientY: 300 + dy })
+    const lines = surface.paint.lineTo.mock.calls.slice(-3)
+    expect(lines[0]).toEqual([300 + dx, 300 + dy])
+    expect(lines[1]).toEqual(lines[0])
+    const [x, y] = lines[2] as [number, number]
+    const length = Math.hypot(dx, dy)
+    const behindTip = ((300 + dx - x) * dx + (300 + dy - y) * dy) / length
+    expect(behindTip).toBeGreaterThan(0)
+    expect(behindTip).toBeLessThanOrEqual(Math.min(48, length * 0.4) + 0.00001)
+    expect(surface.paint.lineTo.mock.calls.every((call) => call.every(Number.isFinite))).toBe(true)
+  })
+
+  test.each(["arrow", "rectangle"] as const)(
+    "discards undersized %s and retains a 4 px mark",
+    async (tool) => {
+      await start()
+      await execute("tool", { ...settings, tool })
+      for (const end of [
+        { x: 103.99, y: 120 },
+        { x: 100, y: 120 },
+      ]) {
+        surface.pointer("pointerdown")
+        surface.pointer("pointerup", { clientX: end.x, clientY: end.y })
+        expect(await execute("state")).toMatchObject({
+          result: { hasStrokes: false, drawing: false },
+        })
+      }
+      if (tool === "rectangle") {
+        surface.pointer("pointerdown")
+        surface.pointer("pointerup", { clientX: 200, clientY: 123.99 })
+        expect(await execute("state")).toMatchObject({ result: { hasStrokes: false } })
+      }
+      surface.pointer("pointerdown")
+      surface.pointer("pointerup", { clientX: 104, clientY: tool === "arrow" ? 120 : 124 })
+      expect(await execute("state")).toMatchObject({ result: { hasStrokes: true } })
+    },
+  )
+
+  test.each(["pointercancel", "lostpointercapture"])(
+    "discards only the unfinished shape on %s",
+    async (event) => {
+      await start()
+      stroke()
+      await execute("tool", { ...settings, tool: "rectangle" })
+      surface.pointer("pointerdown")
+      surface.pointer("pointermove", { clientX: 300, clientY: 300 })
+      surface.pointer(event)
+      expect(await execute("state")).toMatchObject({ result: { hasStrokes: true, drawing: false } })
+      await execute("undo")
+      expect(await execute("state")).toMatchObject({ result: { hasStrokes: false } })
+    },
+  )
+
+  test("keeps two endpoints per shape, clamps edges, and frees the whole mark budget on undo", async () => {
+    const bounded = { ...limits, maxTotalPoints: 5, maxStrokes: 3 } as unknown as typeof limits
+    const pending = executePageAnnotation("start", "surface", context, settings, bounded)
+    surface.advanceFrames()
+    await pending
+    surface.pointer("pointerdown")
+    surface.pointer("pointerup") // One pen point.
+    await execute("tool", { ...settings, tool: "rectangle" })
+    for (let mark = 0; mark < 2; mark++) {
+      surface.pointer("pointerdown", { clientX: -100, clientY: -100 })
+      for (let index = 1; index <= 20; index++)
+        surface.pointer("pointermove", { clientX: index * 100, clientY: index * 100 })
+      surface.pointer("pointerup", { clientX: 99999, clientY: 99999 })
+      expect(surface.paint.rect).toHaveBeenLastCalledWith(0, 0, innerWidth, innerHeight)
+    }
+    surface.pointer("pointerdown")
+    expect(surface.capture).toHaveBeenCalledTimes(3)
+    await execute("undo")
+    surface.pointer("pointerdown")
+    surface.pointer("pointerup", { clientX: 200, clientY: 220 })
+    expect(surface.capture).toHaveBeenCalledTimes(4)
+    await execute("clear")
+    expect(await execute("state")).toMatchObject({ result: { hasStrokes: false } })
+  })
+
+  test("reserves two points before a shape starts and ignores non-finite endpoints", async () => {
+    const bounded = { ...limits, maxTotalPoints: 2 } as unknown as typeof limits
+    const pending = executePageAnnotation(
+      "start",
+      "surface",
+      context,
+      { ...settings, tool: "arrow" },
+      bounded,
+    )
+    surface.advanceFrames()
+    await pending
+    surface.pointer("pointerdown")
+    surface.pointer("pointermove", { clientX: NaN, clientY: Infinity })
+    surface.pointer("pointerup", { clientX: 200, clientY: 120 })
+    expect(surface.paint.moveTo).toHaveBeenCalledWith(100, 120)
+    expect(surface.paint.lineTo).toHaveBeenCalledWith(200, 120)
+    surface.pointer("pointerdown")
+    expect(surface.capture).toHaveBeenCalledTimes(1)
+    await execute("clear")
+    await execute("tool", settings)
+    surface.pointer("pointerdown")
+    surface.pointer("pointerup")
+    await execute("tool", { ...settings, tool: "arrow" })
+    surface.pointer("pointerdown")
+    expect(surface.capture).toHaveBeenCalledTimes(2)
+  })
+
+  test("serializes arrow painting and freezes mixed history without changing the active mark", async () => {
+    const injected = new Function(
+      `return (${executePageAnnotation.toString()})`,
+    )() as typeof executePageAnnotation
+    const pending = injected("start", "surface", context, settings, limits)
+    surface.advanceFrames()
+    await pending
+    stroke()
+    await execute("tool", { ...settings, tool: "arrow" })
+    surface.pointer("pointerdown")
+    await execute("tool", { ...settings, tool: "rectangle" })
+    await execute("color", { color: "blue", width: 32, tool: "rectangle" })
+    surface.pointer("pointermove", { clientX: 250, clientY: 120 })
+    surface.paint.lineTo.mockClear()
+    surface.pointer("pointerup", { clientX: 300, clientY: 120 })
+    expect(surface.paint.lineTo).toHaveBeenCalledWith(300, 120)
+    expect(surface.paint.strokeStyle).toBe(PAGE_ANNOTATION_COLORS.red)
+    expect(surface.paint.lineWidth).toBe(8)
+    expect(surface.paint.rect).not.toHaveBeenCalled()
+    const freeze = execute("freeze")
+    surface.advanceFrames()
+    expect(await freeze).toMatchObject({ result: { frozen: true, hasStrokes: true } })
+    await expect(execute("tool", { ...settings, tool: "rectangle" })).rejects.toThrow("not applied")
+    await expect(execute("color", { ...settings, color: "green" })).rejects.toThrow("not applied")
+    await expect(execute("width", { ...settings, width: 24 })).rejects.toThrow("not applied")
+    await execute("resume")
+    await execute("undo")
+    expect(await execute("state")).toMatchObject({ result: { hasStrokes: true } })
+    await execute("undo")
+    expect(await execute("state")).toMatchObject({ result: { hasStrokes: false } })
+  })
+
+  test.each([
+    { action: "tool", tool: "arrow" },
+    { action: "color", color: "blue" },
+    { action: "width", width: 24 },
+  ] as const)(
+    "applies delayed %j to the NEXT mark without changing the current gesture",
+    async (update) => {
+      const clientId = "12345678-1234-1234-1234-123456789abc"
+      let release = (): void => undefined
+      const gate = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const validate = vi.fn(async (): Promise<void> => undefined)
+      const worker = new PageAnnotationWorker({
+        beforeStart: async () => undefined,
+        context: async () => context,
+        windowId: async () => 1,
+        validate,
+        execute: async (operation, session) => {
+          const pending = executePageAnnotation(
+            operation,
+            session.token,
+            context,
+            session.settings,
+            limits,
+          )
+          surface.advanceFrames()
+          return pending
+        },
+        cleanup: async (_context, token) => {
+          stopPageAnnotationInjection(token)
+        },
+        emit: () => undefined,
+        capturePermission: async () => undefined,
+        capture: async () => ({}),
+      })
+      await worker.start({
+        kind: "request",
+        requestId: "start",
+        method: "pageAnnotation.start",
+        params: { clientId, ...settings },
+        tabContext: context,
+      })
+      validate.mockImplementationOnce(() => gate)
+      const pending = worker.update({
+        kind: "request",
+        requestId: "update",
+        method: "pageAnnotation.update",
+        params: { clientId, ...update },
+        tabContext: context,
+      })
+      await vi.waitFor(() => expect(validate).toHaveBeenCalledTimes(3))
+      surface.pointer("pointerdown") // The accepted idle setting has not reached the surface yet.
+      release()
+      await pending
+      surface.pointer("pointerup", { clientX: 200, clientY: 120 })
+      expect(surface.paint.lineWidth).toBe(8)
+      expect(surface.paint.strokeStyle).toBe(PAGE_ANNOTATION_COLORS.red)
+      expect(surface.paint.lineTo.mock.calls.at(-1)).toEqual([200, 120])
+      surface.paint.lineTo.mockClear()
+      surface.pointer("pointerdown", { clientX: 100, clientY: 220 })
+      surface.paint.lineTo.mockClear() // Exclude the completed first mark from this redraw.
+      surface.pointer("pointerup", { clientX: 200, clientY: 220 })
+      expect(surface.paint.lineWidth).toBe(update.action === "width" ? 24 : 8)
+      expect(surface.paint.strokeStyle).toBe(
+        update.action === "color" ? PAGE_ANNOTATION_COLORS.blue : PAGE_ANNOTATION_COLORS.red,
+      )
+      // Two redraws: the current preview and then its committed history item.
+      expect(surface.paint.lineTo).toHaveBeenCalledTimes(update.action === "tool" ? 8 : 4)
+      if (update.action === "tool")
+        expect(surface.paint.lineTo.mock.calls.at(-1)).not.toEqual([200, 220])
+      await worker.stop({
+        kind: "request",
+        requestId: "stop",
+        method: "pageAnnotation.stop",
+        params: { clientId },
+        tabContext: context,
+      })
+    },
+  )
+
   test("uses pointer capture and discards cancelled partial strokes", async () => {
     await start()
     surface.pointer("pointerdown")
@@ -377,7 +658,7 @@ describe("isolated page annotation surface", () => {
     const pending = executePageAnnotation("start", "surface", context, settings, bounded)
     surface.advanceFrames()
     await pending
-    await execute("width", { color: "red", width: 33 })
+    await expect(execute("width", { color: "red", width: 33 })).rejects.toThrow("not applied")
     surface.pointer("pointerdown", { clientX: Number.NaN })
     expect(surface.capture).not.toHaveBeenCalled()
     surface.pointer("pointerdown")

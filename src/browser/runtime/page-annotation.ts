@@ -13,6 +13,7 @@ export const PAGE_ANNOTATION_LIMITS = {
   minPenWidth: 2,
   maxPenWidth: 32,
   defaultPenWidth: 8,
+  minShapeSize: 4,
   maxStrokes: 256,
   maxPointsPerStroke: 4096,
   maxTotalPoints: 8192,
@@ -25,9 +26,16 @@ export type PageAnnotationColor = keyof typeof PAGE_ANNOTATION_COLORS
 export type PageAnnotationLimits = typeof PAGE_ANNOTATION_LIMITS & {
   colors: Record<PageAnnotationColor, string>
 }
-export type PageAnnotationSettings = { color: PageAnnotationColor; width: number }
+export const PAGE_ANNOTATION_TOOLS = ["pen", "arrow", "rectangle"] as const
+export type PageAnnotationTool = (typeof PAGE_ANNOTATION_TOOLS)[number]
+export type PageAnnotationSettings = {
+  color: PageAnnotationColor
+  width: number
+  tool?: PageAnnotationTool
+}
 export type PageAnnotationOperation =
   | "start"
+  | "tool"
   | "color"
   | "width"
   | "undo"
@@ -37,6 +45,7 @@ export type PageAnnotationOperation =
   | "state"
   | "stop"
 export type PageAnnotationUpdate =
+  | { clientId: string; action: "tool"; tool: PageAnnotationTool }
   | { clientId: string; action: "color"; color: PageAnnotationColor }
   | { clientId: string; action: "width"; width: number }
   | { clientId: string; action: "undo" | "clear" | "resume" }
@@ -96,6 +105,9 @@ export function isPageAnnotationId(value: unknown): value is string {
 export function isPageAnnotationColor(value: unknown): value is PageAnnotationColor {
   return typeof value === "string" && Object.hasOwn(PAGE_ANNOTATION_COLORS, value)
 }
+export function isPageAnnotationTool(value: unknown): value is PageAnnotationTool {
+  return PAGE_ANNOTATION_TOOLS.some((tool) => tool === value)
+}
 export function isPageAnnotationWidth(value: unknown): value is number {
   return integer(value, PAGE_ANNOTATION_LIMITS.minPenWidth, PAGE_ANNOTATION_LIMITS.maxPenWidth)
 }
@@ -104,7 +116,8 @@ export function validPageAnnotationParams(method: string, value: Record<string, 
   switch (method) {
     case "pageAnnotation.start":
       return (
-        keys(value, ["clientId", "color", "width"]) &&
+        keys(value, ["clientId", "color", "width", "tool"]) &&
+        (value.tool === undefined || isPageAnnotationTool(value.tool)) &&
         isPageAnnotationColor(value.color) &&
         isPageAnnotationWidth(value.width)
       )
@@ -112,6 +125,8 @@ export function validPageAnnotationParams(method: string, value: Record<string, 
     case "pageAnnotation.stop":
       return keys(value, ["clientId"])
     case "pageAnnotation.update":
+      if (value.action === "tool")
+        return keys(value, ["clientId", "action", "tool"]) && isPageAnnotationTool(value.tool)
       if (value.action === "color")
         return keys(value, ["clientId", "action", "color"]) && isPageAnnotationColor(value.color)
       if (value.action === "width")
@@ -192,6 +207,52 @@ export type PageAnnotationStroke = {
   width: number
   points: { x: number; y: number }[]
 }
+export type PageAnnotationMark =
+  | ({ tool: "pen" } & PageAnnotationStroke)
+  | {
+      tool: "arrow" | "rectangle"
+      color: PageAnnotationColor
+      width: number
+      points: [{ x: number; y: number }, { x: number; y: number }]
+    }
+
+/** Validate local marks; shapes consume exactly two points in the shared budget. */
+export function parsePageAnnotationMarks(
+  value: unknown,
+  width: number,
+  height: number,
+): PageAnnotationMark[] {
+  if (!Array.isArray(value) || value.length > PAGE_ANNOTATION_LIMITS.maxStrokes) return malformed()
+  const strokes = parsePageAnnotationStrokes(
+    Array.from(value, (mark: unknown) => {
+      if (
+        !record(mark) ||
+        !keys(mark, ["tool", "color", "width", "points"]) ||
+        !isPageAnnotationTool(mark.tool)
+      )
+        return malformed()
+      return { color: mark.color, width: mark.width, points: mark.points }
+    }),
+    width,
+    height,
+  )
+  return strokes.map((stroke, index) => {
+    const tool: PageAnnotationTool = value[index].tool
+    if (tool === "pen") return { ...stroke, tool }
+    const [start, end] = stroke.points
+    if (!start || !end || stroke.points.length !== 2) return malformed()
+    const dx = Math.abs(end.x - start.x)
+    const dy = Math.abs(end.y - start.y)
+    if (
+      tool === "arrow"
+        ? Math.hypot(dx, dy) < PAGE_ANNOTATION_LIMITS.minShapeSize
+        : dx < PAGE_ANNOTATION_LIMITS.minShapeSize || dy < PAGE_ANNOTATION_LIMITS.minShapeSize
+    )
+      return malformed()
+    return { tool, color: stroke.color, width: stroke.width, points: [start, end] }
+  })
+}
+
 /** Validate local vector data without permitting arbitrary CSS or unbounded history. */
 export function parsePageAnnotationStrokes(
   value: unknown,
@@ -222,7 +283,7 @@ export function parsePageAnnotationStrokes(
       return malformed()
     total += stroke.points.length
     if (total > PAGE_ANNOTATION_LIMITS.maxTotalPoints) return malformed()
-    const points = stroke.points.map((point: unknown) => {
+    const points = Array.from(stroke.points, (point: unknown) => {
       if (
         !record(point) ||
         !keys(point, ["x", "y"]) ||

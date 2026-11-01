@@ -3,6 +3,7 @@ import { parseRuntimeRequest } from "../../src/browser/runtime/messages.js"
 import {
   PAGE_ANNOTATION_COLORS,
   PAGE_ANNOTATION_LIMITS,
+  parsePageAnnotationMarks,
   parsePageAnnotationNotification,
   parsePageAnnotationState,
   parsePageAnnotationStrokes,
@@ -41,6 +42,7 @@ describe("page annotation contracts", () => {
       minPenWidth: 2,
       maxPenWidth: 32,
       defaultPenWidth: 8,
+      minShapeSize: 4,
       maxStrokes: 256,
       maxPointsPerStroke: 4096,
       maxTotalPoints: 8192,
@@ -66,10 +68,32 @@ describe("page annotation contracts", () => {
       expect(parseRuntimeRequest(request(method, params)).method).toBe(method)
   })
 
+  test("accepts allowlisted tools while preserving legacy pen starts", () => {
+    for (const tool of ["pen", "arrow", "rectangle"]) {
+      expect(
+        parseRuntimeRequest(
+          request("pageAnnotation.start", { clientId, color: "red", width: 8, tool }),
+        ).params,
+      ).toMatchObject({ tool })
+      expect(
+        parseRuntimeRequest(request("pageAnnotation.update", { clientId, action: "tool", tool }))
+          .params,
+      ).toEqual({ clientId, action: "tool", tool })
+    }
+    expect(
+      parseRuntimeRequest(request("pageAnnotation.start", { clientId, color: "red", width: 8 }))
+        .method,
+    ).toBe("pageAnnotation.start")
+  })
+
   test.each([
     { color: "#ef4444" },
     { color: "constructor" },
     { color: "RED" },
+    { tool: "line" },
+    { tool: "constructor" },
+    { tool: null },
+    { tool: 1 },
     { color: "url(https://example.test)" },
     { width: 1 },
     { width: 33 },
@@ -88,6 +112,11 @@ describe("page annotation contracts", () => {
   })
 
   test.each([
+    { action: "tool" },
+    { action: "tool", tool: "Arrow" },
+    { action: "tool", tool: "constructor" },
+    { action: "tool", tool: "arrow", width: 8 },
+    { action: "color", color: "red", tool: "pen" },
     { action: "freeze" },
     { action: "state" },
     { action: "stop" },
@@ -158,6 +187,127 @@ describe("page annotation contracts", () => {
       { extra: true },
     ])
       expect(() => parsePageAnnotationNotification({ ...notification, ...change })).toThrow()
+  })
+
+  test("validates mixed marks, two-endpoint geometry and shared point budgets", () => {
+    const arrow = {
+      ...stroke,
+      tool: "arrow",
+      points: [
+        { x: 2, y: 3 },
+        { x: 22, y: 23 },
+      ],
+    }
+    const rectangle = { ...arrow, tool: "rectangle", points: [...arrow.points].reverse() }
+    const pen = { ...stroke, tool: "pen" }
+    expect(parsePageAnnotationMarks([pen, arrow, rectangle], 800, 600)).toEqual([
+      pen,
+      arrow,
+      rectangle,
+    ])
+    for (const mark of [
+      { ...arrow, tool: "constructor" },
+      { ...arrow, extra: true },
+      { ...arrow, width: 33 },
+      { ...arrow, color: "pink" },
+      { ...arrow, points: [] },
+      { ...arrow, points: [arrow.points[0]] },
+      { ...arrow, points: [...arrow.points, arrow.points[1]] },
+      {
+        ...arrow,
+        points: [
+          { x: 0, y: 0 },
+          { x: 3.99, y: 0 },
+        ],
+      },
+      {
+        ...rectangle,
+        points: [
+          { x: 0, y: 0 },
+          { x: 100, y: 3.99 },
+        ],
+      },
+      {
+        ...arrow,
+        points: [
+          { x: NaN, y: 1 },
+          { x: 20, y: 20 },
+        ],
+      },
+      {
+        ...arrow,
+        points: [
+          { x: 1, y: Infinity },
+          { x: 20, y: 20 },
+        ],
+      },
+      {
+        ...arrow,
+        points: [
+          { x: -1, y: 0 },
+          { x: 20, y: 20 },
+        ],
+      },
+      {
+        ...arrow,
+        points: [
+          { x: 801, y: 0 },
+          { x: 20, y: 20 },
+        ],
+      },
+      {
+        ...arrow,
+        points: [
+          { x: 0, y: 601 },
+          { x: 20, y: 20 },
+        ],
+      },
+      {
+        ...arrow,
+        points: [
+          { x: 0, y: 0, pressure: 1 },
+          { x: 20, y: 20 },
+        ],
+      },
+    ])
+      expect(() => parsePageAnnotationMarks([mark], 800, 600)).toThrow()
+    expect(
+      parsePageAnnotationMarks(
+        [
+          {
+            ...arrow,
+            points: [
+              { x: 0, y: 0 },
+              { x: 4, y: 0 },
+            ],
+          },
+        ],
+        800,
+        600,
+      ),
+    ).toHaveLength(1)
+    expect(
+      parsePageAnnotationMarks(
+        [
+          {
+            ...rectangle,
+            points: [
+              { x: 4, y: 4 },
+              { x: 0, y: 0 },
+            ],
+          },
+        ],
+        800,
+        600,
+      ),
+    ).toHaveLength(1)
+    expect(() => parsePageAnnotationMarks(Array(257).fill(arrow), 800, 600)).toThrow()
+    const fullPen = { ...pen, points: Array(4096).fill({ x: 1, y: 1 }) }
+    const nearFullPen = { ...pen, points: Array(4094).fill({ x: 1, y: 1 }) }
+    expect(parsePageAnnotationMarks([fullPen, nearFullPen, arrow], 800, 600)).toHaveLength(3)
+    expect(() =>
+      parsePageAnnotationMarks([fullPen, nearFullPen, arrow, rectangle], 800, 600),
+    ).toThrow()
   })
 
   test("validates bounded stroke coordinates and exact palette IDs", () => {

@@ -21,7 +21,7 @@ test("captures a protected top-layer canvas at CSS zoom and non-default device s
     await harness.context.route("**/proof-frame", (route) =>
       route.fulfill({
         contentType: "text/html",
-        body: '<button style="width:300px;height:100px;background:white;border:0" onclick="document.body.dataset.clicks="activated"">Harmless frame target</button>',
+        body: '<button style="width:300px;height:100px;background:white;border:0" onclick="document.body.dataset.clicks=\'activated\'">Harmless frame target</button>',
       }),
     )
     await page.evaluate((url) => {
@@ -42,6 +42,17 @@ test("captures a protected top-layer canvas at CSS zoom and non-default device s
     await expect(target).toBeVisible()
     const targetBox = await target.boundingBox()
     if (!targetBox) throw new Error("Missing frame target")
+    await target.click()
+    await expect(page.frameLocator("iframe").locator("body")).toHaveAttribute(
+      "data-clicks",
+      "activated",
+    )
+    await page
+      .frameLocator("iframe")
+      .locator("body")
+      .evaluate((body) => {
+        delete body.dataset.clicks
+      })
     await page.bringToFront()
     const setup = await harness.worker.evaluate(async () => {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
@@ -105,11 +116,13 @@ test("captures a protected top-layer canvas at CSS zoom and non-default device s
           paint.beginPath()
           paint.moveTo(100, 100)
           paint.lineTo(300, 100)
+          paint.moveTo(270, 80)
+          paint.lineTo(300, 100)
+          paint.lineTo(270, 120)
           paint.stroke()
           paint.strokeStyle = "#0000ff"
           paint.beginPath()
-          paint.moveTo(100, 160)
-          paint.lineTo(300, 160)
+          paint.rect(100, 160, 200, 100)
           paint.stroke()
           let intercepted = 0
           for (const name of [
@@ -190,19 +203,32 @@ test("captures a protected top-layer canvas at CSS zoom and non-default device s
         width: image.width,
         height: image.height,
         red: sample(200, 100),
+        arrowhead: sample(285, 90),
+        noStartHead: sample(115, 90),
         blue: sample(200, 160),
-        clear: sample(200, 200),
+        rectangleLeft: sample(100, 220),
+        rectangleRight: sample(300, 220),
+        rectangleBottom: sample(200, 260),
+        rectangleInterior: sample(200, 200),
+        clear: sample(200, 300),
       }
     }, capture.dataUrl)
-    expect(pixels).toEqual({
+    const { noStartHead, ...alignedPixels } = pixels
+    expect(noStartHead).not.toEqual([255, 0, 0, 255])
+    expect(alignedPixels).toEqual({
       width: 1500,
       height: 1050,
       red: [255, 0, 0, 255],
+      arrowhead: [255, 0, 0, 255],
       blue: [0, 0, 255, 255],
+      rectangleLeft: [0, 0, 255, 255],
+      rectangleRight: [0, 0, 255, 255],
+      rectangleBottom: [0, 0, 255, 255],
+      rectangleInterior: [252, 252, 252, 255],
       clear: [252, 252, 252, 255],
     })
     console.log(
-      `Annotation capture proof: ${harness.context.browser()?.version()}; CSS zoom 0.9 × 1.25; DPR 1.5; red/blue aligned; modal/OOPIF protected before/during/after capture; canvas-only, no toolbar/custom cursor.`,
+      `Annotation capture proof: ${harness.context.browser()?.version()}; CSS zoom 0.9 × 1.25; DPR 1.5; arrow direction/rectangle outline aligned; modal/OOPIF protected before/during/after capture; canvas-only, no toolbar/custom cursor.`,
     )
     expect(harness.pageErrors).toEqual([])
   } finally {

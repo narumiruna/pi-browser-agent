@@ -199,6 +199,14 @@
               </button>
               <fieldset id="page-pen-controls" class="page-pen-controls" aria-label="Page drawing controls" hidden>
                 <div class="page-pen-setting">
+                  <button id="page-pen-tool" type="button" class="icon-button page-pen-tool" aria-label="Drawing tool" aria-haspopup="menu" aria-expanded="false" aria-controls="page-pen-tool-menu"><svg class="radix-icon" viewBox="0 0 15 15" aria-hidden="true"><path d="m3 9 7-7 3 3-7 7-4 1 1-4Zm6-6 3 3M3 9l3 3" /></svg></button>
+                  <div id="page-pen-tool-menu" class="page-pen-popup page-pen-tool-menu" role="menu" aria-label="Drawing tool" hidden>
+                    <button type="button" data-pen-tool="pen" role="menuitemradio" aria-label="Freehand" aria-checked="true" tabindex="-1"><svg class="radix-icon" viewBox="0 0 15 15" aria-hidden="true"><path d="m3 9 7-7 3 3-7 7-4 1 1-4Zm6-6 3 3M3 9l3 3" /></svg><span>Freehand</span></button>
+                    <button type="button" data-pen-tool="arrow" role="menuitemradio" aria-label="Arrow" aria-checked="false" tabindex="-1"><svg class="radix-icon" viewBox="0 0 15 15" aria-hidden="true"><path d="M2 13 13 2M5 2h8v8" /></svg><span>Arrow</span></button>
+                    <button type="button" data-pen-tool="rectangle" role="menuitemradio" aria-label="Rectangle" aria-checked="false" tabindex="-1"><svg class="radix-icon" viewBox="0 0 15 15" aria-hidden="true"><path d="M2 3h11v9H2Z" /></svg><span>Rectangle</span></button>
+                  </div>
+                </div>
+                <div class="page-pen-setting">
                   <button id="page-pen-color" type="button" class="icon-button page-pen-tool page-pen-color" aria-label="Pen color" aria-haspopup="menu" aria-expanded="false" aria-controls="page-pen-palette"><span class="page-pen-color-square" aria-hidden="true"></span></button>
                   <div id="page-pen-palette" class="page-pen-popup page-pen-palette" role="menu" aria-label="Pen color" hidden>
                     <button type="button" class="page-pen-swatch" data-pen-color="red" role="menuitemradio" aria-label="Red" aria-checked="true" tabindex="-1"></button>
