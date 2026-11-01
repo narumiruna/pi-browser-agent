@@ -1,7 +1,6 @@
 import type { Catalog } from "./en.js"
 
 export default {
-
   "Reset page pinch zoom before capturing a region": "รีเซ็ตการซูมด้วยนิ้วของหน้าก่อนจับภาพพื้นที่",
   "Capture region": "จับภาพพื้นที่",
   "Select a region": "เลือกพื้นที่",

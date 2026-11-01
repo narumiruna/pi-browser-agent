@@ -892,27 +892,31 @@ test("capacity and text-only model preflight preserve selection without capture 
   expect(requests).toHaveLength(0)
 })
 
-test("point comments and region selection exclude each other in panel and worker without cyclic startup cleanup", async () => {
+test("drawing and region selection exclude each other in panel and worker without cyclic startup cleanup", async () => {
   const page = harness.controller
+  const drawingHost = "[data-pi-browser-agent-page-annotation]"
   await start()
-  await expect(page.locator("#point-comments")).toBeDisabled()
-  const pinOwner = { clientId: crypto.randomUUID(), capacity: 5, nextNumber: 1 }
-  const deniedPin = await page.evaluate(
+  await expect(page.locator("#page-pen")).toBeDisabled()
+  await expect(page.locator("#element-picker")).toBeDisabled()
+  await expect(page.locator("#voice-input")).toBeDisabled()
+  const drawingOwner = { clientId: crypto.randomUUID(), color: "red", width: 8, tool: "rectangle" }
+  const deniedDrawing = await page.evaluate(
     (params) =>
       chrome.runtime.sendMessage({
         kind: "request",
         requestId: crypto.randomUUID(),
-        method: "pointComments.start",
+        method: "pageAnnotation.start",
         params,
       }),
-    pinOwner,
+    drawingOwner,
   )
-  expect(deniedPin.ok).toBe(false)
+  expect(deniedDrawing.ok).toBe(false)
   await expect(harness.fixturePage.locator(HOST)).toHaveCount(1)
+  await expect(harness.fixturePage.locator(drawingHost)).toHaveCount(0)
   await page.locator("#region-cancel").click()
   await stopped()
-  await page.locator("#point-comments").click()
-  await expect(harness.fixturePage.locator("[data-pi-browser-agent-element-picker]")).toHaveCount(1)
+  await page.locator("#page-pen").click()
+  await expect(harness.fixturePage.locator(drawingHost)).toHaveCount(1)
   await expect(page.locator("#region-capture")).toBeDisabled()
   const regionOwner = { clientId: crypto.randomUUID(), operationId: crypto.randomUUID() }
   const deniedRegion = await page.evaluate(
@@ -926,11 +930,11 @@ test("point comments and region selection exclude each other in panel and worker
     regionOwner,
   )
   expect(deniedRegion.ok).toBe(false)
-  await expect(harness.fixturePage.locator("[data-pi-browser-agent-element-picker]")).toHaveCount(1)
-  await page.locator("#point-comments").click()
-  await expect(page.locator("#point-comments")).toHaveAttribute("aria-pressed", "false")
+  await expect(harness.fixturePage.locator(drawingHost)).toHaveCount(1)
+  await page.locator("#page-pen").click()
+  await expect(page.locator("#page-pen")).toHaveAttribute("aria-pressed", "false")
   const results = await page.evaluate(
-    async ({ pinOwner, regionOwner }) => {
+    async ({ drawingOwner, regionOwner }) => {
       const request = (method: string, params: object) =>
         chrome.runtime.sendMessage({
           kind: "request",
@@ -939,17 +943,101 @@ test("point comments and region selection exclude each other in panel and worker
           params,
         })
       const results = await Promise.all([
-        request("pointComments.start", pinOwner),
+        request("pageAnnotation.start", drawingOwner),
         request("regionCapture.start", regionOwner),
       ])
-      await request("pointComments.stop", { clientId: pinOwner.clientId })
+      await request("pageAnnotation.stop", { clientId: drawingOwner.clientId })
       await request("regionCapture.stop", regionOwner)
       return results
     },
-    { pinOwner, regionOwner },
+    { drawingOwner, regionOwner },
   )
   expect(results.filter((result) => result.ok).length).toBeLessThanOrEqual(1)
   await expect(harness.fixturePage.locator(HOST)).toHaveCount(0)
+  await expect(harness.fixturePage.locator(drawingHost)).toHaveCount(0)
+  expect(await captures()).toBe(0)
+  expect(requests).toHaveLength(0)
+  await start()
+  await page.locator("#region-cancel").click()
+  await stopped()
+})
+
+test("region selection excludes picker and voice modes without capture", async () => {
+  await harness.controller.addInitScript(() => {
+    class FixtureRecognition {
+      continuous = false
+      interimResults = false
+      lang = ""
+      onresult = null
+      onerror = null
+      onend: (() => void) | null = null
+      start(): void {}
+      stop(): void {
+        this.onend?.()
+      }
+      abort(): void {
+        this.onend?.()
+      }
+    }
+    Object.defineProperty(navigator, "permissions", {
+      configurable: true,
+      value: { query: async () => ({ state: "granted" }) },
+    })
+    for (const name of ["SpeechRecognition", "webkitSpeechRecognition"])
+      Object.defineProperty(globalThis, name, { configurable: true, value: FixtureRecognition })
+  })
+  const page = harness.controller
+  await page.reload()
+  await waitForConversationReady(page)
+  await harness.fixturePage.bringToFront()
+  await page.locator("#element-picker").click()
+  await expect(harness.fixturePage.locator("[data-pi-browser-agent-element-picker]")).toHaveCount(1)
+  await expect(page.locator("#region-capture")).toBeDisabled()
+  await harness.fixturePage.keyboard.press("Escape")
+  await expect(harness.fixturePage.locator("[data-pi-browser-agent-element-picker]")).toHaveCount(0)
+  await page.locator("#voice-input").click()
+  await expect(page.locator("#voice-input")).toHaveAttribute("aria-pressed", "true")
+  await expect(page.locator("#region-capture")).toBeDisabled()
+  await page.locator("#voice-input").click()
+  await expect(page.locator("#voice-input")).toHaveAttribute("aria-pressed", "false")
+  await start()
+  await expect(page.locator("#element-picker")).toBeDisabled()
+  await expect(page.locator("#voice-input")).toBeDisabled()
+  await page.locator("#region-cancel").click()
+  await stopped()
+  expect(await captures()).toBe(0)
+  expect(requests).toHaveLength(0)
+})
+
+test("ships no point-comment controls and rejects unsupported point-comment runtime requests", async () => {
+  const page = harness.controller
+  await expect(page.locator("#point-comments, #point-comment-cards")).toHaveCount(0)
+  await expect(page.getByRole("button", { name: "Comment on elements", exact: true })).toHaveCount(
+    0,
+  )
+  const responses = await page.evaluate(async () => {
+    const clientId = crypto.randomUUID()
+    const id = crypto.randomUUID()
+    const methods = {
+      start: { clientId, capacity: 5, nextNumber: 1 },
+      remove: { clientId, id },
+      reselect: { clientId, id, number: 1 },
+      clear: { clientId },
+      stop: { clientId },
+    }
+    return Promise.all(
+      Object.entries(methods).map(([method, params]) =>
+        chrome.runtime.sendMessage({
+          kind: "request",
+          requestId: crypto.randomUUID(),
+          method: `pointComments.${method}`,
+          params,
+        }),
+      ),
+    )
+  })
+  for (const response of responses)
+    expect(response).toMatchObject({ ok: false, error: { code: "INVALID_REQUEST" } })
   await expect(harness.fixturePage.locator("[data-pi-browser-agent-element-picker]")).toHaveCount(0)
   expect(await captures()).toBe(0)
   expect(requests).toHaveLength(0)

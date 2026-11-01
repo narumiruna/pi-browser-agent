@@ -1,7 +1,6 @@
 import type { Catalog } from "./en.js"
 
 export default {
-
   "Reset page pinch zoom before capturing a region":
     "Atur ulang zoom cubit halaman sebelum mengambil area",
   "Capture region": "Tangkap area",

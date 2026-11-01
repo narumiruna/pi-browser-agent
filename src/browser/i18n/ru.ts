@@ -1,7 +1,6 @@
 import type { Catalog } from "./en.js"
 
 export default {
-
   "Reset page pinch zoom before capturing a region":
     "Сбросьте масштаб страницы, изменённый жестом, перед захватом области",
   "Capture region": "Снимок области",

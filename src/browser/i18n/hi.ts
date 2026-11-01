@@ -1,7 +1,6 @@
 import type { Catalog } from "./en.js"
 
 export default {
-
   "Reset page pinch zoom before capturing a region": "क्षेत्र कैप्चर करने से पहले पेज का पिंच ज़ूम रीसेट करें",
   "Capture region": "क्षेत्र कैप्चर करें",
   "Select a region": "क्षेत्र चुनें",

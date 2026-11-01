@@ -1,6 +1,5 @@
 // English source messages are stable catalog keys. Use them only for trusted presentation.
 export const english = {
-
   "Reset page pinch zoom before capturing a region":
     "Reset page pinch zoom before capturing a region",
   "Capture region": "Capture region",

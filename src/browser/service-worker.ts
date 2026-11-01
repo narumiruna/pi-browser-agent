@@ -1557,7 +1557,6 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
     typeof message === "object" &&
     message !== null &&
     "kind" in message &&
-
     message.kind === "region-capture-state"
   ) {
     void Promise.resolve()

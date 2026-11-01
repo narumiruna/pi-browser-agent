@@ -1,7 +1,6 @@
 import type { Catalog } from "./en.js"
 
 export default {
-
   "Reset page pinch zoom before capturing a region": "擷取區域前請重設頁面的雙指縮放",
   "Capture region": "擷取區域",
   "Select a region": "選取區域",

@@ -1,7 +1,6 @@
 import type { Catalog } from "./en.js"
 
 export default {
-
   "Reset page pinch zoom before capturing a region":
     "Reponha o zoom por pinça da página antes de capturar uma região",
   "Capture region": "Capturar região",

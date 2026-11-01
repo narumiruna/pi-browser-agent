@@ -132,11 +132,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   let annotationSubmissionAbort: AbortController | undefined
   const transcriptRenderer = new TranscriptRenderer(transcript, {
     onAnnotateScreenshot(image) {
-      if (
-        regionCapture?.occupied ||
-        pageAnnotation?.occupied ||
-        annotationSubmissionAbort
-      ) {
+      if (regionCapture?.occupied || pageAnnotation?.occupied || annotationSubmissionAbort) {
         setError(t("Wait for the current operation to finish before drawing"))
         return
       }
@@ -521,7 +517,6 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     onError: setError,
   })
 
-
   regionCapture = new RegionCaptureController({
     getContext: refreshTabContext,
     getSessionId: () => runtime.activeSession.id,
@@ -532,7 +527,6 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       !authentication?.isBusy &&
       !activeSubmissionGuard &&
       !commandInProgress &&
-
       !pageAnnotation?.occupied &&
       !pickerActive &&
       !pickerStarting &&
@@ -1352,11 +1346,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   }
 
   async function openSettingsTab(accept?: () => void): Promise<void> {
-    if (
-      regionCapture?.occupied ||
-      pageAnnotation?.occupied ||
-      annotationSubmissionAbort
-    )
+    if (regionCapture?.occupied || pageAnnotation?.occupied || annotationSubmissionAbort)
       throw new Error(t("Wait for the current operation to finish before drawing"))
     voiceInput?.abort()
     const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true })
@@ -1411,12 +1401,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
 
   voiceInput = createVoiceInput({
     onTranscript(text) {
-      if (
-        regionCapture?.occupied ||
-        pageAnnotation?.occupied ||
-        annotationSubmissionAbort
-      )
-        return
+      if (regionCapture?.occupied || pageAnnotation?.occupied || annotationSubmissionAbort) return
       promptInput.value = text
       resizePromptInput()
     },
@@ -1448,12 +1433,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     void run(toggleElementPicker, setError)
   })
   voiceButton.addEventListener("click", () => {
-    if (
-      regionCapture?.occupied ||
-      pageAnnotation?.occupied ||
-      annotationSubmissionAbort
-    )
-      return
+    if (regionCapture?.occupied || pageAnnotation?.occupied || annotationSubmissionAbort) return
     if (voiceInput?.active) {
       setError()
       voiceInput.stop()
@@ -1557,7 +1537,6 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   document.addEventListener(
     "keydown",
     (event) => {
-
       if (event.key === "Escape" && regionCapture?.occupied) {
         event.preventDefault()
         event.stopImmediatePropagation()

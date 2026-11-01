@@ -28,6 +28,9 @@ test("captures a protected top-layer canvas at CSS zoom and non-default device s
       document.documentElement.style.zoom = "0.9"
       document.body.innerHTML = ""
       document.body.style.background = "white"
+      const style = document.createElement("style")
+      style.textContent = "#proof-modal::backdrop { background: transparent }"
+      document.head.append(style)
       const dialog = document.createElement("dialog")
       dialog.id = "proof-modal"
       dialog.style.cssText = "width:600px;height:350px;zoom:1.25;background:white"
@@ -42,7 +45,9 @@ test("captures a protected top-layer canvas at CSS zoom and non-default device s
     await expect(target).toBeVisible()
     const targetBox = await target.boundingBox()
     if (!targetBox) throw new Error("Missing frame target")
-    await target.click()
+    await page.bringToFront()
+    const click = () => page.mouse.click(targetBox.x + 40, targetBox.y + 40)
+    await click()
     await expect(page.frameLocator("iframe").locator("body")).toHaveAttribute(
       "data-clicks",
       "activated",
@@ -53,7 +58,6 @@ test("captures a protected top-layer canvas at CSS zoom and non-default device s
       .evaluate((body) => {
         delete body.dataset.clicks
       })
-    await page.bringToFront()
     const setup = await harness.worker.evaluate(async () => {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
       if (tab?.id === undefined) throw new Error("Missing proof tab")
@@ -165,8 +169,11 @@ test("captures a protected top-layer canvas at CSS zoom and non-default device s
       })
     })
     expect(setup[0]?.result).toEqual({ dpr: 1.5, covered: true, focused: true, canvasOnly: true })
-    const click = () => page.mouse.click(targetBox.x + 40, targetBox.y + 40)
+    // Test-only compositor flush. DOM coverage and two rAF callbacks alone do not
+    // prove that the OOPIF hit-test frame containing the shield has been committed.
+    await page.screenshot()
     await click() // Before capture.
+    await expect(page.locator("#proof-shield")).toHaveAttribute("data-clicks", "1")
     const [capture] = await Promise.all([
       harness.worker.evaluate(async () => {
         const startedAt = Date.now()

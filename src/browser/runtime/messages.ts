@@ -248,7 +248,6 @@ function isBoundedInteger(value: unknown, maximum: number, minimum = 0): value i
 
 function hasValidParams(method: RuntimeMethod, params: Record<string, unknown>): boolean {
   switch (method) {
-
     case "regionCapture.start":
     case "regionCapture.update":
     case "regionCapture.capture":
@@ -428,10 +427,7 @@ function isRuntimeRequest(value: unknown): value is RuntimeRequest {
     isRecord(value.params) &&
     isJsonValue(value.params) &&
     hasValidParams(value.method, value.params) &&
-    (!(
-      value.method.startsWith("pageAnnotation.") ||
-      value.method.startsWith("regionCapture.")
-    ) ||
+    (!(value.method.startsWith("pageAnnotation.") || value.method.startsWith("regionCapture.")) ||
       (hasOnlyKeys(value, ["kind", "requestId", "method", "params", "tabContext", "confirmed"]) &&
         (value.tabContext === undefined ||
           (isRecord(value.tabContext) &&
