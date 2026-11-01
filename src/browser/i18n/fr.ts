@@ -1,6 +1,36 @@
 import type { Catalog } from "./en.js"
 
 export default {
+
+  "Reset page pinch zoom before capturing a region":
+    "Réinitialisez le zoom par pincement de la page avant de capturer une zone",
+  "Capture region": "Capturer une zone",
+  "Select a region": "Sélectionner une zone",
+  "Drag on the page or enter CSS pixels. Minimum: 8 × 8.":
+    "Faites glisser sur la page ou saisissez des pixels CSS. Minimum : 8 × 8.",
+  X: "X",
+  Y: "Y",
+  Width: "Largeur",
+  Height: "Hauteur",
+  "Chrome temporarily captures the full viewport. Only the crop leaves the worker.":
+    "Chrome capture temporairement toute la zone visible. Seule la partie recadrée quitte le worker.",
+  "Preview region": "Aperçu de la zone",
+  "Region preview": "Aperçu de la zone",
+  "Only this crop is attached. Text, selected elements, history, and approved page reads can include other content.":
+    "Seule cette partie est jointe. Le texte, les éléments sélectionnés, l’historique et les lectures de page approuvées peuvent inclure d’autres contenus.",
+  Retake: "Reprendre",
+  "Finish or cancel region capture before sending":
+    "Terminez ou annulez la capture de zone avant l’envoi",
+  "Select a region at least 8 CSS pixels wide and high":
+    "Sélectionnez une zone d’au moins 8 pixels CSS de largeur et de hauteur",
+  "Could not confirm region cleanup. Reload the page before sending.":
+    "La suppression de la sélection n’a pas pu être confirmée. Rechargez la page avant l’envoi.",
+  "The page changed. Select a new region.": "La page a changé. Sélectionnez une nouvelle zone.",
+  "Region capture is unavailable on this page":
+    "La capture de zone n’est pas disponible sur cette page",
+  "Could not preview the region. Select again or retry.":
+    "Impossible d’afficher la zone. Sélectionnez à nouveau ou réessayez.",
+
   "Draw on page": "Dessiner sur la page",
   "Cancel page drawing": "Annuler le dessin sur la page",
   "Pen color": "Couleur du stylo",

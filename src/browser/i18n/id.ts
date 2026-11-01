@@ -1,6 +1,35 @@
 import type { Catalog } from "./en.js"
 
 export default {
+
+  "Reset page pinch zoom before capturing a region":
+    "Atur ulang zoom cubit halaman sebelum mengambil area",
+  "Capture region": "Tangkap area",
+  "Select a region": "Pilih area",
+  "Drag on the page or enter CSS pixels. Minimum: 8 × 8.":
+    "Seret pada halaman atau masukkan piksel CSS. Minimum: 8 × 8.",
+  X: "X",
+  Y: "Y",
+  Width: "Lebar",
+  Height: "Tinggi",
+  "Chrome temporarily captures the full viewport. Only the crop leaves the worker.":
+    "Chrome menangkap seluruh area tampilan untuk sementara. Hanya potongan gambar yang keluar dari worker.",
+  "Preview region": "Pratinjau area",
+  "Region preview": "Pratinjau area",
+  "Only this crop is attached. Text, selected elements, history, and approved page reads can include other content.":
+    "Hanya potongan ini yang dilampirkan. Teks, elemen terpilih, riwayat, dan pembacaan halaman yang disetujui dapat memuat konten lain.",
+  Retake: "Ambil ulang",
+  "Finish or cancel region capture before sending":
+    "Selesaikan atau batalkan tangkapan area sebelum mengirim",
+  "Select a region at least 8 CSS pixels wide and high":
+    "Pilih area dengan lebar dan tinggi minimal 8 piksel CSS",
+  "Could not confirm region cleanup. Reload the page before sending.":
+    "Penghapusan pilihan area tidak dapat dikonfirmasi. Muat ulang halaman sebelum mengirim.",
+  "The page changed. Select a new region.": "Halaman berubah. Pilih area baru.",
+  "Region capture is unavailable on this page": "Tangkapan area tidak tersedia di halaman ini",
+  "Could not preview the region. Select again or retry.":
+    "Pratinjau area gagal. Pilih lagi atau coba ulang.",
+
   "Draw on page": "Gambar di halaman",
   "Cancel page drawing": "Batalkan menggambar di halaman",
   "Pen color": "Warna pena",

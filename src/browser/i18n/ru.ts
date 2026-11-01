@@ -1,6 +1,35 @@
 import type { Catalog } from "./en.js"
 
 export default {
+
+  "Reset page pinch zoom before capturing a region":
+    "Сбросьте масштаб страницы, изменённый жестом, перед захватом области",
+  "Capture region": "Снимок области",
+  "Select a region": "Выберите область",
+  "Drag on the page or enter CSS pixels. Minimum: 8 × 8.":
+    "Перетащите на странице или введите CSS-пиксели. Минимум: 8 × 8.",
+  X: "X",
+  Y: "Y",
+  Width: "Ширина",
+  Height: "Высота",
+  "Chrome temporarily captures the full viewport. Only the crop leaves the worker.":
+    "Chrome временно захватывает всю видимую область. Из worker выходит только обрезанное изображение.",
+  "Preview region": "Предпросмотр области",
+  "Region preview": "Предпросмотр области",
+  "Only this crop is attached. Text, selected elements, history, and approved page reads can include other content.":
+    "Прикрепляется только этот фрагмент. Текст, выбранные элементы, история и разрешённые чтения страницы могут включать другое содержимое.",
+  Retake: "Снять заново",
+  "Finish or cancel region capture before sending":
+    "Завершите или отмените снимок области перед отправкой",
+  "Select a region at least 8 CSS pixels wide and high":
+    "Выберите область шириной и высотой не менее 8 CSS-пикселей",
+  "Could not confirm region cleanup. Reload the page before sending.":
+    "Не удалось подтвердить удаление выделения. Перезагрузите страницу перед отправкой.",
+  "The page changed. Select a new region.": "Страница изменилась. Выберите новую область.",
+  "Region capture is unavailable on this page": "Снимок области недоступен на этой странице",
+  "Could not preview the region. Select again or retry.":
+    "Не удалось показать область. Выберите заново или повторите попытку.",
+
   "Draw on page": "Рисовать на странице",
   "Cancel page drawing": "Отменить рисование на странице",
   "Pen color": "Цвет пера",

@@ -1,6 +1,34 @@
 import type { Catalog } from "./en.js"
 
 export default {
+
+  "Reset page pinch zoom before capturing a region":
+    "Đặt lại mức thu phóng bằng cử chỉ chụm của trang trước khi chụp vùng",
+  "Capture region": "Chụp vùng",
+  "Select a region": "Chọn một vùng",
+  "Drag on the page or enter CSS pixels. Minimum: 8 × 8.":
+    "Kéo trên trang hoặc nhập pixel CSS. Tối thiểu: 8 × 8.",
+  X: "X",
+  Y: "Y",
+  Width: "Chiều rộng",
+  Height: "Chiều cao",
+  "Chrome temporarily captures the full viewport. Only the crop leaves the worker.":
+    "Chrome tạm thời chụp toàn bộ vùng hiển thị. Chỉ ảnh đã cắt được đưa ra khỏi worker.",
+  "Preview region": "Xem trước vùng",
+  "Region preview": "Xem trước vùng",
+  "Only this crop is attached. Text, selected elements, history, and approved page reads can include other content.":
+    "Chỉ ảnh cắt này được đính kèm. Văn bản, phần tử đã chọn, lịch sử và nội dung đọc trang đã phê duyệt có thể chứa nội dung khác.",
+  Retake: "Chụp lại",
+  "Finish or cancel region capture before sending": "Hoàn tất hoặc hủy chụp vùng trước khi gửi",
+  "Select a region at least 8 CSS pixels wide and high":
+    "Chọn vùng có chiều rộng và chiều cao ít nhất 8 pixel CSS",
+  "Could not confirm region cleanup. Reload the page before sending.":
+    "Không thể xác nhận việc xóa vùng chọn. Hãy tải lại trang trước khi gửi.",
+  "The page changed. Select a new region.": "Trang đã thay đổi. Hãy chọn vùng mới.",
+  "Region capture is unavailable on this page": "Không thể chụp vùng trên trang này",
+  "Could not preview the region. Select again or retry.":
+    "Không thể xem trước vùng. Hãy chọn lại hoặc thử lại.",
+
   "Draw on page": "Vẽ trên trang",
   "Cancel page drawing": "Hủy vẽ trên trang",
   "Pen color": "Màu bút",

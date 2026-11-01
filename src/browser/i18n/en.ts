@@ -1,5 +1,34 @@
 // English source messages are stable catalog keys. Use them only for trusted presentation.
 export const english = {
+
+  "Reset page pinch zoom before capturing a region":
+    "Reset page pinch zoom before capturing a region",
+  "Capture region": "Capture region",
+  "Select a region": "Select a region",
+  "Drag on the page or enter CSS pixels. Minimum: 8 × 8.":
+    "Drag on the page or enter CSS pixels. Minimum: 8 × 8.",
+  X: "X",
+  Y: "Y",
+  Width: "Width",
+  Height: "Height",
+  "Chrome temporarily captures the full viewport. Only the crop leaves the worker.":
+    "Chrome temporarily captures the full viewport. Only the crop leaves the worker.",
+  "Preview region": "Preview region",
+  "Region preview": "Region preview",
+  "Only this crop is attached. Text, selected elements, history, and approved page reads can include other content.":
+    "Only this crop is attached. Text, selected elements, history, and approved page reads can include other content.",
+  Retake: "Retake",
+  "Finish or cancel region capture before sending":
+    "Finish or cancel region capture before sending",
+  "Select a region at least 8 CSS pixels wide and high":
+    "Select a region at least 8 CSS pixels wide and high",
+  "Could not confirm region cleanup. Reload the page before sending.":
+    "Could not confirm region cleanup. Reload the page before sending.",
+  "The page changed. Select a new region.": "The page changed. Select a new region.",
+  "Region capture is unavailable on this page": "Region capture is unavailable on this page",
+  "Could not preview the region. Select again or retry.":
+    "Could not preview the region. Select again or retry.",
+
   "Draw on page": "Draw on page",
   "Cancel page drawing": "Cancel page drawing",
   "Pen color": "Pen color",
