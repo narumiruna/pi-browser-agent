@@ -11,6 +11,7 @@ export function mockPageAnnotationSurface() {
     clearRect: vi.fn(),
     beginPath: vi.fn(),
     arc: vi.fn(),
+    rect: vi.fn(),
     fill: vi.fn(),
     moveTo: vi.fn(),
     lineTo: vi.fn(),

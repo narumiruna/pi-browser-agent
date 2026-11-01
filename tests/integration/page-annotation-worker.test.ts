@@ -276,6 +276,42 @@ describe("page annotation service worker routing", () => {
     })
   })
 
+  test("routes shape choices through validated fixed injection without geometry in messages", async () => {
+    const f = await serviceFixture()
+    await expect(
+      f.request("pageAnnotation.start", { ...startRequest().params, tool: "arrow" }),
+    ).resolves.toMatchObject({ ok: true })
+    const injected = () =>
+      f.script.mock.calls
+        .filter(([options]) => options.func.name === "executePageAnnotation")
+        .at(-1)?.[0].args
+    expect(injected()?.[3]).toEqual({ color: "red", width: 8, tool: "arrow" })
+    for (const tool of ["pen", "rectangle", "arrow"]) {
+      await expect(
+        f.request("pageAnnotation.update", { clientId, action: "tool", tool }),
+      ).resolves.toMatchObject({ ok: true })
+      expect(injected()?.[0]).toBe("tool")
+      expect(injected()?.[3]).toEqual({ color: "red", width: 8, tool })
+    }
+    for (const params of [
+      { clientId, action: "tool", tool: "line" },
+      { clientId, action: "tool", tool: "arrow", points: [] },
+    ]) {
+      await expect(f.request("pageAnnotation.update", params)).resolves.toMatchObject({
+        ok: false,
+        error: { code: "INVALID_REQUEST" },
+      })
+    }
+    await expect(
+      f.request("pageAnnotation.update", { clientId, action: "tool", tool: "rectangle" }, sender),
+    ).resolves.toMatchObject({ ok: false, error: { code: "PERMISSION_DENIED" } })
+    await expect(f.request("pageAnnotation.capture", { clientId })).resolves.toMatchObject({
+      ok: true,
+      result: { clientId },
+    })
+    expect(f.capture).toHaveBeenCalledExactlyOnceWith(3, { format: "png" })
+  })
+
   test("accepts the same packaged conversation in a trusted extension tab", async () => {
     const f = await serviceFixture()
     await expect(
@@ -426,7 +462,7 @@ describe("page annotation worker ownership and capture", () => {
     ).resolves.toEqual({ clientId, state: activeState })
     expect(f.deps.execute).toHaveBeenLastCalledWith(
       "color",
-      expect.objectContaining({ settings: { color: "blue", width: 8 } }),
+      expect.objectContaining({ settings: { color: "blue", width: 8, tool: "pen" } }),
     )
     await expect(f.worker.stop(stopRequest(otherClient))).rejects.toMatchObject({
       code: "REQUEST_CANCELLED",
@@ -673,6 +709,74 @@ describe("page annotation worker ownership and capture", () => {
     await expect(f.worker.stop(stopRequest())).resolves.toEqual({ active: false })
   })
 
+  test("captures a completed mixed-tool revision and retains owner/context checks", async () => {
+    const f = fixture()
+    await f.worker.start(startRequest())
+    for (const tool of ["pen", "arrow", "rectangle"] as const) {
+      await f.worker.update({
+        ...captureRequest(),
+        method: "pageAnnotation.update",
+        params: { clientId, action: "tool", tool },
+      })
+      expect(f.deps.execute).toHaveBeenLastCalledWith(
+        "tool",
+        expect.objectContaining({ settings: { tool, color: "red", width: 8 } }),
+      )
+    }
+    await expect(
+      f.worker.update({
+        ...captureRequest(otherClient),
+        method: "pageAnnotation.update",
+        params: { clientId: otherClient, action: "tool", tool: "arrow" },
+      }),
+    ).rejects.toMatchObject({ code: "REQUEST_CANCELLED" })
+    await expect(
+      f.worker.update({
+        ...captureRequest(),
+        tabContext: { ...context, epoch: 2 },
+        method: "pageAnnotation.update",
+        params: { clientId, action: "tool", tool: "arrow" },
+      }),
+    ).rejects.toMatchObject({ code: "STALE_CONTEXT" })
+    f.state({ ...activeState, revision: 9 })
+    await expect(f.worker.capture(captureRequest())).resolves.toMatchObject({ clientId })
+    expect(f.deps.execute).toHaveBeenLastCalledWith(
+      "state",
+      expect.objectContaining({ settings: { tool: "rectangle", color: "red", width: 8 } }),
+    )
+    expect(f.deps.capture).toHaveBeenCalledOnce()
+  })
+
+  test("a late shape update cannot change or revive a replacement surface", async () => {
+    const f = fixture()
+    await f.worker.start(startRequest())
+    const gate = deferred<{ ok: true; result: PageAnnotationState }>()
+    f.deps.execute.mockReturnValueOnce(gate.promise)
+    const updating = f.worker.update({
+      ...captureRequest(),
+      method: "pageAnnotation.update",
+      params: { clientId, action: "tool", tool: "arrow" },
+    })
+    const rejected = expect(updating).rejects.toMatchObject({ code: "REQUEST_CANCELLED" })
+    await vi.waitFor(() =>
+      expect(f.deps.execute).toHaveBeenLastCalledWith("tool", expect.anything()),
+    )
+    await f.worker.stop(stopRequest())
+    await f.worker.start({
+      ...startRequest(otherClient),
+      params: { ...startRequest(otherClient).params, tool: "rectangle" },
+    })
+    gate.resolve({ ok: true, result: activeState })
+    await rejected
+    await expect(f.worker.capture(captureRequest(otherClient))).resolves.toMatchObject({
+      clientId: otherClient,
+    })
+    expect(f.deps.execute).toHaveBeenLastCalledWith(
+      "state",
+      expect.objectContaining({ settings: { tool: "rectangle", color: "red", width: 8 } }),
+    )
+  })
+
   test("freezes and revalidates protection before and after one capture", async () => {
     const f = fixture()
     await f.worker.start(startRequest())
@@ -756,28 +860,33 @@ describe("page annotation worker ownership and capture", () => {
     expect(f.deps.execute).toHaveBeenLastCalledWith("resume", expect.anything())
   })
 
-  test("does not overlap a control update with pending capture", async () => {
-    const f = fixture()
-    const image = deferred<{ dataUrl: string; mimeType: string; tabContext: typeof context }>()
-    await f.worker.start(startRequest())
-    f.deps.capture.mockReturnValueOnce(image.promise)
-    const capturing = f.worker.capture(captureRequest())
-    await vi.waitFor(() => expect(f.deps.capture).toHaveBeenCalled())
-    await expect(
-      f.worker.update({
-        ...captureRequest(),
-        method: "pageAnnotation.update",
-        params: { clientId, action: "clear" },
-      }),
-    ).rejects.toMatchObject({ code: "INVALID_REQUEST" })
-    image.resolve({
-      dataUrl: "data:image/png;base64,cGl4ZWxz",
-      mimeType: "image/png",
-      tabContext: context,
-    })
-    await capturing
-    expect(f.deps.execute.mock.calls.some(([operation]) => operation === "clear")).toBe(false)
-  })
+  test.each([{ action: "clear" }, { action: "tool", tool: "arrow" }] as const)(
+    "does not overlap %j with pending capture",
+    async (update) => {
+      const f = fixture()
+      const image = deferred<{ dataUrl: string; mimeType: string; tabContext: typeof context }>()
+      await f.worker.start(startRequest())
+      f.deps.capture.mockReturnValueOnce(image.promise)
+      const capturing = f.worker.capture(captureRequest())
+      await vi.waitFor(() => expect(f.deps.capture).toHaveBeenCalled())
+      await expect(
+        f.worker.update({
+          ...captureRequest(),
+          method: "pageAnnotation.update",
+          params: { clientId, ...update },
+        }),
+      ).rejects.toMatchObject({ code: "INVALID_REQUEST" })
+      image.resolve({
+        dataUrl: "data:image/png;base64,cGl4ZWxz",
+        mimeType: "image/png",
+        tabContext: context,
+      })
+      await capturing
+      expect(f.deps.execute.mock.calls.some(([operation]) => operation === update.action)).toBe(
+        false,
+      )
+    },
+  )
 
   test("rejects oversized image output and resumes drawing", async () => {
     const f = fixture()

@@ -2,10 +2,12 @@ import { t } from "../i18n/index.js"
 import { type RuntimeEvent, sendRuntimeRequest } from "../runtime/messages.js"
 import {
   isPageAnnotationColor,
+  isPageAnnotationTool,
   PAGE_ANNOTATION_COLORS,
   PAGE_ANNOTATION_LIMITS,
   type PageAnnotationColor,
   type PageAnnotationState,
+  type PageAnnotationTool,
   type PageAnnotationUpdate,
   parsePageAnnotationState,
 } from "../runtime/page-annotation.js"
@@ -31,6 +33,13 @@ const colorLabels = {
   black: "Black",
 } as const
 
+const toolLabels = { pen: "Freehand", arrow: "Arrow", rectangle: "Rectangle" } as const
+const toolIcons = {
+  pen: "m3 9 7-7 3 3-7 7-4 1 1-4Zm6-6 3 3M3 9l3 3",
+  arrow: "M2 13 13 2M5 2h8v8",
+  rectangle: "M2 3h11v9H2Z",
+} as const
+
 function sameContext(left: TabContext, right: TabContext): boolean {
   return left.tabId === right.tabId && left.url === right.url && left.epoch === right.epoch
 }
@@ -42,6 +51,11 @@ function record(value: unknown): value is Record<string, unknown> {
 /** Owns the panel controls; editable strokes remain in the isolated page world. */
 export class PageAnnotationController {
   private readonly button = element<HTMLButtonElement>("page-pen")
+  private readonly toolToggle = element<HTMLButtonElement>("page-pen-tool")
+  private readonly toolMenu = element<HTMLElement>("page-pen-tool-menu")
+  private readonly tools = Array.from(
+    this.toolMenu.querySelectorAll<HTMLButtonElement>("[data-pen-tool]"),
+  )
   private readonly colors = element<HTMLButtonElement>("page-pen-color")
   private readonly palette = element<HTMLElement>("page-pen-palette")
   private readonly swatches = Array.from(
@@ -65,16 +79,59 @@ export class PageAnnotationController {
   private stopping?: Promise<void>
   private submissionCleanup = false
   private color: PageAnnotationColor = "red"
+  private tool: PageAnnotationTool = "pen"
+  private acceptedWidth: number = PAGE_ANNOTATION_LIMITS.defaultPenWidth
+  private pendingSettings?: { tool: PageAnnotationTool; color: PageAnnotationColor; width: number }
 
   constructor(private readonly options: PageAnnotationOptions) {
     this.request = options.request ?? sendRuntimeRequest
     this.button.addEventListener("click", () => this.run(() => this.toggle()))
     this.palette.hidden = true
     this.widthPopup.hidden = true
+    this.toolMenu.hidden = true
+    this.toolToggle.addEventListener("click", () => {
+      if (this.toolMenu.hidden) this.openToolMenu()
+      else this.closeToolMenu()
+    })
+    this.toolToggle.addEventListener("keydown", (event) => {
+      if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return
+      event.preventDefault()
+      this.openToolMenu()
+    })
+    for (const choice of this.tools)
+      choice.addEventListener("click", () => {
+        const tool = choice.dataset.penTool
+        if (!isPageAnnotationTool(tool) || choice.disabled) return
+        this.closeToolMenu()
+        if (this.active) this.run(() => this.update({ action: "tool", tool }))
+      })
+    this.toolMenu.addEventListener("keydown", (event) => {
+      if (event.key === "Tab") {
+        this.closeToolMenu()
+        return
+      }
+      if (event.key === "Escape") {
+        event.preventDefault()
+        event.stopPropagation()
+        this.closeToolMenu()
+        return
+      }
+      const index = this.tools.indexOf(document.activeElement as HTMLButtonElement)
+      let next: number
+      if (["ArrowRight", "ArrowDown"].includes(event.key)) next = (index + 1) % this.tools.length
+      else if (["ArrowLeft", "ArrowUp"].includes(event.key))
+        next = (index + this.tools.length - 1) % this.tools.length
+      else if (event.key === "Home") next = 0
+      else if (event.key === "End") next = this.tools.length - 1
+      else return
+      event.preventDefault()
+      this.tools[next]?.focus()
+    })
     this.widthToggle.addEventListener("click", () => {
       if (!this.widthPopup.hidden) this.closeWidth()
       else {
         this.closePalette(false)
+        this.closeToolMenu(false)
         this.widthPopup.hidden = false
         this.widthToggle.setAttribute("aria-expanded", "true")
         this.width.focus({ preventScroll: true })
@@ -94,9 +151,7 @@ export class PageAnnotationController {
       swatch.addEventListener("click", () => {
         const color = swatch.dataset.penColor
         if (!isPageAnnotationColor(color) || swatch.disabled) return
-        this.color = color
         this.closePalette()
-        this.render()
         if (this.active) this.run(() => this.update({ action: "color", color }))
       })
     this.palette.addEventListener("keydown", (event) => {
@@ -122,6 +177,12 @@ export class PageAnnotationController {
       this.swatches[next]?.focus()
     })
     document.addEventListener("pointerdown", (event) => {
+      if (
+        event.target &&
+        !this.toolMenu.contains(event.target as Node) &&
+        !this.toolToggle.contains(event.target as Node)
+      )
+        this.closeToolMenu(false)
       if (
         event.target &&
         !this.palette.contains(event.target as Node) &&
@@ -186,12 +247,31 @@ export class PageAnnotationController {
   }
 
   get toolsPopupOpen(): boolean {
-    return this.paletteOpen || !this.widthPopup.hidden
+    return !this.toolMenu.hidden || this.paletteOpen || !this.widthPopup.hidden
   }
 
   closeToolsPopup(restoreFocus = true): void {
+    this.closeToolMenu(restoreFocus)
     this.closePalette(restoreFocus)
     this.closeWidth(restoreFocus)
+  }
+
+  private openToolMenu(): void {
+    if (this.toolToggle.disabled) return
+    this.closePalette(false)
+    this.closeWidth(false)
+    this.toolMenu.hidden = false
+    this.toolToggle.setAttribute("aria-expanded", "true")
+    this.tools.find((choice) => choice.dataset.penTool === this.tool)?.focus()
+    this.options.onChange()
+  }
+
+  private closeToolMenu(restoreFocus = true): void {
+    if (this.toolMenu.hidden) return
+    this.toolMenu.hidden = true
+    this.toolToggle.setAttribute("aria-expanded", "false")
+    if (restoreFocus && !this.toolToggle.disabled) this.toolToggle.focus({ preventScroll: true })
+    this.options.onChange()
   }
 
   private closeWidth(restoreFocus = true): void {
@@ -212,6 +292,7 @@ export class PageAnnotationController {
 
   private openPalette(): void {
     if (this.colors.disabled) return
+    this.closeToolMenu(false)
     this.closeWidth(false)
     this.palette.hidden = false
     this.colors.setAttribute("aria-expanded", "true")
@@ -251,7 +332,25 @@ export class PageAnnotationController {
       this.updating ||
       this.capturing ||
       this.cleanupRequired ||
-      (this.state.active && this.state.drawing)
+      (this.state.active && (this.state.drawing || this.state.frozen))
+    this.toolToggle.disabled = this.colors.disabled
+    this.toolToggle.ariaLabel = t("Drawing tool")
+    this.toolToggle.title = `${t("Drawing tool")}: ${t(toolLabels[this.tool])}`
+    this.toolToggle.dataset.tool = this.tool
+    this.toolToggle.setAttribute("aria-description", t(toolLabels[this.tool]))
+    this.toolToggle.querySelector("path")?.setAttribute("d", toolIcons[this.tool])
+    if (this.toolToggle.disabled) this.toolMenu.hidden = true
+    this.toolToggle.setAttribute("aria-expanded", String(!this.toolMenu.hidden))
+    this.toolMenu.ariaLabel = t("Drawing tool")
+    for (const choice of this.tools) {
+      const tool = choice.dataset.penTool
+      if (!isPageAnnotationTool(tool)) continue
+      choice.ariaLabel = t(toolLabels[tool])
+      const label = choice.querySelector("span")
+      if (label) label.textContent = t(toolLabels[tool])
+      choice.setAttribute("aria-checked", String(tool === this.tool))
+      choice.disabled = this.toolToggle.disabled
+    }
     if (this.colors.disabled) this.palette.hidden = true
     this.colors.setAttribute("aria-expanded", String(this.paletteOpen))
     this.palette.ariaLabel = t("Pen color")
@@ -311,6 +410,7 @@ export class PageAnnotationController {
         "pageAnnotation.start",
         {
           clientId,
+          tool: this.tool,
           color: this.color,
           width: Number(this.width.value),
         },
@@ -322,6 +422,7 @@ export class PageAnnotationController {
       this.state = parsePageAnnotationState(result.state)
       if (!this.state.active)
         throw new Error(t("Page drawing could not start. Reload the page and try again."))
+      this.acceptedWidth = Number(this.width.value)
     } catch (error) {
       if (generation !== this.generation) return
       // A failed start can have installed a surface before its response was lost.
@@ -337,18 +438,36 @@ export class PageAnnotationController {
 
   private async update(
     update:
+      | Omit<Extract<PageAnnotationUpdate, { action: "tool" }>, "clientId">
       | Omit<Extract<PageAnnotationUpdate, { action: "color" }>, "clientId">
       | Omit<Extract<PageAnnotationUpdate, { action: "width" }>, "clientId">
       | { action: "undo" | "clear" | "resume" },
   ): Promise<void> {
-    if (!this.clientId || !this.context || !this.active || this.updating || this.capturing) return
+    if (
+      !this.clientId ||
+      !this.context ||
+      !this.active ||
+      this.updating ||
+      this.capturing ||
+      this.cleanupRequired ||
+      this.stopping ||
+      (this.state.active &&
+        (this.state.drawing || (this.state.frozen && update.action !== "resume")))
+    )
+      return
     const generation = this.generation
     const focusedControl =
-      document.activeElement === this.colors
-        ? this.colors
-        : document.activeElement === this.width
-          ? this.width
-          : undefined
+      document.activeElement === this.toolToggle
+        ? this.toolToggle
+        : document.activeElement === this.colors
+          ? this.colors
+          : document.activeElement === this.width
+            ? this.width
+            : undefined
+    const previous = { tool: this.tool, color: this.color, width: this.acceptedWidth }
+    if (["tool", "color", "width"].includes(update.action)) this.pendingSettings = previous
+    if (update.action === "tool") this.tool = update.tool
+    if (update.action === "color") this.color = update.color
     this.updating = true
     this.changed()
     try {
@@ -364,12 +483,21 @@ export class PageAnnotationController {
       if (!record(result) || result.clientId !== this.clientId)
         throw new Error("Invalid annotation owner")
       const state = parsePageAnnotationState(result.state)
-      if (!this.state.active || !state.active || state.revision >= this.state.revision)
-        this.state = state
+      if (!state.active) throw new Error("Page drawing settings were not applied")
+      if (!this.state.active || state.revision >= this.state.revision) this.state = state
+      if (update.action === "width") this.acceptedWidth = update.width
     } catch (error) {
-      if (generation === this.generation) throw error
+      if (generation === this.generation) {
+        this.tool = previous.tool
+        this.color = previous.color
+        this.width.value = String(previous.width)
+        throw error
+      }
     } finally {
-      this.updating = false
+      if (generation === this.generation) {
+        this.updating = false
+        this.pendingSettings = undefined
+      }
       this.changed()
       const restoreTarget =
         focusedControl === this.width && this.widthPopup.hidden ? this.widthToggle : focusedControl
@@ -466,6 +594,8 @@ export class PageAnnotationController {
     if (cancelSubmission) this.options.onCancel()
     ++this.generation
     this.starting = false
+    this.updating = false
+    this.pendingSettings = undefined
     if (this.stopping) return this.stopping
     const clientId = this.clientId
     if (!clientId) return
@@ -513,6 +643,16 @@ export class PageAnnotationController {
       return
     if (!event.tabContext || !this.context || !sameContext(event.tabContext, this.context)) return
     if (event.name === "pageAnnotation.cancelled") {
+      if (
+        this.pendingSettings &&
+        ["protection-lost", "access-revoked", "invalid-result"].includes(
+          String(event.payload.reason),
+        )
+      ) {
+        this.tool = this.pendingSettings.tool
+        this.color = this.pendingSettings.color
+        this.width.value = String(this.pendingSettings.width)
+      }
       ++this.generation
       if (!(this.submissionCleanup && ["user", "cancelled"].includes(String(event.payload.reason))))
         this.options.onCancel()

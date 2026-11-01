@@ -1499,6 +1499,35 @@ button.remove-pasted-image {
   display: none;
 }
 
+.page-pen-tool-menu {
+  left: 0;
+  right: auto;
+  display: grid;
+  gap: 4px;
+  width: max-content;
+  max-width: 176px;
+}
+
+:where(.page-pen-tool-menu) button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 6px;
+  text-align: start;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.page-pen-tool-menu .radix-icon {
+  flex-shrink: 0;
+}
+
+.page-pen-tool-menu [aria-checked="true"] {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
+}
+
 .page-pen-palette {
   display: grid;
   grid-template-columns: repeat(3, 32px);

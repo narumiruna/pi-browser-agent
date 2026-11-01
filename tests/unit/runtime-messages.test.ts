@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, expectTypeOf, test, vi } from "vitest"
 import { parseRuntimeRequest, sendRuntimeRequest } from "../../src/browser/runtime/messages.js"
+import type { PageAnnotationTool } from "../../src/browser/runtime/page-annotation.js"
 import type { ElementTarget } from "../../src/browser/runtime/types.js"
 
 afterEach(() => {
@@ -26,6 +27,10 @@ describe("internal runtime messages", () => {
         ref: string
         checked: boolean
       }>()
+    } else if (request.method === "pageAnnotation.start") {
+      expectTypeOf(request.params.tool).toEqualTypeOf<PageAnnotationTool | undefined>()
+    } else if (request.method === "pageAnnotation.update" && request.params.action === "tool") {
+      expectTypeOf(request.params.tool).toEqualTypeOf<PageAnnotationTool>()
     } else if (request.method === "page.waitFor") {
       if ("text" in request.params) expectTypeOf(request.params.text).toEqualTypeOf<string>()
       else expectTypeOf(request.params.selector).toEqualTypeOf<string>()

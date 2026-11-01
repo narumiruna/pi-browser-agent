@@ -208,7 +208,11 @@ export class PageAnnotationWorker {
         windowId,
         version,
         expiresAt: Date.now() + PAGE_ANNOTATION_LIMITS.lifetimeMs,
-        settings: { color: request.params.color, width: request.params.width },
+        settings: {
+          color: request.params.color,
+          width: request.params.width,
+          tool: request.params.tool ?? "pen",
+        },
         state: { active: false },
         busy: false,
       }
@@ -305,6 +309,7 @@ export class PageAnnotationWorker {
     try {
       await this.guard(session, signal)
       const next = { ...session.settings }
+      if (request.params.action === "tool") next.tool = request.params.tool
       if (request.params.action === "color") next.color = request.params.color
       if (request.params.action === "width") next.width = request.params.width
       const state = await this.execute(request.params.action, { ...session, settings: next })

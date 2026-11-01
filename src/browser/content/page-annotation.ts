@@ -1,10 +1,10 @@
 import type {
   PageAnnotationLimits,
+  PageAnnotationMark,
   PageAnnotationOperation,
   PageAnnotationReason,
   PageAnnotationSettings,
   PageAnnotationState,
-  PageAnnotationStroke,
 } from "../runtime/page-annotation.js"
 import type { TabContext } from "../runtime/types.js"
 
@@ -77,12 +77,14 @@ export async function executePageAnnotation(
   )
     return inactive("overlay-unavailable")
   const validSettings = (value: PageAnnotationSettings): boolean =>
+    Object.keys(value).every((key) => ["color", "width", "tool"].includes(key)) &&
+    (value.tool === undefined || ["pen", "arrow", "rectangle"].includes(value.tool)) &&
     Object.hasOwn(limits.colors, value.color) &&
     Number.isSafeInteger(value.width) &&
     value.width >= limits.minPenWidth &&
     value.width <= limits.maxPenWidth
   if (!validSettings(settings)) return inactive("invalid-result")
-  let pen = { ...settings }
+  let pen = { ...settings, tool: settings.tool ?? "pen" }
   // Never alter page-owned dialogs, layout, zoom, or styles.
   const parent =
     document.elementFromPoint(width / 2, height / 2)?.closest("dialog:modal") ??
@@ -149,8 +151,8 @@ export async function executePageAnnotation(
   if (!context2d) return inactive("overlay-unavailable")
   const paint = context2d
   const controller = new AbortController()
-  const strokes: PageAnnotationStroke[] = []
-  let current: PageAnnotationStroke | undefined
+  const strokes: PageAnnotationMark[] = []
+  let current: PageAnnotationMark | undefined
   let pointer: number | undefined
   let pointCount = 0
   let revision = 0
@@ -253,6 +255,15 @@ export async function executePageAnnotation(
       })
       .catch(() => undefined)
   }
+  const completeMark = (mark: PageAnnotationMark): boolean => {
+    if (mark.tool === "pen") return mark.points.length > 0
+    const [start, end] = mark.points
+    const dx = Math.abs(end.x - start.x)
+    const dy = Math.abs(end.y - start.y)
+    return mark.tool === "arrow"
+      ? Math.hypot(dx, dy) >= limits.minShapeSize
+      : dx >= limits.minShapeSize && dy >= limits.minShapeSize
+  }
   const redraw = (): void => {
     paint.setTransform(1, 0, 0, 1, 0, 0)
     paint.clearRect(0, 0, pixelWidth, pixelHeight)
@@ -264,9 +275,30 @@ export async function executePageAnnotation(
       paint.strokeStyle = limits.colors[stroke.color]
       paint.fillStyle = limits.colors[stroke.color]
       const first = stroke.points[0]
-      if (!first) continue
+      if (!first || !completeMark(stroke)) continue
       paint.beginPath()
-      if (stroke.points.length === 1) {
+      if (stroke.tool === "rectangle") {
+        const end = stroke.points[1]
+        paint.rect(
+          Math.min(first.x, end.x),
+          Math.min(first.y, end.y),
+          Math.abs(end.x - first.x),
+          Math.abs(end.y - first.y),
+        )
+        paint.stroke()
+      } else if (stroke.tool === "arrow") {
+        const end = stroke.points[1]
+        const length = Math.hypot(end.x - first.x, end.y - first.y)
+        const ux = (end.x - first.x) / length
+        const uy = (end.y - first.y) / length
+        const head = Math.min(48, Math.max(12, stroke.width * 3), length * 0.4)
+        paint.moveTo(first.x, first.y)
+        paint.lineTo(end.x, end.y)
+        paint.moveTo(end.x - ux * head - uy * head * 0.5, end.y - uy * head + ux * head * 0.5)
+        paint.lineTo(end.x, end.y)
+        paint.lineTo(end.x - ux * head + uy * head * 0.5, end.y - uy * head - ux * head * 0.5)
+        paint.stroke()
+      } else if (stroke.points.length === 1) {
         paint.arc(first.x, first.y, stroke.width / 2, 0, Math.PI * 2)
         paint.fill()
       } else {
@@ -358,15 +390,17 @@ export async function executePageAnnotation(
     if (action === "resume") {
       frozen = false
       revision += 1
-    } else if (frozen || pointer !== undefined) return result()
-    else if (action === "color" || action === "width") {
-      if (!validSettings(value)) return result()
+    } else if (action === "tool" || action === "color" || action === "width") {
+      if (frozen || !validSettings(value)) throw new Error("Page drawing settings were not applied")
+      // A delayed idle update can arrive after pointer down. Only the next mark uses it.
       pen = {
+        tool: action === "tool" ? (value.tool ?? "pen") : pen.tool,
         color: action === "color" ? value.color : pen.color,
         width: action === "width" ? value.width : pen.width,
       }
       revision += 1
-    } else if (action === "undo") {
+    } else if (frozen || pointer !== undefined) return result()
+    else if (action === "undo") {
       const removed = strokes.pop()
       if (removed) {
         pointCount -= removed.points.length
@@ -388,31 +422,29 @@ export async function executePageAnnotation(
     event.preventDefault()
     event.stopImmediatePropagation()
   }
+  const clampedPoint = (event: PointerEvent): { x: number; y: number } => ({
+    x: Math.max(0, Math.min(width, event.clientX)),
+    y: Math.max(0, Math.min(height, event.clientY)),
+  })
   const addPoint = (event: PointerEvent): void => {
-    if (
-      !current ||
-      !Number.isFinite(event.clientX) ||
-      !Number.isFinite(event.clientY) ||
-      current.points.length >= limits.maxPointsPerStroke ||
-      pointCount >= limits.maxTotalPoints
-    )
-      return
-    const point = {
-      x: Math.max(0, Math.min(width, event.clientX)),
-      y: Math.max(0, Math.min(height, event.clientY)),
-    }
+    if (!current || !Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) return
+    const point = clampedPoint(event)
     const last = current.points.at(-1)
     if (last?.x === point.x && last.y === point.y) return
-    current.points.push(point)
-    pointCount += 1
+    if (current.tool === "pen") {
+      if (current.points.length >= limits.maxPointsPerStroke || pointCount >= limits.maxTotalPoints)
+        return
+      current.points.push(point)
+      pointCount += 1
+    } else current.points[1] = point
     redraw()
   }
   const finishPointer = (discard: boolean): void => {
     const id = pointer
     pointer = undefined
     if (current) {
-      if (discard) pointCount -= current.points.length
-      else if (current.points.length) {
+      if (discard || !completeMark(current)) pointCount -= current.points.length
+      else {
         strokes.push(current)
       }
       revision += 1
@@ -475,7 +507,7 @@ export async function executePageAnnotation(
         event.button !== 0 ||
         !event.isPrimary ||
         strokes.length >= limits.maxStrokes ||
-        pointCount >= limits.maxTotalPoints ||
+        pointCount + (pen.tool === "pen" ? 1 : 2) > limits.maxTotalPoints ||
         !Number.isFinite(event.clientX) ||
         !Number.isFinite(event.clientY)
       )
@@ -488,8 +520,13 @@ export async function executePageAnnotation(
       }
       pointer = event.pointerId
       revision += 1
-      current = { ...pen, points: [] }
-      addPoint(event)
+      const point = clampedPoint(event)
+      current =
+        pen.tool === "pen"
+          ? { ...pen, tool: "pen", points: [point] }
+          : { ...pen, tool: pen.tool, points: [point, point] }
+      pointCount += current.points.length
+      redraw()
       emit()
     })
     listen("pointermove", (raw) => {

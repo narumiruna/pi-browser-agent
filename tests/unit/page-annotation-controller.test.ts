@@ -28,7 +28,9 @@ afterEach(() => {
 
 function setup() {
   dom = new JSDOM(`<button id="page-pen"></button>
-    <div id="page-pen-controls"><button id="page-pen-color"></button>
+    <div id="page-pen-controls"><button id="page-pen-tool"><svg><path></path></svg></button>
+    <div id="page-pen-tool-menu" role="menu" hidden>${["pen", "arrow", "rectangle"].map((tool) => `<button data-pen-tool="${tool}" role="menuitemradio" tabindex="-1"><span></span></button>`).join("")}</div>
+    <button id="page-pen-color"></button>
     <div id="page-pen-palette" role="menu" hidden>${["red", "yellow", "green", "blue", "white", "black"].map((color) => `<button data-pen-color="${color}" role="menuitemradio" tabindex="-1"></button>`).join("")}</div>
     <button id="page-pen-width-toggle"></button><div id="page-pen-width-popup" hidden><input id="page-pen-width" type="range" min="2" max="32"></div>
     <button id="page-pen-undo"></button><button id="page-pen-clear"></button></div>`)
@@ -177,6 +179,198 @@ describe("page annotation panel controller", () => {
     controller.onEvent(event({ ...blank, revision: 1 }))
     expect(controller.hasMarks).toBe(true)
     expect(controller.sendBlocked).toBe(true)
+  })
+
+  test("selects tools through one checked menu, with keyboard focus and popup Escape", async () => {
+    const { controller, request, document } = setup()
+    await controller.toggle()
+    const trigger = element<HTMLButtonElement>("page-pen-tool")
+    const menu = element<HTMLElement>("page-pen-tool-menu")
+    expect(trigger.ariaLabel).toBe("Drawing tool")
+    expect(trigger.dataset.tool).toBe("pen")
+    expect(
+      [...menu.querySelectorAll("button")].map((button) => button.getAttribute("aria-label")),
+    ).toEqual(["Freehand", "Arrow", "Rectangle"])
+    trigger.dispatchEvent(
+      new dom.window.KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
+    )
+    expect(controller.toolsPopupOpen).toBe(true)
+    expect(document.activeElement?.getAttribute("data-pen-tool")).toBe("pen")
+    menu.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "End", bubbles: true }))
+    expect(document.activeElement?.getAttribute("data-pen-tool")).toBe("rectangle")
+    expect(
+      request.mock.calls.filter(([method]) => method === "pageAnnotation.update"),
+    ).toHaveLength(0)
+    menu.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }))
+    expect(controller.active).toBe(true)
+    expect(controller.toolsPopupOpen).toBe(false)
+    expect(document.activeElement).toBe(trigger)
+    trigger.click()
+    menu.querySelector<HTMLButtonElement>('[data-pen-tool="arrow"]')?.click()
+    await vi.waitFor(() => expect(controller.sendBlocked).toBe(false))
+    expect(request).toHaveBeenLastCalledWith(
+      "pageAnnotation.update",
+      expect.objectContaining({ action: "tool", tool: "arrow" }),
+      { tabContext: context },
+    )
+    expect(trigger.dataset.tool).toBe("arrow")
+    expect(trigger.getAttribute("aria-description")).toBe("Arrow")
+    expect(menu.querySelector('[data-pen-tool="arrow"]')?.getAttribute("aria-checked")).toBe("true")
+    expect(document.activeElement).toBe(trigger)
+    trigger.click()
+    element<HTMLButtonElement>("page-pen-color").click()
+    expect(menu.hidden).toBe(true)
+    expect(controller.paletteOpen).toBe(true)
+    trigger.click()
+    expect(controller.paletteOpen).toBe(false)
+    element<HTMLButtonElement>("page-pen-width-toggle").click()
+    expect(menu.hidden).toBe(true)
+  })
+
+  test("blocks tool changes through a delayed update, drag, capture, and unconfirmed cleanup", async () => {
+    const { controller, request, event, marks } = setup()
+    await controller.toggle()
+    const trigger = element<HTMLButtonElement>("page-pen-tool")
+    const arrow = dom.window.document.querySelector<HTMLButtonElement>('[data-pen-tool="arrow"]')
+    const original = getRequestImplementation(request)
+    const gate = deferred<undefined>()
+    request.mockImplementationOnce(async (...args): Promise<JsonValue> => {
+      await gate.promise
+      return original(...args)
+    })
+    trigger.click()
+    arrow?.click()
+    expect(controller.sendBlocked).toBe(true)
+    expect(trigger.disabled).toBe(true)
+    gate.resolve(undefined)
+    await vi.waitFor(() => expect(controller.sendBlocked).toBe(false))
+    controller.onEvent(event({ ...blank, hasStrokes: true, drawing: true, revision: 4 }))
+    expect(trigger.disabled).toBe(true)
+    controller.onEvent(event({ ...blank, hasStrokes: true, revision: 5 }))
+    expect(trigger.disabled).toBe(false)
+    const captureGate = deferred<undefined>()
+    request.mockImplementationOnce(async (...args): Promise<JsonValue> => {
+      await captureGate.promise
+      return original(...args)
+    })
+    marks()
+    const capture = controller.capture(new AbortController().signal, async () => true)
+    expect(trigger.disabled).toBe(true)
+    captureGate.resolve(undefined)
+    await capture
+    request.mockRejectedValueOnce(new Error("cleanup unavailable"))
+    await expect(controller.stop(false)).rejects.toThrow("cleanup")
+    expect(trigger.disabled).toBe(true)
+    expect(controller.toolsPopupOpen).toBe(false)
+    await controller.stop(false)
+  })
+
+  test("ignores a cancelled shape update and retains its tool for the next start", async () => {
+    const { controller, request, options } = setup()
+    await controller.toggle()
+    let reject: (error: Error) => void = () => undefined
+    const pending = new Promise<JsonValue>((_resolve, no) => {
+      reject = no
+    })
+    void pending.catch(() => undefined)
+    const original = getRequestImplementation(request)
+    request.mockImplementation(
+      async (...args): Promise<JsonValue> =>
+        args[0] === "pageAnnotation.update" ? pending : original(...args),
+    )
+    element<HTMLButtonElement>("page-pen-tool").click()
+    dom.window.document.querySelector<HTMLButtonElement>('[data-pen-tool="rectangle"]')?.click()
+    await controller.stop()
+    reject(new Error("late shape update failed"))
+    await vi.waitFor(() => expect(controller.sendBlocked).toBe(false))
+    expect(options.onError).not.toHaveBeenCalled()
+    await controller.toggle()
+    expect(request).toHaveBeenLastCalledWith(
+      "pageAnnotation.start",
+      expect.objectContaining({ tool: "rectangle" }),
+      { tabContext: context },
+    )
+  })
+
+  test.each(["tool", "color", "width"] as const)(
+    "restores the accepted %s after an actual update failure",
+    async (setting) => {
+      const { controller, request, options } = setup()
+      await controller.toggle()
+      request.mockRejectedValueOnce(new Error("Setting was not applied"))
+      if (setting === "tool") {
+        element<HTMLButtonElement>("page-pen-tool").click()
+        dom.window.document.querySelector<HTMLButtonElement>('[data-pen-tool="arrow"]')?.click()
+      } else if (setting === "color") {
+        element<HTMLButtonElement>("page-pen-color").click()
+        dom.window.document.querySelector<HTMLButtonElement>('[data-pen-color="blue"]')?.click()
+      } else {
+        const width = element<HTMLInputElement>("page-pen-width")
+        width.value = "24"
+        width.dispatchEvent(new dom.window.Event("change"))
+      }
+      await vi.waitFor(() => expect(options.onError).toHaveBeenCalledOnce())
+      expect(element<HTMLButtonElement>("page-pen-tool").dataset.tool).toBe("pen")
+      expect(element<HTMLButtonElement>("page-pen-color").dataset.color).toBe("red")
+      expect(element<HTMLInputElement>("page-pen-width").value).toBe("8")
+      expect(controller.sendBlocked).toBe(false)
+    },
+  )
+
+  test("rolls back a failed setting when worker cancellation arrives before its rejection", async () => {
+    const { controller, request, event } = setup()
+    await controller.toggle()
+    let reject: (error: Error) => void = () => undefined
+    const pending = new Promise<JsonValue>((_resolve, no) => {
+      reject = no
+    })
+    const original = getRequestImplementation(request)
+    request.mockImplementation(
+      async (...args): Promise<JsonValue> =>
+        args[0] === "pageAnnotation.update" ? pending : original(...args),
+    )
+    element<HTMLButtonElement>("page-pen-tool").click()
+    dom.window.document.querySelector<HTMLButtonElement>('[data-pen-tool="arrow"]')?.click()
+    controller.onEvent({
+      ...event(),
+      name: "pageAnnotation.cancelled",
+      payload: { ...event().payload, reason: "protection-lost", state: { active: false } },
+    })
+    reject(new Error("Setting failed after cancellation notification"))
+    await vi.waitFor(() => expect(controller.occupied).toBe(false))
+    expect(element<HTMLButtonElement>("page-pen-tool").dataset.tool).toBe("pen")
+  })
+
+  test("an old update cannot unlock a replacement generation with its own pending update", async () => {
+    const { controller, request } = setup()
+    await controller.toggle()
+    const first = deferred<undefined>()
+    const second = deferred<undefined>()
+    let firstSettled = false
+    const original = getRequestImplementation(request)
+    request.mockImplementationOnce(async (...args): Promise<JsonValue> => {
+      await first.promise
+      const result = await original(...args)
+      firstSettled = true
+      return result
+    })
+    element<HTMLButtonElement>("page-pen-tool").click()
+    dom.window.document.querySelector<HTMLButtonElement>('[data-pen-tool="arrow"]')?.click()
+    await controller.stop()
+    await controller.toggle()
+    request.mockImplementationOnce(async (...args): Promise<JsonValue> => {
+      await second.promise
+      return original(...args)
+    })
+    element<HTMLButtonElement>("page-pen-tool").click()
+    dom.window.document.querySelector<HTMLButtonElement>('[data-pen-tool="rectangle"]')?.click()
+    first.resolve(undefined)
+    await vi.waitFor(() => expect(firstSettled).toBe(true))
+    expect(controller.sendBlocked).toBe(true)
+    expect(element<HTMLButtonElement>("page-pen-tool").disabled).toBe(true)
+    second.resolve(undefined)
+    await vi.waitFor(() => expect(controller.sendBlocked).toBe(false))
+    expect(element<HTMLButtonElement>("page-pen-tool").dataset.tool).toBe("rectangle")
   })
 
   test("updates color and width through validated control actions", async () => {
