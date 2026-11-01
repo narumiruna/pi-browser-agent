@@ -695,7 +695,7 @@ async function reachable(page: Page): Promise<void> {
   for (const control of await controls.all()) {
     await expect(control).toHaveAccessibleName(/\S/)
     await expect(control).toBeVisible()
-    await control.scrollIntoViewIfNeeded()
+    // These controls must fit without scrolling; avoid the scroll action's stability wait.
     await expect(control).toBeInViewport({ ratio: 1 })
     const box = await control.boundingBox()
     if (!box) throw new Error("Missing drawing control geometry")
