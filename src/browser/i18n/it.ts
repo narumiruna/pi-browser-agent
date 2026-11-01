@@ -4,31 +4,20 @@ export default {
   "Reset page pinch zoom before capturing a region":
     "Reimposta lo zoom con pizzico della pagina prima di acquisire un’area",
   "Capture region": "Cattura area",
-  "Select a region": "Seleziona un’area",
-  "Drag on the page or enter CSS pixels. Minimum: 8 × 8.":
-    "Trascina sulla pagina o inserisci pixel CSS. Minimo: 8 × 8.",
-  X: "X",
-  Y: "Y",
-  Width: "Larghezza",
-  Height: "Altezza",
-  "Chrome temporarily captures the full viewport. Only the crop leaves the worker.":
-    "Chrome cattura temporaneamente l’intera area visibile. Solo il ritaglio lascia il worker.",
-  "Preview region": "Anteprima area",
-  "Region preview": "Anteprima area",
-  "Only this crop is attached. Text, selected elements, history, and approved page reads can include other content.":
-    "Viene allegato solo questo ritaglio. Testo, elementi selezionati, cronologia e letture di pagina approvate possono includere altri contenuti.",
-  Retake: "Ripeti cattura",
+  "Cancel region capture": "Annulla acquisizione area",
+  "Retry region cleanup": "Riprova rimozione selezione area",
+  "Retry region attachment": "Riprova ad allegare l’area",
+  "Chrome temporarily captures the full viewport. Only the crop leaves the worker. Drag to attach a crop. Arrow keys move; Shift+Arrow resizes; Alt uses 1 px. Enter attaches; Escape cancels.":
+    "Chrome cattura temporaneamente l’intera area visibile. Solo il ritaglio lascia il worker. Trascina per allegare un ritaglio. Le frecce spostano; Shift+freccia ridimensiona; Alt usa incrementi di 1 px. Enter allega; Escape annulla.",
   "Finish or cancel region capture before sending":
     "Completa o annulla la cattura dell’area prima di inviare",
-  "Select a region at least 8 CSS pixels wide and high":
-    "Seleziona un’area larga e alta almeno 8 pixel CSS",
   "Could not confirm region cleanup. Reload the page before sending.":
     "Impossibile confermare la rimozione della selezione. Ricarica la pagina prima di inviare.",
   "The page changed. Select a new region.": "La pagina è cambiata. Seleziona una nuova area.",
   "Region capture is unavailable on this page":
     "La cattura di un’area non è disponibile su questa pagina",
-  "Could not preview the region. Select again or retry.":
-    "Impossibile visualizzare l’area. Seleziona di nuovo o riprova.",
+  "Could not capture the region. Select again or retry.":
+    "Impossibile acquisire l’area. Seleziona di nuovo o riprova.",
   "Image {number}": "Immagine {number}",
   "Use as target": "Usa come destinazione",
   "Use as reference": "Usa come riferimento",

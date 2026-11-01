@@ -13,9 +13,11 @@ const blank = {
   dragging: false,
   frozen: false,
   revision: 0,
+  committedRevision: null,
   width: 900,
   height: 700,
 } satisfies RegionCaptureState
+const rectangle = { x: 100.2, y: 120.4, width: 200, height: 160 }
 const png =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nL8AAAAASUVORK5CYII="
 let dom: JSDOM
@@ -33,39 +35,23 @@ function setup() {
     readFileSync(new URL("../../src/browser/sidepanel/index.html", import.meta.url), "utf8"),
   )
   vi.stubGlobal("document", dom.window.document)
-  vi.stubGlobal("HTMLInputElement", dom.window.HTMLInputElement)
-  dom.window.HTMLDialogElement.prototype.showModal = function () {
-    this.open = true
-  }
-  dom.window.HTMLDialogElement.prototype.close = function () {
-    this.open = false
-  }
-  vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:crop")
-  vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined)
+  vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:unused")
   let owner = { clientId: "", operationId: "" }
-  let state = { ...blank }
   let session = "session-one"
+  const imageResult = (overrides: Record<string, JsonValue> = {}) => ({
+    ...owner,
+    dataUrl: `data:image/png;base64,${png}`,
+    mimeType: "image/png",
+    width: 1,
+    height: 1,
+    ...overrides,
+  })
   const request = vi.fn<typeof sendRuntimeRequest>(async (method, params): Promise<JsonValue> => {
     if (method === "regionCapture.start") {
       owner = params as typeof owner
-      return { ...owner, state }
+      return { ...owner, state: { ...blank } }
     }
-    if (method === "regionCapture.update") {
-      state = {
-        ...state,
-        rectangle: params?.rectangle as JsonValue,
-        revision: state.revision + 1,
-      } as typeof state
-      return { ...owner, state }
-    }
-    if (method === "regionCapture.capture")
-      return {
-        ...owner,
-        dataUrl: `data:image/png;base64,${png}`,
-        mimeType: "image/png",
-        width: 1,
-        height: 1,
-      }
+    if (method === "regionCapture.capture") return imageResult()
     return { active: false }
   })
   const options = {
@@ -84,8 +70,6 @@ function setup() {
     request,
   }
   const controller = new RegionCaptureController(options)
-  const input = (key: string) =>
-    dom.window.document.querySelector<HTMLInputElement>(`#region-${key}`) as HTMLInputElement
   const event = (value: RegionCaptureState, extra: Partial<RuntimeEvent> = {}): RuntimeEvent => ({
     kind: "event",
     name: "regionCapture.changed",
@@ -93,24 +77,21 @@ function setup() {
     tabContext: context,
     ...extra,
   })
-  const selecting = async () => {
-    await controller.start()
-    await controller.updateRectangle()
+  const commit = (revision = 3) => {
+    controller.onEvent(event({ ...blank, rectangle, revision, committedRevision: revision }))
   }
   return {
     controller,
     options,
     request,
-    input,
-    edit: (key: string, value: string) => {
-      input(key).value = value
-      input(key).dispatchEvent(new dom.window.Event("input", { bubbles: true }))
-    },
     event,
-    selecting,
+    commit,
+    imageResult,
     session: (id: string) => {
       session = id
     },
+    captures: () => request.mock.calls.filter(([method]) => method === "regionCapture.capture"),
+    stops: () => request.mock.calls.filter(([method]) => method === "regionCapture.stop"),
   }
 }
 afterEach(() => {
@@ -118,199 +99,107 @@ afterEach(() => {
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })
+const button = () =>
+  dom.window.document.querySelector<HTMLButtonElement>("#region-capture") as HTMLButtonElement
 
-const button = (id: string) =>
-  dom.window.document.querySelector<HTMLButtonElement>(`#${id}`) as HTMLButtonElement
+async function attached(f: ReturnType<typeof setup>) {
+  await vi.waitFor(() => expect(f.controller.occupied).toBe(false))
+  expect(f.options.onAttach).toHaveBeenCalledOnce()
+}
 
-describe("region capture panel controller", () => {
-  test("starts without capture and supports keyboard numeric selection with focus", async () => {
+describe("compact region capture controller", () => {
+  test("uses only the existing icon and accessible help, with no panel or crop dialog", async () => {
+    const f = setup()
+    for (const id of [
+      "region-selection",
+      "region-x",
+      "region-y",
+      "region-width",
+      "region-height",
+      "region-preview-action",
+      "region-cancel",
+      "region-preview-dialog",
+      "region-attach",
+      "region-retake",
+    ])
+      expect(dom.window.document.getElementById(id)).toBeNull()
+    expect(button().getAttribute("aria-describedby")).toBe("region-capture-help")
+    expect(button().title).toContain("Shift+Arrow")
+    await f.controller.start()
+    expect(button().ariaLabel).toBe("Cancel region capture")
+    expect(f.controller.sendBlocked).toBe(true)
+    expect(f.request.mock.calls.map(([method]) => method)).toEqual(["regionCapture.start"])
+    expect(f.options.preflight).not.toHaveBeenCalled()
+    expect(f.options.onAttach).not.toHaveBeenCalled()
+    expect(f.options.focusComposer).not.toHaveBeenCalled()
+  })
+  test("held or synthetic Enter on the icon cannot start another operation", () => {
+    const f = setup()
+    const down = new dom.window.KeyboardEvent("keydown", {
+      key: "Enter",
+      repeat: true,
+      bubbles: true,
+      cancelable: true,
+    })
+    button().dispatchEvent(down)
+    button().dispatchEvent(new dom.window.KeyboardEvent("keyup", { key: "Enter" }))
+    expect(down.defaultPrevented).toBe(true)
+    expect(f.request).not.toHaveBeenCalled()
+    expect(f.options.requestSiteAccess).not.toHaveBeenCalled()
+  })
+  test("editing, dragging, frozen state, and incomplete rectangles do not auto-capture", async () => {
     const f = setup()
     await f.controller.start()
-    expect(f.input("x")).toBe(dom.window.document.activeElement)
-    expect(button("region-preview-action").disabled).toBe(true)
-    f.input("x").value = "100.2"
-    f.input("y").value = "120.4"
-    await f.controller.updateRectangle()
-    expect(f.request).toHaveBeenLastCalledWith(
-      "regionCapture.update",
-      expect.objectContaining({ rectangle: { x: 100.2, y: 120.4, width: 200, height: 150 } }),
-      expect.anything(),
-    )
-    expect(button("region-preview-action").disabled).toBe(false)
+    for (const state of [
+      { ...blank, rectangle, revision: 1 },
+      { ...blank, rectangle, dragging: true, revision: 2 },
+      { ...blank, rectangle, frozen: true, revision: 4, committedRevision: 3 },
+      { ...blank, revision: 5 },
+    ])
+      f.controller.onEvent(f.event(state))
+    expect(f.captures()).toHaveLength(0)
+    expect(f.options.preflight).not.toHaveBeenCalled()
+    expect(f.options.confirm).not.toHaveBeenCalled()
+  })
+  test("a completed selection auto-attaches one crop only after cleanup and never submits", async () => {
+    const f = setup()
+    await f.controller.start()
+    const original = f.request.getMockImplementation() as typeof sendRuntimeRequest
+    const gate = deferred<JsonValue>()
+    f.request.mockImplementation(async (method, params, options) => {
+      if (method === "regionCapture.stop") return gate.promise
+      return original(method, params, options)
+    })
+    f.commit()
+    await vi.waitFor(() => expect(f.stops()).toHaveLength(1))
+    expect(f.options.onAttach).not.toHaveBeenCalled()
+    expect(f.controller.sendBlocked).toBe(true)
+    expect(f.captures()[0]?.[1]).toMatchObject({ selectionRevision: 3, maxBytes: 3_000_000 })
+    gate.resolve({ active: false })
+    await attached(f)
     expect(f.request.mock.calls.map(([method]) => method)).toEqual([
       "regionCapture.start",
-      "regionCapture.update",
+      "regionCapture.capture",
+      "regionCapture.stop",
     ])
-    expect(f.controller.sendBlocked).toBe(true)
+    expect(f.options.onAttach.mock.calls[0]?.[0].type).toBe("image/png")
+    expect(f.options.focusComposer).toHaveBeenCalledOnce()
+    expect(f.controller.sendBlocked).toBe(false)
+    expect(button().ariaLabel).toBe("Capture region")
+    expect(URL.createObjectURL).not.toHaveBeenCalled()
   })
-  test("serializes and coalesces valid changes without disabling fields or moving focus", async () => {
+  test("duplicate completion notifications cannot capture or attach twice", async () => {
     const f = setup()
-    await f.selecting()
-    f.request.mockClear()
-    const original = f.request.getMockImplementation() as typeof sendRuntimeRequest
-    const gate = deferred<void>()
-    f.request.mockImplementationOnce(async (...args) => {
-      await gate.promise
-      return original(...args)
-    })
-    f.edit("x", "100")
-    const pending = f.controller.updateRectangle()
-    f.input("y").focus()
-    f.edit("y", "120")
-    await f.controller.updateRectangle()
-    f.edit("width", "180")
-    await f.controller.updateRectangle()
-    for (const key of ["x", "y", "width", "height"]) expect(f.input(key).disabled).toBe(false)
-    expect(dom.window.document.activeElement).toBe(f.input("y"))
-    expect(f.request).toHaveBeenCalledOnce()
-    expect(button("region-preview-action").disabled).toBe(true)
-    await f.controller.preview()
-    f.controller.onEvent(
-      f.event({ ...blank, rectangle: { x: 100, y: 0, width: 200, height: 150 }, revision: 2 }),
-    )
-    expect(f.input("y").value).toBe("120")
-    expect(f.input("width").value).toBe("180")
-    gate.resolve()
-    await pending
-    expect(f.request.mock.calls.map(([, params]) => params?.rectangle)).toEqual([
-      { x: 100, y: 0, width: 200, height: 150 },
-      { x: 100, y: 120, width: 180, height: 150 },
-    ])
-    expect(dom.window.document.activeElement).toBe(f.input("y"))
-    expect(button("region-preview-action").disabled).toBe(false)
+    await f.controller.start()
+    f.commit()
+    f.commit()
+    f.commit()
+    await attached(f)
+    f.commit()
+    expect(f.captures()).toHaveLength(1)
+    expect(f.options.onAttach).toHaveBeenCalledOnce()
   })
-  test("an older reply preserves a newer uncommitted draft and blocks Preview", async () => {
-    const f = setup()
-    await f.selecting()
-    const original = f.request.getMockImplementation() as typeof sendRuntimeRequest
-    const gate = deferred<void>()
-    f.request.mockImplementationOnce(async (...args) => {
-      await gate.promise
-      return original(...args)
-    })
-    f.edit("x", "100")
-    const pending = f.controller.updateRectangle()
-    f.edit("y", "120.50")
-    gate.resolve()
-    await pending
-    expect(f.input("y").value).toBe("120.50")
-    expect(button("region-preview-action").disabled).toBe(true)
-    await f.controller.preview()
-    expect(f.request.mock.calls.some(([method]) => method === "regionCapture.capture")).toBe(false)
-    await f.controller.updateRectangle()
-    expect(f.input("y").value).toBe("120.50")
-    expect(button("region-preview-action").disabled).toBe(false)
-  })
-  test("an invalid draft survives an older notification and reply and clears queued edits", async () => {
-    const f = setup()
-    await f.selecting()
-    f.request.mockClear()
-    const original = f.request.getMockImplementation() as typeof sendRuntimeRequest
-    const gate = deferred<void>()
-    f.request.mockImplementationOnce(async (...args) => {
-      await gate.promise
-      return original(...args)
-    })
-    f.edit("x", "100")
-    const pending = f.controller.updateRectangle()
-    f.edit("y", "120")
-    await f.controller.updateRectangle()
-    f.edit("height", "")
-    f.controller.onEvent(
-      f.event({ ...blank, rectangle: { x: 100, y: 0, width: 200, height: 150 }, revision: 2 }),
-    )
-    gate.resolve()
-    await pending
-    expect(f.input("height").value).toBe("")
-    expect(f.input("height").getAttribute("aria-invalid")).toBe("true")
-    expect(f.request).toHaveBeenCalledOnce()
-    expect(button("region-preview-action").disabled).toBe(true)
-    f.edit("height", "160")
-    await f.controller.updateRectangle()
-    expect(f.request).toHaveBeenLastCalledWith(
-      "regionCapture.update",
-      expect.objectContaining({ rectangle: { x: 100, y: 120, width: 200, height: 160 } }),
-      expect.anything(),
-    )
-    expect(button("region-preview-action").disabled).toBe(false)
-  })
-  test("blur commits a restored valid draft even when native change is omitted", async () => {
-    const f = setup()
-    await f.selecting()
-    f.request.mockClear()
-    const original = f.request.getMockImplementation() as typeof sendRuntimeRequest
-    const gate = deferred<void>()
-    f.request.mockImplementationOnce(async (...args) => {
-      await gate.promise
-      return original(...args)
-    })
-    f.edit("x", "100")
-    const pending = f.controller.updateRectangle()
-    f.edit("height", "160")
-    await f.controller.updateRectangle()
-    f.input("height").focus()
-    f.edit("height", "")
-    gate.resolve()
-    await pending
-    f.edit("height", "160")
-    expect(button("region-preview-action").disabled).toBe(true)
-    // No change event: the final value equals the value present when focus arrived.
-    f.input("height").blur()
-    await vi.waitFor(() => expect(button("region-preview-action").disabled).toBe(false))
-    expect(f.request.mock.calls.map(([, params]) => params?.rectangle)).toEqual([
-      { x: 100, y: 0, width: 200, height: 150 },
-      { x: 100, y: 0, width: 200, height: 160 },
-    ])
-  })
-  test("failed updates discard the queue without replay and require a new explicit edit", async () => {
-    const f = setup()
-    await f.selecting()
-    f.request.mockClear()
-    const gate = deferred<JsonValue>()
-    f.request.mockImplementationOnce(async () => gate.promise)
-    f.edit("x", "100")
-    const pending = f.controller.updateRectangle()
-    f.edit("y", "120")
-    await f.controller.updateRectangle()
-    gate.reject(new Error("update failed"))
-    await expect(pending).rejects.toThrow("update failed")
-    expect(f.request).toHaveBeenCalledOnce()
-    expect(f.input("y").value).toBe("120")
-    expect(button("region-preview-action").disabled).toBe(true)
-    f.input("y").focus()
-    f.input("y").blur()
-    await f.controller.preview()
-    expect(f.request).toHaveBeenCalledOnce()
-    await f.controller.updateRectangle()
-    expect(f.request).toHaveBeenCalledTimes(2)
-    expect(button("region-preview-action").disabled).toBe(false)
-  })
-  test("a page drag replaces queued numeric edits and disables fields only while dragging", async () => {
-    const f = setup()
-    await f.selecting()
-    f.request.mockClear()
-    const gate = deferred<JsonValue>()
-    f.request.mockImplementationOnce(async () => gate.promise)
-    f.edit("x", "100")
-    const pending = f.controller.updateRectangle()
-    f.edit("y", "120")
-    await f.controller.updateRectangle()
-    const rectangle = { x: 50, y: 60, width: 70, height: 80 }
-    f.controller.onEvent(f.event({ ...blank, rectangle, dragging: true, revision: 4 }))
-    for (const key of ["x", "y", "width", "height"]) expect(f.input(key).disabled).toBe(true)
-    f.controller.onEvent(f.event({ ...blank, rectangle, revision: 5 }))
-    for (const key of ["x", "y", "width", "height"]) expect(f.input(key).disabled).toBe(false)
-    expect(f.input("x").value).toBe("50")
-    gate.resolve({
-      ...f.event(blank).payload,
-      state: { ...blank, rectangle: { x: 100, y: 0, width: 200, height: 150 }, revision: 2 },
-    })
-    await pending
-    expect(f.request).toHaveBeenCalledOnce()
-    expect(f.input("x").value).toBe("50")
-    expect(button("region-preview-action").disabled).toBe(false)
-  })
-  test("a completed drag before the start reply is not replaced by defaults or older revisions", async () => {
+  test("a completed drag before the start reply waits for startup and keeps its revision", async () => {
     const f = setup()
     const original = f.request.getMockImplementation() as typeof sendRuntimeRequest
     const gate = deferred<void>()
@@ -321,40 +210,58 @@ describe("region capture panel controller", () => {
     })
     const starting = f.controller.start()
     await vi.waitFor(() => expect(f.request).toHaveBeenCalled())
-    const rectangle = { x: 100, y: 120, width: 200, height: 160 }
-    f.controller.onEvent(f.event({ ...blank, rectangle, dragging: true, revision: 2 }))
-    f.controller.onEvent(f.event({ ...blank, rectangle, revision: 3 }))
+    f.commit(5)
+    expect(f.captures()).toHaveLength(0)
     gate.resolve()
     await starting
-    for (const [key, value] of Object.entries(rectangle)) {
-      expect(f.input(key).value).toBe(String(value))
-      expect(f.input(key).disabled).toBe(false)
-    }
-    expect(button("region-preview-action").disabled).toBe(false)
-    f.controller.onEvent(f.event(blank))
-    expect(f.input("x").value).toBe("100")
-    await f.controller.preview()
-    expect(
-      f.request.mock.calls.filter(([method]) => method === "regionCapture.update"),
-    ).toHaveLength(0)
-    expect(
-      f.request.mock.calls.filter(([method]) => method === "regionCapture.capture"),
-    ).toHaveLength(1)
+    await attached(f)
+    expect(f.captures()).toHaveLength(1)
+    expect(f.captures()[0]?.[1]?.selectionRevision).toBe(5)
   })
-  test("site denial with no grants sends no start or stop and leaves ordinary chat unblocked", async () => {
+  test("old owners, contexts, and revisions cannot initiate capture", async () => {
+    const f = setup()
+    await f.controller.start()
+    f.controller.onEvent(f.event({ ...blank, rectangle, revision: 5 }))
+    f.commit(4)
+    f.controller.onEvent(
+      f.event(
+        { ...blank, rectangle, revision: 6, committedRevision: 6 },
+        {
+          payload: { clientId: "other", operationId: "other", state: blank },
+        },
+      ),
+    )
+    f.controller.onEvent(
+      f.event(
+        { ...blank, rectangle, revision: 6, committedRevision: 6 },
+        {
+          tabContext: { ...context, epoch: 99 },
+        },
+      ),
+    )
+    expect(f.captures()).toHaveLength(0)
+    f.commit(6)
+    await attached(f)
+    expect(f.captures()).toHaveLength(1)
+  })
+  test("malformed completion data cancels without capture", async () => {
+    const f = setup()
+    await f.controller.start()
+    f.controller.onEvent(f.event({ ...blank, rectangle, revision: 1, committedRevision: 2 }))
+    await vi.waitFor(() => expect(f.controller.occupied).toBe(false))
+    expect(f.captures()).toHaveLength(0)
+    expect(f.options.onAttach).not.toHaveBeenCalled()
+  })
+  test("site denial sends no start or stop and leaves ordinary chat unblocked", async () => {
     const f = setup()
     f.options.requestSiteAccess.mockResolvedValue(false)
-    f.request.mockRejectedValue(
-      new RuntimeError("PERMISSION_DENIED", "no listener or injection access"),
-    )
     await expect(f.controller.start()).rejects.toThrow("unavailable")
     expect(f.request).not.toHaveBeenCalled()
     expect(f.options.onAttach).not.toHaveBeenCalled()
     expect(f.options.preflight).not.toHaveBeenCalled()
-    expect(f.controller.occupied).toBe(false)
     expect(f.controller.sendBlocked).toBe(false)
   })
-  test("cancel during pending permission sends no requests even after late approval", async () => {
+  test("cancel during pending permission ignores late approval without dispatch", async () => {
     const f = setup()
     const permission = deferred<boolean>()
     f.options.requestSiteAccess.mockReturnValue(permission.promise)
@@ -365,10 +272,8 @@ describe("region capture panel controller", () => {
     await starting
     expect(f.request).not.toHaveBeenCalled()
     expect(f.controller.occupied).toBe(false)
-    expect(f.controller.sendBlocked).toBe(false)
-    expect(f.options.onAttach).not.toHaveBeenCalled()
   })
-  test("a lost dispatched start reply requires confirmed cleanup and retains a real blocker", async () => {
+  test("a lost dispatched start reply requires confirmed cleanup", async () => {
     const f = setup()
     f.request.mockRejectedValue(new Error("lost response"))
     await expect(f.controller.start()).rejects.toThrow("lost response")
@@ -381,7 +286,7 @@ describe("region capture panel controller", () => {
     await f.controller.cancel()
     expect(f.controller.occupied).toBe(false)
   })
-  test("cancels a pending dispatched start, cleans once, and ignores its late reply", async () => {
+  test("cancel a dispatched start cleans once and ignores its late reply", async () => {
     const f = setup()
     const gate = deferred<JsonValue>()
     f.request.mockImplementationOnce(async () => gate.promise)
@@ -391,63 +296,114 @@ describe("region capture panel controller", () => {
     gate.resolve({ clientId: "old", operationId: "old", state: blank })
     await starting
     expect(f.controller.occupied).toBe(false)
-    expect(f.request.mock.calls.filter(([method]) => method === "regionCapture.stop")).toHaveLength(
-      1,
-    )
+    expect(f.stops()).toHaveLength(1)
   })
-  test("changed page before dispatch needs no cleanup", async () => {
+  test("a page change before dispatch needs no cleanup", async () => {
     const f = setup()
     f.options.getContext.mockResolvedValueOnce(context).mockResolvedValue({ ...context, tabId: 99 })
     await expect(f.controller.start()).rejects.toThrow("page changed")
     expect(f.request).not.toHaveBeenCalled()
     expect(f.controller.occupied).toBe(false)
   })
-  test.each(["", "NaN", "-1", "899"])(
-    "invalid numeric x=%s preserves selection without capture",
-    async (value) => {
-      const f = setup()
-      await f.selecting()
-      f.input("x").value = value
-      await expect(f.controller.updateRectangle()).rejects.toThrow("8 CSS")
-      expect(button("region-preview-action").disabled).toBe(true)
-      expect(
-        f.request.mock.calls.filter(([method]) => method === "regionCapture.capture"),
-      ).toHaveLength(0)
-    },
-  )
-  test("preflights image support and capacity before capture, retaining selection", async () => {
+  test("preflight failure keeps selection but never replays the same completion", async () => {
     const f = setup()
-    await f.selecting()
+    await f.controller.start()
     f.options.preflight.mockImplementationOnce(() => {
       throw new Error("text-only model")
     })
-    await expect(f.controller.preview()).rejects.toThrow("text-only")
-    expect(button("region-preview-action").disabled).toBe(false)
-    expect(f.request.mock.calls.some(([method]) => method === "regionCapture.capture")).toBe(false)
+    f.commit()
+    await vi.waitFor(() => expect(f.options.onError).toHaveBeenCalledOnce())
+    expect(f.captures()).toHaveLength(0)
     expect(f.options.confirm).not.toHaveBeenCalled()
+    expect(f.controller.occupied).toBe(true)
+    f.commit()
+    f.controller.refresh()
+    expect(f.options.preflight).toHaveBeenCalledOnce()
+    f.commit(4)
+    await attached(f)
+    expect(f.captures()).toHaveLength(1)
   })
-  test("preview cleans before opening, attaches once, releases URL, and never submits", async () => {
+  test("capture failure needs a fresh trusted completion, not a state refresh", async () => {
     const f = setup()
-    await f.selecting()
-    await f.controller.preview()
-    expect(f.request.mock.calls.map(([method]) => method)).toEqual([
-      "regionCapture.start",
-      "regionCapture.update",
-      "regionCapture.capture",
-      "regionCapture.stop",
-    ])
-    expect(button("region-attach")).toBe(dom.window.document.activeElement)
+    await f.controller.start()
+    f.request.mockRejectedValueOnce(new Error("native capture failed"))
+    f.commit()
+    await vi.waitFor(() => expect(f.options.onError).toHaveBeenCalledOnce())
+    f.commit()
+    f.controller.refresh()
+    expect(f.captures()).toHaveLength(1)
     expect(f.options.onAttach).not.toHaveBeenCalled()
-    await Promise.all([f.controller.attach(), f.controller.attach()])
-    expect(f.options.onAttach).toHaveBeenCalledOnce()
-    expect(f.options.onAttach.mock.calls[0]?.[0].type).toBe("image/png")
-    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:crop")
-    expect(f.controller.sendBlocked).toBe(false)
-    expect(f.options.focusComposer).toHaveBeenCalledOnce()
+    f.commit(4)
+    await attached(f)
+    expect(f.captures()).toHaveLength(2)
   })
-  test("unconfirmed cleanup blocks attach/send until manual retry without recapture", async () => {
+  test("existing screenshot confirmation retries only after its explicit approval", async () => {
     const f = setup()
-    await f.selecting()
+    await f.controller.start()
+    f.request.mockRejectedValueOnce(new RuntimeError("CONFIRMATION_REQUIRED", "confirm"))
+    const gate = deferred<boolean>()
+    f.options.confirm.mockReturnValue(gate.promise)
+    f.commit()
+    await vi.waitFor(() => expect(f.options.confirm).toHaveBeenCalledOnce())
+    expect(f.captures()).toHaveLength(1)
+    expect(f.options.onAttach).not.toHaveBeenCalled()
+    gate.resolve(true)
+    await attached(f)
+    expect(f.captures()).toHaveLength(2)
+    expect(f.captures()[1]?.[1]?.selectionRevision).toBe(3)
+    expect(f.captures()[1]?.[2]?.confirmed).toBe(true)
+  })
+  test("denied screenshot consent neither retries nor attaches", async () => {
+    const f = setup()
+    await f.controller.start()
+    f.request.mockRejectedValueOnce(new RuntimeError("CONFIRMATION_REQUIRED", "confirm"))
+    f.options.confirm.mockResolvedValue(false)
+    f.commit()
+    await vi.waitFor(() => expect(f.options.onError).toHaveBeenCalledOnce())
+    expect(f.captures()).toHaveLength(1)
+    expect(f.options.onAttach).not.toHaveBeenCalled()
+    expect(f.controller.occupied).toBe(true)
+  })
+  test("late screenshot consent after cancellation cannot retry capture", async () => {
+    const f = setup()
+    await f.controller.start()
+    f.request.mockRejectedValueOnce(new RuntimeError("CONFIRMATION_REQUIRED", "confirm"))
+    const gate = deferred<boolean>()
+    f.options.confirm.mockReturnValue(gate.promise)
+    f.commit()
+    await vi.waitFor(() => expect(f.options.confirm).toHaveBeenCalledOnce())
+    await f.controller.cancel()
+    gate.resolve(true)
+    await vi.waitFor(() => expect(f.controller.occupied).toBe(false))
+    expect(f.captures()).toHaveLength(1)
+    expect(f.options.onAttach).not.toHaveBeenCalled()
+  })
+  test.each<Record<string, JsonValue>>([
+    { dataUrl: "data:image/png;base64," },
+    { dataUrl: "data:image/png;base64,invalid!" },
+    { mimeType: "image/jpeg" },
+    { width: 2 },
+    { clientId: "other" },
+  ])("rejects malformed crop without attachment: %j", async (overrides) => {
+    const f = setup()
+    await f.controller.start()
+    f.request.mockResolvedValueOnce(f.imageResult(overrides))
+    f.commit()
+    await vi.waitFor(() => expect(f.options.onError).toHaveBeenCalledOnce())
+    expect(f.options.onAttach).not.toHaveBeenCalled()
+    expect(f.controller.sendBlocked).toBe(true)
+  })
+  test("rejects a crop beyond the preflight budget", async () => {
+    const f = setup()
+    await f.controller.start()
+    f.options.preflight.mockReturnValue(1)
+    f.commit()
+    await vi.waitFor(() => expect(f.options.onError).toHaveBeenCalledOnce())
+    expect(f.options.onAttach).not.toHaveBeenCalled()
+  })
+  test("unconfirmed cleanup blocks attachment/Send and retries from the same icon without recapture", async () => {
+    const f = setup()
+    await f.controller.start()
     const original = f.request.getMockImplementation() as typeof sendRuntimeRequest
     let failed = false
     f.request.mockImplementation(async (method, params, options) => {
@@ -457,136 +413,108 @@ describe("region capture panel controller", () => {
       }
       return original(method, params, options)
     })
-    await expect(f.controller.preview()).rejects.toThrow("confirm region cleanup")
-    await f.controller.attach()
+    f.commit()
+    await vi.waitFor(() => expect(button().ariaLabel).toBe("Retry region cleanup"))
     expect(f.options.onAttach).not.toHaveBeenCalled()
     expect(f.controller.sendBlocked).toBe(true)
-    await f.controller.preview()
-    await f.controller.attach()
-    expect(
-      f.request.mock.calls.filter(([method]) => method === "regionCapture.capture"),
-    ).toHaveLength(1)
-    expect(f.options.onAttach).toHaveBeenCalledOnce()
+    f.commit()
+    button().click()
+    await attached(f)
+    expect(f.captures()).toHaveLength(1)
+    expect(f.stops()).toHaveLength(2)
   })
-  test("cancel preview adds nothing; static preview survives a later tab change", async () => {
+  test("clicking the active icon during cleanup cancels rather than attaching", async () => {
     const f = setup()
-    await f.selecting()
-    await f.controller.preview()
+    await f.controller.start()
+    const original = f.request.getMockImplementation() as typeof sendRuntimeRequest
+    const gate = deferred<JsonValue>()
+    f.request.mockImplementation(async (method, params, options) => {
+      if (method === "regionCapture.stop") return gate.promise
+      return original(method, params, options)
+    })
+    f.commit()
+    await vi.waitFor(() => expect(f.stops()).toHaveLength(1))
+    expect(button().ariaLabel).toBe("Cancel region capture")
+    button().click()
+    gate.resolve({ active: false })
+    await vi.waitFor(() => expect(f.controller.occupied).toBe(false))
+    expect(f.options.onAttach).not.toHaveBeenCalled()
+    expect(f.stops()).toHaveLength(1)
+  })
+  test("attachment failure retains the static crop for explicit icon retry after a tab change", async () => {
+    const f = setup()
+    await f.controller.start()
+    f.options.onAttach.mockRejectedValueOnce(new Error("capacity changed"))
+    f.commit()
+    await vi.waitFor(() => expect(button().ariaLabel).toBe("Retry region attachment"))
     f.controller.onEvent({
       kind: "event",
       name: "tab.changed",
       payload: {},
       tabContext: { ...context, tabId: 8 },
     })
-    expect(button("region-attach").disabled).toBe(false)
-    await f.controller.cancel()
-    expect(f.options.onAttach).not.toHaveBeenCalled()
-    expect(f.request.mock.calls.filter(([method]) => method === "regionCapture.stop")).toHaveLength(
-      1,
-    )
-    expect(URL.revokeObjectURL).toHaveBeenCalledOnce()
+    expect(f.controller.sendBlocked).toBe(true)
+    button().click()
+    await vi.waitFor(() => expect(f.controller.occupied).toBe(false))
+    expect(f.options.onAttach).toHaveBeenCalledTimes(2)
+    expect(f.captures()).toHaveLength(1)
+    expect(f.stops()).toHaveLength(1)
   })
-  test("session replacement discards a finished preview", async () => {
+  test("session replacement discards a retained crop without retry", async () => {
     const f = setup()
-    await f.selecting()
-    await f.controller.preview()
+    await f.controller.start()
+    f.options.onAttach.mockRejectedValueOnce(new Error("capacity changed"))
+    f.commit()
+    await vi.waitFor(() => expect(button().ariaLabel).toBe("Retry region attachment"))
     f.session("replacement")
     f.controller.onEvent({ kind: "event", name: "tab.changed", payload: {} })
     await vi.waitFor(() => expect(f.controller.occupied).toBe(false))
-    expect(f.options.onAttach).not.toHaveBeenCalled()
+    expect(f.options.onAttach).toHaveBeenCalledOnce()
+    expect(f.captures()).toHaveLength(1)
   })
-  test("attachment failure retains only the cropped preview for retry", async () => {
+  test("cancelled asynchronous attachment cannot pass its acceptance guard", async () => {
     const f = setup()
-    await f.selecting()
-    await f.controller.preview()
-    f.options.onAttach.mockRejectedValueOnce(new Error("capacity changed"))
-    await expect(f.controller.attach()).rejects.toThrow("capacity changed")
-    expect(button("region-attach").disabled).toBe(false)
-    await f.controller.attach()
-    expect(
-      f.request.mock.calls.filter(([method]) => method === "regionCapture.capture"),
-    ).toHaveLength(1)
-    expect(f.controller.occupied).toBe(false)
+    await f.controller.start()
+    const gate = deferred<void>()
+    const accepted = vi.fn()
+    f.options.onAttach.mockImplementation(async (_image, accept) => {
+      await gate.promise
+      accept()
+      accepted()
+    })
+    f.commit()
+    await vi.waitFor(() => expect(f.options.onAttach).toHaveBeenCalledOnce())
+    button().click()
+    gate.resolve()
+    await vi.waitFor(() => expect(f.controller.occupied).toBe(false))
+    expect(accepted).not.toHaveBeenCalled()
+    expect(f.options.onError).not.toHaveBeenCalled()
+    expect(f.captures()).toHaveLength(1)
   })
-  test("late capture after cancellation cannot create a preview or attach", async () => {
+  test("late capture cannot revive a cancelled or replacement operation", async () => {
     const f = setup()
-    await f.selecting()
+    await f.controller.start()
     const gate = deferred<JsonValue>()
     f.request.mockImplementationOnce(async () => gate.promise)
-    const pending = f.controller.preview()
+    f.commit()
     await f.controller.cancel()
+    await f.controller.start()
     gate.resolve({ invalid: "late" })
-    await pending
-    expect(URL.createObjectURL).not.toHaveBeenCalled()
+    f.commit(4)
+    await attached(f)
+    expect(f.captures()).toHaveLength(2)
+    expect(f.options.onError).not.toHaveBeenCalled()
+  })
+  test("active icon cancels selection without capture and disposal does not restore focus", async () => {
+    const f = setup()
+    await f.controller.start()
+    button().click()
+    await vi.waitFor(() => expect(f.controller.occupied).toBe(false))
+    expect(f.captures()).toHaveLength(0)
+    expect(dom.window.document.activeElement).toBe(button())
+    await f.controller.start()
+    f.controller.dispose()
+    await vi.waitFor(() => expect(f.controller.occupied).toBe(false))
     expect(f.options.onAttach).not.toHaveBeenCalled()
-    expect(f.controller.occupied).toBe(false)
-  })
-  test("late screenshot consent cannot trigger capture after cancellation", async () => {
-    const f = setup()
-    await f.selecting()
-    f.request.mockRejectedValueOnce(new RuntimeError("CONFIRMATION_REQUIRED", "confirm"))
-    const gate = deferred<boolean>()
-    f.options.confirm.mockReturnValue(gate.promise)
-    const pending = f.controller.preview()
-    await vi.waitFor(() => expect(f.options.confirm).toHaveBeenCalled())
-    await f.controller.cancel()
-    gate.resolve(true)
-    await pending
-    expect(
-      f.request.mock.calls.filter(([method]) => method === "regionCapture.capture"),
-    ).toHaveLength(1)
-    expect(f.controller.occupied).toBe(false)
-  })
-  test("a cancelled update cannot lock or enable a replacement operation", async () => {
-    const f = setup()
-    await f.selecting()
-    const older = deferred<JsonValue>()
-    f.request.mockImplementationOnce(async () => older.promise)
-    const updating = f.controller.updateRectangle()
-    await f.controller.cancel()
-    await f.controller.start()
-    expect(f.input("x").disabled).toBe(false)
-    const newer = deferred<JsonValue>()
-    f.request.mockImplementationOnce(async () => newer.promise)
-    const replacement = f.controller.updateRectangle()
-    f.edit("x", "80")
-    await f.controller.updateRectangle()
-    expect(f.input("x").disabled).toBe(false)
-    expect(button("region-preview-action").disabled).toBe(true)
-    const calls = f.request.mock.calls.length
-    older.resolve({ invalid: "old update" })
-    await updating
-    expect(f.input("x").disabled).toBe(false)
-    expect(f.input("x").value).toBe("80")
-    expect(button("region-preview-action").disabled).toBe(true)
-    expect(f.request.mock.calls).toHaveLength(calls)
-    await f.controller.cancel()
-    newer.resolve({ invalid: "cancelled replacement" })
-    await replacement
-    expect(f.controller.occupied).toBe(false)
-  })
-  test("new selection clears cancelled invalid field feedback", async () => {
-    const f = setup()
-    await f.selecting()
-    f.input("x").value = "-1"
-    await expect(f.controller.updateRectangle()).rejects.toThrow()
-    await f.controller.cancel()
-    await f.controller.start()
-    await f.controller.updateRectangle()
-    expect(button("region-preview-action").disabled).toBe(false)
-  })
-  test("old owners and revisions cannot overwrite numeric selection", async () => {
-    const f = setup()
-    await f.selecting()
-    f.controller.onEvent(
-      f.event({ ...blank, rectangle: { x: 10, y: 20, width: 100, height: 120 }, revision: 5 }),
-    )
-    f.controller.onEvent(
-      f.event({ ...blank, rectangle: { x: 80, y: 20, width: 100, height: 120 }, revision: 4 }),
-    )
-    f.controller.onEvent(
-      f.event(blank, { payload: { clientId: "other", operationId: "other", state: blank } }),
-    )
-    expect(f.input("x").value).toBe("10")
   })
 })

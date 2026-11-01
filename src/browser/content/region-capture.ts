@@ -27,16 +27,12 @@ export async function executeRegionCapture(
   operation: RegionCaptureOperation,
   token: string,
   expectedContext: TabContext,
-  rectangle: RegionRectangle | null,
   limits: RegionCaptureLimits,
 ): Promise<RegionCaptureOperationResult> {
   type Surface = {
     token: string
     cleanup: () => void
-    control: (
-      operation: RegionCaptureOperation,
-      rectangle: RegionRectangle | null,
-    ) => Promise<RegionCaptureOperationResult>
+    control: (operation: RegionCaptureOperation) => Promise<RegionCaptureOperationResult>
   }
   const isolated = globalThis as typeof globalThis & { __piBrowserAgentRegionCapture?: Surface }
   const previous = isolated.__piBrowserAgentRegionCapture
@@ -47,7 +43,7 @@ export async function executeRegionCapture(
   if (operation !== "start") {
     if (previous?.token !== token)
       return { ok: true, result: { active: false, reason: "cancelled" } }
-    return previous.control(operation, rectangle)
+    return previous.control(operation)
   }
   previous?.cleanup()
   const inactive = (reason: RegionCaptureReason): RegionCaptureOperationResult => ({
@@ -148,6 +144,9 @@ export async function executeRegionCapture(
   let origin: { x: number; y: number } | undefined
   let pointer: number | undefined
   let revision = 0
+  let committedRevision: number | null = null
+  let enterHeld = false
+  let pendingEnterRevision: number | undefined
   let frozen = false
   let cleaned = false
   let reason: RegionCaptureReason = "cancelled"
@@ -176,6 +175,7 @@ export async function executeRegionCapture(
           dragging: pointer !== undefined,
           frozen,
           revision,
+          committedRevision,
           width,
           height,
         }
@@ -278,7 +278,10 @@ export async function executeRegionCapture(
     pointer = undefined
     origin = undefined
     selection = painted = null
-    const restoreFocus = document.activeElement === host
+    committedRevision = null
+    pendingEnterRevision = undefined
+    const restoreFocus = document.activeElement === host && !enterHeld
+    if (enterHeld && document.activeElement === host) host.blur()
     try {
       host.hidePopover()
     } catch {
@@ -322,10 +325,11 @@ export async function executeRegionCapture(
       next(() => next(finish))
     })
   }
-  const control: Surface["control"] = async (action, value) => {
+  const control: Surface["control"] = async (action) => {
     if (!validate()) return result()
     if (action === "freeze") {
-      if (pointer !== undefined || !selection) return result()
+      if (frozen || pointer !== undefined || !selection || committedRevision !== revision)
+        return result()
       frozen = true
       revision += 1
       redraw()
@@ -334,18 +338,14 @@ export async function executeRegionCapture(
       validate()
       return result()
     }
-    if (action === "state") return result()
     if (action === "resume") {
       frozen = false
+      committedRevision = null
+      pendingEnterRevision = undefined
       revision += 1
-    } else if (frozen || pointer !== undefined) return result()
-    else if (action === "update") {
-      if (!validRectangle(value)) return result()
-      selection = painted = { ...value }
-      revision += 1
+      redraw()
+      emit()
     }
-    redraw()
-    emit()
     return result()
   }
   const block = (event: Event): void => {
@@ -353,7 +353,13 @@ export async function executeRegionCapture(
     event.stopImmediatePropagation()
   }
   const addPoint = (event: PointerEvent): void => {
-    if (!origin || !Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) return
+    if (
+      !event.isTrusted ||
+      !origin ||
+      !Number.isFinite(event.clientX) ||
+      !Number.isFinite(event.clientY)
+    )
+      return
     const x = Math.max(0, Math.min(width, event.clientX))
     const y = Math.max(0, Math.min(height, event.clientY))
     painted = {
@@ -363,6 +369,8 @@ export async function executeRegionCapture(
       height: Math.abs(y - origin.y),
     }
     selection = validRectangle(painted) ? { ...painted } : null
+    committedRevision = null
+    pendingEnterRevision = undefined
     revision += 1
     redraw()
   }
@@ -373,6 +381,8 @@ export async function executeRegionCapture(
     if (discard) selection = painted = null
     else painted = selection
     revision += 1
+    committedRevision = !discard && selection && !enterHeld ? revision : null
+    pendingEnterRevision = !discard && selection && enterHeld ? revision : undefined
     if (id !== undefined) {
       try {
         host.releasePointerCapture(id)
@@ -440,6 +450,8 @@ export async function executeRegionCapture(
         return
       }
       pointer = event.pointerId
+      committedRevision = null
+      pendingEnterRevision = undefined
       revision += 1
       origin = {
         x: Math.max(0, Math.min(width, event.clientX)),
@@ -483,12 +495,79 @@ export async function executeRegionCapture(
       "touchmove",
       "touchend",
       "keypress",
-      "keyup",
     ])
       listen(name, block)
+    listen("keyup", (raw) => {
+      block(raw)
+      const event = raw as KeyboardEvent
+      if (!event.isTrusted || event.key !== "Enter") return
+      enterHeld = false
+      const pending = pendingEnterRevision
+      pendingEnterRevision = undefined
+      if (
+        pending === undefined ||
+        !validate() ||
+        frozen ||
+        pointer !== undefined ||
+        !selection ||
+        committedRevision !== null ||
+        pending !== revision
+      )
+        return
+      // Finish the confirming gesture before capture can show consent or change focus.
+      revision += 1
+      committedRevision = revision
+      emit()
+    })
     listen("keydown", (raw) => {
       block(raw)
-      if ((raw as KeyboardEvent).key === "Escape") cancel("user")
+      const event = raw as KeyboardEvent
+      if (!event.isTrusted) return
+      if (event.key === "Enter") enterHeld = true
+      if (!validate()) return
+      if (event.key === "Escape") {
+        cancel("user")
+        return
+      }
+      if (frozen || pointer !== undefined) return
+      if (event.key === "Enter") {
+        if (!event.repeat && selection && committedRevision === null)
+          pendingEnterRevision = revision
+        return
+      }
+      if (
+        !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key) ||
+        width < limits.minSide ||
+        height < limits.minSide
+      )
+        return
+      const value = selection
+        ? { ...selection }
+        : { x: 0, y: 0, width: Math.min(200, width), height: Math.min(150, height) }
+      const step = event.altKey ? 1 : 10
+      const dx = event.key === "ArrowLeft" ? -step : event.key === "ArrowRight" ? step : 0
+      const dy = event.key === "ArrowUp" ? -step : event.key === "ArrowDown" ? step : 0
+      if (event.shiftKey) {
+        value.width = Math.max(limits.minSide, Math.min(width - value.x, value.width + dx))
+        value.height = Math.max(limits.minSide, Math.min(height - value.y, value.height + dy))
+      } else {
+        value.x = Math.max(0, Math.min(width - value.width, value.x + dx))
+        value.y = Math.max(0, Math.min(height - value.height, value.y + dy))
+      }
+      if (
+        selection &&
+        value.x === selection.x &&
+        value.y === selection.y &&
+        value.width === selection.width &&
+        value.height === selection.height
+      )
+        return
+      selection = painted = value
+      committedRevision = null
+      pendingEnterRevision = undefined
+      revision += 1
+      redraw()
+      emit()
     })
     for (const name of ["scroll", "resize"]) listen(name, () => cancel("viewport-changed"))
     viewport?.addEventListener("resize", () => cancel("viewport-changed"), {

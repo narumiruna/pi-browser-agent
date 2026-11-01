@@ -39,6 +39,7 @@ async function paste(page: Page, count = 1) {
   await expect(page.locator("#pasted-images img")).toHaveCount(previous + count)
 }
 const PICKER_HOST = "[data-pi-browser-agent-element-picker]"
+const REGION_HOST = "[data-pi-browser-agent-region-capture]"
 type PairProbe = Window & {
   pairedPreparationEntered?: boolean
   releasePairedPreparation?: () => void
@@ -187,19 +188,25 @@ test("a cropped reference and non-last selected element keep explicit roles and 
     const page = h.controller
     await expect(page.locator("#point-comments,#point-comment-cards")).toHaveCount(0)
     await page.locator("#region-capture").click()
+    await expect(h.fixturePage.locator(REGION_HOST)).toHaveCount(1)
+    await expect(
+      page.locator(
+        "#region-selection,#region-preview-action,#region-preview-dialog,#region-attach",
+      ),
+    ).toHaveCount(0)
     await expect(page.locator("#element-picker")).toBeDisabled()
     await expect(page.locator("#page-pen")).toBeDisabled()
     await expect(page.locator("#send")).toBeDisabled()
     await h.fixturePage.mouse.move(100, 110)
     await h.fixturePage.mouse.down()
     await h.fixturePage.mouse.move(260, 220, { steps: 4 })
+    expect(await pairCaptures(h)).toBe(0)
+    expect(requests).toHaveLength(0)
     await h.fixturePage.mouse.up()
-    await expect(page.locator("#region-preview-action")).toBeEnabled()
-    await page.locator("#region-preview-action").click()
-    await expect(page.locator("#region-preview-dialog")).toBeVisible()
-    await page.locator("#region-attach").click()
     const image = page.locator("#pasted-images img")
     await expect(image).toHaveCount(1)
+    await expect(h.fixturePage.locator(REGION_HOST)).toHaveCount(0)
+    await expect(page.locator("#region-capture")).toHaveAttribute("aria-pressed", "false")
     await expect
       .poll(() => image.evaluate((node) => (node as HTMLImageElement).naturalWidth))
       .toBe(160)

@@ -4,29 +4,18 @@ export default {
   "Reset page pinch zoom before capturing a region":
     "영역을 캡처하기 전에 페이지의 핀치 확대/축소를 초기화하세요",
   "Capture region": "영역 캡처",
-  "Select a region": "영역 선택",
-  "Drag on the page or enter CSS pixels. Minimum: 8 × 8.":
-    "페이지에서 드래그하거나 CSS 픽셀을 입력하세요. 최소: 8 × 8.",
-  X: "X",
-  Y: "Y",
-  Width: "너비",
-  Height: "높이",
-  "Chrome temporarily captures the full viewport. Only the crop leaves the worker.":
-    "Chrome은 일시적으로 전체 표시 영역을 캡처합니다. 잘라낸 이미지만 워커 밖으로 나갑니다.",
-  "Preview region": "영역 미리 보기",
-  "Region preview": "영역 미리 보기",
-  "Only this crop is attached. Text, selected elements, history, and approved page reads can include other content.":
-    "이 잘라낸 이미지만 첨부됩니다. 텍스트, 선택한 요소, 기록 및 승인된 페이지 읽기에는 다른 내용이 포함될 수 있습니다.",
-  Retake: "다시 캡처",
+  "Cancel region capture": "영역 캡처 취소",
+  "Retry region cleanup": "영역 선택 제거 다시 시도",
+  "Retry region attachment": "영역 첨부 다시 시도",
+  "Chrome temporarily captures the full viewport. Only the crop leaves the worker. Drag to attach a crop. Arrow keys move; Shift+Arrow resizes; Alt uses 1 px. Enter attaches; Escape cancels.":
+    "Chrome은 일시적으로 전체 표시 영역을 캡처합니다. 잘라낸 이미지만 워커 밖으로 나갑니다. 드래그하여 잘린 이미지를 첨부합니다. 방향키로 이동하고 Shift+방향키로 크기를 조절합니다. Alt를 누르면 1 px 단위로 조절합니다. Enter로 첨부하고 Escape로 취소합니다.",
   "Finish or cancel region capture before sending": "보내기 전에 영역 캡처를 완료하거나 취소하세요",
-  "Select a region at least 8 CSS pixels wide and high":
-    "너비와 높이가 각각 8 CSS 픽셀 이상인 영역을 선택하세요",
   "Could not confirm region cleanup. Reload the page before sending.":
     "영역 선택 제거를 확인할 수 없습니다. 보내기 전에 페이지를 새로고침하세요.",
   "The page changed. Select a new region.": "페이지가 변경되었습니다. 새 영역을 선택하세요.",
   "Region capture is unavailable on this page": "이 페이지에서는 영역 캡처를 사용할 수 없습니다",
-  "Could not preview the region. Select again or retry.":
-    "영역을 미리 볼 수 없습니다. 다시 선택하거나 재시도하세요.",
+  "Could not capture the region. Select again or retry.":
+    "영역을 캡처하지 못했습니다. 다시 선택하거나 재시도하세요.",
   "Image {number}": "이미지 {number}",
   "Use as target": "대상으로 사용",
   "Use as reference": "참조로 사용",

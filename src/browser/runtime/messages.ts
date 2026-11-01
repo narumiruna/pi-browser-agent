@@ -4,11 +4,7 @@ import {
   validPageAnnotationParams,
 } from "./page-annotation.js"
 import type { PageCapability } from "./page-capability.js"
-import {
-  type RegionOwner,
-  type RegionRectangle,
-  validRegionCaptureParams,
-} from "./region-capture.js"
+import { type RegionOwner, validRegionCaptureParams } from "./region-capture.js"
 import {
   type ElementTarget,
   type JsonObject,
@@ -32,7 +28,6 @@ export const RUNTIME_METHODS = [
   "pageAnnotation.stop",
 
   "regionCapture.start",
-  "regionCapture.update",
   "regionCapture.capture",
   "regionCapture.stop",
   "requests.cancel",
@@ -109,8 +104,7 @@ type RuntimeParams = {
   "pageAnnotation.stop": { clientId: string }
 
   "regionCapture.start": RegionOwner
-  "regionCapture.update": RegionOwner & { rectangle: RegionRectangle }
-  "regionCapture.capture": RegionOwner & { maxBytes: number }
+  "regionCapture.capture": RegionOwner & { maxBytes: number; selectionRevision: number }
   "regionCapture.stop": RegionOwner
   "requests.cancel": { requestId: string }
   "page.getVisibleText": { selector?: string; offset?: number }
@@ -249,7 +243,6 @@ function isBoundedInteger(value: unknown, maximum: number, minimum = 0): value i
 function hasValidParams(method: RuntimeMethod, params: Record<string, unknown>): boolean {
   switch (method) {
     case "regionCapture.start":
-    case "regionCapture.update":
     case "regionCapture.capture":
     case "regionCapture.stop":
       return validRegionCaptureParams(method, params)

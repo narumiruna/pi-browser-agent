@@ -1593,6 +1593,10 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     updateSendButton()
   })
   promptInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && event.repeat && !event.shiftKey && !event.isComposing) {
+      event.preventDefault()
+      return
+    }
     if (commandMenu.handleKeyDown(event)) return
     if (event.key === "Escape" && runtime.agent.state.isStreaming) {
       event.preventDefault()

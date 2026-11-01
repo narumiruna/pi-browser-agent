@@ -13,7 +13,7 @@ export const REGION_CAPTURE_LIMITS = {
 export type RegionCaptureLimits = typeof REGION_CAPTURE_LIMITS
 export type RegionRectangle = { x: number; y: number; width: number; height: number }
 export type RegionOwner = { clientId: string; operationId: string }
-export type RegionCaptureOperation = "start" | "update" | "state" | "freeze" | "resume" | "stop"
+export type RegionCaptureOperation = "start" | "state" | "freeze" | "resume" | "stop"
 export const REGION_CAPTURE_REASONS = [...PAGE_ANNOTATION_REASONS, "unsupported-viewport"] as const
 export type RegionCaptureReason = (typeof REGION_CAPTURE_REASONS)[number]
 export type RegionCaptureState =
@@ -24,6 +24,7 @@ export type RegionCaptureState =
       dragging: boolean
       frozen: boolean
       revision: number
+      committedRevision: number | null
       width: number
       height: number
     }
@@ -69,12 +70,11 @@ export function validRegionRectangle(
 export function validRegionCaptureParams(method: string, value: Record<string, unknown>): boolean {
   if (!isPageAnnotationId(value.clientId) || !isPageAnnotationId(value.operationId)) return false
   const owner = ["clientId", "operationId"]
-  if (method === "regionCapture.update")
-    return keys(value, [...owner, "rectangle"]) && validRegionRectangle(value.rectangle)
   if (method === "regionCapture.capture")
     return (
-      keys(value, [...owner, "maxBytes"]) &&
-      integer(value.maxBytes, 1, REGION_CAPTURE_LIMITS.maxBytes)
+      keys(value, [...owner, "maxBytes", "selectionRevision"]) &&
+      integer(value.maxBytes, 1, REGION_CAPTURE_LIMITS.maxBytes) &&
+      integer(value.selectionRevision, 0, Number.MAX_SAFE_INTEGER)
     )
   return ["regionCapture.start", "regionCapture.stop"].includes(method) && keys(value, owner)
 }
@@ -83,7 +83,16 @@ export function parseRegionCaptureState(value: unknown): RegionCaptureState {
   if (value.active === false && keys(value, ["active"])) return { active: false }
   if (
     value.active !== true ||
-    !keys(value, ["active", "rectangle", "dragging", "frozen", "revision", "width", "height"]) ||
+    !keys(value, [
+      "active",
+      "rectangle",
+      "dragging",
+      "frozen",
+      "revision",
+      "committedRevision",
+      "width",
+      "height",
+    ]) ||
     typeof value.dragging !== "boolean" ||
     typeof value.frozen !== "boolean" ||
     (value.dragging && value.frozen) ||
@@ -94,7 +103,14 @@ export function parseRegionCaptureState(value: unknown): RegionCaptureState {
     !(
       value.rectangle === null || validRegionRectangle(value.rectangle, value.width, value.height)
     ) ||
-    (value.frozen && !value.rectangle)
+    (value.frozen && !value.rectangle) ||
+    !(
+      value.committedRevision === null ||
+      (integer(value.committedRevision, 0, value.revision) &&
+        value.rectangle !== null &&
+        !value.dragging &&
+        (value.frozen || value.committedRevision === value.revision))
+    )
   )
     return malformed()
   return {
@@ -103,6 +119,7 @@ export function parseRegionCaptureState(value: unknown): RegionCaptureState {
     dragging: value.dragging,
     frozen: value.frozen,
     revision: value.revision,
+    committedRevision: value.committedRevision,
     width: value.width,
     height: value.height,
   }

@@ -17,6 +17,7 @@ const state = {
   dragging: false,
   frozen: false,
   revision: 1,
+  committedRevision: 1,
   width: 100,
   height: 80,
 }
@@ -38,24 +39,41 @@ describe("fixed region capture contracts", () => {
       parseRuntimeRequest(request(`regionCapture.${action}`, { capture: true })),
     ).toThrow()
   })
-  test("accepts only rectangle updates and bounded capture byte budgets", () => {
-    expect(parseRuntimeRequest(request("regionCapture.update", { rectangle })).method).toBe(
-      "regionCapture.update",
-    )
+  test("requires a selection revision and bounded capture byte budget without extra keys", () => {
     expect(
-      parseRuntimeRequest(request("regionCapture.capture", { maxBytes: 3_000_000 })).method,
+      parseRuntimeRequest(
+        request("regionCapture.capture", { maxBytes: 3_000_000, selectionRevision: 1 }),
+      ).method,
     ).toBe("regionCapture.capture")
+    for (const extra of [
+      {},
+      { maxBytes: 8 },
+      { selectionRevision: 1 },
+      { maxBytes: 8, selectionRevision: 1, rectangle },
+      { maxBytes: 8, selectionRevision: 1, confirmed: true },
+    ])
+      expect(() => parseRuntimeRequest(request("regionCapture.capture", extra))).toThrow()
     for (const maxBytes of [0, -1, 3_000_001, NaN, Infinity, 1.5, "8"])
-      expect(() => parseRuntimeRequest(request("regionCapture.capture", { maxBytes }))).toThrow()
+      expect(() =>
+        parseRuntimeRequest(request("regionCapture.capture", { maxBytes, selectionRevision: 1 })),
+      ).toThrow()
+    for (const selectionRevision of [-1, NaN, Infinity, 1.5, "1", null, undefined, 2 ** 53])
+      expect(() =>
+        parseRuntimeRequest(request("regionCapture.capture", { maxBytes: 8, selectionRevision })),
+      ).toThrow()
+    for (const selectionRevision of [0, Number.MAX_SAFE_INTEGER])
+      expect(
+        parseRuntimeRequest(request("regionCapture.capture", { maxBytes: 8, selectionRevision }))
+          .params,
+      ).toMatchObject({ selectionRevision })
+  })
+  test("rejects the removed numeric update request", () => {
+    expect(() => parseRuntimeRequest(request("regionCapture.update", { rectangle }))).toThrow()
+    expect(() => parseRuntimeRequest(request("regionCapture.update"))).toThrow()
   })
   test.each([NaN, Infinity, -Infinity, -1, "8", null, undefined])(
     "rejects non-finite or negative geometry %s",
-    (x) => {
-      expect(validRegionRectangle({ ...rectangle, x })).toBe(false)
-      expect(() =>
-        parseRuntimeRequest(request("regionCapture.update", { rectangle: { ...rectangle, x } })),
-      ).toThrow()
-    },
+    (x) => expect(validRegionRectangle({ ...rectangle, x })).toBe(false),
   )
   test.each([
     { ...rectangle, width: 0 },
@@ -71,6 +89,23 @@ describe("fixed region capture contracts", () => {
     expect(validRegionRectangle({ x: 90.1, y: 70.1, width: 9.9, height: 9.9 }, 100, 80)).toBe(true)
     expect(validRegionRectangle({ ...rectangle, x: 93 }, 100, 80)).toBe(false)
   })
+  test("accepts editing state and a completed revision retained by freeze", () => {
+    expect(parseRegionCaptureState(state)).toEqual(state)
+    expect(parseRegionCaptureState({ ...state, committedRevision: null }).active).toBe(true)
+    expect(
+      parseRegionCaptureState({ ...state, committedRevision: null, dragging: true }).active,
+    ).toBe(true)
+    expect(parseRegionCaptureState({ ...state, frozen: true, revision: 2 })).toEqual({
+      ...state,
+      frozen: true,
+      revision: 2,
+    })
+    expect(parseRegionCaptureState({ active: false })).toEqual({ active: false })
+  })
+  test("requires committedRevision on every active state", () => {
+    const { committedRevision: _committedRevision, ...missing } = state
+    expect(() => parseRegionCaptureState(missing)).toThrow()
+  })
   test.each([
     { ...state, extra: true },
     { ...state, revision: Infinity },
@@ -80,8 +115,20 @@ describe("fixed region capture contracts", () => {
     { ...state, width: 4097 },
     { ...state, width: 4096, height: 4096 },
     { ...state, rectangle: { ...rectangle, x: 99 } },
+    { ...state, committedRevision: undefined },
+    { ...state, committedRevision: NaN },
+    { ...state, committedRevision: Infinity },
+    { ...state, committedRevision: -1 },
+    { ...state, committedRevision: 0.5 },
+    { ...state, committedRevision: "1" },
+    { ...state, committedRevision: 2 },
+    { ...state, committedRevision: 0 },
+    { ...state, frozen: true, committedRevision: 2 },
+    { ...state, dragging: true },
+    { ...state, rectangle: null },
     { active: false, rectangle: null },
-  ])("rejects invalid state", (value) => expect(() => parseRegionCaptureState(value)).toThrow())
+    { active: false, committedRevision: null },
+  ])("rejects invalid state %j", (value) => expect(() => parseRegionCaptureState(value)).toThrow())
   test("validates exact keys, IDs and notification reason without capture authority", () => {
     const message = {
       kind: "region-capture-state",
@@ -92,6 +139,7 @@ describe("fixed region capture contracts", () => {
     expect(parseRegionCaptureNotification(message).state).toEqual(state)
     for (const value of [
       { ...message, capture: true },
+      { ...message, dataUrl: "data:image/png;base64,NO_IMAGE" },
       { ...message, token: "forged" },
       { ...message, reason: "user" },
       { ...message, tabContext: { ...context, extra: true } },

@@ -6,13 +6,19 @@ import {
   REGION_CAPTURE_LIMITS,
   type RegionCaptureState,
   type RegionOwner,
-  type RegionRectangle,
-  validRegionRectangle,
 } from "../runtime/region-capture.js"
 import { RuntimeError, type TabContext } from "../runtime/types.js"
 import { element } from "./ui.js"
 
-type Phase = "idle" | "starting" | "selecting" | "capturing" | "cleanup" | "preview" | "attaching"
+type Phase =
+  | "idle"
+  | "starting"
+  | "selecting"
+  | "capturing"
+  | "cleanup"
+  | "attaching"
+  | "retry-cleanup"
+  | "retry-attach"
 interface Options {
   getContext: () => Promise<TabContext | undefined>
   getSessionId: () => string
@@ -33,22 +39,9 @@ function sameContext(left: TabContext, right?: TabContext): boolean {
   return left.tabId === right?.tabId && left.url === right.url && left.epoch === right.epoch
 }
 
-/** A preview has only cropped pixels and no live page capability. */
+/** Attach only a validated crop after confirmed removal of its protected selection surface. */
 export class RegionCaptureController {
   private readonly button = element<HTMLButtonElement>("region-capture")
-  private readonly selection = element<HTMLElement>("region-selection")
-  private readonly previewButton = element<HTMLButtonElement>("region-preview-action")
-  private readonly cancelButton = element<HTMLButtonElement>("region-cancel")
-  private readonly dialog = element<HTMLDialogElement>("region-preview-dialog")
-  private readonly image = element<HTMLImageElement>("region-preview-image")
-  private readonly attachButton = element<HTMLButtonElement>("region-attach")
-  private readonly retakeButton = element<HTMLButtonElement>("region-retake")
-  private readonly fields = {
-    x: element<HTMLInputElement>("region-x"),
-    y: element<HTMLInputElement>("region-y"),
-    width: element<HTMLInputElement>("region-width"),
-    height: element<HTMLInputElement>("region-height"),
-  }
   private readonly request: typeof sendRuntimeRequest
   private phase: Phase = "idle"
   private state: RegionCaptureState = { active: false }
@@ -56,55 +49,39 @@ export class RegionCaptureController {
   private context?: TabContext
   private sessionId?: string
   private generation = 0
+  private handledCommit = -1
   private abort?: AbortController
   private cleanupRequired = false
   private mayHaveDispatchedStart = false
   private stopping?: Promise<void>
-  private updating = false
-  private pendingRectangle?: RegionRectangle
-  private fieldVersion = 0
-  private committedFieldVersion = 0
-  private fieldsDirty = false
-  private invalidFields = false
   private crop?: Blob
-  private previewUrl?: string
   private disposed = false
 
   constructor(private readonly options: Options) {
     this.request = options.request ?? sendRuntimeRequest
+    let enterGeneration: number | undefined
+    this.button.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return
+      event.preventDefault()
+      if (event.isTrusted && !event.repeat) enterGeneration = this.generation
+    })
+    this.button.addEventListener("keyup", (event) => {
+      if (event.key !== "Enter") return
+      event.preventDefault()
+      const generation = enterGeneration
+      enterGeneration = undefined
+      if (event.isTrusted && generation === this.generation) this.button.click()
+    })
+    this.button.addEventListener("blur", () => {
+      enterGeneration = undefined
+    })
     this.button.addEventListener("click", () =>
-      this.run(() => (this.occupied ? this.cancel() : this.start())),
-    )
-    this.previewButton.addEventListener("click", () => this.run(() => this.preview()))
-    this.cancelButton.addEventListener("click", () => this.run(() => this.cancel()))
-    element<HTMLButtonElement>("region-preview-cancel").addEventListener("click", () =>
-      this.run(() => this.cancel()),
-    )
-    this.attachButton.addEventListener("click", () => this.run(() => this.attach()))
-    this.retakeButton.addEventListener("click", () =>
-      this.run(async () => {
-        await this.cancel(false)
-        await this.start()
+      this.run(() => {
+        if (this.phase === "retry-cleanup" || this.phase === "retry-attach")
+          return this.attachCrop()
+        return this.occupied ? this.cancel() : this.start()
       }),
     )
-    this.dialog.addEventListener("cancel", (event) => {
-      event.preventDefault()
-      this.run(() => this.cancel())
-    })
-    for (const field of Object.values(this.fields)) {
-      field.addEventListener("input", () => {
-        ++this.fieldVersion
-        this.fieldsDirty = true
-        this.pendingRectangle = undefined
-        this.invalidFields = !this.validFields()
-        this.refresh()
-      })
-      field.addEventListener("change", () => this.run(() => this.updateRectangle()))
-      field.addEventListener("blur", () => {
-        // Native change can be omitted after returning to the value present at focus.
-        if (this.committedFieldVersion !== this.fieldVersion) this.run(() => this.updateRectangle())
-      })
-    }
     this.refresh()
   }
 
@@ -139,67 +116,25 @@ export class RegionCaptureController {
       throw new Error("Invalid region capture owner")
     return parseRegionCaptureState(value.state)
   }
-  private remember(state: RegionCaptureState): void {
-    if (state.active && this.state.active && state.revision < this.state.revision) return
-    if (state.active && (state.dragging || (this.state.active && this.state.dragging))) {
-      // A new page gesture replaces the numeric draft, not an update acknowledgment.
-      this.committedFieldVersion = ++this.fieldVersion
-      this.fieldsDirty = false
-      this.pendingRectangle = undefined
-    }
+  private remember(state: RegionCaptureState): boolean {
+    if (state.active && this.state.active && state.revision < this.state.revision) return false
     this.state = state
-    if (state.active && state.rectangle && !this.fieldsDirty) {
-      for (const key of ["x", "y", "width", "height"] as const)
-        this.fields[key].value = String(state.rectangle[key])
-      this.invalidFields = false
-    }
-  }
-  private fieldRectangle(): RegionRectangle {
-    return {
-      x: this.fields.x.valueAsNumber,
-      y: this.fields.y.valueAsNumber,
-      width: this.fields.width.valueAsNumber,
-      height: this.fields.height.valueAsNumber,
-    }
-  }
-  private fieldsMatch(rectangle: RegionRectangle | null): boolean {
-    const draft = this.fieldRectangle()
-    return (
-      !!rectangle &&
-      (["x", "y", "width", "height"] as const).every((key) => draft[key] === rectangle[key])
-    )
-  }
-  private validFields(): boolean {
-    return (
-      this.state.active &&
-      validRegionRectangle(this.fieldRectangle(), this.state.width, this.state.height)
-    )
+    return true
   }
 
   refresh(): void {
-    this.button.ariaLabel = this.button.title = t("Capture region")
+    const label =
+      this.phase === "retry-cleanup"
+        ? t("Retry region cleanup")
+        : this.phase === "retry-attach"
+          ? t("Retry region attachment")
+          : this.occupied
+            ? t("Cancel region capture")
+            : t("Capture region")
+    this.button.ariaLabel = label
+    this.button.title = `${label}\n${t("Chrome temporarily captures the full viewport. Only the crop leaves the worker. Drag to attach a crop. Arrow keys move; Shift+Arrow resizes; Alt uses 1 px. Enter attaches; Escape cancels.")}`
     this.button.setAttribute("aria-pressed", String(this.occupied))
     this.button.disabled = !this.occupied && !this.options.canStart()
-    this.selection.hidden =
-      ["idle", "preview", "attaching"].includes(this.phase) && !this.cleanupRequired
-    const editable = this.phase === "selecting" && this.state.active && !this.state.dragging
-    for (const [key, field] of Object.entries(this.fields)) {
-      field.disabled = !editable
-      field.setAttribute("aria-invalid", String(this.invalidFields))
-      if (this.state.active)
-        field.max = String(key === "x" || key === "width" ? this.state.width : this.state.height)
-    }
-    this.previewButton.disabled = !(
-      (editable &&
-        !this.updating &&
-        this.state.active &&
-        this.fieldsMatch(this.state.rectangle) &&
-        !this.invalidFields) ||
-      (this.crop && this.cleanupRequired && !this.stopping)
-    )
-    this.attachButton.disabled = this.phase !== "preview" || this.cleanupRequired || !this.crop
-    this.retakeButton.disabled = this.phase !== "preview" || this.cleanupRequired
-    this.image.alt = t("Region preview")
   }
 
   async start(): Promise<void> {
@@ -207,9 +142,7 @@ export class RegionCaptureController {
     if (!this.options.canStart())
       throw new Error(t("Finish or cancel region capture before sending"))
     const generation = ++this.generation
-    this.fieldsDirty = false
-    this.committedFieldVersion = this.fieldVersion
-    this.invalidFields = false
+    this.handledCommit = -1
     this.owner = { clientId: crypto.randomUUID(), operationId: crypto.randomUUID() }
     this.sessionId = this.options.getSessionId()
     this.abort = new AbortController()
@@ -234,21 +167,17 @@ export class RegionCaptureController {
       this.mayHaveDispatchedStart = true
       const value = await this.request("regionCapture.start", this.owner, {
         tabContext: context,
-        signal: this.abort?.signal,
+        signal: this.abort.signal,
       })
       this.assertCurrent(generation)
       const state = this.resultState(value)
       if (!state.active) throw new Error(t("Region capture is unavailable on this page"))
       this.remember(state)
-      if (this.state.active && !this.state.rectangle && !this.fieldsDirty) {
-        this.fields.x.value = this.fields.y.value = "0"
-        this.fields.width.value = String(Math.min(200, this.state.width))
-        this.fields.height.value = String(Math.min(150, this.state.height))
-      }
       this.cleanupRequired = false
       this.phase = "selecting"
       this.changed()
-      this.fields.x.focus({ preventScroll: true })
+      // Keep focus on the owned page surface for keyboard selection.
+      this.captureCommittedSelection()
     } catch (error) {
       if (generation !== this.generation) return
       await this.cancel(false).catch(() => undefined)
@@ -261,62 +190,23 @@ export class RegionCaptureController {
     }
   }
 
-  async updateRectangle(): Promise<void> {
+  private captureCommittedSelection(): void {
+    const state = this.state
     if (
       this.phase !== "selecting" ||
-      !this.owner ||
-      !this.context ||
-      !this.state.active ||
-      this.state.dragging
+      !state.active ||
+      !state.rectangle ||
+      state.dragging ||
+      state.frozen ||
+      state.committedRevision === null ||
+      state.committedRevision !== state.revision ||
+      state.committedRevision <= this.handledCommit
     )
       return
-    this.committedFieldVersion = ++this.fieldVersion
-    this.fieldsDirty = true
-    this.pendingRectangle = undefined
-    this.invalidFields = !this.validFields()
-    if (this.invalidFields) {
-      this.changed()
-      throw new Error(t("Select a region at least 8 CSS pixels wide and high"))
-    }
-    this.pendingRectangle = this.fieldRectangle()
-    if (this.updating) {
-      this.changed()
-      return
-    }
-    const generation = this.generation
-    this.updating = true
-    this.changed()
-    try {
-      while (this.pendingRectangle) {
-        const rectangle = this.pendingRectangle
-        const version = this.fieldVersion
-        this.pendingRectangle = undefined
-        const value = await this.request(
-          "regionCapture.update",
-          { ...this.owner, rectangle },
-          { tabContext: this.context, signal: this.abort?.signal },
-        )
-        this.assertCurrent(generation)
-        this.remember(this.resultState(value))
-        if (
-          version === this.fieldVersion &&
-          this.state.active &&
-          this.fieldsMatch(this.state.rectangle)
-        )
-          this.fieldsDirty = false
-      }
-    } catch (error) {
-      if (generation === this.generation) {
-        // A failed request never drains or replays queued edits.
-        this.pendingRectangle = undefined
-        throw error
-      }
-    } finally {
-      if (generation === this.generation) {
-        this.updating = false
-        this.changed()
-      }
-    }
+    const selectionRevision = state.committedRevision
+    this.handledCommit = selectionRevision
+    // A notification is only a hint. The worker checks this revision against its live surface.
+    this.run(() => this.captureSelection(selectionRevision))
   }
 
   private async cleanupSurface(): Promise<void> {
@@ -347,30 +237,12 @@ export class RegionCaptureController {
     return this.stopping
   }
 
-  async preview(): Promise<void> {
-    if (this.crop && this.cleanupRequired) {
-      const generation = this.generation
-      await this.cleanupSurface()
-      this.assertCurrent(generation)
-      this.openPreview()
-      return
-    }
-    if (
-      this.phase !== "selecting" ||
-      this.updating ||
-      !this.owner ||
-      !this.context ||
-      !this.state.active ||
-      !this.state.rectangle ||
-      !this.fieldsMatch(this.state.rectangle) ||
-      this.state.dragging ||
-      this.invalidFields
-    )
-      return
-    // This is local preflight only: no credential setup or provider host permission.
-    const maxBytes = this.options.preflight()
+  private async captureSelection(selectionRevision: number): Promise<void> {
+    if (!this.owner || !this.context || this.phase !== "selecting") return
     const generation = this.generation
     this.assertCurrent(generation)
+    // Local preflight only: no credential setup or provider host permission.
+    const maxBytes = this.options.preflight()
     this.phase = "capturing"
     this.changed()
     try {
@@ -380,7 +252,7 @@ export class RegionCaptureController {
       try {
         value = await this.request(
           "regionCapture.capture",
-          { ...this.owner, maxBytes },
+          { ...this.owner, maxBytes, selectionRevision },
           { signal, tabContext: this.context },
         )
       } catch (error) {
@@ -392,7 +264,7 @@ export class RegionCaptureController {
         const budget = this.options.preflight()
         value = await this.request(
           "regionCapture.capture",
-          { ...this.owner, maxBytes: budget },
+          { ...this.owner, maxBytes: budget, selectionRevision },
           { signal, tabContext: this.context, confirmed: true },
         )
       }
@@ -405,7 +277,7 @@ export class RegionCaptureController {
         typeof value.dataUrl !== "string" ||
         !value.dataUrl.startsWith("data:image/png;base64,")
       )
-        throw new Error(t("Could not preview the region. Select again or retry."))
+        throw new Error(t("Could not capture the region. Select again or retry."))
       const data = value.dataUrl.slice("data:image/png;base64,".length)
       const dimensions = pngDimensions(data)
       if (
@@ -419,81 +291,64 @@ export class RegionCaptureController {
         data.length % 4 ||
         !/^[A-Za-z0-9+/]+={0,2}$/.test(data)
       )
-        throw new Error(t("Could not preview the region. Select again or retry."))
+        throw new Error(t("Could not capture the region. Select again or retry."))
       const blob = new Blob([Uint8Array.from(atob(data), (c) => c.charCodeAt(0))], {
         type: "image/png",
       })
       if (!blob.size || blob.size > maxBytes)
         throw new Error(t("Composer images must use 3 MB or less in total"))
       this.crop = blob
-      await this.cleanupSurface()
-      this.assertCurrent(generation)
-      this.openPreview()
     } catch (error) {
       if (generation !== this.generation) return
-      if (!this.crop && !this.cleanupRequired) this.phase = "selecting"
+      if (!this.cleanupRequired) this.phase = "selecting"
       this.changed()
       throw error
     }
+    await this.attachCrop()
   }
 
-  private openPreview(): void {
-    if (!this.crop || this.cleanupRequired) return
-    this.previewUrl = URL.createObjectURL(this.crop)
-    this.image.src = this.previewUrl
-    this.phase = "preview"
-    this.dialog.showModal()
-    this.changed()
-    this.attachButton.focus({ preventScroll: true })
-  }
-
-  async attach(): Promise<void> {
-    if (this.phase !== "preview" || this.cleanupRequired || !this.crop) return
+  private async attachCrop(): Promise<void> {
+    if (!this.crop || this.phase === "attaching" || this.stopping) return
     const generation = this.generation
-    this.options.preflight()
-    this.phase = "attaching"
-    this.changed()
     try {
+      this.assertCurrent(generation)
+      await this.cleanupSurface()
+      this.assertCurrent(generation)
+      this.phase = "attaching"
+      this.changed()
+      this.options.preflight()
       await this.options.onAttach(this.crop, () => this.assertCurrent(generation))
       this.assertCurrent(generation)
-      this.dropPreview()
-      this.phase = "idle"
-      this.owner = undefined
+      this.crop = undefined
+      this.reset()
       this.changed()
       this.options.focusComposer()
     } catch (error) {
       if (generation !== this.generation) return
-      this.phase = "preview"
+      this.phase = this.cleanupRequired ? "retry-cleanup" : "retry-attach"
       this.changed()
       throw error
     }
   }
 
-  private dropPreview(): void {
-    if (this.dialog.open) this.dialog.close()
-    this.image.removeAttribute("src")
-    if (this.previewUrl) URL.revokeObjectURL(this.previewUrl)
-    this.previewUrl = undefined
-    this.crop = undefined
+  private reset(): void {
+    ++this.generation
+    this.owner = undefined
+    this.context = undefined
+    this.sessionId = undefined
+    this.abort = undefined
+    this.cleanupRequired = false
+    this.phase = "idle"
+    this.state = { active: false }
   }
 
   async cancel(restoreFocus = true): Promise<void> {
     ++this.generation
-    this.pendingRectangle = undefined
     this.abort?.abort()
-    this.dropPreview()
+    this.crop = undefined
     try {
       await this.cleanupSurface()
-      this.owner = undefined
-      this.context = undefined
-      this.sessionId = undefined
-      this.abort = undefined
-      this.cleanupRequired = false
-      this.updating = false
-      this.fieldsDirty = false
-      this.invalidFields = false
-      this.phase = "idle"
-      this.state = { active: false }
+      this.reset()
     } finally {
       this.changed()
       if (restoreFocus && !this.disposed && !this.button.disabled)
@@ -535,8 +390,14 @@ export class RegionCaptureController {
       ["starting", "selecting", "capturing"].includes(this.phase)
     ) {
       try {
-        this.remember(parseRegionCaptureState(event.payload.state))
+        const state = parseRegionCaptureState(event.payload.state)
+        if (!state.active) {
+          this.run(() => this.cancel(false))
+          return
+        }
+        if (!this.remember(state)) return
         this.changed()
+        this.captureCommittedSelection()
       } catch {
         this.run(() => this.cancel(false))
       }

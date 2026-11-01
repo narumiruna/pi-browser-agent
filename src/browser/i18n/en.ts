@@ -3,30 +3,19 @@ export const english = {
   "Reset page pinch zoom before capturing a region":
     "Reset page pinch zoom before capturing a region",
   "Capture region": "Capture region",
-  "Select a region": "Select a region",
-  "Drag on the page or enter CSS pixels. Minimum: 8 × 8.":
-    "Drag on the page or enter CSS pixels. Minimum: 8 × 8.",
-  X: "X",
-  Y: "Y",
-  Width: "Width",
-  Height: "Height",
-  "Chrome temporarily captures the full viewport. Only the crop leaves the worker.":
-    "Chrome temporarily captures the full viewport. Only the crop leaves the worker.",
-  "Preview region": "Preview region",
-  "Region preview": "Region preview",
-  "Only this crop is attached. Text, selected elements, history, and approved page reads can include other content.":
-    "Only this crop is attached. Text, selected elements, history, and approved page reads can include other content.",
-  Retake: "Retake",
+  "Cancel region capture": "Cancel region capture",
+  "Retry region cleanup": "Retry region cleanup",
+  "Retry region attachment": "Retry region attachment",
+  "Chrome temporarily captures the full viewport. Only the crop leaves the worker. Drag to attach a crop. Arrow keys move; Shift+Arrow resizes; Alt uses 1 px. Enter attaches; Escape cancels.":
+    "Chrome temporarily captures the full viewport. Only the crop leaves the worker. Drag to attach a crop. Arrow keys move; Shift+Arrow resizes; Alt uses 1 px. Enter attaches; Escape cancels.",
   "Finish or cancel region capture before sending":
     "Finish or cancel region capture before sending",
-  "Select a region at least 8 CSS pixels wide and high":
-    "Select a region at least 8 CSS pixels wide and high",
   "Could not confirm region cleanup. Reload the page before sending.":
     "Could not confirm region cleanup. Reload the page before sending.",
   "The page changed. Select a new region.": "The page changed. Select a new region.",
   "Region capture is unavailable on this page": "Region capture is unavailable on this page",
-  "Could not preview the region. Select again or retry.":
-    "Could not preview the region. Select again or retry.",
+  "Could not capture the region. Select again or retry.":
+    "Could not capture the region. Select again or retry.",
   "Image {number}": "Image {number}",
   "Use as target": "Use as target",
   "Use as reference": "Use as reference",

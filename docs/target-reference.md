@@ -10,7 +10,7 @@ Use a target/reference pair to identify what the task concerns and what it shoul
 
 One message supports one pair. Roles use immutable attachment IDs, not card positions or CSS selectors. Removing or invalidating a member clears that role. A page-context change clears selected elements and their roles. Send stays unavailable until you repair the pair or select **Clear pair**. Pi does not choose a replacement. Successful submission clears only accepted attachment IDs and their roles; a failed preparation retains the draft for an explicit retry. A guarded snapshot binds the outgoing task, IDs, and image positions. Asynchronous preparation cannot silently use newer draft text or stale element context.
 
-An image reference can come from a previously attached raster image, including an explicitly previewed and attached region crop. Finish region capture before using the element picker; page-input modes cannot overlap. Pi does not read a background tab or fetch a reference URL. Selected-element members must meet their current-page checks. Images require an image-capable model and share the existing four-image, 3,000,000-byte limit. Unpaired image-only Send remains available.
+An image reference can come from a previously attached raster image, including a region crop. A completed drag or keyboard confirmation attaches the crop locally; select its pair role explicitly. Finish region capture before using the element picker; page-input modes cannot overlap. Pi does not read a background tab or fetch a reference URL. Selected-element members must meet their current-page checks. Images require an image-capable model and share the existing four-image, 3,000,000-byte limit. Unpaired image-only Send remains available.
 
 ## Answer a question
 

@@ -183,12 +183,12 @@ const regionCapture = new RegionCaptureWorker({
     assertTabContext(context, latest)
     if (signal?.aborted) throw new RuntimeError("REQUEST_CANCELLED", "Region capture was cancelled")
   },
-  async execute(operation, session, rectangle) {
+  async execute(operation, session) {
     const results = await chrome.scripting.executeScript({
       target: { tabId: session.context.tabId },
       world: "ISOLATED",
       func: executeRegionCapture,
-      args: [operation, session.token, session.context, rectangle ?? null, REGION_CAPTURE_LIMITS],
+      args: [operation, session.token, session.context, REGION_CAPTURE_LIMITS],
     })
     return results[0]?.result
   },
@@ -1176,9 +1176,6 @@ async function dispatch(request: RuntimeRequest, signal: AbortSignal): Promise<J
       result = await pageAnnotation.capture(request, signal)
       break
 
-    case "regionCapture.update":
-      result = await regionCapture.update(request, signal)
-      break
     case "regionCapture.capture":
       result = await regionCapture.capture(request, signal)
       break

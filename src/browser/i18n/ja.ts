@@ -4,30 +4,19 @@ export default {
   "Reset page pinch zoom before capturing a region":
     "範囲をキャプチャする前にページのピンチズームをリセットしてください",
   "Capture region": "範囲をキャプチャ",
-  "Select a region": "範囲を選択",
-  "Drag on the page or enter CSS pixels. Minimum: 8 × 8.":
-    "ページ上でドラッグするか、CSS ピクセルを入力します。最小: 8 × 8。",
-  X: "X",
-  Y: "Y",
-  Width: "幅",
-  Height: "高さ",
-  "Chrome temporarily captures the full viewport. Only the crop leaves the worker.":
-    "Chrome は一時的に表示領域全体をキャプチャします。ワーカーから出るのは切り抜いた画像だけです。",
-  "Preview region": "範囲をプレビュー",
-  "Region preview": "範囲のプレビュー",
-  "Only this crop is attached. Text, selected elements, history, and approved page reads can include other content.":
-    "添付されるのはこの切り抜きだけです。テキスト、選択した要素、履歴、承認済みのページ読み取りには、ほかの内容が含まれることがあります。",
-  Retake: "撮り直す",
+  "Cancel region capture": "範囲のキャプチャをキャンセル",
+  "Retry region cleanup": "範囲選択の削除を再試行",
+  "Retry region attachment": "範囲の添付を再試行",
+  "Chrome temporarily captures the full viewport. Only the crop leaves the worker. Drag to attach a crop. Arrow keys move; Shift+Arrow resizes; Alt uses 1 px. Enter attaches; Escape cancels.":
+    "Chrome は一時的に表示領域全体をキャプチャします。ワーカーから出るのは切り抜いた画像だけです。 ドラッグして切り抜きを添付します。矢印キーで移動、Shift+矢印キーでサイズ変更、Alt で 1 px 単位にします。Enter で添付、Escape でキャンセルします。",
   "Finish or cancel region capture before sending":
     "送信前に範囲のキャプチャを完了するかキャンセルしてください",
-  "Select a region at least 8 CSS pixels wide and high":
-    "幅と高さがそれぞれ 8 CSS ピクセル以上の範囲を選択してください",
   "Could not confirm region cleanup. Reload the page before sending.":
     "範囲選択の削除を確認できませんでした。送信前にページを再読み込みしてください。",
   "The page changed. Select a new region.": "ページが変わりました。新しい範囲を選択してください。",
   "Region capture is unavailable on this page": "このページでは範囲のキャプチャを利用できません",
-  "Could not preview the region. Select again or retry.":
-    "範囲をプレビューできませんでした。選択し直すか再試行してください。",
+  "Could not capture the region. Select again or retry.":
+    "範囲をキャプチャできませんでした。選択し直すか再試行してください。",
   "Image {number}": "画像 {number}",
   "Use as target": "対象として使用",
   "Use as reference": "参照として使用",
