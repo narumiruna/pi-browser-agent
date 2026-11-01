@@ -52,7 +52,7 @@ describe("target/reference manifest", () => {
 
   test("keeps pin notes separate from validated untrusted page fields and requires ordinary task text only for pairs", () => {
     const pin = {
-      id: "pin-uuid",
+      id: "11111111-1111-4111-8111-111111111111",
       number: 1,
       note: "Match <script> this",
       context: selectedTarget(),
@@ -111,6 +111,32 @@ describe("target/reference manifest", () => {
     expect(() => serializeUserContext(manifest)).toThrow(/16 KiB/)
   })
 
+  test("uses the actual pin UUID, unique-number and note contracts", () => {
+    const pin = {
+      id: "11111111-1111-4111-8111-111111111111",
+      number: 1,
+      note: "",
+      context: selectedTarget(),
+    }
+    for (const invalid of [
+      { ...pin, id: "not-a-pin-id" },
+      { ...pin, note: "a".repeat(513) },
+      { ...pin, number: 1_000_001 },
+      { ...pin, extra: true },
+    ])
+      expect(() =>
+        createUserContextManifest({ imageIds: [], elementIds: [] }, [], [], [invalid]),
+      ).toThrow()
+    expect(() =>
+      createUserContextManifest(
+        { imageIds: [], elementIds: [] },
+        [],
+        [],
+        [pin, { ...pin, id: "22222222-2222-4222-8222-222222222222" }],
+      ),
+    ).toThrow()
+  })
+
   test("reuses the four-image/3 MB raster-only composer boundary", () => {
     for (const image of [
       { ...images[0], mimeType: "image/svg+xml" },
@@ -146,7 +172,12 @@ describe("target/reference manifest", () => {
     expect(createUserContextManifest(input, [], elements).attachments).toHaveLength(5)
     expect(() =>
       createUserContextManifest(input, [], elements, [
-        { id: "pin", number: 1, note: "", context: selectedTarget() },
+        {
+          id: "11111111-1111-4111-8111-111111111111",
+          number: 1,
+          note: "",
+          context: selectedTarget(),
+        },
       ]),
     ).toThrow()
     expect(() =>

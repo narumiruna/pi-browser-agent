@@ -6,6 +6,7 @@ import {
 } from "./element-context.js"
 
 import { imageContentSource, MAX_PASTED_IMAGE_BYTES, MAX_PASTED_IMAGES } from "./image-content.js"
+import { type PointCommentPin, parsePointCommentPins } from "./point-comments.js"
 
 export interface TargetReferencePair {
   targetId?: string
@@ -15,13 +16,6 @@ export interface SubmittedContext {
   imageIds: string[]
   elementIds: string[]
   pair?: TargetReferencePair
-}
-// Structural input matches PointCommentPin; the pin controller remains its owner.
-export interface SubmittedPin {
-  id: string
-  number: number
-  note: string
-  context: SelectedElementContext
 }
 export type ContextAttachment =
   | { id: string; kind: "image"; imagePosition: number }
@@ -53,7 +47,7 @@ export function createUserContextManifest(
   submitted: SubmittedContext,
   images: readonly ImageContent[],
   elements: readonly SelectedElementContext[],
-  pins: readonly SubmittedPin[] = [],
+  pins: readonly PointCommentPin[] = [],
 ): UserContextManifest {
   if (
     !record(submitted) ||
@@ -93,24 +87,13 @@ export function createUserContextManifest(
       kind: "element" as const,
       untrustedPageContext: parseSelectedElementContext(context),
     })),
-    ...pins.map((pin) => {
-      if (
-        !record(pin) ||
-        !keys(pin, ["id", "number", "note", "context"]) ||
-        !Number.isSafeInteger(pin.number) ||
-        pin.number < 1 ||
-        typeof pin.note !== "string" ||
-        pin.note.length > 512
-      )
-        throw new Error("Invalid submitted pin")
-      return {
-        id: pin.id,
-        kind: "pin" as const,
-        number: pin.number,
-        userNote: pin.note,
-        untrustedPageContext: parseSelectedElementContext(pin.context),
-      }
-    }),
+    ...parsePointCommentPins(pins).map((pin) => ({
+      id: pin.id,
+      kind: "pin" as const,
+      number: pin.number,
+      userNote: pin.note,
+      untrustedPageContext: pin.context,
+    })),
   ]
   const ids = attachments.map((attachment) => attachment.id)
   if (!ids.every(id) || new Set(ids).size !== ids.length)

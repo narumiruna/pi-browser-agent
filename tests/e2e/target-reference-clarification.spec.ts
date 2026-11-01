@@ -38,6 +38,67 @@ async function paste(page: Page, count = 1) {
   )
   await expect(page.locator("#pasted-images img")).toHaveCount(previous + count)
 }
+const PIN_HOST = "[data-pi-browser-agent-element-picker]"
+type PairProbe = Window & {
+  pairedPreparationEntered?: boolean
+  releasePairedPreparation?: () => void
+}
+async function pinFixture(h: ExtensionHarness) {
+  await h.fixturePage.evaluate(() => {
+    for (let number = 1; number <= 4; number++) {
+      const button = document.createElement("button")
+      button.id = `pair-pin-${number}`
+      button.textContent = `Pair target ${number}`
+      button.style.cssText = `position:fixed;left:${100 + number * 110}px;top:240px;width:90px;height:50px`
+      button.addEventListener("click", () => {
+        document.body.dataset.pairActivated = "yes"
+      })
+      document.body.append(button)
+    }
+  })
+  await h.worker.evaluate(() => {
+    const state = globalThis as typeof globalThis & { pairCaptures?: number }
+    state.pairCaptures = 0
+    const capture = chrome.tabs.captureVisibleTab.bind(chrome.tabs)
+    chrome.tabs.captureVisibleTab = (async (...args: unknown[]) => {
+      state.pairCaptures = (state.pairCaptures ?? 0) + 1
+      return Reflect.apply(capture, chrome.tabs, args)
+    }) as typeof chrome.tabs.captureVisibleTab
+  })
+}
+const pairCaptures = (h: ExtensionHarness) =>
+  h.worker.evaluate(
+    () => (globalThis as typeof globalThis & { pairCaptures?: number }).pairCaptures,
+  )
+async function startPins(h: ExtensionHarness) {
+  await h.fixturePage.bringToFront()
+  await h.controller.locator("#point-comments").click()
+  await expect(h.fixturePage.locator(PIN_HOST)).toHaveCount(1)
+}
+async function selectPin(h: ExtensionHarness, number: number) {
+  const box = await h.fixturePage.locator(`#pair-pin-${number}`).boundingBox()
+  if (!box) throw new Error("Missing pair target")
+  await h.fixturePage.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+}
+async function preparationGate(page: Page, fail = false) {
+  await page.evaluate((fail) => {
+    const state = window as PairProbe
+    const get = chrome.storage.local.get.bind(chrome.storage.local)
+    chrome.storage.local.get = (async (...args: unknown[]) => {
+      if (args[0] === "piBrowserAgentSkillsV1" && !state.pairedPreparationEntered) {
+        state.pairedPreparationEntered = true
+        if (fail) throw new Error("Mock paired preparation failed")
+        await new Promise<void>((resolve) => {
+          state.releasePairedPreparation = resolve
+        })
+      }
+      return Reflect.apply(get, chrome.storage.local, args)
+    }) as typeof chrome.storage.local.get
+  }, fail)
+}
+async function releasePreparation(page: Page) {
+  await page.evaluate(() => (window as PairProbe).releasePairedPreparation?.())
+}
 function manifest(request: CodexRequest): UserContextManifest {
   const text = JSON.stringify(request.input)
   expect(text).toContain("User attachment context v1")
@@ -87,6 +148,327 @@ async function finished(page: Page, text: string) {
   await expect(page.locator("#abort")).toBeHidden()
 }
 
+test("a cropped reference and non-last reselected pin retain roles through intentional submit cleanup", async () => {
+  const h = await launchExtensionHarness({ screenshots: true })
+  try {
+    const requests: CodexRequest[] = []
+    let submitted: UserContextManifest | undefined
+    await h.context.route(CODEX_RESPONSES_URL, async (route) => {
+      requests.push(route.request().postDataJSON() as CodexRequest)
+      expect(await h.fixturePage.locator(PIN_HOST).count()).toBe(0)
+      if (requests.length === 1) submitted = manifest(requests[0] as CodexRequest)
+      await route.fulfill({
+        status: 200,
+        contentType: "text/event-stream",
+        body:
+          requests.length === 1
+            ? toolCallResponse(1, "request_user_input", {
+                question: "Which submitted target?",
+                options: [
+                  { label: "Selected comment", attachmentId: submitted?.pair?.targetId },
+                  { label: "Cropped reference", attachmentId: submitted?.pair?.referenceId },
+                ],
+              })
+            : finalTextResponse(requests.length, "Pin pair understood"),
+      })
+    })
+    await configureMockCodex(h)
+    await pinFixture(h)
+    const page = h.controller
+    await page.locator("#region-capture").click()
+    await expect(page.locator("#point-comments")).toBeDisabled()
+    await expect(page.locator("#page-pen")).toBeDisabled()
+    await expect(page.locator("#send")).toBeDisabled()
+    await h.fixturePage.mouse.move(100, 110)
+    await h.fixturePage.mouse.down()
+    await h.fixturePage.mouse.move(260, 220, { steps: 4 })
+    await h.fixturePage.mouse.up()
+    await expect(page.locator("#region-preview-action")).toBeEnabled()
+    await page.locator("#region-preview-action").click()
+    await expect(page.locator("#region-preview-dialog")).toBeVisible()
+    await page.locator("#region-attach").click()
+    await expect(page.locator("#pasted-images img")).toHaveCount(1)
+    expect(requests).toHaveLength(0)
+    expect(await pairCaptures(h)).toBe(1)
+    const imageId = await page.locator(".pasted-image").getAttribute("data-attachment-id")
+    await startPins(h)
+    await expect(page.locator("#region-capture")).toBeDisabled()
+    for (let number = 1; number <= 3; number++) {
+      await selectPin(h, number)
+      await expect(page.locator(".point-comment-card")).toHaveCount(number)
+      await page
+        .locator(".point-comment-card")
+        .nth(number - 1)
+        .locator("textarea")
+        .fill(`User note ${number}`)
+    }
+    const first = page.locator(".point-comment-card").nth(0)
+    const pinId = await first.getAttribute("data-pin-id")
+    await first.getByRole("button", { name: "Use as target", exact: true }).click()
+    await page
+      .locator(".pasted-image")
+      .getByRole("button", { name: "Use as reference", exact: true })
+      .click()
+    await first.getByRole("button", { name: "Reselect target", exact: true }).click()
+    await expect(first).toHaveAttribute("data-active", "false")
+    await expect(page.locator("#target-reference-pair")).toContainText("Target: Comment 1")
+    await expect(first.getByRole("button", { name: "Use as target", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    )
+    await selectPin(h, 4)
+    await expect(first).toHaveAttribute("data-active", "true")
+    await expect(first).toHaveAttribute("data-pin-id", pinId as string)
+    await expect(first.locator("textarea")).toHaveValue("User note 1")
+    await expect(first.locator("label")).toContainText("pair-pin-4")
+    await preparationGate(page)
+    await submit(page, "Match this target to the cropped reference")
+    await expect
+      .poll(() => page.evaluate(() => (window as PairProbe).pairedPreparationEntered))
+      .toBe(true)
+    await expect(h.fixturePage.locator(PIN_HOST)).toHaveCount(0)
+    await expect(page.locator('.point-comment-card[data-active="false"]')).toHaveCount(3)
+    await expect(page.locator("#target-reference-pair")).toContainText("Target: Comment 1")
+    await expect(page.locator("#target-reference-pair")).not.toContainText("Not selected")
+    expect(requests).toHaveLength(0)
+    await page.locator("#prompt").fill("Newer unsubmitted draft")
+    await releasePreparation(page)
+    await expect(page.locator("#clarification-card")).toBeVisible()
+    expect(submitted?.pair).toEqual({ targetId: pinId, referenceId: imageId })
+    expect(submitted?.attachments.find((attachment) => attachment.id === pinId)).toMatchObject({
+      kind: "pin",
+      number: 1,
+      userNote: "User note 1",
+      untrustedPageContext: { id: "pair-pin-4" },
+    })
+    expect(submitted?.attachments.filter((attachment) => attachment.kind === "pin")).toHaveLength(3)
+    expect(JSON.stringify(requests[0]?.input)).not.toContain("Newer unsubmitted draft")
+    expect(JSON.stringify(requests[0]?.input)).not.toContain("Point comments — notes")
+    await expect(page.locator(".point-comment-card")).toHaveCount(0)
+    await expect(page.locator("#target-reference-pair")).toBeHidden()
+    for (const id of ["point-comments", "region-capture", "element-picker", "page-pen"])
+      await expect(page.locator(`#${id}`)).toBeDisabled()
+    await page
+      .locator("#clarification-card")
+      .getByRole("radio", { name: /Selected comment/ })
+      .check()
+    await page.locator("#clarification-answer").click()
+    await finished(page, "Pin pair understood")
+    expect(requests).toHaveLength(2)
+    expect(await pairCaptures(h)).toBe(1)
+    await expect(page.locator("#prompt")).toHaveValue("Newer unsubmitted draft")
+    await expect(h.fixturePage.locator("body")).not.toHaveAttribute("data-pair-activated", "yes")
+    await page.reload()
+    await h.fixturePage.bringToFront()
+    await waitForConversationReady(page)
+    await expect(page.locator("#transcript")).toContainText("User note 1")
+    await expect(page.locator("#transcript")).toContainText("pair-pin-4")
+    await expect(page.locator("#transcript .message.user img")).toHaveCount(1)
+    await expect(page.locator(".point-comment-card")).toHaveCount(0)
+    await expect(page.locator("#clarification-card")).toBeHidden()
+    await expect(page.locator("#target-reference-pair")).toBeHidden()
+    expect(requests).toHaveLength(2)
+    expect(await pairCaptures(h)).toBe(1)
+    expect(h.pageErrors).toEqual([])
+  } finally {
+    await h.close()
+  }
+})
+
+test("a page-context change cancels an actual pin-linked question without continuation", async () => {
+  const h = await launchExtensionHarness()
+  try {
+    let requests = 0
+    await h.context.route(CODEX_RESPONSES_URL, async (route) => {
+      requests++
+      const data = manifest(route.request().postDataJSON() as CodexRequest)
+      await route.fulfill({
+        status: 200,
+        contentType: "text/event-stream",
+        body: toolCallResponse(requests, "request_user_input", {
+          question: "Keep this page target?",
+          options: [
+            { label: "Selected comment", attachmentId: data.pair?.targetId },
+            { label: "Other result" },
+          ],
+        }),
+      })
+    })
+    await configureMockCodex(h)
+    await pinFixture(h)
+    await paste(h.controller)
+    await startPins(h)
+    await selectPin(h, 1)
+    const pin = h.controller.locator(".point-comment-card")
+    await pin.getByRole("button", { name: "Use as target", exact: true }).click()
+    await h.controller
+      .locator(".pasted-image")
+      .getByRole("button", { name: "Use as reference", exact: true })
+      .click()
+    await submit(h.controller)
+    await expect(h.controller.locator("#clarification-card")).toBeVisible()
+    await h.controller.locator("#prompt").fill("Retain this newer draft")
+    await h.fixturePage.goto(`${h.fixtureUrl}?new-context=1`)
+    await h.fixturePage.bringToFront()
+    await expect(h.controller.locator("#clarification-card")).toBeHidden()
+    await expect(h.controller.locator("#abort")).toBeHidden()
+    await expect(h.controller.locator("#prompt")).toHaveValue("Retain this newer draft")
+    expect(requests).toBe(1)
+    expect(await pairCaptures(h)).toBe(0)
+    await expect(h.fixturePage.locator(PIN_HOST)).toHaveCount(0)
+    expect(h.pageErrors).toEqual([])
+  } finally {
+    await h.close()
+  }
+})
+
+test("failed pin preparation retains notes and image IDs for explicit reselection and role repair", async () => {
+  const h = await launchExtensionHarness()
+  try {
+    const requests: CodexRequest[] = []
+    await h.context.route(CODEX_RESPONSES_URL, async (route) => {
+      requests.push(route.request().postDataJSON() as CodexRequest)
+      await route.fulfill({
+        status: 200,
+        contentType: "text/event-stream",
+        body: finalTextResponse(requests.length, "Pin retry accepted"),
+      })
+    })
+    await configureMockCodex(h)
+    await pinFixture(h)
+    await paste(h.controller)
+    await startPins(h)
+    await selectPin(h, 1)
+    const pin = h.controller.locator(".point-comment-card")
+    const pinId = await pin.getAttribute("data-pin-id")
+    const imageId = await h.controller.locator(".pasted-image").getAttribute("data-attachment-id")
+    await pin.locator("textarea").fill("Keep this exact note")
+    await pin.getByRole("button", { name: "Use as target", exact: true }).click()
+    await h.controller
+      .locator(".pasted-image")
+      .getByRole("button", { name: "Use as reference", exact: true })
+      .click()
+    await preparationGate(h.controller, true)
+    await submit(h.controller, "Compare this target with the reference")
+    await expect(h.controller.locator("#error")).toContainText("Mock paired preparation failed")
+    expect(requests).toHaveLength(0)
+    await expect(pin).toHaveAttribute("data-active", "false")
+    await expect(pin.locator("textarea")).toHaveValue("Keep this exact note")
+    await expect(h.controller.locator("#target-reference-pair")).toContainText("Not selected")
+    await expect(h.controller.locator("#send")).toBeDisabled()
+    await pin.getByRole("button", { name: "Reselect target", exact: true }).click()
+    await expect(h.fixturePage.locator(PIN_HOST)).toHaveCount(1)
+    await expect(pin.getByRole("button", { name: "Reselect target", exact: true })).toBeEnabled()
+    await selectPin(h, 2)
+    await expect(pin).toHaveAttribute("data-pin-id", pinId as string)
+    await expect(pin).toHaveAttribute("data-active", "true")
+    await pin.getByRole("button", { name: "Use as target", exact: true }).click()
+    await h.controller.locator("#send").click()
+    await finished(h.controller, "Pin retry accepted")
+    expect(manifest(requests[0] as CodexRequest).pair).toEqual({
+      targetId: pinId,
+      referenceId: imageId,
+    })
+    expect(requests).toHaveLength(1)
+    expect(await pairCaptures(h)).toBe(0)
+    await expect(h.fixturePage.locator("body")).not.toHaveAttribute("data-pair-activated", "yes")
+    await expect(h.controller.locator(".point-comment-card")).toHaveCount(0)
+    expect(h.pageErrors).toEqual([])
+  } finally {
+    await h.close()
+  }
+})
+
+test("ordinary selected-element and image cards form a pair without activating or capturing", async () => {
+  const h = await launchExtensionHarness()
+  try {
+    const requests: CodexRequest[] = []
+    await h.context.route(CODEX_RESPONSES_URL, async (route) => {
+      requests.push(route.request().postDataJSON() as CodexRequest)
+      await route.fulfill({
+        status: 200,
+        contentType: "text/event-stream",
+        body: finalTextResponse(requests.length, "Element pair accepted"),
+      })
+    })
+    await configureMockCodex(h)
+    await pinFixture(h)
+    await paste(h.controller)
+    await h.controller.locator("#element-picker").click()
+    const box = await h.fixturePage.locator("#complete").boundingBox()
+    if (!box) throw new Error("Missing element target")
+    await h.fixturePage.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+    const chip = h.controller.locator(".selected-element-chip")
+    await expect(chip).toBeVisible()
+    const id = await chip.getAttribute("data-attachment-id")
+    await chip.getByRole("button", { name: "Use as target", exact: true }).click()
+    await h.controller
+      .locator(".pasted-image")
+      .getByRole("button", { name: "Use as reference", exact: true })
+      .click()
+    await submit(h.controller)
+    await finished(h.controller, "Element pair accepted")
+    const data = manifest(requests[0] as CodexRequest)
+    expect(data.pair?.targetId).toBe(id)
+    expect(data.attachments.find((attachment) => attachment.id === id)).toMatchObject({
+      kind: "element",
+      untrustedPageContext: { id: "complete" },
+    })
+    await expect(h.fixturePage.locator("#result")).toHaveText("idle")
+    expect(await pairCaptures(h)).toBe(0)
+    expect(h.pageErrors).toEqual([])
+  } finally {
+    await h.close()
+  }
+})
+
+test("a paired element context change during preparation sends nothing and preserves a newer draft", async () => {
+  const h = await launchExtensionHarness()
+  try {
+    let requests = 0
+    await h.context.route(CODEX_RESPONSES_URL, async (route) => {
+      requests++
+      await route.fulfill({
+        status: 200,
+        contentType: "text/event-stream",
+        body: finalTextResponse(requests, "Must not dispatch"),
+      })
+    })
+    await configureMockCodex(h)
+    await paste(h.controller)
+    await h.controller.locator("#element-picker").click()
+    const box = await h.fixturePage.locator("#complete").boundingBox()
+    if (!box) throw new Error("Missing element target")
+    await h.fixturePage.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+    await h.controller
+      .locator(".selected-element-chip")
+      .getByRole("button", { name: "Use as target", exact: true })
+      .click()
+    await h.controller
+      .locator(".pasted-image")
+      .getByRole("button", { name: "Use as reference", exact: true })
+      .click()
+    await preparationGate(h.controller)
+    await submit(h.controller)
+    await expect
+      .poll(() => h.controller.evaluate(() => (window as PairProbe).pairedPreparationEntered))
+      .toBe(true)
+    await h.controller.locator("#prompt").fill("Newer draft must remain")
+    await h.fixturePage.goto(`${h.fixtureUrl}?context-before-dispatch=1`)
+    await h.fixturePage.bringToFront()
+    await expect(h.controller.locator(".selected-element-chip")).toHaveCount(0)
+    await releasePreparation(h.controller)
+    await expect(h.controller.locator("#abort")).toBeHidden()
+    await expect(h.controller.locator("#prompt")).toHaveValue("Newer draft must remain")
+    await expect(h.controller.locator("#pasted-images img")).toHaveCount(1)
+    await expect(h.controller.locator("#send")).toBeDisabled()
+    expect(requests).toBe(0)
+    expect(h.pageErrors).toEqual([])
+  } finally {
+    await h.close()
+  }
+})
+
 test("image pair IDs reach the provider; explicit selection resumes once and history stays inactive", async () => {
   const h = await launchExtensionHarness()
   try {
@@ -135,6 +517,8 @@ test("image pair IDs reach the provider; explicit selection resumes once and his
     await expect(page.locator("#send")).toBeDisabled()
     await expect(page.locator("#new-session")).toBeDisabled()
     await expect(page.locator("#queue-instruction")).toBeDisabled()
+    await expect(page.locator("#point-comments")).toBeDisabled()
+    await expect(page.locator("#region-capture")).toBeDisabled()
     await expect(page.locator("#element-picker")).toBeDisabled()
     await expect(page.locator("#page-pen")).toBeDisabled()
     await expect(card.locator("#clarification-answer")).toBeDisabled()

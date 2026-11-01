@@ -126,6 +126,44 @@ describe("local question card", () => {
 })
 
 describe("pair composer", () => {
+  test("intentional reselect/submit retention keeps roles but never makes an inactive member selectable", () => {
+    const s = setup()
+    const root = required(s.document.querySelector<HTMLElement>("#pair"))
+    const pair = new TargetReferenceComposer(
+      root,
+      () => undefined,
+      () => false,
+    )
+    const items = [
+      { id: "pin", label: "Comment 1", active: true, retained: false },
+      { id: "image", label: "Image 1", active: true, retained: false },
+    ]
+    pair.refresh(items)
+    required(
+      pair.controls("pin").querySelector<HTMLButtonElement>('[data-pair-role="targetId"]'),
+    ).click()
+    required(
+      pair.controls("image").querySelector<HTMLButtonElement>('[data-pair-role="referenceId"]'),
+    ).click()
+    required(items[0]).active = false
+    required(items[0]).retained = true
+    pair.refresh(items)
+    expect(pair.snapshot()).toEqual({ targetId: "pin", referenceId: "image" })
+    expect(
+      required(pair.controls("pin").querySelector<HTMLButtonElement>('[data-pair-role="targetId"]'))
+        .disabled,
+    ).toBe(true)
+    required(items[0]).active = true
+    required(items[0]).retained = false
+    required(items[0]).label = "Comment 1 — replacement"
+    pair.refresh(items)
+    expect(pair.snapshot()?.targetId).toBe("pin")
+    expect(root.textContent).toContain("replacement")
+    required(items[0]).active = false
+    pair.refresh(items)
+    expect(pair.complete).toBe(false)
+    expect(() => pair.snapshot()).toThrow()
+  })
   test("keeps IDs stable through reorder/deletion and never selects a replacement", () => {
     const s = setup()
     let blocked = false

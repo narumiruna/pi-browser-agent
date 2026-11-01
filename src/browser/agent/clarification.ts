@@ -13,6 +13,8 @@ export interface ClarificationTarget {
   summary: string
   image?: ImageContent
   element: boolean
+  imagePosition?: number
+  pinNumber?: number
 }
 export interface ClarificationRequest {
   question: string

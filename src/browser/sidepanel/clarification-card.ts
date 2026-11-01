@@ -70,13 +70,18 @@ export class ClarificationCard {
       const target = card.targets.find((target) => target.id === option.attachmentId)
       if (target) {
         const summary = document.createElement("small")
-        summary.textContent = target.summary
+        const description = target.imagePosition
+          ? t("Pasted image {number}", { number: target.imagePosition })
+          : target.pinNumber
+            ? `${t("Comment {number}", { number: target.pinNumber })} — ${target.summary}`
+            : target.summary
+        summary.textContent = description
         label.append(summary)
         const src = target.image && imageContentSource(target.image)
         if (src) {
           const image = document.createElement("img")
           image.src = src
-          image.alt = target.summary
+          image.alt = description
           label.append(image)
         }
       }

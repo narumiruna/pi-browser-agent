@@ -5,6 +5,7 @@ export interface PairItem {
   id: string
   label: string
   active: boolean
+  retained?: boolean
 }
 
 export class TargetReferenceComposer {
@@ -47,7 +48,7 @@ export class TargetReferenceComposer {
     this.items = items
     this.pair = retainPairIds(
       this.pair,
-      new Set(items.filter((item) => item.active).map((item) => item.id)),
+      new Set(items.filter((item) => item.active || item.retained).map((item) => item.id)),
     )
     this.root.hidden = !this.pair
     this.root.replaceChildren()

@@ -25,6 +25,12 @@ import {
 } from "../runtime/element-context.js"
 import { pageCapabilityFrom, type RuntimeEvent, sendRuntimeRequest } from "../runtime/messages.js"
 import type { PageCapability } from "../runtime/page-capability.js"
+import {
+  composerTargetBytes,
+  type PointCommentPin,
+  samePointCommentTargets,
+} from "../runtime/point-comments.js"
+import { createUserContextManifest } from "../runtime/target-reference.js"
 import { type JsonObject, RuntimeError, type TabContext } from "../runtime/types.js"
 import { getTreeItems } from "../sessions/session-tree.js"
 import { SETTINGS_KEY } from "../storage.js"
@@ -134,7 +140,13 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   let annotationSubmissionAbort: AbortController | undefined
   const transcriptRenderer = new TranscriptRenderer(transcript, {
     onAnnotateScreenshot(image) {
-      if (runtime.isAwaitingClarification || regionCapture?.occupied || pointComments?.occupied || pageAnnotation?.occupied || annotationSubmissionAbort) {
+      if (
+        runtime.isAwaitingClarification ||
+        regionCapture?.occupied ||
+        pointComments?.occupied ||
+        pageAnnotation?.occupied ||
+        annotationSubmissionAbort
+      ) {
         setError(t("Wait for the current operation to finish before drawing"))
         return
       }
@@ -153,6 +165,9 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   let commandResumePending = false
   let commandInProgress = false
   let activeSubmissionGuard: object | undefined
+  let pairedPinSubmission:
+    | { guard: object; ids: ReadonlySet<string>; signal: AbortSignal }
+    | undefined
   let pendingSubmission: { guard: object; accept: () => void } | undefined
   let pendingPasteOperations = 0
   let imageAttachmentQueue = Promise.resolve()
@@ -405,13 +420,15 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     pageAnnotation?.refresh()
     regionCapture?.refresh()
     refreshPairComposer()
-    sendButton.disabled ||= !pairComposer.complete || (pairComposer.active && !promptInput.value.trim())
+    sendButton.disabled ||=
+      !pairComposer.complete || (pairComposer.active && !promptInput.value.trim())
     queueInstructionButton.disabled ||= sendButton.disabled
   }
 
   function releaseSubmissionGuard(guard: object): void {
     if (activeSubmissionGuard !== guard) return
     activeSubmissionGuard = undefined
+    if (pairedPinSubmission?.guard === guard) pairedPinSubmission = undefined
     updateSendButton()
   }
 
@@ -512,6 +529,10 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     const focused = document.activeElement as HTMLElement | null
     const role = focused?.dataset.pairRole
     const attachmentId = focused?.dataset.attachmentId
+    const retainPreparedPins =
+      pairedPinSubmission?.guard === activeSubmissionGuard &&
+      pairedPinSubmission !== undefined &&
+      !pairedPinSubmission.signal.aborted
     pairComposer.refresh([
       ...composerImages.map((image, index) => ({
         id: image.id,
@@ -523,14 +544,25 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
         label: selectedElementLabel(selected.context),
         active: true,
       })),
+      ...(pointComments?.pins ?? []).map((pin) => ({
+        id: pin.id,
+        label: `${t("Comment {number}", { number: pin.number })} — ${pin.label}`,
+        active: pin.active,
+        retained:
+          pointComments?.reselectingId === pin.id ||
+          Boolean(retainPreparedPins && pairedPinSubmission?.ids.has(pin.id)),
+      })),
     ])
     for (const host of [
       ...pastedImages.querySelectorAll<HTMLElement>("[data-attachment-id]"),
       ...selectedElementsOutput.querySelectorAll<HTMLElement>("[data-attachment-id]"),
+      ...document.querySelectorAll<HTMLElement>(
+        "#point-comment-cards .point-comment-card[data-pin-id]",
+      ),
     ]) {
-      if (!host.matches(".pasted-image, .selected-element-chip")) continue
+      if (!host.matches(".pasted-image, .selected-element-chip, .point-comment-card")) continue
       host.querySelector(".pair-actions")?.remove()
-      host.append(pairComposer.controls(host.dataset.attachmentId ?? ""))
+      host.append(pairComposer.controls(host.dataset.pinId ?? host.dataset.attachmentId ?? ""))
     }
     if (
       role &&
@@ -1282,7 +1314,35 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       context: structuredClone(selected.context),
       tabContext: { ...selected.tabContext },
     }))
-    if (!text && submittedImages.length === 0 && submittedElements.length === 0 && !withAnnotation)
+    let submittedPins: PointCommentPin[] = []
+    try {
+      if (withPointComments && pointComments) submittedPins = pointComments.snapshot()
+      if (submittedPair)
+        createUserContextManifest(
+          {
+            imageIds: submittedImages.map((image) => image.id),
+            elementIds: submittedElements.map((element) => element.id),
+            pair: submittedPair,
+          },
+          submittedImages.map((image) => image.content),
+          submittedElements.map((element) => element.context),
+          submittedPins,
+        )
+    } catch (error) {
+      setError(error)
+      return
+    }
+    if (withPointComments && !text && !pointComments?.pins.some((pin) => pin.note.trim())) {
+      setError(t("Write a note or a task before sending point comments"))
+      return
+    }
+    if (
+      !text &&
+      submittedImages.length === 0 &&
+      submittedElements.length === 0 &&
+      !withAnnotation &&
+      !withPointComments
+    )
       return
     if ((submittedImages.length > 0 || withAnnotation) && !runtime.model.input.includes("image")) {
       setError(t("{model} does not support image input", { model: runtime.model.name }))
@@ -1298,18 +1358,27 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     const annotationAbort = withAnnotation ? new AbortController() : undefined
     annotationSubmissionAbort = annotationAbort
     const submissionGuard = {}
+    const pairedElementContext = submittedPair ? submittedElements[0]?.tabContext : undefined
     const assertSubmission = (): void => {
       if (
         disposed ||
         activeSubmissionGuard !== submissionGuard ||
         annotationAbort?.signal.aborted ||
         runtime.activeSession.id !== sessionId ||
-        runtime.model !== model
+        runtime.model !== model ||
+        (pairedElementContext !== undefined &&
+          (!currentTabContext || !sameTabContext(pairedElementContext, currentTabContext)))
       ) {
         throw new RuntimeError("REQUEST_CANCELLED", "Browser request was cancelled")
       }
     }
     activeSubmissionGuard = submissionGuard
+    if (submittedPair && withPointComments && annotationAbort)
+      pairedPinSubmission = {
+        guard: submissionGuard,
+        ids: new Set(submittedPins.map((pin) => pin.id)),
+        signal: annotationAbort.signal,
+      }
     updateSendButton()
     void run(async () => {
       try {
@@ -1380,7 +1449,9 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
         const accept = (): void => {
           if (activeSubmissionGuard !== submissionGuard) return
           if (annotationSubmissionAbort === annotationAbort) annotationSubmissionAbort = undefined
-          pairComposer.accept(new Set([...submittedImageIds, ...submittedElementIds, ...submittedPinIds]))
+          pairComposer.accept(
+            new Set([...submittedImageIds, ...submittedElementIds, ...submittedPinIds]),
+          )
           pointComments?.accept(submittedPinIds)
           composerImages = composerImages.filter((image) => !submittedImageIds.has(image.id))
           selectedElements = selectedElements.filter(
@@ -1400,14 +1471,15 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
           submittedElements.map((element) => element.context),
           usePage,
         ] as const
-        const submission =
-          submittedPair
-            ? runtime.submit(...submissionArgs, assertSubmission, submittedPins, {
-                imageIds: submittedImages.map((image) => image.id),
-                elementIds: submittedElements.map((element) => element.id),
-                pair: submittedPair,
-              })
-            : withAnnotation || withPointComments ? runtime.submit(...submissionArgs, assertSubmission, submittedPins) : runtime.submit(...submissionArgs)
+        const submission = submittedPair
+          ? runtime.submit(...submissionArgs, assertSubmission, submittedPins, {
+              imageIds: submittedImages.map((image) => image.id),
+              elementIds: submittedElements.map((element) => element.id),
+              pair: submittedPair,
+            })
+          : withAnnotation || withPointComments
+            ? runtime.submit(...submissionArgs, assertSubmission, submittedPins)
+            : runtime.submit(...submissionArgs)
         const mode = await submission
         if (mode !== "prompt") {
           accept()
@@ -1432,7 +1504,8 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   }
 
   async function clearElementComposerContext(): Promise<void> {
-    if (runtime.isAwaitingClarification) throw new Error(t("Answer or stop the pending question first"))
+    if (runtime.isAwaitingClarification)
+      throw new Error(t("Answer or stop the pending question first"))
     if ((pointComments?.pins.length ?? 0) > 0 || pointComments?.occupied)
       throw new Error(t("Remove comment cards before changing sessions"))
     pairComposer.clear()
