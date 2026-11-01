@@ -28,7 +28,24 @@ export default {
   "Region capture is unavailable on this page": "Снимок области недоступен на этой странице",
   "Could not preview the region. Select again or retry.":
     "Не удалось показать область. Выберите заново или повторите попытку.",
-
+  "Use as target": "Использовать как цель",
+  "Use as reference": "Использовать как образец",
+  "Target: {target}": "Цель: {target}",
+  "Reference: {reference}": "Образец: {reference}",
+  "Not selected": "Не выбрано",
+  "Clear pair": "Очистить пару",
+  "Select a distinct target and reference": "Выберите разные цель и образец",
+  "Describe the task for the target and reference": "Опишите задачу для цели и образца",
+  "Question from Pi": "Вопрос от Pi",
+  "Other answer": "Другой ответ",
+  Answer: "Ответить",
+  "This answer does not approve browser or remote actions.":
+    "Этот ответ не разрешает действия браузера или удалённые действия.",
+  "Answer or stop the pending question first":
+    "Сначала ответьте на ожидающий вопрос или остановите его",
+  "Choose an option or enter an answer of at most 2,048 characters":
+    "Выберите вариант или введите ответ длиной до 2048 символов",
+  "The question is no longer active": "Вопрос больше не активен",
   "Draw on page": "Рисовать на странице",
   "Cancel page drawing": "Отменить рисование на странице",
   "Pen color": "Цвет пера",

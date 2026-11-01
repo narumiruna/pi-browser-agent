@@ -28,7 +28,23 @@ export default {
   "Region capture is unavailable on this page": "Bu sayfada bölge yakalama kullanılamıyor",
   "Could not preview the region. Select again or retry.":
     "Bölge önizlemesi oluşturulamadı. Yeniden seçin veya tekrar deneyin.",
-
+  "Use as target": "Hedef olarak kullan",
+  "Use as reference": "Referans olarak kullan",
+  "Target: {target}": "Hedef: {target}",
+  "Reference: {reference}": "Referans: {reference}",
+  "Not selected": "Seçilmedi",
+  "Clear pair": "Çifti temizle",
+  "Select a distinct target and reference": "Farklı bir hedef ve referans seçin",
+  "Describe the task for the target and reference": "Hedef ve referans için görevi açıklayın",
+  "Question from Pi": "Pi sorusu",
+  "Other answer": "Diğer yanıt",
+  Answer: "Yanıtla",
+  "This answer does not approve browser or remote actions.":
+    "Bu yanıt tarayıcı veya uzak işlemleri onaylamaz.",
+  "Answer or stop the pending question first": "Önce bekleyen soruyu yanıtlayın veya durdurun",
+  "Choose an option or enter an answer of at most 2,048 characters":
+    "Bir seçenek belirleyin veya en fazla 2.048 karakterlik yanıt girin",
+  "The question is no longer active": "Soru artık etkin değil",
   "Draw on page": "Sayfada çiz",
   "Cancel page drawing": "Sayfada çizimi iptal et",
   "Pen color": "Kalem rengi",

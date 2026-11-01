@@ -27,7 +27,23 @@ export default {
   "Region capture is unavailable on this page": "Không thể chụp vùng trên trang này",
   "Could not preview the region. Select again or retry.":
     "Không thể xem trước vùng. Hãy chọn lại hoặc thử lại.",
-
+  "Use as target": "Dùng làm mục tiêu",
+  "Use as reference": "Dùng làm tham chiếu",
+  "Target: {target}": "Mục tiêu: {target}",
+  "Reference: {reference}": "Tham chiếu: {reference}",
+  "Not selected": "Chưa chọn",
+  "Clear pair": "Xóa cặp",
+  "Select a distinct target and reference": "Chọn mục tiêu và tham chiếu khác nhau",
+  "Describe the task for the target and reference": "Mô tả tác vụ cho mục tiêu và tham chiếu",
+  "Question from Pi": "Câu hỏi từ Pi",
+  "Other answer": "Câu trả lời khác",
+  Answer: "Trả lời",
+  "This answer does not approve browser or remote actions.":
+    "Câu trả lời này không phê duyệt thao tác trình duyệt hoặc từ xa.",
+  "Answer or stop the pending question first": "Hãy trả lời hoặc dừng câu hỏi đang chờ trước",
+  "Choose an option or enter an answer of at most 2,048 characters":
+    "Chọn một tùy chọn hoặc nhập câu trả lời tối đa 2.048 ký tự",
+  "The question is no longer active": "Câu hỏi không còn hoạt động",
   "Draw on page": "Vẽ trên trang",
   "Cancel page drawing": "Hủy vẽ trên trang",
   "Pen color": "Màu bút",

@@ -30,7 +30,26 @@ export default {
     "Bereichserfassung ist auf dieser Seite nicht verfügbar",
   "Could not preview the region. Select again or retry.":
     "Bereichsvorschau fehlgeschlagen. Erneut auswählen oder versuchen.",
-
+  "Use as target": "Als Ziel verwenden",
+  "Use as reference": "Als Referenz verwenden",
+  "Target: {target}": "Ziel: {target}",
+  "Reference: {reference}": "Referenz: {reference}",
+  "Not selected": "Nicht ausgewählt",
+  "Clear pair": "Paar löschen",
+  "Select a distinct target and reference":
+    "Wählen Sie ein unterschiedliches Ziel und eine Referenz",
+  "Describe the task for the target and reference":
+    "Beschreiben Sie die Aufgabe für Ziel und Referenz",
+  "Question from Pi": "Frage von Pi",
+  "Other answer": "Andere Antwort",
+  Answer: "Antworten",
+  "This answer does not approve browser or remote actions.":
+    "Diese Antwort genehmigt keine Browser- oder Remoteaktionen.",
+  "Answer or stop the pending question first":
+    "Beantworten oder stoppen Sie zuerst die ausstehende Frage",
+  "Choose an option or enter an answer of at most 2,048 characters":
+    "Wählen Sie eine Option oder geben Sie eine Antwort mit höchstens 2.048 Zeichen ein",
+  "The question is no longer active": "Die Frage ist nicht mehr aktiv",
   "Draw on page": "Auf der Seite zeichnen",
   "Cancel page drawing": "Zeichnen auf der Seite abbrechen",
   "Pen color": "Stiftfarbe",

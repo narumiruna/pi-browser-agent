@@ -22,6 +22,17 @@ import {
   type SelectedElementContext,
   serializeSelectedElementContext,
 } from "../runtime/element-context.js"
+import {
+  type PointCommentPin,
+  parsePointCommentPins,
+  serializePointComments,
+  validateComposerTargets,
+} from "../runtime/point-comments.js"
+import {
+  composeSubmittedContext,
+  createUserContextManifest,
+  type SubmittedContext,
+} from "../runtime/target-reference.js"
 import { SessionLease } from "../sessions/session-lease.js"
 import {
   compactSession,
@@ -44,6 +55,11 @@ import { SkillRun } from "../skills/run.js"
 import { SkillStore } from "../skills/store.js"
 import { type AppSettings, getActiveSessionId, saveActiveSessionId } from "../storage.js"
 import { type ConfirmationHandler, createBrowserTools } from "./browser-tools.js"
+import {
+  type ClarificationKey,
+  ClarificationRun,
+  type PendingClarification,
+} from "./clarification.js"
 
 export type StreamingBehavior = "steer" | "followUp"
 export type SubmissionMode = "prompt" | StreamingBehavior
@@ -55,6 +71,7 @@ export interface RuntimeCallbacks {
   onSettingsModelChanged?: () => void
   onPersistenceError?: (message: string) => void
   onPreparing?: (preparing: boolean) => void
+  onClarification?: (card?: PendingClarification) => void
 }
 
 export function composeSystemPrompt(
@@ -127,6 +144,8 @@ export class BrowserAgentRuntime {
   private preparing = false
   private preparationGeneration = 0
   private skillRun?: SkillRun
+  private clarificationRun?: ClarificationRun
+  private runGeneration = 0
   private persistChain: Promise<void> = Promise.resolve()
   private pageToolsEnabled = true
   private treeNavigating = false
@@ -163,6 +182,20 @@ export class BrowserAgentRuntime {
     )
   }
 
+  get isAwaitingClarification(): boolean {
+    return this.clarificationRun?.waiting === true
+  }
+
+  answerClarification(key: ClarificationKey, answer: unknown): boolean {
+    return this.clarificationRun?.answer(key, answer) ?? false
+  }
+
+  invalidateClarificationTargets(): void {
+    const waiting = this.isAwaitingClarification
+    this.clarificationRun?.invalidateElements()
+    if (waiting && !this.isAwaitingClarification) this.abort()
+  }
+
   get usesPageContext(): boolean {
     return this.pageToolsEnabled
   }
@@ -192,9 +225,26 @@ export class BrowserAgentRuntime {
       steeringMode: "one-at-a-time",
       followUpMode: "one-at-a-time",
       toolExecution: "parallel",
+      beforeToolCall: async (context) => {
+        if (
+          this.failedPersistRevision > 0 &&
+          context.assistantMessage.content.some(
+            (part) => part.type === "toolCall" && part.name === "request_user_input",
+          )
+        )
+          return { block: true, reason: "Session persistence failed", terminate: true }
+        return this.clarificationRun?.beforeToolCall(context)
+      },
+      finishTurn: async (_turn, signal) =>
+        this.clarificationRun?.hasRequests && (signal?.aborted || this.failedPersistRevision > 0)
+          ? { action: "end" }
+          : undefined,
     })
     this.agent.subscribe(async (event) => {
+      if (event.type === "message_end" && event.message.role === "assistant")
+        this.clarificationRun?.inspect(event.message)
       if (event.type === "agent_end") {
+        this.clarificationRun?.abort()
         this.skillRun?.finish()
         const cleanup = this.mcp.finish()
         const idle = Promise.all([this.agent.waitForIdle(), cleanup]).then(() => undefined)
@@ -384,6 +434,7 @@ export class BrowserAgentRuntime {
   private async changeSession(operation: () => Promise<void>): Promise<void> {
     this.assertNotNavigatingTree()
     if (this.changingSession) throw new Error("Wait for the session change to finish")
+    if (this.isAwaitingClarification) throw new Error("Answer or stop the pending question first")
     this.changingSession = true
     try {
       await operation()
@@ -434,9 +485,12 @@ export class BrowserAgentRuntime {
     elements: SelectedElementContext[] = [],
     usePage = true,
     assertSubmission?: () => void,
+    pins: PointCommentPin[] = [],
+    submittedContext?: SubmittedContext,
   ): Promise<SubmissionMode> {
     assertSubmission?.()
     this.assertNotNavigatingTree()
+    if (this.isAwaitingClarification) throw new Error("Answer or stop the pending question first")
     if (this.changingSession) throw new Error("Wait for the session change to finish")
     if (this.configuration.isChangingAuth)
       throw new Error("Wait for the authentication change to finish")
@@ -446,7 +500,31 @@ export class BrowserAgentRuntime {
     if (this.configuration.isChangingAuth)
       throw new Error("Wait for the authentication change to finish")
     this.assertImageInput(images)
-    const content = composeElementContext(text, elements)
+    const validatedPins = parsePointCommentPins(pins)
+    if (validatedPins.length && !text.trim() && !validatedPins.some((pin) => pin.note.trim()))
+      throw new Error("Write a note or a task before sending point comments")
+    if (validatedPins.length && this.agent.state.isStreaming)
+      throw new Error("Point comments require an idle conversation")
+    if (submittedContext) images = structuredClone(images)
+    const manifest = submittedContext
+      ? createUserContextManifest(submittedContext, images, elements, validatedPins)
+      : undefined
+    if (!manifest) validateComposerTargets(elements, validatedPins)
+    const content = manifest
+      ? composeSubmittedContext(text, manifest)
+      : [composeElementContext(text, elements), ...(validatedPins.length ? [serializePointComments(validatedPins)] : [])].filter(Boolean).join("\n\n")
+    const targets =
+      manifest?.attachments.map((attachment) => ({
+        id: attachment.id,
+        element: attachment.kind !== "image",
+        summary:
+          attachment.kind === "image"
+            ? `Image ${attachment.imagePosition}`
+            : `${attachment.untrustedPageContext.tagName}${attachment.untrustedPageContext.id ? `#${attachment.untrustedPageContext.id}` : ""}`,
+        ...(attachment.kind === "image"
+          ? { image: structuredClone(images[attachment.imagePosition - 1]) }
+          : {}),
+      })) ?? validatedPins.map((pin) => ({ id: pin.id, element: true, summary: `${pin.context.tagName}${pin.context.id ? `#${pin.context.id}` : ""}` }))
     if (this.preparing) throw new Error("Wait for skill and remote MCP discovery to finish")
     if (!this.agent.state.isStreaming) {
       if (this.shuttingDown) throw new Error("The panel is shutting down")
@@ -478,7 +556,20 @@ export class BrowserAgentRuntime {
       this.skillRun?.finish()
       this.skillRun = skillRun
       this.updateAvailableTools()
-      this.agent.state.tools.push(...skillRun.tools(), ...remoteTools)
+      this.clarificationRun?.abort()
+      this.clarificationRun = this.callbacks.onClarification
+        ? new ClarificationRun(
+            this.session.id,
+            ++this.runGeneration,
+            targets,
+            this.callbacks.onClarification,
+          )
+        : undefined
+      this.agent.state.tools.push(
+        ...skillRun.tools(),
+        ...remoteTools,
+        ...(this.clarificationRun ? [this.clarificationRun.tool()] : []),
+      )
       this.updateSystemPrompt()
       assertSubmission?.()
       if (images.length > 0) await this.agent.prompt(multimodalUserMessage(content, images))
@@ -487,6 +578,7 @@ export class BrowserAgentRuntime {
     }
     assertSubmission?.()
     this.queueStreamingMessage(streamingBehavior, content, images)
+    this.clarificationRun?.includeTargets(targets)
     return streamingBehavior
   }
 
@@ -497,6 +589,7 @@ export class BrowserAgentRuntime {
   ): void {
     this.assertNotNavigatingTree()
     if (this.changingSession) throw new Error("Wait for the session change to finish")
+    if (this.isAwaitingClarification) throw new Error("Answer or stop the pending question first")
     this.assertImageInput(images)
     this.queueStreamingMessage("followUp", composeElementContext(text, elements), images)
   }
@@ -504,6 +597,7 @@ export class BrowserAgentRuntime {
   abort(): void {
     this.assertNotNavigatingTree()
     this.preparationGeneration++
+    this.clarificationRun?.abort()
     this.skillRun?.finish()
     this.mcp.invalidate()
     this.agent.abort()
@@ -576,6 +670,7 @@ export class BrowserAgentRuntime {
     this.closing = wasRunning
     this.shuttingDown = true
     this.preparationGeneration++
+    this.clarificationRun?.abort()
     this.skillRun?.finish()
     if (this.treeNavigation) await this.treeNavigation
     this.mcp.dispose()
@@ -590,6 +685,7 @@ export class BrowserAgentRuntime {
     text: string,
     images: ImageContent[],
   ): void {
+    if (this.isAwaitingClarification) throw new Error("Answer or stop the pending question first")
     const message =
       images.length > 0
         ? multimodalUserMessage(text, images)
@@ -613,6 +709,7 @@ export class BrowserAgentRuntime {
 
   private async stopAgent(): Promise<void> {
     this.preparationGeneration++
+    this.clarificationRun?.abort()
     this.skillRun?.finish()
     if (this.treeNavigation) await this.treeNavigation
     this.mcp.invalidate()

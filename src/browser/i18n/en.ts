@@ -27,7 +27,24 @@ export const english = {
   "Region capture is unavailable on this page": "Region capture is unavailable on this page",
   "Could not preview the region. Select again or retry.":
     "Could not preview the region. Select again or retry.",
-
+  "Use as target": "Use as target",
+  "Use as reference": "Use as reference",
+  "Target: {target}": "Target: {target}",
+  "Reference: {reference}": "Reference: {reference}",
+  "Not selected": "Not selected",
+  "Clear pair": "Clear pair",
+  "Select a distinct target and reference": "Select a distinct target and reference",
+  "Describe the task for the target and reference":
+    "Describe the task for the target and reference",
+  "Question from Pi": "Question from Pi",
+  "Other answer": "Other answer",
+  Answer: "Answer",
+  "This answer does not approve browser or remote actions.":
+    "This answer does not approve browser or remote actions.",
+  "Answer or stop the pending question first": "Answer or stop the pending question first",
+  "Choose an option or enter an answer of at most 2,048 characters":
+    "Choose an option or enter an answer of at most 2,048 characters",
+  "The question is no longer active": "The question is no longer active",
   "Draw on page": "Draw on page",
   "Cancel page drawing": "Cancel page drawing",
   "Pen color": "Pen color",

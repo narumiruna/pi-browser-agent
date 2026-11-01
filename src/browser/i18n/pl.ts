@@ -29,7 +29,24 @@ export default {
     "Przechwytywanie obszaru jest niedostępne na tej stronie",
   "Could not preview the region. Select again or retry.":
     "Nie można wyświetlić obszaru. Wybierz ponownie lub spróbuj jeszcze raz.",
-
+  "Use as target": "Użyj jako celu",
+  "Use as reference": "Użyj jako odniesienia",
+  "Target: {target}": "Cel: {target}",
+  "Reference: {reference}": "Odniesienie: {reference}",
+  "Not selected": "Nie wybrano",
+  "Clear pair": "Wyczyść parę",
+  "Select a distinct target and reference": "Wybierz różne elementy jako cel i odniesienie",
+  "Describe the task for the target and reference": "Opisz zadanie dla celu i odniesienia",
+  "Question from Pi": "Pytanie od Pi",
+  "Other answer": "Inna odpowiedź",
+  Answer: "Odpowiedz",
+  "This answer does not approve browser or remote actions.":
+    "Ta odpowiedź nie zatwierdza działań przeglądarki ani zdalnych.",
+  "Answer or stop the pending question first":
+    "Najpierw odpowiedz na oczekujące pytanie lub je zatrzymaj",
+  "Choose an option or enter an answer of at most 2,048 characters":
+    "Wybierz opcję lub wpisz odpowiedź do 2048 znaków",
+  "The question is no longer active": "Pytanie nie jest już aktywne",
   "Draw on page": "Rysuj na stronie",
   "Cancel page drawing": "Anuluj rysowanie na stronie",
   "Pen color": "Kolor pióra",

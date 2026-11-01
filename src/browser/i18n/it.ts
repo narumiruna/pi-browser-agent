@@ -29,7 +29,25 @@ export default {
     "La cattura di un’area non è disponibile su questa pagina",
   "Could not preview the region. Select again or retry.":
     "Impossibile visualizzare l’area. Seleziona di nuovo o riprova.",
-
+  "Use as target": "Usa come destinazione",
+  "Use as reference": "Usa come riferimento",
+  "Target: {target}": "Destinazione: {target}",
+  "Reference: {reference}": "Riferimento: {reference}",
+  "Not selected": "Non selezionato",
+  "Clear pair": "Cancella coppia",
+  "Select a distinct target and reference": "Seleziona una destinazione e un riferimento distinti",
+  "Describe the task for the target and reference":
+    "Descrivi l’attività per la destinazione e il riferimento",
+  "Question from Pi": "Domanda di Pi",
+  "Other answer": "Altra risposta",
+  Answer: "Rispondi",
+  "This answer does not approve browser or remote actions.":
+    "Questa risposta non autorizza azioni del browser o remote.",
+  "Answer or stop the pending question first":
+    "Prima rispondi alla domanda in sospeso o interrompila",
+  "Choose an option or enter an answer of at most 2,048 characters":
+    "Scegli un’opzione o inserisci una risposta di massimo 2.048 caratteri",
+  "The question is no longer active": "La domanda non è più attiva",
   "Draw on page": "Disegna sulla pagina",
   "Cancel page drawing": "Annulla il disegno sulla pagina",
   "Pen color": "Colore della penna",

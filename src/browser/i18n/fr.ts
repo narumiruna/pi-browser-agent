@@ -29,7 +29,25 @@ export default {
     "La capture de zone n’est pas disponible sur cette page",
   "Could not preview the region. Select again or retry.":
     "Impossible d’afficher la zone. Sélectionnez à nouveau ou réessayez.",
-
+  "Use as target": "Utiliser comme cible",
+  "Use as reference": "Utiliser comme référence",
+  "Target: {target}": "Cible : {target}",
+  "Reference: {reference}": "Référence : {reference}",
+  "Not selected": "Non sélectionné",
+  "Clear pair": "Effacer la paire",
+  "Select a distinct target and reference": "Sélectionnez une cible et une référence distinctes",
+  "Describe the task for the target and reference":
+    "Décrivez la tâche pour la cible et la référence",
+  "Question from Pi": "Question de Pi",
+  "Other answer": "Autre réponse",
+  Answer: "Répondre",
+  "This answer does not approve browser or remote actions.":
+    "Cette réponse n’autorise aucune action du navigateur ou à distance.",
+  "Answer or stop the pending question first":
+    "Répondez à la question en attente ou arrêtez-la d’abord",
+  "Choose an option or enter an answer of at most 2,048 characters":
+    "Choisissez une option ou saisissez une réponse de 2 048 caractères maximum",
+  "The question is no longer active": "La question n’est plus active",
   "Draw on page": "Dessiner sur la page",
   "Cancel page drawing": "Annuler le dessin sur la page",
   "Pen color": "Couleur du stylo",

@@ -25,7 +25,23 @@ export default {
   "Region capture is unavailable on this page": "इस पेज पर क्षेत्र कैप्चर उपलब्ध नहीं है",
   "Could not preview the region. Select again or retry.":
     "क्षेत्र का पूर्वावलोकन नहीं हो सका। फिर चुनें या पुनः प्रयास करें।",
-
+  "Use as target": "लक्ष्य के रूप में उपयोग करें",
+  "Use as reference": "संदर्भ के रूप में उपयोग करें",
+  "Target: {target}": "लक्ष्य: {target}",
+  "Reference: {reference}": "संदर्भ: {reference}",
+  "Not selected": "चुना नहीं गया",
+  "Clear pair": "जोड़ी हटाएँ",
+  "Select a distinct target and reference": "अलग लक्ष्य और संदर्भ चुनें",
+  "Describe the task for the target and reference": "लक्ष्य और संदर्भ के लिए कार्य बताएँ",
+  "Question from Pi": "Pi का प्रश्न",
+  "Other answer": "अन्य उत्तर",
+  Answer: "उत्तर दें",
+  "This answer does not approve browser or remote actions.":
+    "यह उत्तर ब्राउज़र या दूरस्थ कार्रवाइयों की अनुमति नहीं देता है।",
+  "Answer or stop the pending question first": "पहले लंबित प्रश्न का उत्तर दें या उसे रोकें",
+  "Choose an option or enter an answer of at most 2,048 characters":
+    "एक विकल्प चुनें या अधिकतम 2,048 अक्षरों का उत्तर दें",
+  "The question is no longer active": "यह प्रश्न अब सक्रिय नहीं है",
   "Draw on page": "पेज पर बनाएँ",
   "Cancel page drawing": "पेज पर बनाना रद्द करें",
   "Pen color": "पेन का रंग",

@@ -28,7 +28,24 @@ export default {
   "Region capture is unavailable on this page": "Tangkapan area tidak tersedia di halaman ini",
   "Could not preview the region. Select again or retry.":
     "Pratinjau area gagal. Pilih lagi atau coba ulang.",
-
+  "Use as target": "Gunakan sebagai target",
+  "Use as reference": "Gunakan sebagai referensi",
+  "Target: {target}": "Target: {target}",
+  "Reference: {reference}": "Referensi: {reference}",
+  "Not selected": "Belum dipilih",
+  "Clear pair": "Hapus pasangan",
+  "Select a distinct target and reference": "Pilih target dan referensi yang berbeda",
+  "Describe the task for the target and reference": "Jelaskan tugas untuk target dan referensi",
+  "Question from Pi": "Pertanyaan dari Pi",
+  "Other answer": "Jawaban lain",
+  Answer: "Jawab",
+  "This answer does not approve browser or remote actions.":
+    "Jawaban ini tidak menyetujui tindakan browser atau jarak jauh.",
+  "Answer or stop the pending question first":
+    "Jawab atau hentikan pertanyaan tertunda terlebih dahulu",
+  "Choose an option or enter an answer of at most 2,048 characters":
+    "Pilih opsi atau masukkan jawaban maksimal 2.048 karakter",
+  "The question is no longer active": "Pertanyaan tidak lagi aktif",
   "Draw on page": "Gambar di halaman",
   "Cancel page drawing": "Batalkan menggambar di halaman",
   "Pen color": "Warna pena",

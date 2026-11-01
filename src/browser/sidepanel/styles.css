@@ -2020,3 +2020,102 @@ dialog p {
     animation: none;
   }
 }
+
+.clarification-card {
+  max-height: 45vh;
+  overflow-y: auto;
+  margin-bottom: 8px;
+  padding: 10px;
+  border: 1px solid var(--control-border);
+  border-radius: 8px;
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+
+.clarification-card[hidden],
+.target-reference-pair[hidden] {
+  display: none;
+}
+
+.clarification-card h2 {
+  margin: 0 0 8px;
+  font-size: 0.9rem;
+}
+
+.clarification-card fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 8px;
+  border: 1px solid var(--border);
+}
+
+.clarification-option {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0;
+}
+
+#clarification-card .clarification-option input {
+  flex: 0 0 auto;
+  width: auto;
+}
+
+.clarification-option img {
+  max-width: 80px;
+  max-height: 64px;
+  object-fit: contain;
+}
+
+.clarification-option small {
+  color: var(--text-muted);
+}
+
+.clarification-card textarea {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.target-reference-pair {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px;
+  border-top: 1px solid var(--border);
+  overflow-wrap: anywhere;
+  font-size: 0.75rem;
+}
+
+.pair-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.pair-actions button,
+.target-reference-pair button {
+  min-height: 26px;
+  padding: 3px 5px;
+  font-size: 0.7rem;
+}
+
+.pair-actions button[aria-pressed="true"] {
+  border: 2px solid var(--accent);
+  font-weight: 700;
+}
+
+.pasted-image:has(.pair-actions) {
+  width: 150px;
+  height: auto;
+}
+
+.pasted-image:has(.pair-actions) img {
+  width: 72px;
+  height: 72px;
+}
+
+.selected-element-chip:has(.pair-actions) {
+  flex-wrap: wrap;
+  border-radius: 8px;
+}

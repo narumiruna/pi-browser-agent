@@ -28,7 +28,24 @@ export default {
   "Region capture is unavailable on this page": "Gebiedsopname is niet beschikbaar op deze pagina",
   "Could not preview the region. Select again or retry.":
     "Het gebied kon niet worden weergegeven. Selecteer opnieuw of probeer het nogmaals.",
-
+  "Use as target": "Als doel gebruiken",
+  "Use as reference": "Als referentie gebruiken",
+  "Target: {target}": "Doel: {target}",
+  "Reference: {reference}": "Referentie: {reference}",
+  "Not selected": "Niet geselecteerd",
+  "Clear pair": "Paar wissen",
+  "Select a distinct target and reference": "Selecteer een verschillend doel en referentie",
+  "Describe the task for the target and reference":
+    "Beschrijf de taak voor het doel en de referentie",
+  "Question from Pi": "Vraag van Pi",
+  "Other answer": "Ander antwoord",
+  Answer: "Antwoorden",
+  "This answer does not approve browser or remote actions.":
+    "Dit antwoord geeft geen toestemming voor browser- of externe acties.",
+  "Answer or stop the pending question first": "Beantwoord of stop eerst de openstaande vraag",
+  "Choose an option or enter an answer of at most 2,048 characters":
+    "Kies een optie of voer een antwoord van maximaal 2.048 tekens in",
+  "The question is no longer active": "De vraag is niet meer actief",
   "Draw on page": "Op de pagina tekenen",
   "Cancel page drawing": "Tekenen op de pagina annuleren",
   "Pen color": "Penkleur",

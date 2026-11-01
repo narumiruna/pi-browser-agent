@@ -1,12 +1,19 @@
 import type { ImageContent } from "@earendil-works/pi-ai"
 import { t } from "../i18n/index.js"
 
-export const MAX_PASTED_IMAGES = 4
-export const MAX_PASTED_IMAGE_BYTES = 3_000_000
+import {
+  imageContentSource,
+  isSupportedImageType,
+  MAX_PASTED_IMAGE_BYTES,
+  MAX_PASTED_IMAGES,
+} from "../runtime/image-content.js"
 
-const SUPPORTED_IMAGE_TYPES = new Set(["image/gif", "image/jpeg", "image/png", "image/webp"])
-const MAX_RENDERED_IMAGE_BASE64_LENGTH = 7_000_000
-const BASE64_PATTERN = /^[A-Za-z0-9+/]*={0,2}$/
+export {
+  imageContentSource,
+  isSupportedImageType,
+  MAX_PASTED_IMAGE_BYTES,
+  MAX_PASTED_IMAGES,
+} from "../runtime/image-content.js"
 
 export interface ComposerImage {
   content: ImageContent
@@ -14,10 +21,6 @@ export interface ComposerImage {
 }
 
 export type PastedImage = ComposerImage
-
-export function isSupportedImageType(mimeType: string): boolean {
-  return SUPPORTED_IMAGE_TYPES.has(mimeType.toLowerCase())
-}
 
 function encodeBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer)
@@ -86,18 +89,4 @@ export function restoreComposerImages(images: readonly ImageContent[]): Composer
       throw new Error(t("Saved message images exceed the 3 MB composer limit"))
     return { content: { type: "image", mimeType: image.mimeType, data: image.data }, byteLength }
   })
-}
-
-export function imageContentSource(image: ImageContent): string | undefined {
-  const mimeType = image.mimeType.toLowerCase()
-  if (!isSupportedImageType(mimeType)) return undefined
-  if (
-    image.data.length === 0 ||
-    image.data.length > MAX_RENDERED_IMAGE_BASE64_LENGTH ||
-    image.data.length % 4 !== 0 ||
-    !BASE64_PATTERN.test(image.data)
-  ) {
-    return undefined
-  }
-  return `data:${mimeType};base64,${image.data}`
 }

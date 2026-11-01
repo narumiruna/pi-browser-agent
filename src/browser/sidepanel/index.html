@@ -126,6 +126,7 @@
     </div>
 
     <footer class="composer">
+      <section id="clarification-card" class="clarification-card" aria-labelledby="clarification-title" hidden></section>
       <label for="prompt" class="visually-hidden">Message</label>
       <div class="page-context" id="page-context" aria-live="polite">
         <span id="page-status">Checking current page…</span>
@@ -166,7 +167,7 @@
             <button id="region-cancel" type="button">Cancel</button>
           </div>
         </section>
-
+        <div id="target-reference-pair" class="target-reference-pair" aria-live="polite" hidden></div>
         <span id="page-pen-help" class="visually-hidden">Page content can move beneath your marks. Send captures only the visible area.</span>
         <textarea
           id="prompt"

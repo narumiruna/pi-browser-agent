@@ -29,7 +29,24 @@ export default {
     "La captura de región no está disponible en esta página",
   "Could not preview the region. Select again or retry.":
     "No se pudo mostrar la región. Selecciona de nuevo o reintenta.",
-
+  "Use as target": "Usar como objetivo",
+  "Use as reference": "Usar como referencia",
+  "Target: {target}": "Objetivo: {target}",
+  "Reference: {reference}": "Referencia: {reference}",
+  "Not selected": "Sin seleccionar",
+  "Clear pair": "Borrar par",
+  "Select a distinct target and reference": "Seleccione un objetivo y una referencia distintos",
+  "Describe the task for the target and reference":
+    "Describa la tarea para el objetivo y la referencia",
+  "Question from Pi": "Pregunta de Pi",
+  "Other answer": "Otra respuesta",
+  Answer: "Responder",
+  "This answer does not approve browser or remote actions.":
+    "Esta respuesta no autoriza acciones del navegador ni remotas.",
+  "Answer or stop the pending question first": "Primero responda o detenga la pregunta pendiente",
+  "Choose an option or enter an answer of at most 2,048 characters":
+    "Elija una opción o escriba una respuesta de hasta 2.048 caracteres",
+  "The question is no longer active": "La pregunta ya no está activa",
   "Draw on page": "Dibujar en la página",
   "Cancel page drawing": "Cancelar el dibujo en la página",
   "Pen color": "Color del lápiz",

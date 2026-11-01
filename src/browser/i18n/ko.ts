@@ -27,7 +27,23 @@ export default {
   "Region capture is unavailable on this page": "이 페이지에서는 영역 캡처를 사용할 수 없습니다",
   "Could not preview the region. Select again or retry.":
     "영역을 미리 볼 수 없습니다. 다시 선택하거나 재시도하세요.",
-
+  "Use as target": "대상으로 사용",
+  "Use as reference": "참조로 사용",
+  "Target: {target}": "대상: {target}",
+  "Reference: {reference}": "참조: {reference}",
+  "Not selected": "선택 안 됨",
+  "Clear pair": "쌍 지우기",
+  "Select a distinct target and reference": "서로 다른 대상과 참조를 선택하세요",
+  "Describe the task for the target and reference": "대상과 참조에 대한 작업을 설명하세요",
+  "Question from Pi": "Pi의 질문",
+  "Other answer": "다른 답변",
+  Answer: "답변",
+  "This answer does not approve browser or remote actions.":
+    "이 답변은 브라우저 또는 원격 작업을 승인하지 않습니다.",
+  "Answer or stop the pending question first": "먼저 대기 중인 질문에 답하거나 중지하세요",
+  "Choose an option or enter an answer of at most 2,048 characters":
+    "옵션을 선택하거나 최대 2,048자로 답변하세요",
+  "The question is no longer active": "이 질문은 더 이상 활성 상태가 아닙니다",
   "Draw on page": "페이지에 그리기",
   "Cancel page drawing": "페이지 그리기 취소",
   "Pen color": "펜 색상",

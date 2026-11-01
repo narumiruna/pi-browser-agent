@@ -28,7 +28,23 @@ export default {
   "Region capture is unavailable on this page": "このページでは範囲のキャプチャを利用できません",
   "Could not preview the region. Select again or retry.":
     "範囲をプレビューできませんでした。選択し直すか再試行してください。",
-
+  "Use as target": "対象として使用",
+  "Use as reference": "参照として使用",
+  "Target: {target}": "対象: {target}",
+  "Reference: {reference}": "参照: {reference}",
+  "Not selected": "未選択",
+  "Clear pair": "ペアを解除",
+  "Select a distinct target and reference": "異なる対象と参照を選択してください",
+  "Describe the task for the target and reference": "対象と参照に対する作業内容を入力してください",
+  "Question from Pi": "Piからの質問",
+  "Other answer": "その他の回答",
+  Answer: "回答する",
+  "This answer does not approve browser or remote actions.":
+    "この回答はブラウザー操作やリモート操作を承認しません。",
+  "Answer or stop the pending question first": "先に保留中の質問に回答するか停止してください",
+  "Choose an option or enter an answer of at most 2,048 characters":
+    "選択肢を選ぶか、2,048文字以内で回答してください",
+  "The question is no longer active": "この質問は無効になりました",
   "Draw on page": "ページに描画",
   "Cancel page drawing": "ページへの描画をキャンセル",
   "Pen color": "ペンの色",

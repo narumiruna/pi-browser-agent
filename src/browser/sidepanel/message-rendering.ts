@@ -1,5 +1,6 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core"
 import type { ImageContent } from "@earendil-works/pi-ai"
+import { CLARIFICATION_TOOL } from "../agent/clarification.js"
 import { getLocale, t } from "../i18n/index.js"
 import { activityText, conversationText } from "./conversation-copy.js"
 import { CopyButton, type CopyButtonKind } from "./copy-button.js"
@@ -237,7 +238,12 @@ export function renderMessageContent(
         toolCall = message.role === "assistant"
         const value = `[tool call: ${item.name}]\n${JSON.stringify(item.arguments, null, 2)}`
         textParts.push(value)
-        if (options.developerDetails) {
+        if (item.name === CLARIFICATION_TOOL) {
+          appendTextContent(
+            container,
+            `${t("Question from Pi")}\n${JSON.stringify(item.arguments, null, 2)}`,
+          )
+        } else if (options.developerDetails) {
           const details = disclosure(
             state,
             `tool-${index}`,
@@ -354,7 +360,10 @@ export class TranscriptRenderer {
       used.add(key)
       const expandableToolResult =
         message.role === "toolResult" &&
-        (this.developerDetails || message.isError || toolResultHasImage(message))
+        (this.developerDetails ||
+          message.isError ||
+          toolResultHasImage(message) ||
+          message.toolName === CLARIFICATION_TOOL)
       const tagName = message.role === "toolResult" && expandableToolResult ? "details" : "article"
       let view = this.views.get(key)
       if (view && view.node.localName !== tagName) {
