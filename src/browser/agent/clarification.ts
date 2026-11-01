@@ -22,6 +22,7 @@ export interface ClarificationKey {
   sessionId: string
   generation: number
   toolCallId: string
+  questionSequence: number
 }
 export interface PendingClarification extends ClarificationKey {
   question: string
@@ -71,7 +72,8 @@ function sameKey(left: ClarificationKey, right: ClarificationKey): boolean {
   return (
     left.sessionId === right.sessionId &&
     left.generation === right.generation &&
-    left.toolCallId === right.toolCallId
+    left.toolCallId === right.toolCallId &&
+    left.questionSequence === right.questionSequence
   )
 }
 
@@ -106,7 +108,7 @@ export function createClarificationTool(execute: AgentTool["execute"]): AgentToo
 export class ClarificationRun {
   private calls = 0
   private readonly batches = new WeakMap<AssistantMessage, boolean>()
-  private readonly questionIds = new Set<string>()
+  private questionSequence = 0
   private pending?: { card: PendingClarification; settle: (answer?: ClarificationAnswer) => void }
   private active = true
   private elementContextValid = true
@@ -141,14 +143,10 @@ export class ClarificationRun {
     const toolCalls = message.content.filter((part) => part.type === "toolCall")
     const calls = toolCalls.filter((part) => part.name === CLARIFICATION_TOOL)
     this.calls += calls.length
-    const reusedId = calls.some(
-      (call) =>
-        !call.id ||
-        this.questionIds.has(call.id) ||
-        toolCalls.filter((other) => other.id === call.id).length !== 1,
+    const invalidId = calls.some(
+      (call) => !call.id || toolCalls.filter((other) => other.id === call.id).length !== 1,
     )
-    for (const call of calls) this.questionIds.add(call.id)
-    const rejected = calls.length > 1 || reusedId || this.calls > CLARIFICATION_LIMITS.calls
+    const rejected = calls.length > 1 || invalidId || this.calls > CLARIFICATION_LIMITS.calls
     this.batches.set(message, rejected)
     return rejected
   }
@@ -166,7 +164,7 @@ export class ClarificationRun {
       return {
         block: true,
         reason: rejected
-          ? "Clarification batch rejected: use one new question ID, at most three per run."
+          ? "Clarification batch rejected: use one question per batch, at most three per run."
           : "Sibling call discarded: ask the user first. This call will not be replayed.",
       }
     }
@@ -217,7 +215,8 @@ export class ClarificationRun {
         !this.active ||
         signal?.aborted ||
         this.pending ||
-        this.calls > CLARIFICATION_LIMITS.calls
+        this.calls > CLARIFICATION_LIMITS.calls ||
+        this.questionSequence >= CLARIFICATION_LIMITS.calls
       )
         throw new Error("Clarification is no longer available")
       const request = parseClarification(args, new Set(this.targets.map((target) => target.id)))
@@ -235,6 +234,7 @@ export class ClarificationRun {
         sessionId: this.sessionId,
         generation: this.generation,
         toolCallId,
+        questionSequence: ++this.questionSequence,
         options: request.options.map((option, index) => ({
           ...option,
           id: `option-${index + 1}`,

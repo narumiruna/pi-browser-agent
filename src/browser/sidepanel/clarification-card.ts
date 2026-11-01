@@ -40,7 +40,8 @@ export class ClarificationCard {
     if (
       this.card?.sessionId === card.sessionId &&
       this.card.generation === card.generation &&
-      this.card.toolCallId === card.toolCallId
+      this.card.toolCallId === card.toolCallId &&
+      this.card.questionSequence === card.questionSequence
     )
       return
     this.previousFocus = document.activeElement as HTMLElement

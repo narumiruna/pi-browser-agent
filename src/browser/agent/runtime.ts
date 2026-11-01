@@ -689,6 +689,7 @@ export class BrowserAgentRuntime {
       sessionId: card.sessionId,
       generation: card.generation,
       toolCallId: card.toolCallId,
+      questionSequence: card.questionSequence,
     }
     this.clarificationPresentation = key
     if (!card || !key) {

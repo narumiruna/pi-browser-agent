@@ -219,6 +219,52 @@ test("typed answers require explicit keyboard submission at narrow size in both 
   }
 })
 
+test("an application-owned question sequence allows a reused model call ID without reviving old controls", async () => {
+  const h = await launchExtensionHarness()
+  try {
+    let requests = 0
+    await h.context.route(CODEX_RESPONSES_URL, async (route) => {
+      requests++
+      await route.fulfill({
+        status: 200,
+        contentType: "text/event-stream",
+        body:
+          requests <= 2
+            ? toolCallResponse(1, "request_user_input", {
+                ...question,
+                question: requests === 1 ? "First question" : "Second question",
+              })
+            : finalTextResponse(requests, "Question IDs safely reused"),
+      })
+    })
+    await configureMockCodex(h)
+    const page = h.controller
+    await submit(page)
+    const card = page.locator("#clarification-card")
+    await expect(card).toContainText("First question")
+    await card.getByRole("radio", { name: "First target", exact: true }).check()
+    await page.evaluate(() => {
+      ;(window as Window & { staleQuestionButton?: HTMLButtonElement }).staleQuestionButton =
+        document.querySelector<HTMLButtonElement>("#clarification-answer") ?? undefined
+    })
+    await card.locator("#clarification-answer").click()
+    await expect(card).toContainText("Second question")
+    await expect(card.locator("input:checked")).toHaveCount(0)
+    await page.evaluate(() =>
+      (window as Window & { staleQuestionButton?: HTMLButtonElement }).staleQuestionButton?.click(),
+    )
+    expect(requests).toBe(2)
+    await expect(card.locator("#clarification-answer")).toBeDisabled()
+    await card.getByRole("radio", { name: "Second target", exact: true }).check()
+    await card.locator("#clarification-answer").click()
+    await finished(page, "Question IDs safely reused")
+    expect(requests).toBe(3)
+    expect(h.pageErrors).toEqual([])
+  } finally {
+    await h.close()
+  }
+})
+
 test("invalid IDs and duplicate questions cannot create controls or dispatch sibling browser actions", async () => {
   const h = await launchExtensionHarness()
   try {

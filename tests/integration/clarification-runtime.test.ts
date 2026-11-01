@@ -389,15 +389,27 @@ describe("run-scoped clarification integration", () => {
     const run = s.runtime.submit("Ask")
     const first = await s.waiting()
     s.runtime.answerClarification(first, { optionId: "option-1" })
+    await vi.waitFor(() => expect(s.card()?.questionSequence).toBe(2))
+    const second = required(s.card())
+    expect(second.toolCallId).toBe(first.toolCallId)
+    expect(s.runtime.answerClarification(first, { optionId: "option-2" })).toBe(false)
+    expect(s.runtime.answerClarification(second, { optionId: "option-2" })).toBe(true)
     await run
     expect(s.card()).toBeUndefined()
-    expect(s.runtime.answerClarification(first, { optionId: "option-2" })).toBe(false)
     expect(s.streams()).toBe(3)
     expect(
       s.runtime.agent.state.messages.some(
         (message) => message.role === "toolResult" && message.isError,
       ),
-    ).toBe(true)
+    ).toBe(false)
+    const result = required(
+      s.runtime
+        .getSessionTree()
+        .nodes.filter((node) => node.message.role === "toolResult")
+        .at(-1),
+    )
+    // Reused transport IDs remain an unsafe historical prefix under the existing tree rules.
+    expect(() => s.runtime.previewTreeSelection(result.id)).toThrow()
   })
 
   test("enforces the three-call run limit, including invalid calls", async () => {

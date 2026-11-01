@@ -10,6 +10,7 @@ const card: PendingClarification = {
   sessionId: "session",
   generation: 1,
   toolCallId: "question",
+  questionSequence: 1,
   question: "<img src=https://evil.test> Which?",
   options: [
     { id: "option-1", label: "<script>First</script>", attachmentId: "image" },
@@ -118,7 +119,7 @@ describe("local question card", () => {
     s.select(0)
     const old = s.submit()
     expect(old.textContent).toBe("回答する")
-    s.controller.show({ ...card, generation: 2 })
+    s.controller.show({ ...card, questionSequence: 2 })
     old.click()
     expect(s.answer).not.toHaveBeenCalled()
   })

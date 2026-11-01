@@ -11,7 +11,7 @@ const request = {
   question: "Which <script>target</script>?",
   options: [{ label: "First", attachmentId: "known" }, { label: "Second" }],
 }
-const key = { sessionId: "session", generation: 1, toolCallId: "question" }
+const key = { sessionId: "session", generation: 1, toolCallId: "question", questionSequence: 1 }
 function setup(element = false) {
   let card: PendingClarification | undefined
   const changed = vi.fn((value?: PendingClarification) => {
@@ -136,7 +136,7 @@ describe("clarification contracts and callback ownership", () => {
       expect(duplicate.beforeToolCall(context)?.block).toBe(true)
   })
 
-  test("repeated model call IDs cannot reopen a question under an old answer key", async () => {
+  test("an application sequence permits repeated model call IDs but rejects the old answer key", async () => {
     const s = setup()
     const first = required(batch(["request_user_input"])[0])
     first.toolCall.id = key.toolCallId
@@ -146,8 +146,13 @@ describe("clarification contracts and callback ownership", () => {
     await pending
     const repeated = required(batch(["request_user_input"])[0])
     repeated.toolCall.id = key.toolCallId
-    expect(s.run.beforeToolCall(repeated)?.block).toBe(true)
+    expect(s.run.beforeToolCall(repeated)).toBeUndefined()
+    const second = s.run.tool().execute("question", request)
+    const current = required(s.card())
+    expect(current.questionSequence).toBe(2)
     expect(s.run.answer(key, { optionId: "option-2" })).toBe(false)
+    expect(s.run.answer(current, { optionId: "option-2" })).toBe(true)
+    await second
   })
 
   test("a question ID that collides with a sibling rejects the whole batch", () => {
