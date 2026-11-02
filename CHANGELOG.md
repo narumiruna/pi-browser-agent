@@ -1,5 +1,16 @@
 # pi-browser-agent
 
+## 0.11.0
+
+### Minor Changes
+
+- 6e9c98d: Add Arrow and Rectangle tools to live-page drawing with one accessible tool menu, bounded previews, and whole-mark Undo. Preserve protected screenshot capture, freehand defaults, and manual draft recovery.
+- 707815a: Add protected viewport-region selection and worker-local inward PNG cropping on the existing drawing and element-picker foundation. A trusted completed selection attaches one crop to the ordinary composer previews after confirmed cleanup. Only an explicit later Send shares it; Chrome's temporary full-viewport capture and other conversation context remain separate privacy limits.
+
+### Patch Changes
+
+- d4a947b: Replace the region coordinate panel and separate crop-preview dialog with trusted-selection auto-attachment to existing image previews. Keep one capture icon, keyboard selection, explicit same-icon cleanup/attachment retry, and separate Send. Validate completed revisions independently, prevent duplicate capture attempts, and require confirmation-key release before capture or consent.
+
 ## 0.10.0
 
 ### Minor Changes
