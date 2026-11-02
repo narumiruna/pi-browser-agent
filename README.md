@@ -169,7 +169,9 @@ Create and commit a changeset for every releaseable change:
 npm run changeset
 ```
 
-Pushes to `main` create or update the **chore(release): version packages** pull request. Merging that pull request updates `package.json`, `package-lock.json`, `manifest.json`, and `CHANGELOG.md`, creates the matching `vX.Y.Z` GitHub release, and uploads `pi-browser-agent.zip`. The repository must allow GitHub Actions to create pull requests.
+Pushes to `main` create or update the **chore(release): version packages** pull request. Merging that pull request updates `package.json`, `package-lock.json`, `manifest.json`, and `CHANGELOG.md`, creates the matching `vX.Y.Z` GitHub release, and uploads `pi-browser-agent.zip`.
+
+Set the repository Actions secret `PAT_TOKEN` to a fine-grained personal access token restricted to this repository, with **Contents: Read and write** and **Pull requests: Read and write** permissions. Changesets uses this token to create and update release pull requests so their CI can run without manual workflow approval. The archive check and upload steps keep the built-in `GITHUB_TOKEN`.
 
 ## Troubleshooting
 
