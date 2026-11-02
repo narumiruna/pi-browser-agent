@@ -1,5 +1,11 @@
 # pi-browser-agent
 
+## 0.11.1
+
+### Patch Changes
+
+- 9c12895: Use the repository PAT_TOKEN secret for Changesets authentication so release pull request CI can run without manual workflow approval.
+
 ## 0.11.0
 
 ### Minor Changes
