@@ -1,6 +1,32 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Local Coding Agent connection": "Локальное подключение к Coding Agent",
+  "Run /browser-connect in Pi for Browser Agent in this Chrome profile, then allow the request here.":
+    "Выполните /browser-connect в Pi для Browser Agent в этом профиле Chrome, затем разрешите запрос здесь.",
+  "Allow local connection": "Разрешить локальное подключение",
+  "Disconnect local Coding Agent": "Отключить локальный Coding Agent",
+  "No local connection request": "Нет запроса на локальное подключение",
+  "Connected to local Pi Coding Agent": "Подключено к локальному Pi Coding Agent",
+  "Waiting for local approval": "Ожидание локального подтверждения",
+  "Local connection rejected": "Локальное подключение отклонено",
+  "Allow local Coding Agent?": "Разрешить локальный Coding Agent?",
+  "Allow this local Pi Coding Agent to start tasks automatically when Browser Agent is idle and the composer is empty? No task confirmation or Send is required. Model-provider access, site access, and action confirmations still apply. Disconnect to revoke this permission.":
+    "Разрешить этому локальному Pi Coding Agent автоматически запускать задачи, когда Browser Agent не занят и поле ввода пусто? Подтверждение задачи или Send не требуется. Разрешения на доступ к поставщику модели и сайту, а также подтверждения действий остаются обязательными. Отключитесь, чтобы отозвать это разрешение.",
+  "Allow model-provider and current-site access for the Coding task?":
+    "Разрешить доступ к поставщику модели и текущему сайту для задачи Coding?",
+  "Disconnect local Coding Agent?": "Отключить локальный Coding Agent?",
+  "Disconnect cancels delegated work but does not undo completed actions.":
+    "Отключение отменяет делегированную работу, но не отменяет завершённые действия.",
+  "Pi uses Chrome's local remote debugging endpoint. No external relay is used.":
+    "Pi использует локальную конечную точку удалённой отладки Chrome. Внешний ретранслятор не используется.",
+  "Local connection failed or was interrupted; no operation was retried.":
+    "Локальное подключение завершилось ошибкой или было прервано; операции не повторялись.",
+  "Coding task": "Задача программирования",
+  "Cancel coding task": "Отменить задачу программирования",
+  "Send the following task to the connected Coding Agent?":
+    "Отправить следующую задачу подключённому Coding Agent?",
+
   "Reset page pinch zoom before capturing a region":
     "Сбросьте масштаб страницы, изменённый жестом, перед захватом области",
   "Capture region": "Снимок области",

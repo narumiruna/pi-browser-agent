@@ -70,6 +70,28 @@ export class ChromeCredentialStore implements CredentialStore {
     return credential
   }
 
+  /** Keep stored provider values inside trusted code when exporting a selected local-task answer. */
+  async redact(text: string): Promise<string> {
+    const pending: unknown[] = Object.values(await this.readAll()).flatMap((credential) =>
+      Object.entries(credential)
+        .filter(([key]) => key !== "type")
+        .map(([, value]) => value),
+    )
+    const secrets = new Set<string>()
+    while (pending.length) {
+      const value = pending.pop()
+      if (typeof value === "string" && value) {
+        secrets.add(value)
+        secrets.add(JSON.stringify(value).slice(1, -1))
+      } else if (value && typeof value === "object") pending.push(...Object.values(value))
+    }
+    const pattern = [...secrets]
+      .sort((left, right) => right.length - left.length)
+      .map((value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+      .join("|")
+    return pattern ? text.replace(new RegExp(pattern, "g"), "[REDACTED]") : text
+  }
+
   async list(options?: AuthOperationOptions): Promise<readonly CredentialInfo[]> {
     throwIfAborted(options)
     const all = await this.readAll()

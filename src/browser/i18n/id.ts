@@ -1,6 +1,32 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Local Coding Agent connection": "Koneksi Coding Agent lokal",
+  "Run /browser-connect in Pi for Browser Agent in this Chrome profile, then allow the request here.":
+    "Jalankan /browser-connect di Pi untuk Browser Agent dalam profil Chrome ini, lalu izinkan permintaan di sini.",
+  "Allow local connection": "Izinkan koneksi lokal",
+  "Disconnect local Coding Agent": "Putuskan koneksi Coding Agent lokal",
+  "No local connection request": "Tidak ada permintaan koneksi lokal",
+  "Connected to local Pi Coding Agent": "Terhubung ke Pi Coding Agent lokal",
+  "Waiting for local approval": "Menunggu persetujuan lokal",
+  "Local connection rejected": "Koneksi lokal ditolak",
+  "Allow local Coding Agent?": "Izinkan Coding Agent lokal?",
+  "Allow this local Pi Coding Agent to start tasks automatically when Browser Agent is idle and the composer is empty? No task confirmation or Send is required. Model-provider access, site access, and action confirmations still apply. Disconnect to revoke this permission.":
+    "Izinkan Pi Coding Agent lokal ini memulai tugas secara otomatis saat Browser Agent tidak aktif dan kolom masukan kosong? Konfirmasi tugas atau Send tidak diperlukan. Izin akses penyedia model, situs, dan konfirmasi tindakan tetap berlaku. Putuskan koneksi untuk mencabut izin ini.",
+  "Allow model-provider and current-site access for the Coding task?":
+    "Izinkan akses penyedia model dan situs saat ini untuk tugas Coding?",
+  "Disconnect local Coding Agent?": "Putuskan koneksi Coding Agent lokal?",
+  "Disconnect cancels delegated work but does not undo completed actions.":
+    "Memutuskan koneksi membatalkan pekerjaan yang didelegasikan, tetapi tidak membatalkan tindakan yang sudah selesai.",
+  "Pi uses Chrome's local remote debugging endpoint. No external relay is used.":
+    "Pi menggunakan endpoint debugging jarak jauh lokal Chrome. Tidak ada relai eksternal yang digunakan.",
+  "Local connection failed or was interrupted; no operation was retried.":
+    "Koneksi lokal gagal atau terputus; tidak ada operasi yang dicoba ulang.",
+  "Coding task": "Tugas pemrograman",
+  "Cancel coding task": "Batalkan tugas pemrograman",
+  "Send the following task to the connected Coding Agent?":
+    "Kirim tugas berikut ke Coding Agent yang terhubung?",
+
   "Reset page pinch zoom before capturing a region":
     "Atur ulang zoom cubit halaman sebelum mengambil area",
   "Capture region": "Tangkap area",

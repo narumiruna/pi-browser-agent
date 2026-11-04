@@ -1,6 +1,32 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Local Coding Agent connection": "로컬 Coding Agent 연결",
+  "Run /browser-connect in Pi for Browser Agent in this Chrome profile, then allow the request here.":
+    "이 Chrome 프로필의 Browser Agent를 위해 Pi에서 /browser-connect를 실행한 다음 여기에서 요청을 허용하세요.",
+  "Allow local connection": "로컬 연결 허용",
+  "Disconnect local Coding Agent": "로컬 Coding Agent 연결 해제",
+  "No local connection request": "로컬 연결 요청 없음",
+  "Connected to local Pi Coding Agent": "로컬 Pi Coding Agent에 연결됨",
+  "Waiting for local approval": "로컬 승인 대기 중",
+  "Local connection rejected": "로컬 연결 거부됨",
+  "Allow local Coding Agent?": "로컬 Coding Agent를 허용할까요?",
+  "Allow this local Pi Coding Agent to start tasks automatically when Browser Agent is idle and the composer is empty? No task confirmation or Send is required. Model-provider access, site access, and action confirmations still apply. Disconnect to revoke this permission.":
+    "Browser Agent가 대기 중이고 입력란이 비어 있을 때 이 로컬 Pi Coding Agent가 작업을 자동으로 시작하도록 허용할까요? 작업 확인이나 Send가 필요하지 않습니다. 모델 제공업체 접근, 사이트 접근 및 동작 확인은 계속 적용됩니다. 연결을 해제하면 이 권한이 취소됩니다.",
+  "Allow model-provider and current-site access for the Coding task?":
+    "Coding 작업에 모델 제공업체와 현재 사이트 접근을 허용할까요?",
+  "Disconnect local Coding Agent?": "로컬 Coding Agent 연결을 해제할까요?",
+  "Disconnect cancels delegated work but does not undo completed actions.":
+    "연결을 해제하면 위임된 작업이 취소되지만 완료된 동작은 되돌리지 않습니다.",
+  "Pi uses Chrome's local remote debugging endpoint. No external relay is used.":
+    "Pi는 Chrome의 로컬 원격 디버깅 엔드포인트를 사용합니다. 외부 릴레이는 사용하지 않습니다.",
+  "Local connection failed or was interrupted; no operation was retried.":
+    "로컬 연결이 실패했거나 중단되었습니다. 어떤 작업도 재시도하지 않았습니다.",
+  "Coding task": "코딩 작업",
+  "Cancel coding task": "코딩 작업 취소",
+  "Send the following task to the connected Coding Agent?":
+    "다음 작업을 연결된 Coding Agent에 보낼까요?",
+
   "Reset page pinch zoom before capturing a region":
     "영역을 캡처하기 전에 페이지의 핀치 확대/축소를 초기화하세요",
   "Capture region": "영역 캡처",

@@ -1,6 +1,32 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Local Coding Agent connection": "การเชื่อมต่อ Coding Agent ในเครื่อง",
+  "Run /browser-connect in Pi for Browser Agent in this Chrome profile, then allow the request here.":
+    "เรียกใช้ /browser-connect ใน Pi สำหรับ Browser Agent ในโปรไฟล์ Chrome นี้ แล้วอนุญาตคำขอที่นี่",
+  "Allow local connection": "อนุญาตการเชื่อมต่อในเครื่อง",
+  "Disconnect local Coding Agent": "ยกเลิกการเชื่อมต่อ Coding Agent ในเครื่อง",
+  "No local connection request": "ไม่มีคำขอเชื่อมต่อในเครื่อง",
+  "Connected to local Pi Coding Agent": "เชื่อมต่อกับ Pi Coding Agent ในเครื่องแล้ว",
+  "Waiting for local approval": "กำลังรอการอนุมัติในเครื่อง",
+  "Local connection rejected": "การเชื่อมต่อในเครื่องถูกปฏิเสธ",
+  "Allow local Coding Agent?": "อนุญาต Coding Agent ในเครื่องหรือไม่?",
+  "Allow this local Pi Coding Agent to start tasks automatically when Browser Agent is idle and the composer is empty? No task confirmation or Send is required. Model-provider access, site access, and action confirmations still apply. Disconnect to revoke this permission.":
+    "อนุญาตให้ Pi Coding Agent ในเครื่องนี้เริ่มงานโดยอัตโนมัติเมื่อ Browser Agent ว่างและช่องป้อนข้อความว่างหรือไม่? ไม่ต้องยืนยันงานหรือกด Send อีก สิทธิ์เข้าถึงผู้ให้บริการโมเดล เว็บไซต์ และการยืนยันการกระทำยังคงมีผล ตัดการเชื่อมต่อเพื่อเพิกถอนสิทธิ์นี้",
+  "Allow model-provider and current-site access for the Coding task?":
+    "อนุญาตให้งาน Coding เข้าถึงผู้ให้บริการโมเดลและเว็บไซต์ปัจจุบันหรือไม่?",
+  "Disconnect local Coding Agent?": "ยกเลิกการเชื่อมต่อ Coding Agent ในเครื่องหรือไม่?",
+  "Disconnect cancels delegated work but does not undo completed actions.":
+    "การยกเลิกการเชื่อมต่อจะยกเลิกงานที่มอบหมาย แต่ไม่เลิกทำการดำเนินการที่เสร็จแล้ว",
+  "Pi uses Chrome's local remote debugging endpoint. No external relay is used.":
+    "Pi ใช้ปลายทางการแก้ไขข้อบกพร่องระยะไกลในเครื่องของ Chrome ไม่มีการใช้รีเลย์ภายนอก",
+  "Local connection failed or was interrupted; no operation was retried.":
+    "การเชื่อมต่อในเครื่องล้มเหลวหรือถูกขัดจังหวะ ไม่มีการลองดำเนินการใดซ้ำ",
+  "Coding task": "งานเขียนโปรแกรม",
+  "Cancel coding task": "ยกเลิกงานเขียนโปรแกรม",
+  "Send the following task to the connected Coding Agent?":
+    "ส่งงานต่อไปนี้ไปยัง Coding Agent ที่เชื่อมต่ออยู่หรือไม่?",
+
   "Reset page pinch zoom before capturing a region": "รีเซ็ตการซูมด้วยนิ้วของหน้าก่อนจับภาพพื้นที่",
   "Capture region": "จับภาพพื้นที่",
   "Cancel region capture": "ยกเลิกการจับภาพพื้นที่",

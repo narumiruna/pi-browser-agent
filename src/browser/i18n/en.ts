@@ -1,5 +1,31 @@
 // English source messages are stable catalog keys. Use them only for trusted presentation.
 export const english = {
+  "Local Coding Agent connection": "Local Coding Agent connection",
+  "Run /browser-connect in Pi for Browser Agent in this Chrome profile, then allow the request here.":
+    "Run /browser-connect in Pi for Browser Agent in this Chrome profile, then allow the request here.",
+  "Allow local connection": "Allow local connection",
+  "Disconnect local Coding Agent": "Disconnect local Coding Agent",
+  "No local connection request": "No local connection request",
+  "Connected to local Pi Coding Agent": "Connected to local Pi Coding Agent",
+  "Waiting for local approval": "Waiting for local approval",
+  "Local connection rejected": "Local connection rejected",
+  "Allow local Coding Agent?": "Allow local Coding Agent?",
+  "Allow this local Pi Coding Agent to start tasks automatically when Browser Agent is idle and the composer is empty? No task confirmation or Send is required. Model-provider access, site access, and action confirmations still apply. Disconnect to revoke this permission.":
+    "Allow this local Pi Coding Agent to start tasks automatically when Browser Agent is idle and the composer is empty? No task confirmation or Send is required. Model-provider access, site access, and action confirmations still apply. Disconnect to revoke this permission.",
+  "Allow model-provider and current-site access for the Coding task?":
+    "Allow model-provider and current-site access for the Coding task?",
+  "Disconnect local Coding Agent?": "Disconnect local Coding Agent?",
+  "Disconnect cancels delegated work but does not undo completed actions.":
+    "Disconnect cancels delegated work but does not undo completed actions.",
+  "Pi uses Chrome's local remote debugging endpoint. No external relay is used.":
+    "Pi uses Chrome's local remote debugging endpoint. No external relay is used.",
+  "Local connection failed or was interrupted; no operation was retried.":
+    "Local connection failed or was interrupted; no operation was retried.",
+  "Coding task": "Coding task",
+  "Cancel coding task": "Cancel coding task",
+  "Send the following task to the connected Coding Agent?":
+    "Send the following task to the connected Coding Agent?",
+
   "Reset page pinch zoom before capturing a region":
     "Reset page pinch zoom before capturing a region",
   "Capture region": "Capture region",

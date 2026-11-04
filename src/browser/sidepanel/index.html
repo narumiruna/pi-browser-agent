@@ -151,6 +151,10 @@
           hidden
         ></div>
 
+        <div id="coding-task-chip" class="coding-task-chip" hidden>
+          <span id="coding-task-label" class="coding-task-label">Coding task</span>
+          <button id="coding-task-cancel" type="button" class="icon-button coding-task-cancel" aria-label="Cancel coding task" title="Cancel coding task"><svg class="radix-icon" viewBox="0 0 15 15" aria-hidden="true"><path d="m4 4 7 7M11 4l-7 7"/></svg></button>
+        </div>
         <span id="region-capture-help" class="visually-hidden">Chrome temporarily captures the full viewport. Only the crop leaves the worker. Drag to attach a crop. Arrow keys move; Shift+Arrow resizes; Alt uses 1 px. Enter attaches; Escape cancels.</span>
         <span id="page-pen-help" class="visually-hidden">Page content can move beneath your marks. Send captures only the visible area.</span>
         <textarea
@@ -428,6 +432,16 @@
             <h2 id="tools-title">Available tools</h2>
             <p>All browser tools, including new tools added by updates, are enabled by default. Uncheck tools to disable them. Changes apply to the next run; confirmations and Chrome permissions still apply.</p>
             <fieldset id="available-tools" class="tool-options" aria-labelledby="tools-title"></fieldset>
+          </section>
+          <section class="settings-section" aria-labelledby="coding-connection-title">
+            <h2 id="coding-connection-title">Local Coding Agent connection</h2>
+            <p class="field-hint">Run /browser-connect in Pi for Browser Agent in this Chrome profile, then allow the request here.</p>
+            <div class="settings-actions">
+              <button id="coding-allow" type="button" class="primary" hidden>Allow local connection</button>
+              <button id="coding-disconnect" type="button" hidden>Disconnect local Coding Agent</button>
+            </div>
+            <p id="coding-status" role="status" aria-live="polite">No local connection request</p>
+            <p id="coding-connection-hint" class="field-hint">Pi uses Chrome's local remote debugging endpoint. No external relay is used.</p>
           </section>
         </div>
         <!-- biome-ignore lint/a11y/noNoninteractiveTabindex: Tab panels provide keyboard access to their headings and help text. -->

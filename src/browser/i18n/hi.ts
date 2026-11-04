@@ -1,6 +1,32 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Local Coding Agent connection": "स्थानीय Coding Agent कनेक्शन",
+  "Run /browser-connect in Pi for Browser Agent in this Chrome profile, then allow the request here.":
+    "इस Chrome प्रोफ़ाइल में Browser Agent के लिए Pi में /browser-connect चलाएँ, फिर यहाँ अनुरोध की अनुमति दें।",
+  "Allow local connection": "स्थानीय कनेक्शन की अनुमति दें",
+  "Disconnect local Coding Agent": "स्थानीय Coding Agent को डिस्कनेक्ट करें",
+  "No local connection request": "कोई स्थानीय कनेक्शन अनुरोध नहीं है",
+  "Connected to local Pi Coding Agent": "स्थानीय Pi Coding Agent से कनेक्ट है",
+  "Waiting for local approval": "स्थानीय स्वीकृति की प्रतीक्षा में",
+  "Local connection rejected": "स्थानीय कनेक्शन अस्वीकार किया गया",
+  "Allow local Coding Agent?": "स्थानीय Coding Agent की अनुमति दें?",
+  "Allow this local Pi Coding Agent to start tasks automatically when Browser Agent is idle and the composer is empty? No task confirmation or Send is required. Model-provider access, site access, and action confirmations still apply. Disconnect to revoke this permission.":
+    "जब Browser Agent निष्क्रिय हो और इनपुट खाली हो, तो क्या इस स्थानीय Pi Coding Agent को कार्य अपने आप शुरू करने दें? कार्य की पुष्टि या Send आवश्यक नहीं है। मॉडल प्रदाता और साइट की पहुँच अनुमतियाँ तथा कार्रवाई की पुष्टि लागू रहेंगी। यह अनुमति वापस लेने के लिए कनेक्शन बंद करें।",
+  "Allow model-provider and current-site access for the Coding task?":
+    "क्या Coding कार्य के लिए मॉडल प्रदाता और वर्तमान साइट तक पहुँच की अनुमति दें?",
+  "Disconnect local Coding Agent?": "स्थानीय Coding Agent को डिस्कनेक्ट करें?",
+  "Disconnect cancels delegated work but does not undo completed actions.":
+    "डिस्कनेक्ट करने से सौंपा गया काम रद्द हो जाता है, लेकिन पूरी हो चुकी कार्रवाइयाँ पूर्ववत नहीं होतीं।",
+  "Pi uses Chrome's local remote debugging endpoint. No external relay is used.":
+    "Pi, Chrome के स्थानीय remote debugging endpoint का उपयोग करता है। किसी बाहरी रिले का उपयोग नहीं होता।",
+  "Local connection failed or was interrupted; no operation was retried.":
+    "स्थानीय कनेक्शन विफल हुआ या बाधित हुआ; कोई कार्रवाई दोबारा नहीं की गई।",
+  "Coding task": "प्रोग्रामिंग कार्य",
+  "Cancel coding task": "प्रोग्रामिंग कार्य रद्द करें",
+  "Send the following task to the connected Coding Agent?":
+    "यह कार्य कनेक्ट किए गए Coding Agent को भेजें?",
+
   "Reset page pinch zoom before capturing a region": "क्षेत्र कैप्चर करने से पहले पेज का पिंच ज़ूम रीसेट करें",
   "Capture region": "क्षेत्र कैप्चर करें",
   "Cancel region capture": "क्षेत्र कैप्चर रद्द करें",

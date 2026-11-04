@@ -1336,11 +1336,13 @@ body[data-page="waiting"]:not([data-busy="true"]) .status-dot {
   overflow-x: auto;
 }
 
-.selected-elements[hidden] {
+.selected-elements[hidden],
+#coding-task-chip[hidden] {
   display: none;
 }
 
-.selected-element-chip {
+.selected-element-chip,
+.coding-task-chip {
   display: inline-flex;
   align-items: center;
   min-width: 0;
@@ -1360,14 +1362,16 @@ body[data-page="waiting"]:not([data-busy="true"]) .status-dot {
     monospace;
 }
 
-.selected-element-label {
+.selected-element-label,
+.coding-task-label {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-button.remove-selected-element {
+button.remove-selected-element,
+button.coding-task-cancel {
   display: grid;
   width: 20px;
   height: 20px;

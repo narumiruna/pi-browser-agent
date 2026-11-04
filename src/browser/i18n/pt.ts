@@ -1,6 +1,32 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Local Coding Agent connection": "Ligação local ao Coding Agent",
+  "Run /browser-connect in Pi for Browser Agent in this Chrome profile, then allow the request here.":
+    "Execute /browser-connect no Pi para o Browser Agent neste perfil do Chrome e, em seguida, autorize o pedido aqui.",
+  "Allow local connection": "Permitir ligação local",
+  "Disconnect local Coding Agent": "Desligar o Coding Agent local",
+  "No local connection request": "Nenhum pedido de ligação local",
+  "Connected to local Pi Coding Agent": "Ligado ao Pi Coding Agent local",
+  "Waiting for local approval": "A aguardar aprovação local",
+  "Local connection rejected": "Ligação local rejeitada",
+  "Allow local Coding Agent?": "Permitir o Coding Agent local?",
+  "Allow this local Pi Coding Agent to start tasks automatically when Browser Agent is idle and the composer is empty? No task confirmation or Send is required. Model-provider access, site access, and action confirmations still apply. Disconnect to revoke this permission.":
+    "Permitir que este Pi Coding Agent local inicie tarefas automaticamente quando o Browser Agent estiver inativo e o campo de entrada estiver vazio? Não é necessário confirmar a tarefa nem selecionar Send. Continuam a ser necessárias permissões de acesso ao fornecedor do modelo e ao site e confirmações de ações. Desligue a ligação para revogar esta permissão.",
+  "Allow model-provider and current-site access for the Coding task?":
+    "Permitir acesso ao fornecedor do modelo e ao site atual para a tarefa Coding?",
+  "Disconnect local Coding Agent?": "Desligar o Coding Agent local?",
+  "Disconnect cancels delegated work but does not undo completed actions.":
+    "Desligar cancela o trabalho delegado, mas não anula as ações concluídas.",
+  "Pi uses Chrome's local remote debugging endpoint. No external relay is used.":
+    "O Pi utiliza o endpoint local de depuração remota do Chrome. Não é utilizado nenhum relay externo.",
+  "Local connection failed or was interrupted; no operation was retried.":
+    "A ligação local falhou ou foi interrompida; nenhuma operação foi repetida.",
+  "Coding task": "Tarefa de programação",
+  "Cancel coding task": "Cancelar tarefa de programação",
+  "Send the following task to the connected Coding Agent?":
+    "Enviar a seguinte tarefa ao Coding Agent ligado?",
+
   "Reset page pinch zoom before capturing a region":
     "Reponha o zoom por pinça da página antes de capturar uma região",
   "Capture region": "Capturar região",

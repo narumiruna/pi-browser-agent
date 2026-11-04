@@ -1,6 +1,32 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Local Coding Agent connection": "Kết nối Coding Agent cục bộ",
+  "Run /browser-connect in Pi for Browser Agent in this Chrome profile, then allow the request here.":
+    "Chạy /browser-connect trong Pi cho Browser Agent trong hồ sơ Chrome này, rồi cho phép yêu cầu tại đây.",
+  "Allow local connection": "Cho phép kết nối cục bộ",
+  "Disconnect local Coding Agent": "Ngắt kết nối Coding Agent cục bộ",
+  "No local connection request": "Không có yêu cầu kết nối cục bộ",
+  "Connected to local Pi Coding Agent": "Đã kết nối với Pi Coding Agent cục bộ",
+  "Waiting for local approval": "Đang chờ phê duyệt cục bộ",
+  "Local connection rejected": "Kết nối cục bộ bị từ chối",
+  "Allow local Coding Agent?": "Cho phép Coding Agent cục bộ?",
+  "Allow this local Pi Coding Agent to start tasks automatically when Browser Agent is idle and the composer is empty? No task confirmation or Send is required. Model-provider access, site access, and action confirmations still apply. Disconnect to revoke this permission.":
+    "Cho phép Pi Coding Agent cục bộ này tự động bắt đầu tác vụ khi Browser Agent rảnh và ô nhập trống? Không cần xác nhận tác vụ hoặc nhấn Send. Vẫn cần quyền truy cập nhà cung cấp mô hình, trang web và xác nhận hành động. Ngắt kết nối để thu hồi quyền này.",
+  "Allow model-provider and current-site access for the Coding task?":
+    "Cho phép tác vụ Coding truy cập nhà cung cấp mô hình và trang web hiện tại?",
+  "Disconnect local Coding Agent?": "Ngắt kết nối Coding Agent cục bộ?",
+  "Disconnect cancels delegated work but does not undo completed actions.":
+    "Ngắt kết nối sẽ hủy công việc được ủy quyền nhưng không hoàn tác các hành động đã hoàn tất.",
+  "Pi uses Chrome's local remote debugging endpoint. No external relay is used.":
+    "Pi dùng điểm cuối gỡ lỗi từ xa cục bộ của Chrome. Không dùng bộ chuyển tiếp bên ngoài.",
+  "Local connection failed or was interrupted; no operation was retried.":
+    "Kết nối cục bộ thất bại hoặc bị gián đoạn; không có thao tác nào được thử lại.",
+  "Coding task": "Tác vụ lập trình",
+  "Cancel coding task": "Hủy tác vụ lập trình",
+  "Send the following task to the connected Coding Agent?":
+    "Gửi tác vụ sau đến Coding Agent đang kết nối?",
+
   "Reset page pinch zoom before capturing a region":
     "Đặt lại mức thu phóng bằng cử chỉ chụm của trang trước khi chụp vùng",
   "Capture region": "Chụp vùng",

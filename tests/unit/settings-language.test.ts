@@ -60,6 +60,9 @@ vi.mock("../../src/browser/sidepanel/mcp-settings.js", () => ({
 vi.mock("../../src/browser/sidepanel/skills-settings.js", () => ({
   initializeSkillsSettings: async () => ({ hasDraft: () => false, isBusy: () => false }),
 }))
+vi.mock("../../src/browser/sidepanel/coding-connection-settings.js", () => ({
+  initializeCodingConnectionSettings: async () => ({ hasDraft: () => false, isBusy: () => false }),
+}))
 vi.mock("../../src/browser/sidepanel/settings-confirmation.js", () => ({
   initializeSettingsConfirmation: () => state.confirm,
 }))
