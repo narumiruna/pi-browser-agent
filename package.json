@@ -28,7 +28,7 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:e2e:smoke": "playwright test tests/e2e/extension-smoke.spec.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --project .pi/extensions/browser-tasks/tsconfig.json",
     "version-packages": "changeset version && node scripts/sync-manifest-version.mjs && npm install --package-lock-only --ignore-scripts"
   },
   "dependencies": {
@@ -43,6 +43,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2.6.4",
     "@changesets/cli": "^3.0.3",
+    "@earendil-works/pi-coding-agent": "1.5.0",
     "@playwright/test": "^1.64.1",
     "@types/chrome": "^0.3.7",
     "@types/jsdom": "^30.0.0",

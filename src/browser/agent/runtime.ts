@@ -55,6 +55,7 @@ export interface RuntimeCallbacks {
   onSettingsModelChanged?: () => void
   onPersistenceError?: (message: string) => void
   onPreparing?: (preparing: boolean) => void
+  codingTools?: () => AgentTool[]
 }
 
 export function composeSystemPrompt(
@@ -478,7 +479,11 @@ export class BrowserAgentRuntime {
       this.skillRun?.finish()
       this.skillRun = skillRun
       this.updateAvailableTools()
-      this.agent.state.tools.push(...skillRun.tools(), ...remoteTools)
+      this.agent.state.tools.push(
+        ...skillRun.tools(),
+        ...remoteTools,
+        ...(this.callbacks.codingTools?.() ?? []),
+      )
       this.updateSystemPrompt()
       assertSubmission?.()
       if (images.length > 0) await this.agent.prompt(multimodalUserMessage(content, images))

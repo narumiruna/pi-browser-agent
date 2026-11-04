@@ -16,6 +16,7 @@ import {
   MIN_FONT_SIZE,
 } from "../storage.js"
 import { AuthenticationController } from "./authentication.js"
+import { initializeCodingConnectionSettings } from "./coding-connection-settings.js"
 import { initializeMcpSettings } from "./mcp-settings.js"
 import { SearchableSelect } from "./searchable-select.js"
 import { initializeSettingsConfirmation } from "./settings-confirmation.js"
@@ -93,6 +94,7 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
   let clearingApprovals = false
   let mcpState: SettingsSectionState = { hasDraft: () => false, isBusy: () => false }
   let skillState: SettingsSectionState = { hasDraft: () => false, isBusy: () => false }
+  let codingState: SettingsSectionState = { hasDraft: () => false, isBusy: () => false }
   const confirmSettingsAction = initializeSettingsConfirmation()
   let authentication: AuthenticationController | undefined
   const configuration = new BrowserConfiguration((event) => authentication?.onAuthEvent(event))
@@ -266,6 +268,7 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
       clearingApprovals ||
       mcpState.isBusy() ||
       skillState.isBusy() ||
+      codingState.isBusy() ||
       Boolean(authentication?.isBusy)
     )
   }
@@ -521,6 +524,7 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
   populateSettings()
   mcpState = await initializeMcpSettings(confirmSettingsAction, updateSaveState)
   skillState = await initializeSkillsSettings(updateSaveState)
+  codingState = await initializeCodingConnectionSettings(confirmSettingsAction, updateSaveState)
   applyAppearance(configuration.appSettings.fontFamily, configuration.appSettings.fontSize)
   initializeSettingsTabs(page)
   page.hidden = false

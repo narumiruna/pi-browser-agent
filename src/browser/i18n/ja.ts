@@ -1,6 +1,32 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Local Coding Agent connection": "ローカルの Coding Agent との接続",
+  "Run /browser-connect in Pi for Browser Agent in this Chrome profile, then allow the request here.":
+    "この Chrome プロファイルの Browser Agent 用に Pi で /browser-connect を実行し、ここでリクエストを許可してください。",
+  "Allow local connection": "ローカル接続を許可",
+  "Disconnect local Coding Agent": "ローカルの Coding Agent を切断",
+  "No local connection request": "ローカル接続のリクエストはありません",
+  "Connected to local Pi Coding Agent": "ローカルの Pi Coding Agent に接続済み",
+  "Waiting for local approval": "ローカルでの承認を待機中",
+  "Local connection rejected": "ローカル接続が拒否されました",
+  "Allow local Coding Agent?": "ローカルの Coding Agent を許可しますか？",
+  "Allow this local Pi Coding Agent to start tasks automatically when Browser Agent is idle and the composer is empty? No task confirmation or Send is required. Model-provider access, site access, and action confirmations still apply. Disconnect to revoke this permission.":
+    "Browser Agent が待機中で入力欄が空の場合、このローカル Pi Coding Agent にタスクの自動開始を許可しますか？タスクの再確認や Send は不要です。モデルプロバイダーとサイトへのアクセス許可、操作の確認は引き続き必要です。接続を解除すると、この権限を取り消せます。",
+  "Allow model-provider and current-site access for the Coding task?":
+    "Coding タスクにモデルプロバイダーと現在のサイトへのアクセスを許可しますか？",
+  "Disconnect local Coding Agent?": "ローカルの Coding Agent を切断しますか？",
+  "Disconnect cancels delegated work but does not undo completed actions.":
+    "切断すると委任した作業はキャンセルされますが、完了した操作は取り消されません。",
+  "Pi uses Chrome's local remote debugging endpoint. No external relay is used.":
+    "Pi は Chrome のローカルのリモートデバッグエンドポイントを使用します。外部リレーは使用しません。",
+  "Local connection failed or was interrupted; no operation was retried.":
+    "ローカル接続が失敗したか、中断されました。操作は再試行されていません。",
+  "Coding task": "コーディングタスク",
+  "Cancel coding task": "コーディングタスクをキャンセル",
+  "Send the following task to the connected Coding Agent?":
+    "次のタスクを接続中の Coding Agent に送信しますか？",
+
   "Reset page pinch zoom before capturing a region":
     "範囲をキャプチャする前にページのピンチズームをリセットしてください",
   "Capture region": "範囲をキャプチャ",

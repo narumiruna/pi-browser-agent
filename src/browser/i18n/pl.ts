@@ -1,6 +1,32 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Local Coding Agent connection": "Lokalne połączenie z Coding Agent",
+  "Run /browser-connect in Pi for Browser Agent in this Chrome profile, then allow the request here.":
+    "Uruchom /browser-connect w Pi dla Browser Agent w tym profilu Chrome, a następnie zezwól tutaj na połączenie.",
+  "Allow local connection": "Zezwól na lokalne połączenie",
+  "Disconnect local Coding Agent": "Rozłącz lokalnego Coding Agent",
+  "No local connection request": "Brak żądania lokalnego połączenia",
+  "Connected to local Pi Coding Agent": "Połączono z lokalnym Pi Coding Agent",
+  "Waiting for local approval": "Oczekiwanie na lokalne zatwierdzenie",
+  "Local connection rejected": "Lokalne połączenie odrzucone",
+  "Allow local Coding Agent?": "Zezwolić na lokalnego Coding Agent?",
+  "Allow this local Pi Coding Agent to start tasks automatically when Browser Agent is idle and the composer is empty? No task confirmation or Send is required. Model-provider access, site access, and action confirmations still apply. Disconnect to revoke this permission.":
+    "Zezwolić temu lokalnemu Pi Coding Agent na automatyczne uruchamianie zadań, gdy Browser Agent jest bezczynny, a pole tekstowe jest puste? Potwierdzenie zadania ani Send nie są wymagane. Nadal obowiązują zgody na dostęp do dostawcy modelu i witryny oraz potwierdzenia działań. Rozłącz, aby cofnąć to uprawnienie.",
+  "Allow model-provider and current-site access for the Coding task?":
+    "Zezwolić na dostęp do dostawcy modelu i bieżącej witryny dla zadania Coding?",
+  "Disconnect local Coding Agent?": "Rozłączyć lokalnego Coding Agent?",
+  "Disconnect cancels delegated work but does not undo completed actions.":
+    "Rozłączenie anuluje zleconą pracę, ale nie cofa wykonanych działań.",
+  "Pi uses Chrome's local remote debugging endpoint. No external relay is used.":
+    "Pi używa lokalnego endpointu zdalnego debugowania Chrome. Nie jest używany zewnętrzny serwer pośredniczący.",
+  "Local connection failed or was interrupted; no operation was retried.":
+    "Lokalne połączenie nie powiodło się lub zostało przerwane; żadna operacja nie została ponowiona.",
+  "Coding task": "Zadanie programistyczne",
+  "Cancel coding task": "Anuluj zadanie programistyczne",
+  "Send the following task to the connected Coding Agent?":
+    "Wysłać następujące zadanie do połączonego Coding Agent?",
+
   "Reset page pinch zoom before capturing a region":
     "Zresetuj powiększenie gestem szczypania przed przechwyceniem obszaru",
   "Capture region": "Przechwyć obszar",

@@ -1,6 +1,32 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Local Coding Agent connection": "本機 Coding Agent 連線",
+  "Run /browser-connect in Pi for Browser Agent in this Chrome profile, then allow the request here.":
+    "在 Pi 中為此 Chrome 設定檔的 Browser Agent 執行 /browser-connect，然後在此允許請求。",
+  "Allow local connection": "允許本機連線",
+  "Disconnect local Coding Agent": "中斷本機 Coding Agent 連線",
+  "No local connection request": "沒有本機連線請求",
+  "Connected to local Pi Coding Agent": "已連線至本機 Pi Coding Agent",
+  "Waiting for local approval": "等待本機核准",
+  "Local connection rejected": "本機連線遭拒",
+  "Allow local Coding Agent?": "要允許本機 Coding Agent 嗎？",
+  "Allow this local Pi Coding Agent to start tasks automatically when Browser Agent is idle and the composer is empty? No task confirmation or Send is required. Model-provider access, site access, and action confirmations still apply. Disconnect to revoke this permission.":
+    "允許這個本機 Pi Coding Agent 在 Browser Agent 閒置且輸入框為空時自動開始任務嗎？不必再次確認任務或按 Send。模型供應商存取、網站存取與動作確認仍然適用。中斷連線即可撤銷此權限。",
+  "Allow model-provider and current-site access for the Coding task?":
+    "要允許 Coding 任務存取模型供應商與目前網站嗎？",
+  "Disconnect local Coding Agent?": "要中斷本機 Coding Agent 連線嗎？",
+  "Disconnect cancels delegated work but does not undo completed actions.":
+    "中斷連線會取消委派的工作，但不會復原已完成的動作。",
+  "Pi uses Chrome's local remote debugging endpoint. No external relay is used.":
+    "Pi 使用 Chrome 的本機遠端偵錯端點，不使用外部轉送服務。",
+  "Local connection failed or was interrupted; no operation was retried.":
+    "本機連線失敗或已中斷；未重試任何操作。",
+  "Coding task": "程式設計工作",
+  "Cancel coding task": "取消程式設計工作",
+  "Send the following task to the connected Coding Agent?":
+    "要將以下工作傳送至已連線的 Coding Agent 嗎？",
+
   "Reset page pinch zoom before capturing a region": "擷取區域前請重設頁面的雙指縮放",
   "Capture region": "擷取區域",
   "Cancel region capture": "取消區域擷取",

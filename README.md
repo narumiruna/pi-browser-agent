@@ -2,7 +2,7 @@
 
 Pi Browser Agent is a Chrome-native AI assistant. The Side Panel runs `pi-agent-core` and the browser-compatible built-in provider/model catalog from `pi-ai`. Chat works on any tab; bounded page tools work only on the active, accessible HTTP(S) tab in the focused Chrome window. With separate approval, Pi can also search or inspect recent Chrome bookmarks without a web page.
 
-No local agent process, native host, shell, general filesystem access, pairing secret, or loopback connection is required. Skill import reads a selected local file or a selected public GitHub `SKILL.md` after explicit repository fetch and host approval.
+Normal extension use requires no local agent process, native host, shell, general filesystem access, or loopback connection. The optional project-local Pi plugin keeps Pi in WSL and uses a Windows Bun helper to attach to your existing Windows Chrome profile through Chrome's user-enabled loopback CDP endpoint. Skill import reads a selected local file or a selected public GitHub `SKILL.md` after explicit repository fetch and host approval.
 
 ## Requirements
 
@@ -52,9 +52,9 @@ Pi Browser Agent registers the browser-compatible built-in `pi-ai` providers and
 
 Settings opens in an independent full browser tab with a centered shell at most 1080 px wide. Its six panels remain mounted: **Model**, **Tools**, **MCP**, **Skills**, **Appearance**, and **Instructions**. At widths of 800 px or more, section navigation is vertical; use Up/Down Arrow. Below 800 px, tabs scroll horizontally; use Left/Right Arrow. Home/End selects the first/last section in either layout.
 
-Switching sections keeps drafts. **Save general settings** saves changed general fields and explicit model/thinking selections. Untouched preferences saved by another Settings tab remain unchanged. A persistent footer identifies general changes, unsaved MCP edits, and unimported skill reviews separately. Save is disabled when there are no general changes or explicit model/thinking apply intent. Pending credential, approval, MCP, or Skills operations block general Save, Back, and Cancel.
+Switching sections keeps drafts. **Save general settings** saves changed general fields and explicit model/thinking selections. Untouched preferences saved by another Settings tab remain unchanged. A persistent footer identifies general changes, unsaved MCP edits, and unimported skill reviews separately. Save is disabled when there are no general changes or explicit model/thinking apply intent. Pending credential, approval, MCP, local Coding connection, or Skills operations block general Save, Back, and Cancel.
 
-General Save asks before discarding pending MCP or Skills drafts; it does not save them. Back, Escape, and **Cancel** also protect drafts. Browser reload and close use Chrome's unsaved-change warning. Resource actions, credential changes, and **Clear remembered approvals** take effect separately; Cancel does not undo them.
+General Save asks before discarding pending MCP or Skills drafts; it does not save them. Local Coding connection controls have no draft and take effect separately. Back, Escape, and **Cancel** also protect drafts. Browser reload and close use Chrome's unsaved-change warning. Resource actions, credential changes, and **Clear remembered approvals** take effect separately; Cancel does not undo them.
 
 Model shows credential missing/configured status and **Account** or **API key**, not a live model-request test. Thinking choices depend on the selected model. A model without a supported stored level shows disabled **Not applicable** and retains the saved preference. Unsupported explicit choices require correction; unrelated saves do not rewrite the preference.
 
@@ -77,6 +77,16 @@ Open **Settings → Skills**. The installed list shows names, descriptions, and 
 Review the complete original source, parsed fields, and compatibility warnings as plain text. GitHub reviews also show the repository, full path, commit SHA, and a source link. Only name, description, and body are saved; source identity and optional frontmatter fields are review-only. Replacement requires an explicitly selected installed target. Imports and replacements start disabled. Enable a reviewed skill, then ask for it by name in chat. These Settings actions send no model request; a submitted run shares enabled metadata, and the model can request the body with `skills_load({id})`.
 
 Skills provide untrusted, user-authorized task guidance. They cannot grant permissions or bypass browser confirmations. This is partial Agent Skills text support, not full skill execution: scripts, supporting files, local tools, and local directory discovery are unavailable. GitHub reads use its public API without cookies or credentials; installed records have no update tracking, and runtime loading makes no GitHub request. Changes apply to the next run. Disabling or deleting blocks future loads, but previous content remains in saved conversations; deleting sessions does not delete skills. See [format, network limits, and recovery](docs/skills.md).
+
+## Project-local Coding Agent integration
+
+The optional Pi plugin in `.pi/extensions/browser-tasks/` attaches to already-running Windows Chrome 144 or newer; it does not launch a browser or create or copy a profile. Pi stays in WSL. An installed Windows Bun runtime runs the helper through WSL interop; the plugin discovers it but never installs it. No project server, port forwarding, Native Messaging registration, external relay, endpoint input, token, or feature environment flag is used. Chrome's own loopback CDP endpoint is required and grants broad authority over the existing profile.
+
+Build `dist/chrome` and load it in your existing Windows Chrome. If already loaded, select its **Reload** action at `chrome://extensions`. Enable remote debugging yourself at `chrome://inspect/#remote-debugging`. Start Pi from this repository root, approve project trust, and run `/reload` if Pi was already open. In an idle session, run `/browser-connect` without arguments, enter the public 32-letter extension ID from Windows `chrome://extensions` once, and confirm profile trust and automatic task execution. Pi saves the ID in `<getAgentDir()>/pi-browser-agent.json`, normally `~/.pi/agent/pi-browser-agent.json`; later connections reuse it without another input prompt. Approve Chrome's native connection prompt yourself. In **Settings → Tools → Local Coding Agent connection**, select **Allow local connection** and confirm. This real button gesture opens the conversation Side Panel; keep it open. Existing Browser credentials stay in that profile and are not copied to or from Pi.
+
+Pi's `browser_task` submits once and waits for a final answer. After explicit connection consent, a task starts automatically when Browser is ready and idle with an empty composer. No extra Pi task confirmation or Browser **Send** is required. Missing provider or site access opens a permission confirmation; existing browser-action confirmations remain unchanged. Browser's `coding_task` requires fresh confirmation, then waits for Pi's explicit `/browser-inbox`, `/browser-accept <task-id>`, and confirmed `browser_task_reply`. Shared content is limited to task text and the selected answer. Browser permissions, authentication, visible-tab checks, and action confirmations remain required. Interrupted work is never automatically replayed.
+
+`/browser-disconnect`, Pi shutdown, reload, and session replacement revoke this plugin's local approval when possible and detach its CDP sessions, WebSocket, and helper. Chrome, its tabs, and its profile remain running and intact. Tasks are memory-only; connection loss can leave stale approval or in-flight work. Inspect and stop Browser work, then revoke stale approval in Settings before connecting again. No automatic replay or reconnection occurs. The narrow adapter gives model tools no general CDP or credential API, but it is not a sandbox against a malicious local Pi environment with CDP authority over your personal profile. Local describes inter-agent transport, not offline model requests or browsing. See [setup, tools, trust limits, and verification status](docs/browser-tasks.md).
 
 ## Browser safety
 
@@ -207,3 +217,4 @@ Set the repository Actions secret `PAT_TOKEN` to a fine-grained personal access 
 - [WebMCP status](docs/webmcp.md)
 - [Remote MCP](docs/mcp.md)
 - [Browser skills](docs/skills.md)
+- [Local Pi ↔ Browser tasks](docs/browser-tasks.md)

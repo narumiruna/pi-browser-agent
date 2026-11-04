@@ -1,6 +1,32 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Local Coding Agent connection": "Lokale verbinding met Coding Agent",
+  "Run /browser-connect in Pi for Browser Agent in this Chrome profile, then allow the request here.":
+    "Voer /browser-connect uit in Pi voor Browser Agent in dit Chrome-profiel en sta het verzoek hier toe.",
+  "Allow local connection": "Lokale verbinding toestaan",
+  "Disconnect local Coding Agent": "Verbinding met lokale Coding Agent verbreken",
+  "No local connection request": "Geen lokaal verbindingsverzoek",
+  "Connected to local Pi Coding Agent": "Verbonden met lokale Pi Coding Agent",
+  "Waiting for local approval": "Wachten op lokale goedkeuring",
+  "Local connection rejected": "Lokale verbinding geweigerd",
+  "Allow local Coding Agent?": "Lokale Coding Agent toestaan?",
+  "Allow this local Pi Coding Agent to start tasks automatically when Browser Agent is idle and the composer is empty? No task confirmation or Send is required. Model-provider access, site access, and action confirmations still apply. Disconnect to revoke this permission.":
+    "Mag deze lokale Pi Coding Agent taken automatisch starten als Browser Agent niet actief is en het invoerveld leeg is? Taakbevestiging of Send is niet nodig. Toestemming voor toegang tot de modelprovider en website en bevestiging van acties blijven vereist. Verbreek de verbinding om deze toestemming in te trekken.",
+  "Allow model-provider and current-site access for the Coding task?":
+    "Toegang tot de modelprovider en huidige website toestaan voor de Coding-taak?",
+  "Disconnect local Coding Agent?": "Verbinding met lokale Coding Agent verbreken?",
+  "Disconnect cancels delegated work but does not undo completed actions.":
+    "Het verbreken van de verbinding annuleert gedelegeerd werk, maar maakt voltooide acties niet ongedaan.",
+  "Pi uses Chrome's local remote debugging endpoint. No external relay is used.":
+    "Pi gebruikt het lokale endpoint voor remote debugging van Chrome. Er wordt geen externe relay gebruikt.",
+  "Local connection failed or was interrupted; no operation was retried.":
+    "De lokale verbinding is mislukt of onderbroken; geen bewerking is opnieuw geprobeerd.",
+  "Coding task": "Programmeertaak",
+  "Cancel coding task": "Programmeertaak annuleren",
+  "Send the following task to the connected Coding Agent?":
+    "De volgende taak naar de verbonden Coding Agent sturen?",
+
   "Reset page pinch zoom before capturing a region":
     "Stel de knijpzoom van de pagina opnieuw in voordat u een gebied vastlegt",
   "Capture region": "Gebied vastleggen",

@@ -6,6 +6,7 @@ import {
 } from "../agent/confirmation-policy.js"
 import { BrowserAgentRuntime } from "../agent/runtime.js"
 import { safeErrorMessage } from "../auth/redaction.js"
+import { LocalCodingBridge } from "../coding-agent/bridge.js"
 import { type DocumentLanguageObserver, observeDocumentLanguage } from "../i18n/dom.js"
 import { t } from "../i18n/index.js"
 import {
@@ -176,6 +177,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   let voiceInput: VoiceInputController | undefined
   let voiceInputStarting = false
   let authentication: AuthenticationController | undefined
+  let codingBridge: LocalCodingBridge | undefined
   let languageWatcher: DocumentLanguageObserver | undefined
   let currentStatus: ConversationTextKey | (() => string) = "ready"
   let currentStatusOptions: { busy?: boolean; streaming?: boolean } = {}
@@ -201,6 +203,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     details?: JsonObject,
     signal?: AbortSignal,
     presentation?: ConfirmationPresentation,
+    requiredAccess?: () => Promise<boolean>,
   ): Promise<boolean> {
     const displayedMessage = presentation?.message ?? message
     const detailText = details ? JSON.stringify(details, null, 2) : ""
@@ -212,9 +215,13 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     return new Promise((resolve) => {
       let finished = false
       const requestRequiredAccess = (event: MouseEvent): void => {
+        if (requiredAccess && !event.isTrusted) {
+          event.preventDefault()
+          return
+        }
         const targetUrl = details?.targetUrl
         const requiredPermission = details?.requiredPermission
-        let requestAccess: (() => Promise<boolean>) | undefined
+        let requestAccess = requiredAccess
         let denialMessage = t("Required browser access was not granted")
         if (typeof targetUrl === "string") {
           let destination: URL
@@ -235,7 +242,14 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
         }
         if (!requestAccess) return
         event.preventDefault()
-        void requestAccess()
+        let access: Promise<boolean>
+        try {
+          access = requestAccess()
+        } catch {
+          confirmDialog.close("cancel")
+          return
+        }
+        void access
           .then((granted) => {
             if (finished || !confirmDialog.open) return
             if (granted) confirmDialog.close("confirm")
@@ -442,6 +456,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   }
 
   function onAgentEvent(event: AgentEvent): void {
+    codingBridge?.onAgentEvent(event)
     switch (event.type) {
       case "agent_start":
         if (pendingSubmission?.guard === activeSubmissionGuard) pendingSubmission?.accept()
@@ -474,6 +489,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     confirm: confirmation,
     onAuthEvent: (event) => authentication?.onAuthEvent(event),
     onAgentEvent,
+    codingTools: () => codingBridge?.tools() ?? [],
     onSettingsModelChanged: () => void run(refreshActiveSessionUi, setError),
     onPersistenceError: setError,
     onPreparing: (preparing) =>
@@ -922,28 +938,110 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     }
   }
 
-  async function requestRunAccess(hasSelectedElements: boolean): Promise<{
+  async function requestRunAccess(
+    hasSelectedElements: boolean,
+    automaticSignal?: AbortSignal,
+    assertCurrent?: () => void,
+  ): Promise<{
     context?: TabContext
     usePage: boolean
   }> {
     const initial = await refreshTabContext()
+    assertCurrent?.()
     const usePage =
       initial !== undefined && (!runtime.agent.state.isStreaming || runtime.usesPageContext)
-    const modelEndpoints = await runtime.configuration.requiredModelEndpointUrls(
-      () => runtime.model,
-    )
-    if (!(await requestHostPermissions([...(usePage ? [initial.url] : []), ...modelEndpoints]))) {
-      throw new Error(t("Required model-provider or current-site access was not granted"))
+    let permissionRequested = false
+    let contextChanged = false
+    const navigation = (tabId: number, change: chrome.tabs.OnUpdatedInfo): void => {
+      if (tabId === initial?.tabId && (change.url !== undefined || change.status === "loading"))
+        contextChanged = true
     }
-    const current = await refreshTabContext()
-    if (usePage && (!current || current.tabId !== initial.tabId || current.url !== initial.url)) {
-      throw new Error(
-        hasSelectedElements
-          ? t("The page changed before selected elements could be sent. Select them again.")
-          : t("The page changed while access was being granted. Send the prompt again."),
+    const activation = (): void => {
+      contextChanged = true
+    }
+    const focus = (windowId: number): void => {
+      if (windowId !== chrome.windows.WINDOW_ID_NONE && windowId !== ownerWindowId)
+        contextChanged = true
+    }
+    const watchContext = automaticSignal !== undefined && usePage
+    if (watchContext) {
+      chrome.tabs.onUpdated.addListener(navigation)
+      chrome.tabs.onActivated.addListener(activation)
+      chrome.windows.onFocusChanged.addListener(focus)
+    }
+    try {
+      const modelEndpoints = await runtime.configuration.requiredModelEndpointUrls(
+        () => runtime.model,
       )
+      assertCurrent?.()
+      const urls = [...(usePage ? [initial.url] : []), ...modelEndpoints]
+      const assertAccessContext = (): void => {
+        automaticSignal?.throwIfAborted()
+        assertCurrent?.()
+        if (
+          contextChanged ||
+          (automaticSignal &&
+            usePage &&
+            !permissionRequested &&
+            (!currentTabContext || !sameTabContext(currentTabContext, initial)))
+        ) {
+          throw new RuntimeError(
+            "STALE_CONTEXT",
+            "The page changed before the Coding task could start",
+          )
+        }
+      }
+      const hasAccess = async (): Promise<boolean> =>
+        (await Promise.all(urls.map(hasApprovedHostPermission))).every(Boolean)
+      if (automaticSignal) {
+        assertAccessContext()
+        const allowed = await hasAccess()
+        assertAccessContext()
+        if (!allowed) {
+          const approved = await showConfirmation(
+            t("Allow model-provider and current-site access for the Coding task?"),
+            { origins: [...new Set(urls.map((url) => new URL(url).origin))] },
+            automaticSignal,
+            undefined,
+            () => {
+              assertAccessContext()
+              // Chrome's native permission UI can change focus, but must not change the document.
+              permissionRequested = true
+              return requestHostPermissions(urls)
+            },
+          )
+          if (!approved || !(await hasAccess())) {
+            throw new Error(t("Required model-provider or current-site access was not granted"))
+          }
+        }
+        assertAccessContext()
+      } else if (!(await requestHostPermissions(urls))) {
+        throw new Error(t("Required model-provider or current-site access was not granted"))
+      }
+      const current = await refreshTabContext()
+      assertCurrent?.()
+      if (
+        usePage &&
+        (!current ||
+          current.tabId !== initial.tabId ||
+          current.url !== initial.url ||
+          (automaticSignal &&
+            (contextChanged || (!permissionRequested && !sameTabContext(current, initial)))))
+      ) {
+        throw new Error(
+          hasSelectedElements
+            ? t("The page changed before selected elements could be sent. Select them again.")
+            : t("The page changed while access was being granted. Send the prompt again."),
+        )
+      }
+      return { context: usePage ? current : undefined, usePage }
+    } finally {
+      if (watchContext) {
+        chrome.tabs.onUpdated.removeListener(navigation)
+        chrome.tabs.onActivated.removeListener(activation)
+        chrome.windows.onFocusChanged.removeListener(focus)
+      }
     }
-    return { context: usePage ? current : undefined, usePage }
   }
 
   function microphoneAccessUrl(): string {
@@ -1006,6 +1104,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     if (treeSessionId !== sessionId)
       throw new Error(t("The conversation changed. Open /tree again."))
     if (draftText.trim()) throw new Error(t("Clear the unsent draft before changing branches"))
+    codingBridge?.stopSession()
     const restored = restoreComposerImages(runtime.previewTreeSelection(nodeId).images).map(
       (image) => ({ ...image, id: crypto.randomUUID() }),
     )
@@ -1138,13 +1237,23 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     }
   }
 
-  function submitPrompt(queueAfterCurrentTask = false): void {
+  function submitPrompt(
+    queueAfterCurrentTask = false,
+    userGesture = false,
+    automaticSubmission?: AbortController,
+  ): void {
     if (regionCapture?.sendBlocked) {
       setError(t("Finish or cancel region capture before sending"))
       return
     }
     const draft = promptInput.value
-    const parsed = parseSlashCommand(draft)
+    const offered = codingBridge?.isOfferedDraft(draft) === true
+    if (automaticSubmission) {
+      if (!offered) return
+      codingBridge?.assertSubmission(automaticSubmission)
+    } else if (offered && !userGesture) return
+    // Delegated text is model input, never a local slash command.
+    const parsed = offered ? { kind: "prompt" as const, text: draft } : parseSlashCommand(draft)
     if (parsed.kind === "invalid") {
       setError(parsed.error)
       return
@@ -1185,7 +1294,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       return
     }
     const draftText = promptInput.value
-    const text = parsed.text.trim()
+    const text = offered ? parsed.text : parsed.text.trim()
     const submittedImages = composerImages.map((image) => ({
       id: image.id,
       content: { ...image.content },
@@ -1211,7 +1320,29 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     const annotationAbort = withAnnotation ? new AbortController() : undefined
     annotationSubmissionAbort = annotationAbort
     const submissionGuard = {}
+    if (offered && (submittedImages.length > 0 || submittedElements.length > 0 || withAnnotation))
+      codingBridge?.cancelOffered(false)
+    const codingSubmission = automaticSubmission ?? codingBridge?.beginSubmission(draftText)
+    let automaticContext: TabContext | undefined
     const assertSubmission = (): void => {
+      if (codingSubmission) codingBridge?.assertSubmission(codingSubmission)
+      if (
+        automaticSubmission &&
+        (runtime.agent.state.isStreaming ||
+          authentication?.isBusy ||
+          commandInProgress ||
+          document.body.dataset.conversationReady !== "true" ||
+          promptInput.value !== draftText ||
+          composerImages.length > 0 ||
+          selectedElements.length > 0 ||
+          (automaticContext &&
+            (!currentTabContext || !sameTabContext(automaticContext, currentTabContext))))
+      ) {
+        throw new RuntimeError(
+          "REQUEST_CANCELLED",
+          "The Coding task can no longer start automatically",
+        )
+      }
       if (
         disposed ||
         activeSubmissionGuard !== submissionGuard ||
@@ -1236,7 +1367,10 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
         assertSubmission()
         const { context: submissionTabContext, usePage } = await requestRunAccess(
           submittedElements.length > 0 || withAnnotation,
+          automaticSubmission?.signal,
+          assertSubmission,
         )
+        automaticContext = automaticSubmission ? submissionTabContext : undefined
         assertSubmission()
         if (withAnnotation) {
           const drawingContext = pageAnnotation?.tabContext
@@ -1311,15 +1445,23 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
           submittedElements.map((element) => element.context),
           usePage,
         ] as const
-        const submission = withAnnotation
-          ? runtime.submit(...submissionArgs, assertSubmission)
-          : runtime.submit(...submissionArgs)
+        if (codingSubmission) {
+          assertSubmission()
+          codingBridge?.startSubmission(codingSubmission)
+        }
+        const submission =
+          withAnnotation || codingSubmission
+            ? runtime.submit(...submissionArgs, assertSubmission)
+            : runtime.submit(...submissionArgs)
         const mode = await submission
+        if (codingSubmission)
+          await codingBridge?.finishSubmission(codingSubmission, mode === "prompt")
         if (mode !== "prompt") {
           accept()
           setRunStatus("instructionQueued", { busy: true, streaming: true })
         }
       } catch (error) {
+        if (codingSubmission) await codingBridge?.finishSubmission(codingSubmission, false)
         if (withAnnotation && !annotationAbort?.signal.aborted)
           await pageAnnotation?.resume().catch(() => undefined)
         if (!annotationAbort?.signal.aborted) throw error
@@ -1338,6 +1480,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   }
 
   async function clearElementComposerContext(): Promise<void> {
+    codingBridge?.stopSession()
     cancelAnnotationSubmission()
     if (regionCapture?.occupied) await regionCapture.cancel(false)
     if (pageAnnotation?.occupied) await pageAnnotation.stop()
@@ -1372,6 +1515,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     else {
       voiceInput?.stop({ discardResults: true })
       promptInput.value = text
+      codingBridge?.composerChanged()
       resizePromptInput()
     }
   }
@@ -1403,6 +1547,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     onTranscript(text) {
       if (regionCapture?.occupied || pageAnnotation?.occupied || annotationSubmissionAbort) return
       promptInput.value = text
+      codingBridge?.composerChanged()
       resizePromptInput()
     },
     onListeningChange(listening) {
@@ -1427,8 +1572,8 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   grantSiteButton.addEventListener("click", () => {
     void run(requestActiveSiteAccess, setError)
   })
-  sendButton.addEventListener("click", () => submitPrompt())
-  queueInstructionButton.addEventListener("click", () => submitPrompt(true))
+  sendButton.addEventListener("click", (event) => submitPrompt(false, event.isTrusted))
+  queueInstructionButton.addEventListener("click", (event) => submitPrompt(true, event.isTrusted))
   elementPickerButton.addEventListener("click", () => {
     void run(toggleElementPicker, setError)
   })
@@ -1459,6 +1604,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       })
   })
   promptInput.addEventListener("input", () => {
+    codingBridge?.composerChanged()
     voiceInput?.stop({ discardResults: true })
     resizePromptInput()
   })
@@ -1470,14 +1616,18 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     if (commandMenu.handleKeyDown(event)) return
     if (event.key === "Escape" && runtime.agent.state.isStreaming) {
       event.preventDefault()
+      codingBridge?.cancelOffered()
       runtime.abort()
       return
     }
     if (event.key !== "Enter" || event.shiftKey || event.isComposing) return
     event.preventDefault()
-    submitPrompt(event.altKey)
+    submitPrompt(event.altKey, event.isTrusted)
   })
-  abortButton.addEventListener("click", () => runtime.abort())
+  abortButton.addEventListener("click", () => {
+    codingBridge?.cancelOffered()
+    runtime.abort()
+  })
   transcript.addEventListener("scroll", updateScrollToBottomButton, { passive: true })
   scrollToBottomButton.addEventListener("click", () => {
     transcript.scrollTo({ top: transcript.scrollHeight, behavior: "smooth" })
@@ -1681,6 +1831,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   window.addEventListener("focus", () => void refreshPickerShortcut())
   window.addEventListener("pagehide", () => {
     disposed = true
+    codingBridge?.dispose()
     languageWatcher?.()
     document.body.dataset.conversationReady = "false"
     pickerStartVersion += 1
@@ -1701,6 +1852,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   function isPresentationBusy(): boolean {
     return (
       disposed ||
+      document.body.dataset.conversationReady !== "true" ||
       runtime.isBusy ||
       Boolean(authentication?.isBusy) ||
       Boolean(activeSubmissionGuard) ||
@@ -1720,11 +1872,52 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   }
 
   await runtime.initialize()
+  const ownerWindowId = (await chrome.windows.getCurrent()).id
+  if (ownerWindowId !== undefined && !disposed) {
+    const taskChip = element<HTMLElement>("coding-task-chip")
+    const taskLabel = element<HTMLElement>("coding-task-label")
+    const taskCancel = element<HTMLButtonElement>("coding-task-cancel")
+    taskLabel.textContent = t("Coding task")
+    taskCancel.ariaLabel = taskCancel.title = t("Cancel coding task")
+    codingBridge = new LocalCodingBridge({
+      windowId: ownerWindowId,
+      sessionId: () => runtime.activeSession.id,
+      busy: () => isPresentationBusy() || composerImages.length > 0 || selectedElements.length > 0,
+      draft: () => promptInput.value,
+      offer(text) {
+        promptInput.value = text
+        commandMenu.close()
+        resizePromptInput()
+      },
+      submit() {
+        const token = codingBridge?.beginSubmission(promptInput.value)
+        if (token) submitPrompt(false, false, token)
+      },
+      clearOffer(text) {
+        if (promptInput.value === text) promptInput.value = ""
+        resizePromptInput()
+      },
+      showTask(visible) {
+        taskChip.hidden = !visible
+      },
+      abort: () => runtime.abort(),
+      redactAnswer: (text) => runtime.configuration.credentials.redact(text),
+      confirm: (message, details, signal) =>
+        showConfirmation(message, details, signal, {
+          message: t("Send the following task to the connected Coding Agent?"),
+        }),
+    })
+    taskCancel.addEventListener("click", () => codingBridge?.cancelOffered())
+    await codingBridge.initialize(window)
+  }
   languageWatcher = observeDocumentLanguage({
     isBusy: isPresentationBusy,
     refresh() {
       newSessionButton.ariaLabel = newSessionButton.title = conversationText("newSession")
       abortButton.textContent = conversationText("stop")
+      element<HTMLElement>("coding-task-label").textContent = t("Coding task")
+      const codingCancel = element<HTMLButtonElement>("coding-task-cancel")
+      codingCancel.ariaLabel = codingCancel.title = t("Cancel coding task")
       queueInstructionButton.ariaLabel = queueInstructionButton.title =
         conversationText("queueInstruction")
       voiceButton.ariaLabel = voiceButton.title = conversationText(

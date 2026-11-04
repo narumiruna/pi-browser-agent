@@ -1,6 +1,32 @@
 import type { Catalog } from "./en.js"
 
 export default {
+  "Local Coding Agent connection": "Yerel Coding Agent bağlantısı",
+  "Run /browser-connect in Pi for Browser Agent in this Chrome profile, then allow the request here.":
+    "Bu Chrome profilindeki Browser Agent için Pi'de /browser-connect komutunu çalıştırın, ardından isteğe buradan izin verin.",
+  "Allow local connection": "Yerel bağlantıya izin ver",
+  "Disconnect local Coding Agent": "Yerel Coding Agent bağlantısını kes",
+  "No local connection request": "Yerel bağlantı isteği yok",
+  "Connected to local Pi Coding Agent": "Yerel Pi Coding Agent bağlantısı kuruldu",
+  "Waiting for local approval": "Yerel onay bekleniyor",
+  "Local connection rejected": "Yerel bağlantı reddedildi",
+  "Allow local Coding Agent?": "Yerel Coding Agent'a izin verilsin mi?",
+  "Allow this local Pi Coding Agent to start tasks automatically when Browser Agent is idle and the composer is empty? No task confirmation or Send is required. Model-provider access, site access, and action confirmations still apply. Disconnect to revoke this permission.":
+    "Browser Agent boşta ve giriş alanı boşken bu yerel Pi Coding Agent görevleri otomatik başlatsın mı? Görev onayı veya Send gerekmez. Model sağlayıcısı ve site erişim izinleri ile eylem onayları hâlâ gereklidir. Bu izni kaldırmak için bağlantıyı kesin.",
+  "Allow model-provider and current-site access for the Coding task?":
+    "Coding görevi için model sağlayıcısına ve geçerli siteye erişime izin verilsin mi?",
+  "Disconnect local Coding Agent?": "Yerel Coding Agent bağlantısı kesilsin mi?",
+  "Disconnect cancels delegated work but does not undo completed actions.":
+    "Bağlantıyı kesmek devredilen işi iptal eder ancak tamamlanmış işlemleri geri almaz.",
+  "Pi uses Chrome's local remote debugging endpoint. No external relay is used.":
+    "Pi, Chrome'un yerel uzaktan hata ayıklama uç noktasını kullanır. Harici aktarıcı kullanılmaz.",
+  "Local connection failed or was interrupted; no operation was retried.":
+    "Yerel bağlantı başarısız oldu veya kesintiye uğradı; hiçbir işlem yeniden denenmedi.",
+  "Coding task": "Kodlama görevi",
+  "Cancel coding task": "Kodlama görevini iptal et",
+  "Send the following task to the connected Coding Agent?":
+    "Aşağıdaki görev bağlı Coding Agent'a gönderilsin mi?",
+
   "Reset page pinch zoom before capturing a region":
     "Bir bölge yakalamadan önce sayfanın sıkıştırma yakınlaştırmasını sıfırlayın",
   "Capture region": "Bölgeyi yakala",
