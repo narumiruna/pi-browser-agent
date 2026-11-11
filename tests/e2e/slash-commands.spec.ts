@@ -120,7 +120,7 @@ async function expectLocalOnly(harness: ExtensionHarness, network: string[]): Pr
 }
 
 async function protectedPage(harness: ExtensionHarness): Promise<void> {
-  await harness.fixturePage.goto("chrome://settings/", { waitUntil: "domcontentloaded" })
+  await harness.fixturePage.goto("chrome://version/", { waitUntil: "domcontentloaded" })
   await harness.fixturePage.bringToFront()
   await expect(harness.controller.locator("#page-status")).toContainText("cannot read or operate")
 }

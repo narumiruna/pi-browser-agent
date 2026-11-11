@@ -67,7 +67,14 @@ test.beforeEach(async () => {
     })
   })
   await configureMockCodex(harness)
-  await harness.fixturePage.setViewportSize({ width: 1000, height: 700 })
+  // Keep the emulated viewport and native capture surface aligned on macOS.
+  const cdp = await harness.context.newCDPSession(harness.fixturePage)
+  await cdp.send("Emulation.setDeviceMetricsOverride", {
+    width: 1000,
+    height: 700,
+    deviceScaleFactor: 1,
+    mobile: false,
+  })
   await harness.fixturePage.evaluate(() => {
     document.body.innerHTML =
       '<button id="outside" style="position:fixed;left:600px;top:500px" onclick="document.body.dataset.activated=\'true\'">Unrelated outside page text</button>'

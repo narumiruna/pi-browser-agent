@@ -44,7 +44,14 @@ test.beforeEach(async () => {
     })
   })
   await configureMockCodex(harness)
-  await harness.fixturePage.setViewportSize({ width: 1000, height: 700 })
+  // Keep the emulated viewport and native capture surface aligned on macOS.
+  const cdp = await harness.context.newCDPSession(harness.fixturePage)
+  await cdp.send("Emulation.setDeviceMetricsOverride", {
+    width: 1000,
+    height: 700,
+    deviceScaleFactor: 1.5,
+    mobile: false,
+  })
   await harness.fixturePage.evaluate(() => {
     document.body.style.cssText = "margin:0;background:white;min-height:2400px"
     const target = document.querySelector<HTMLButtonElement>("#complete")
