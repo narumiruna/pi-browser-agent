@@ -38,8 +38,15 @@
 - Source: [review comment](https://github.com/narumiruna/pi-browser-agent/pull/147#discussion_r4540675512), thread `PRRT_kwDOUc3tMc62RLP5`. The conversation security summary repeats this item.
 - Evidence: the initial credential was only type-checked. Listeners started after confirmation and ignored changes until `expectedAccess` was set. `getAuth()` could then select another stored account. The old refresh test even changed the account claim.
 - Scope: this breaks the PR's new per-call quota authorization. No active exploit or website credential-write path was shown.
-- Outcome: already addressed in this revision. Bind confirmation to the initial ChatGPT account claim and check stored `accountId` when present. Install listeners before confirmation. Account replacement/removal cancels the dialog and authentication; late replies cannot dispatch. Recheck stored and resolved account identity before dispatch and publication. Permit same-account refresh before dispatch and retain access-token checks after authentication.
+- Outcome: already addressed in this revision. Bind confirmation to the initial ChatGPT account claim and check stored `accountId` when present. Install listeners before confirmation. Account replacement/removal cancels the dialog and authentication; late replies cannot dispatch. Recheck stored and resolved account identity before dispatch and publication. Permit same-account credential changes before authentication resolves and retain access-token checks after authentication.
 - Tests: unit cases cover replacement with and without storage events, removal and restoration, late authentication, conflicting metadata, same-account refresh, and listener cleanup. The integration test covers the real serialized refresh path. Two browser cases change credentials from a separate Settings context and verify cancellation or valid same-account rotation without replay.
+
+### R7 — Credential-replacement disclosure, P2
+
+- Source: [review comment](https://github.com/narumiruna/pi-browser-agent/pull/147#discussion_r4541985446), thread `PRRT_kwDOUc3tMc62ULOO`.
+- Evidence: `src/browser/imagegen/tool.ts` checks account identity while `expectedAccess` is unset. It sets `expectedAccess` only after `getAuth()` resolves. Before that point, credentials for the same account can replace the initial tokens and the request can continue. The implementation does not distinguish OAuth refresh from an explicit same-account replacement. The existing unit and browser tests cover same-account token replacement during confirmation.
+- Scope: this PR's security and feature documents incorrectly claim that every credential replacement cancels local work. The account-continuity fix remains valid; no different-account request is demonstrated.
+- Outcome: already addressed by this documentation revision. `docs/security.md`, `docs/image-generation.md`, and `docs/architecture.md` now state the same-account exception before authentication resolves and the access-token check after resolution. Credential removal, account changes, origin revocation, abort, shutdown, and late-result rejection remain documented. No runtime change is needed.
 
 ### R5 — Docstring coverage warning, P3
 
@@ -64,7 +71,7 @@
 
 - Source: [original CI run](https://github.com/narumiruna/pi-browser-agent/actions/runs/43059228237).
 - Evidence: on `5dbce18`, Playwright dependency installation failed because Ubuntu package hosts did not resolve. Commit `6c728db` replaces that install with the version-matched Playwright container. The workflow unit test checks the locked version. No CI run exists for `7a12a0c`.
-- Outcome: already addressed in source. A new published commit still needs its remote CI result. Local validation below passes; it does not prove GitHub runner availability.
+- Outcome: already addressed and verified remotely. [CI run 43080600171](https://github.com/narumiruna/pi-browser-agent/actions/runs/43080600171) passed on `2fd3fab`, including the full `npm run ci` command, 2,401 unit/integration tests, the build/audit, and all 363 browser scenarios. CodeRabbit also completed successfully.
 
 ### F1 — Base merge conflict and Playwright version, P2
 
@@ -85,6 +92,13 @@
 - Focused unit checks also passed during implementation. An initial formatting check failed on two changed files; formatting was corrected before the passing repository check.
 - Chrome 116, native Side Panel/permission dialogs, and live image generation were not tested.
 
+## Repeat review
+
+- Confirmed the same repository, clean checkout, unchanged instructions, and unchanged head `2fd3fab176e1752cd011785412a274229dd5d1ac`. Reused the reviewed commits, diff, source, and validation evidence.
+- Fetched all review, inline-comment, conversation, and thread pages. All five thread-comment connections are complete. R1–R4 remain resolved. New replies confirm the earlier fixes and repeat the known Chrome 116 limit. They add no separate action.
+- The new review and conversation summary repeat R7 and the deferred R5 warning. Codex completed on `2fd3fab` with no separate finding. The CI annotation is an Ubuntu runner-label notice, not a failure.
+- Rechecked the source and existing tests for R7. No runtime file changed, so the passing code validation remains valid. `git diff --check` passes for the documentation-only correction. Unit tests, build, and E2E were not repeated.
+
 ## Publication
 
-R1–R4 were published in `8c967e9` and their platform threads were verified resolved. The final published merge commit and remote check state are recorded in the [PR summary reply](https://github.com/narumiruna/pi-browser-agent/pull/147#issuecomment-6804136869). R5 remains deferred. R6 remains an explicit live-service verification limit. No new issue or follow-up PR is needed while the target remains open.
+R1–R4 were published in `8c967e9` and their platform threads were verified resolved. The published merge commit and remote check state are recorded in the [PR summary reply](https://github.com/narumiruna/pi-browser-agent/pull/147#issuecomment-6804136869). R7 needs its documentation commit published before its thread can be resolved; record that commit and final thread state in the same summary. R5 remains deferred. R6 remains an explicit live-service verification limit. No new issue or follow-up PR is needed while the target remains open.
