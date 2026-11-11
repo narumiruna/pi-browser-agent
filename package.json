@@ -33,7 +33,7 @@
   },
   "dependencies": {
     "@earendil-works/pi-agent-core": "^1.4.0",
-    "@earendil-works/pi-ai": "^1.4.0",
+    "@earendil-works/pi-ai": "^1.5.0",
     "@modelcontextprotocol/sdk": "1.32.2",
     "dompurify": "3.4.17",
     "marked": "18.1.1",
