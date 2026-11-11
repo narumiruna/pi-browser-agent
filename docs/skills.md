@@ -56,6 +56,7 @@ Report failures before optional improvements.
 ```
 
 The filename is case-sensitive: `SKILL.md`. Local and GitHub imports use the same bundled, browser-compatible YAML parser with bounded syntax validation:
+
 - Decode UTF-8 with fatal error handling. Invalid byte sequences are rejected, not replaced. An initial UTF-8 byte-order mark is optional.
 - Start with a line containing exactly `---`. Close the frontmatter with another exact `---` line. Use LF or CRLF line endings; do not indent the delimiters.
 - Include a string `name` and a string `description`. Their order can differ. Plain and quoted scalar forms remain supported.
@@ -95,6 +96,7 @@ Loaded bodies enter ordinary message history and saved sessions. Later submissio
 Skills use the trusted `chrome.storage.local` key `piBrowserAgentSkillsV1`, separate from settings and credentials. Its envelope remains `{version:1,records:[...]}`; each record has only `{id,name,description,body,enabled}`. IDs are stable UUIDs. Cross-context updates are serialized, and each successful mutation publishes the complete envelope in one write.
 
 Repository identity, path, commit SHA, source link, original source, and optional frontmatter fields remain in memory for the current review. They are not persisted as provenance or sent as catalog fields. Installed records are local text snapshots with no update checks or background synchronization. A later GitHub import requires a new explicit review. Runtime loading reads the saved snapshot and makes no GitHub request.
+
 - **Invalid file or unsupported metadata:** correct the source and select it again. Nothing is installed until the reviewed import succeeds.
 - **Duplicate name:** use explicit replacement of the intended installed record, or choose a distinct valid name.
 - **Count or storage limit:** delete unused skills or shorten their bodies, then retry. Disabled records still consume storage.
