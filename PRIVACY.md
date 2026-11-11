@@ -25,7 +25,6 @@ A user can also draw freehand marks over a live, approved HTTP(S) page while the
 
 If capture fails, editable marks remain only when the original page context and protection are safe. After a later submission failure, the PNG preview and text remain for manual retry without another capture. Unconfirmed surface cleanup blocks sending until removal is confirmed. Cancellation or page/context/protection changes discard unsent strokes; raw strokes are not recoverable after the page or panel closes. A sent PNG goes to the selected provider and is retained like other conversation images. Removing the drawing surface does not delete a sent image or authorize a browser action. See [page drawing and verification status](docs/page-annotation.md).
 
-
 ### Region capture
 
 A user can select a viewport rectangle on an approved HTTP(S) page. Starting or editing selection makes no screenshot or provider request. Completing a genuine drag, or pressing and releasing Enter for a keyboard rectangle, starts local capture and automatic attachment. Existing explicit screenshot consent is still required. Chrome first captures the full visible viewport in trusted worker memory; the worker decodes and crops it before returning any image to the Side Panel. The original full-viewport PNG is not returned to the panel, attached, logged, saved in a session, or sent to the provider by this workflow. Failed cropping never falls back to the original image.
@@ -33,7 +32,6 @@ A user can select a viewport rectangle on an approved HTTP(S) page. Starting or 
 Only the cropped PNG appears in the existing composer previews for local review. A later explicit **Send** shares it with the selected provider and saves it as an ordinary conversation image. Before attachment, the active capture icon or Escape discards unsent region work. After attachment, the ordinary image control removes the crop. It retains a slight 1% shield tint but excludes the selection outline and Side Panel controls. Cleanup must be confirmed before attachment or sending. Failed cleanup or attachment has an explicit same-icon retry using the retained crop, without recapture. Later submission failure retains the ordinary image for manual Send retry.
 
 Rectangle state, completed revisions, tokens, the temporary source, and unsent crops remain in memory. Source resources are released when no longer needed; this is not a secure-memory-erasure claim. A cleaned static crop can survive a later tab change, not session replacement or panel disposal. Sent crops follow ordinary session retention, and deleting local history does not delete provider-held data. Cropping limits only the attached image: prompts, selected-element data, prior history, and separately approved browser reads can include other content. See [region capture](docs/region-capture.md).
-
 
 ### Image generation
 
@@ -82,6 +80,7 @@ Voice input uses Chrome's Web Speech service. Spoken audio may be processed by C
 ## How information is used
 
 Pi Browser Agent uses information only to:
+
 - authenticate requests to a provider selected by the user;
 - generate and display AI responses;
 - provide user-requested page, screenshot, bookmark, voice, skill, and browser-tool features;
@@ -92,6 +91,7 @@ Pi Browser Agent uses information only to:
 ## When information is shared
 
 Pi Browser Agent can share information in these circumstances:
+
 - **Selected AI provider:** When the user sends a prompt or approves a tool operation, Pi Browser Agent sends the provider the information needed for the conversation. Depending on the request, this may include prompts, prior conversation content, the current page URL, visible or selected page content, element descriptions, attached images, approved screenshots, approved bookmark titles and URLs, enabled skill metadata, loaded skill bodies, and tool results. Provider credentials are sent only to the associated provider endpoint for authentication.
 - **OpenAI authentication:** If the user chooses OpenAI Codex account login, Pi Browser Agent communicates with OpenAI's authentication and ChatGPT services to complete and refresh the device authorization flow.
 - **OpenAI image generation:** A freshly confirmed generation sends the displayed image prompt and fixed options to the Codex image endpoint using the configured Codex account. The returned image can also reach the selected chat provider and the local conversation transcript.

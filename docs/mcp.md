@@ -30,6 +30,7 @@ WebMCP remains separate: a web page supplies WebMCP tools through the browser, w
 ## Schema compatibility and limits
 
 Input schemas must have an object root. Input and optional output schemas use an interpreted JSON Schema subset:
+
 - One scalar `type`: object, array, string, number, integer, boolean, or null.
 - Object `properties`, `required`, and Boolean `additionalProperties`.
 - Array `items`, `minItems`, and `maxItems`.
@@ -100,6 +101,7 @@ The first implementation passed the complete suite on Chrome 153. The default Ch
 Review validation covers both browser API formats and the remote MCP boundaries. See [the PR review ledger](reviews/pr-98-review.md) for current checks. Stable-Chrome Side Panel layout, native permission dialogs, and external production MCP services were not manually tested.
 
 Protocol references used for implementation:
+
 - [Official Streamable HTTP specification](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports)
 - [Official lifecycle specification](https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle)
 - [Official TypeScript SDK transport](https://github.com/modelcontextprotocol/typescript-sdk/blob/v1.x/src/client/streamableHttp.ts)

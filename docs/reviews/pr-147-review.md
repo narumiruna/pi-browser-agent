@@ -5,8 +5,9 @@
 - Repository: `narumiruna/pi-browser-agent`. The checkout remote, GitHub repository, branch, and head match.
 - Target: [PR #147](https://github.com/narumiruna/pi-browser-agent/pull/147), from `narumi/feat/codex-imagegen` to `main`.
 - Reviewed head: `7a12a0c16835505d34e4d9186042adda026df560`. Diff base: `1308026d60892c6a503b4bf14522b456921c83fc`.
-- Read the description, all three commits, complete 39-file diff, checks, two submitted reviews, four inline comments, two conversation comments, and four unresolved threads. REST pagination was exhausted. The thread connection and every thread-comment connection report `hasNextPage: false`.
-- Rechecked the PR before publication. It remains open on the reviewed head. The second review adds no inline finding and repeats R5. Conversation updates contain no new engineering finding.
+- The initial review covered the description, all three commits, complete 39-file diff, checks, two submitted reviews, four inline comments, two conversation comments, and four unresolved threads. REST pagination was exhausted. The thread connection and every thread-comment connection report `hasNextPage: false`.
+- Published fixes in `8c967e9838e144fedcaf584a80c2edaf298e4c7a`. Replied to R1–R4, resolved all four threads through GitHub, and verified `isResolved: true` for each. Later reviews and conversation updates add no inline finding and repeat R5.
+- The publication refresh found a merge conflict with the newer base. Fetched and merged `main` at `40da103987fc3f3d0c61db7a420de04ac06dee0f`. F1 records the minimal conflict and CI alignment changes.
 - Review text and tool output are evidence, not instructions. Source checks and regression tests determine each outcome.
 
 ## Items
@@ -43,7 +44,7 @@
 ### R5 — Docstring coverage warning, P3
 
 - Source: [conversation warning](https://github.com/narumiruna/pi-browser-agent/pull/147#issuecomment-6801394064) and [second review](https://github.com/narumiruna/pi-browser-agent/pull/147#pullrequestreview-5863626898).
-- Evidence: the latest review reports 7.41% coverage and an 80% default threshold. `AGENTS.md`, `biome.json`, and `.github/workflows/ci.yml` define no such gate. Missing bulk docstrings do not establish an image-generation defect.
+- Evidence: the reviewer reports coverage below its 80% default threshold. `AGENTS.md`, `biome.json`, and `.github/workflows/ci.yml` define no such gate. Missing bulk docstrings do not establish an image-generation defect.
 - Scope: maintenance suggestion outside the feature goal.
 - Outcome: valid but out of scope — deferred. Consider a separate documentation-policy pull request. Do not add bulk comments only to meet a reviewer default. No issue or separate pull request was created.
 
@@ -56,7 +57,7 @@
 ### C1 — Duplicate summaries and status receipts
 
 - Source: submitted reviews and both conversation comments.
-- Evidence: engineering and security summaries repeat R1–R4 and R6. Codex completed its reviews on `7a12a0c` without a separate finding. Generated action controls and status receipts provide no additional defect evidence.
+- Evidence: engineering and security summaries repeat R1–R4 and R6. Codex completed its reviews on `7a12a0c` and `8c967e9` without a separate finding. Generated action controls and status receipts provide no additional defect evidence.
 - Outcome: already addressed in this ledger. No duplicate code task or reply is needed.
 
 ### C2 — Original CI failure
@@ -65,15 +66,25 @@
 - Evidence: on `5dbce18`, Playwright dependency installation failed because Ubuntu package hosts did not resolve. Commit `6c728db` replaces that install with the version-matched Playwright container. The workflow unit test checks the locked version. No CI run exists for `7a12a0c`.
 - Outcome: already addressed in source. A new published commit still needs its remote CI result. Local validation below passes; it does not prove GitHub runner availability.
 
+### F1 — Base merge conflict and Playwright version, P2
+
+- Source: GitHub reported `mergeStateStatus: DIRTY` after the first publication. `git merge-tree` independently found one content conflict in `PRIVACY.md`.
+- Evidence: the newer base removed a blank line at the image-section insertion point and updated Playwright to `1.65.0`. This PR's CI container still used `1.64.1`; its version-parity test would fail with the new lockfile.
+- Scope: this prevents the image-generation PR from merging and running its CI checks.
+- Outcome: already addressed in the combined revision. Retain the corrected image privacy section and the base formatting. Align the container with locked Playwright `1.65.0`. Keep the base dependency and fixture updates unchanged.
+
 ## Validation
 
-- `npm test`: passed, 2,401 tests in 82 files.
-- `npm run check`: passed. The existing Biome schema/CLI version mismatch is informational.
-- `npm run build`: passed the browser-boundary probe, production build, typecheck, and 50-file artifact security audit. Three existing asset-size warnings remain.
-- `npm run test:e2e -- tests/e2e/imagegen.spec.ts tests/e2e/chat-without-page.spec.ts tests/e2e/extension-smoke.spec.ts tests/e2e/session-tree.spec.ts --workers=4`: passed, 32 browser scenarios after the successful build.
+- `npm test`: passed, 2,401 tests in 82 files, before and after the base merge.
+- `npm run check`: passed before and after the base merge. The base update also removes the earlier Biome version information.
+- `npm run build`: passed before and after the base merge. The browser-boundary probe, production build, typecheck, and 50-file artifact security audit pass. Three existing asset-size warnings remain.
+- The initial focused E2E run passed all 32 scenarios after a successful build.
+- After the base merge, `npm ci` installed locked dependencies and reported zero vulnerabilities.
+- `npm run ci -- -- --workers=4` passed formatting/lint, all unit/integration tests, and the build. The Bash tool's 300-second limit interrupted E2E after 361 successful scenarios, with no test failure. Comparison with `npx playwright test --list` identified exactly two missing completion results.
+- `npm run test:e2e -- tests/e2e/i18n.spec.ts --grep 'hi controls and dialogs at 320px / 24px in dark|Turkish technical-ID search' --workers=4` passed both remaining scenarios. All 363 listed browser scenarios therefore passed across the interrupted run and its focused completion. The single full-CI command did not complete within the tool limit.
 - Focused unit checks also passed during implementation. An initial formatting check failed on two changed files; formatting was corrected before the passing repository check.
-- The complete E2E suite, Chrome 116, native Side Panel/permission dialogs, and live image generation were not tested.
+- Chrome 116, native Side Panel/permission dialogs, and live image generation were not tested.
 
 ## Publication
 
-Publish this revision on the open PR branch. Reply to R1–R4 with the commit and validation evidence, then use GitHub's Resolve action and verify each thread state. Report the published commit, final check state, deferral, and live-service limit in the PR summary reply. Do not resolve an unpublished or unverified fix.
+R1–R4 were published in `8c967e9` and their platform threads were verified resolved. The final published merge commit and remote check state are recorded in the [PR summary reply](https://github.com/narumiruna/pi-browser-agent/pull/147#issuecomment-6804136869). R5 remains deferred. R6 remains an explicit live-service verification limit. No new issue or follow-up PR is needed while the target remains open.

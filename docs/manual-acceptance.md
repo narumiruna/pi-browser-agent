@@ -93,6 +93,7 @@ Automated coverage is in `tests/unit/slash-commands.test.ts`, `tests/unit/slash-
 [GitHub CI run 39751534461](https://github.com/narumiruna/pi-browser-agent/actions/runs/39751534461) passed the full required workflow on Ubuntu/Node 26, with 799 unit/integration tests and 112 browser tests against the feature merged with updated `main`. Local macOS readiness and duration failures remain recorded in `docs/plans/2026-10-22_slash-commands-plan.md`; they are not evidence of manual acceptance.
 
 Before release, load a production build in stable Chrome and record Chrome/OS versions, assistive technology/version, and each result:
+
 1. With focus in the composer, type `/`. Use Arrow keys, Tab, and Enter to select a command. Expected: the screen reader announces the command list, active name/description, and expanded/collapsed state. Selection inserts text and does not execute. Enter again executes. Escape closes the list; during a response, a second Escape stops the response. Shift+Enter and IME composition must not execute a command.
 2. Repeat using pointer input at 320–360 px panel width, 24 px text, and light/dark appearance. Expected: commands remain readable, the selected option stays visible, there is no horizontal scrolling, and controls are not clipped.
 3. On `chrome://settings` with no configured credential, run `/new`, `/name Test`, `/resume`, and `/settings`. Expected: local actions work with no model or current-site permission request. Cancel the name and credential dialogs; their command drafts remain. Use `/logout` with no credential; expect a local not-configured status. Configure a dedicated test credential through `/login` and remove it with `/logout`; another provider's credential must remain.
@@ -103,6 +104,7 @@ Status: manual checks pending. Record observed results here; do not infer them f
 ## Conversation-tree acceptance — 2026-10-22
 
 Use a dedicated test conversation and a harmless page. Automated graph/store/runtime/dialog/browser tests verify branch preservation, legacy compatibility, active-path isolation, write failure, and no automatic tool replay. Actual screen-reader announcements and the browser-owned stable-Chrome Side Panel remain unverified until observed results are recorded.
+
 1. Send two requests, open `/tree`, and choose the first user message. Expected: its text and images return as an unsent draft; the transcript stops before that request. Edit and Send. Reopen the tree and select the original completed answer: both paths remain, and only the selected path is shown. Return to **Start of conversation**, send a third request, and verify the previous roots remain selectable.
 2. Close the panel and restart stable Chrome. Expected: the selected path and all inactive branches remain. A historical click or other browser mutation must not run again during selection or restart. Tree navigation does not undo its earlier page effect. An incomplete tool-call boundary is visible but unavailable.
 3. With a screen reader, open the tree and use Arrow keys, Home/End, Enter, Space, and Escape. Expected: the tree label, message role/summary, depth, current position, and unavailable boundaries are announced. Cancel changes neither history nor composer. During a save, duplicate selection and cancel are blocked until it settles.
@@ -121,6 +123,7 @@ Stable-Chrome manual acceptance is pending. Automated extension-page coverage in
 Local verification passed: `npm run check` (144 files), `npm test` (1,100 tests in 52 files), `npm run build` (including typecheck and a 32-file artifact audit), and `npm run test:e2e` (125 browser tests). The focused skills suite passed 178 parser, store, UI, run-loader, and lifecycle tests. Regression checks include concurrent review/write changes, failed writes, repeated-load budgets, preparation cancellation, restored history, and both linear and tree session-size limits. Manifest permissions and package dependencies are unchanged. The build reports two bundle-size warnings (1.73 MiB and 1.44 MiB against a 1 MiB budget); the build and artifact audit still pass.
 
 These tests do not prove browser-owned Side Panel rendering, native file-picker operation, or screen-reader announcements. The release reviewer must perform the following stable-Chrome checks with the production build and record Chrome/OS versions, assistive technology/version, and each observed result before release. This manual acceptance is not claimed by the automated verification.
+
 1. Build with `npm run build`, load or reload `dist/chrome` in stable Chrome, and open **Settings → Skills** from the actual Side Panel. Create a harmless UTF-8 file named exactly `SKILL.md` using the example in [browser skills](skills.md). Select it with the native file picker. Expected: the complete metadata, body, and compatibility warnings appear as text, nothing is installed yet, and no provider request occurs. Cancel the picker once and verify no unintended import.
 2. Import the reviewed skill, select it in the installed list, and enable it. Expected: import starts disabled, enablement saves independently of the general Settings form, and neither step contacts the model or asks for a new browser permission. On a protected Chrome tab, explicitly submit a request to use the named skill. Inspect a dedicated test provider's payload safely: initial discovery contains only JSON `id`/`name`/`description`; the body first appears after `skills_load`. A no-page run gains no page tools from the skill.
 3. During a delayed response, disable, replace, or delete the skill in Settings. Expected: the active run keeps its original snapshot, and the next run uses the changed state. Replace only after reviewing a new file and selecting **Replace selected skill**; verify the stable ID remains and the replacement is disabled. Cancel deletion once; then confirm the named record. Disabling or deleting must not authorize future loads through an old transcript.
@@ -136,6 +139,7 @@ Automated verification passed with `npm run ci -- -- --workers=4` on Node 26.8.2
 Review found and fixed cancellation while host approval was pending; Cancel, source edit, disposal, and late-grant regressions pass. An initial full E2E attempt found two narrow-layout failures and one outdated unknown-field diagnostic assertion, then reached the 300-second command limit. The local picker order and diagnostic assertion were corrected before the passing focused and complete CI runs. No test or required gate was skipped or waived. The build passes with three asset-budget warnings, approximately 1.81 MiB, 1.54 MiB, and 1.11 MiB against a 1 MiB budget.
 
 The release reviewer owns the retained external check. Prerequisites are a successful production build, a dedicated stable-Chrome profile, and a harmless public skill repository with a standalone text skill. No credential is required.
+
 - Action: load `dist/chrome`, open **Settings → Skills**, enter the repository, and select **Find GitHub skills**. Deny native API host access once, then retry and grant it. Review one candidate, cancel another fetch, and revoke GitHub access through Chrome's extension controls. Repeat after a separate screenshot all-sites grant.
 - Expected result: only the explicit fetch action requests GitHub access. Denial makes no GitHub request or skill write; screenshot access alone does not supply app approval. Revocation stops pending and later reads. A complete plain-text review precedes explicit disabled import, and local file import remains available.
 - Unverified behavior: native permission wording and focus, native revocation controls, actual Side Panel return behavior, and live GitHub service responses are not proved by mocked tests. Cancelling local work cannot dismiss Chrome's own permission prompt; a late grant must not resume that cancelled import.
@@ -254,7 +258,6 @@ The UI scenario retains 32 ignored captures under `test-results/page-annotation-
    - Unverified behavior: synthetic Pointer Events, DOM accessibility attributes, and screenshots do not prove physical-device handling, human visual quality, or actual screen-reader output. Unavailable devices remain explicitly unverified.
    - Release restriction: do not claim physical touch/pen or screen-reader support has been verified until observations are recorded. Preserve existing accessibility/native-UI release requirements and record failures separately; automated success is not manual acceptance.
 
-
 ## Region capture acceptance — 2026-11-01
 
 Status: the compact region UI passes final isolated full CI and independent diff review. Native UI, physical-device, screen-reader, translation-quality, and live-provider acceptance remain unverified. See [region capture](region-capture.md). Existing native-UI release restrictions and the [Chrome 116 baseline limitation](#known-minimum-version-baseline-limitation) remain in force.
@@ -310,7 +313,6 @@ Complete integration-diff review found no remaining material defect. Main's draw
    - Unverified behavior: DOM attributes, catalog parity, synthetic events, and screenshots do not prove screen-reader output, native-language accuracy, device handling, or human readability.
    - Release restriction: do not claim screen-reader, physical-device, or linguistic acceptance from automated results. Preserve existing accessibility/native-UI requirements and resolve reported safety-copy defects before publishing an affected locale. No paid/live-provider test is authorized by this handoff.
 
-
 ## Procedure
 
 1. **Clean setup and Side Panel header**
@@ -330,7 +332,7 @@ Complete integration-diff review found no remaining material defect. Main's draw
    - Restart the entire stable Chrome browser without clearing extension data. Balanced must ask again on the first matching request and then remember it for the new browser session. Convenient must not ask again for the same request; after **Clear remembered approvals** it must. Check that closing only the Side Panel or restarting the extension service worker does not clear Balanced. Revoke the Chrome bookmark/site permission and verify a cached match cannot silently regrant it. Record Chrome version, prompts, and results here before release. **Pending manual acceptance:** stable Chrome and browser-owned prompts have not yet been verified for this change.
 2. **Authentication method and API-key provider**
    - Select **Add credential** (or **Update credential**) in **Settings → Model**. Expected: **Sign in with an account** and **Sign in with an API key** appear before any provider choice.
-   - Choose **Sign in with an API key**. Expected: the searchable provider list includes **OpenAI** and excludes **OpenAI Codex (legacy)**. Choose **Back**, then cancel; no credential or model changes.
+   - Choose **Sign in with an API key**. Expected: the searchable provider list includes **OpenAI** and excludes **OpenAI Codex**. Choose **Back**, then cancel; no credential or model changes.
    - Repeat from **Add credential** in the Side Panel menu, choose the API-key method and a non-Codex provider, and enter a dedicated test API key.
    - Expected: secret prompts mask and clear input, status names the provider and API-key method without showing the key, and Chrome does not request provider endpoint access during static credential entry. The active and pending model selections remain unchanged.
    - Repeat setup, cancel at the secret prompt, and verify the existing key remains usable. Complete setup with a replacement test key and verify only that provider's credential changes.
@@ -338,10 +340,10 @@ Complete integration-diff review found no remaining material defect. Main's draw
    - Close and reopen the Side Panel, switch sessions, and create a new session. Expected: each existing session restores its own model and a new session uses the latest selection.
    - Remove the credential and retry. Expected: the request is blocked until that provider is configured again.
 3. **Device login**
-   - Select **Add credential** → **Sign in with an account**. Expected: only browser-safe account providers appear; the current build lists **OpenAI Codex (legacy)**, not **OpenAI** or Node-only OAuth methods.
-   - Select **OpenAI Codex (legacy)** and verify Chrome asks only for `auth.openai.com` and `chatgpt.com`. Deny once; expected: setup fails closed, any prior Codex credential remains unchanged, and no device request starts.
+   - Select **Add credential** → **Sign in with an account**. Expected: only browser-safe account providers appear; the current build lists **OpenAI Codex**, not **OpenAI** or Node-only OAuth methods.
+   - Select **OpenAI Codex** and verify Chrome asks only for `auth.openai.com` and `chatgpt.com`. Deny once; expected: setup fails closed, any prior Codex credential remains unchanged, and no device request starts.
    - Retry, approve access, open the displayed verification URL, enter the code, and finish login.
-   - Expected: the panel reports **OpenAI Codex (legacy) configured with an account** without showing an access or refresh token.
+   - Expected: the panel reports **OpenAI Codex configured with an account** without showing an access or refresh token.
 4. **Text SSE response**
    - Make a harmless HTTP(S) page visible and ask for a one-sentence summary without using a bind command.
    - Expected: the Side Panel shows the page automatically, text appears incrementally, and DevTools shows an HTTPS request to `chatgpt.com/backend-api`, with no browser WebSocket or loopback request.
@@ -375,7 +377,7 @@ Complete integration-diff review found no remaining material defect. Main's draw
 10. **Permission revocation**
 
 - Revoke either OpenAI origin in Chrome extension settings, then send a prompt.
-- Expected: the active run aborts, the panel changes to **OpenAI Codex (legacy) not configured**, and the next request is blocked until login. No fallback host is contacted.
+- Expected: the active run aborts, the panel changes to **OpenAI Codex not configured**, and the next request is blocked until login. No fallback host is contacted.
 
 11. **Interruption and restart**
 

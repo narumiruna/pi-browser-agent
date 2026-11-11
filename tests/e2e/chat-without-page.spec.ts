@@ -36,7 +36,7 @@ test("classifies Chrome, local files, PDF and restricted web origins without pag
       )
       await tab.close()
     }
-    await verify("chrome://settings/", "restricted")
+    await verify("chrome://version/", "restricted")
     await verify("chrome://newtab/", "restricted")
     await harness.context.route("https://chromewebstore.google.com/*", (route) =>
       route.fulfill({ status: 200, contentType: "text/html", body: "<title>Store</title>" }),
@@ -83,7 +83,7 @@ test("keeps the context-free composer accessible at narrow width, dark theme and
   const harness = await launchExtensionHarness()
   try {
     const protectedPage = await harness.context.newPage()
-    await protectedPage.goto("chrome://settings/")
+    await protectedPage.goto("chrome://version/")
     await protectedPage.bringToFront()
     await harness.controller.setViewportSize({ width: 320, height: 720 })
     await harness.controller.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" })
@@ -112,7 +112,7 @@ test("chats on a protected page without exposing page tools", async () => {
   try {
     await configureMockCodex(harness)
     const protectedPage = await harness.context.newPage()
-    await protectedPage.goto("chrome://settings/")
+    await protectedPage.goto("chrome://version/")
     await protectedPage.bringToFront()
     await expect
       .poll(async () => {
@@ -140,18 +140,18 @@ test("chats on a protected page without exposing page tools", async () => {
         body:
           index++ === 0
             ? toolCallResponse(1, "browser_read_page")
-            : finalTextResponse(2, "I can still answer without reading Chrome settings."),
+            : finalTextResponse(2, "I can still answer without reading the protected page."),
       })
     })
     const before = harness.context.pages().length
     await harness.controller.locator("#prompt").fill("What can you do here?")
     await harness.controller.locator("#send").click()
     await expect(harness.controller.locator("#transcript")).toContainText(
-      "I can still answer without reading Chrome settings.",
+      "I can still answer without reading the protected page.",
     )
     expect(harness.context.pages()).toHaveLength(before)
     expect(JSON.stringify(requests)).toContain("does not use page context")
-    expect(JSON.stringify(requests)).not.toContain("chrome://settings")
+    expect(JSON.stringify(requests)).not.toContain("chrome://version")
     await expect(harness.controller.locator("#error")).toBeEmpty()
 
     expect(harness.pageErrors).toEqual([])
@@ -171,7 +171,7 @@ test("keeps a protected-page turn isolated after its visible tab changes", async
       "available with site access",
     )
     const protectedPage = await harness.context.newPage()
-    await protectedPage.goto("chrome://settings/")
+    await protectedPage.goto("chrome://version/")
     await protectedPage.bringToFront()
     const gate = new Promise<void>((resolve) => {
       releaseFirst = resolve
@@ -211,7 +211,7 @@ test("keeps a protected-page turn context-free when a web tab appears before a q
   try {
     await configureMockCodex(harness)
     const protectedPage = await harness.context.newPage()
-    await protectedPage.goto("chrome://settings/")
+    await protectedPage.goto("chrome://version/")
     await protectedPage.bringToFront()
     await expect(harness.controller.locator("#page-status")).toContainText("cannot read or operate")
     await harness.controller.evaluate(() => {
@@ -410,7 +410,7 @@ test("confirms a bookmark read on a protected page without a page permission", a
         ).id,
     )
     const protectedPage = await harness.context.newPage()
-    await protectedPage.goto("chrome://settings/")
+    await protectedPage.goto("chrome://version/")
     await protectedPage.bringToFront()
     await expect(harness.controller.locator("#page-status")).toContainText("cannot read or operate")
     const requests: unknown[] = []
@@ -434,7 +434,7 @@ test("confirms a bookmark read on a protected page without a page permission", a
       "Bookmark found without reading this page.",
     )
     expect(JSON.stringify(requests[1])).toContain("No-page bookmark needle")
-    expect(JSON.stringify(requests)).not.toContain("chrome://settings")
+    expect(JSON.stringify(requests)).not.toContain("chrome://version")
     await harness.controller.evaluate(async (id) => chrome.bookmarks.remove(id), bookmarkId)
   } finally {
     await harness.close()
@@ -446,7 +446,7 @@ test("lets the agent choose a tab only after user confirmation", async () => {
   try {
     await configureMockCodex(harness)
     const protectedPage = await harness.context.newPage()
-    await protectedPage.goto("chrome://settings/")
+    await protectedPage.goto("chrome://version/")
     await protectedPage.bringToFront()
     const tabId = await harness.controller.evaluate(
       async (url) => (await chrome.tabs.query({})).find((tab) => tab.url === url)?.id,
@@ -487,7 +487,7 @@ test("opens a website only after the agent's destination is confirmed", async ()
   try {
     await configureMockCodex(harness)
     const protectedPage = await harness.context.newPage()
-    await protectedPage.goto("chrome://settings/")
+    await protectedPage.goto("chrome://version/")
     await protectedPage.bringToFront()
     const before = harness.context.pages().length
     let index = 0
