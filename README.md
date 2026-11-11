@@ -18,6 +18,7 @@ npm run build
 ```
 
 Load the production artifact:
+
 1. Open `chrome://extensions`.
 2. Enable **Developer mode**.
 3. Choose **Load unpacked**.
@@ -87,6 +88,7 @@ The agent can read visible text and selection, discover visible controls and scr
 `browser_scroll` moves up/down by a page, half-page, or 1–10,000 pixels without action confirmation. `browser_get_element_details` returns bounded names, roles, state, geometry, and scrollability without field values. `browser_select_option` uses a discovered native single-select reference and an exact value or label; every change requires fresh confirmation because page handlers can submit or navigate. `browser_get_select_options` reads only native option labels, indices, disabled flags, and label-truncation flags, never raw values or selected-state data; it returns at most 50 entries without invalidating references and rejects catalogs above 2,000 options. This label-only catalog is a narrow exception to the form-content exclusion; hidden options and hidden groups remain excluded. Option pagination uses native indices, not returned-entry counts. `browser_set_checked` supports native checkboxes and radio activation (`true` only). Each actual change requires fresh confirmation in all modes and invalidates references; a no-op sends no events and needs no confirmation. If handlers remove the target or navigate, the final state can be unverified: inspect current state and never replay automatically.
 
 `browser_find_text` accepts a literal case-sensitive query (at most 256 Unicode code points), optional selector, and match-ordinal offset. It returns bounded snippets, source UTF-16 offsets, and optional geometry, never mutation references. It does not scroll. Search collapses whitespace within each Text node, does not match across nodes, and scans at most 2,000 nodes/100,000 source UTF-16 units, including excluded text. Source offsets are not stable after DOM changes. New string inputs use JSON Schema code-point counts; source offsets and bounded snippets use UTF-16 units. Search conservatively excludes masked, rounded-overflow-clipped, rotated, skewed, flipped, and 3D-transformed text; it does not interpret arbitrary visual effects. `browser_wait_for` accepts either a selector state or literal text in an optional selector scope, never both. It defaults to 5,000 ms, caps at 10,000 ms, and polls every 250 ms. Waits remain in the current document; context changes/cancellation fail closed and `TIMEOUT` is distinct from access denial. Neither read renews or replaces references. No code or regular expressions are accepted. See [browser interaction schemas and agent examples](docs/browser-interactions.md). Native key presses and hover are not exposed by the current DOM-only bridge.
+
 - Password and file inputs are denied.
 - Form submissions and downloads always prompt; cross-origin links/navigation and WebMCP calls require either fresh confirmation or a matching approval in the selected confirmation mode. No cached approval replays a failed mutation.
 - A request created before navigation or a visible-tab change is rejected as stale. Chat and approved bookmark reads do not require a supported page; a no-page turn cannot use page tools even after a tab switch.
@@ -176,7 +178,7 @@ Set the repository Actions secret `PAT_TOKEN` to a fine-grained personal access 
 ## Troubleshooting
 
 - **Provider host access was declined or revoked:** send again and approve the selected endpoint, or reconfigure the provider if its endpoint changed.
-- **OpenAI Codex host access was revoked:** select **Add credential** → **Sign in with an account** → **OpenAI Codex (legacy)**, then approve both requested OpenAI origins.
+- **OpenAI Codex host access was revoked:** select **Add credential** → **Sign in with an account** → **OpenAI Codex**, then approve both requested OpenAI origins.
 - **A page tool is denied:** ask the agent to use an accessible HTTP(S) tab or open a website, then approve its confirmation. If access was previously declined, use **Account and site access → Allow current site**. Protected pages, local files, and PDF viewers cannot be controlled. Ordinary questions can still be sent without a page.
 - **A screenshot is denied:** request it again, confirm Pi Browser Agent's explanation, and approve Chrome's optional all-sites prompt. If the grant was revoked, Chrome asks again; ordinary per-site access is not enough for `captureVisibleTab()`.
 - **An annotation will not attach:** choose an image-capable model, add at least one stroke, and remove composer images if the four-image or 3 MB total limit is reached. Editing itself requests no permission and sends nothing until **Send**.

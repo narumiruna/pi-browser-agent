@@ -7,6 +7,7 @@ Add discoverable slash commands to the Side Panel composer. Reuse existing brows
 ## Context
 
 Repository state at plan creation:
+
 - `package.json` includes `pi-agent-core` and `pi-ai`, but not `pi-coding-agent`. Terminal slash-command handling is not part of the current browser integration.
 - `src/browser/sidepanel/conversation-page.ts` owns composer input, Send, queued instructions, authentication preflight, page-access preflight, and existing session/settings actions. `submitPrompt()` currently sends slash-prefixed text through the normal prompt path.
 - `src/browser/agent/runtime.ts` provides `newSession()`, `resumeSession()`, and `renameSession()`. New/resume stop the current agent; resume also checks session ownership. Slash commands must not silently interrupt a run.
