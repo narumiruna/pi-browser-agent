@@ -892,169 +892,177 @@ async function paletteState(page: Page, selected: string, translated = false): P
   await expect(palette).toHaveText("")
 }
 
-test("records narrow UI evidence with color-only named swatches and palette keyboard operation", async () => {
-  test.setTimeout(120_000)
-  await start()
-  await stroke()
-  const page = harness.controller
-  for (const width of [320, 360]) {
-    for (const fontSize of [12, 24]) {
-      for (const colorScheme of ["light", "dark"] as const) {
-        for (const forcedColors of ["none", "active"] as const) {
-          await test.step(`${width}px / ${fontSize}px / ${colorScheme} / ${forcedColors}`, async () => {
-            await page.setViewportSize({ width, height: 900 })
-            await page.emulateMedia({ colorScheme, forcedColors, reducedMotion: "reduce" })
-            await page.evaluate(
-              (size) => document.documentElement.style.setProperty("--app-font-size", `${size}px`),
-              fontSize,
-            )
-            await expect(page.locator("html")).toHaveCSS("font-size", `${fontSize}px`)
-            await reachable(page)
-            const tool = page.locator("#page-pen-tool")
-            const toolMenu = page.locator("#page-pen-tool-menu")
-            await tool.press("ArrowDown")
-            await expect(toolMenu).toHaveRole("menu")
-            for (const [id, name] of [
-              ["pen", "Freehand"],
-              ["arrow", "Arrow"],
-              ["rectangle", "Rectangle"],
-            ]) {
-              const choice = toolMenu.locator(`[data-pen-tool="${id}"]`)
-              await expect(choice).toHaveRole("menuitemradio")
-              await expect(choice).toHaveAccessibleName(name as string)
-              expect(
-                await choice.locator("span").evaluate((label) => {
-                  const range = document.createRange()
-                  range.selectNodeContents(label)
-                  return range.getClientRects().length
-                }),
-              ).toBe(1)
-            }
-            await page.keyboard.press("Home")
-            await page.keyboard.press("ArrowDown")
-            await expect(toolMenu.locator('[data-pen-tool="arrow"]')).toBeFocused()
-            await page.keyboard.press("Enter")
-            await expect(tool).toHaveAttribute("data-tool", "arrow")
-            await expect(tool).toBeEnabled()
-            await expect(tool).toBeFocused()
-            await tool.press("ArrowUp")
-            await page.keyboard.press("End")
-            await page.keyboard.press("Space")
-            await expect(tool).toHaveAttribute("data-tool", "rectangle")
-            await expect(tool).toBeEnabled()
-            await tool.click()
-            await expect(toolMenu.locator('[data-pen-tool="rectangle"]')).toHaveAttribute(
-              "aria-checked",
-              "true",
-            )
-            await reachable(page)
-            await page.screenshot({
-              path: test
-                .info()
-                .outputPath(`shapes-${width}-${fontSize}-${colorScheme}-${forcedColors}.png`),
-            })
-            await page.keyboard.press("Escape")
-            await expect(toolMenu).toBeHidden()
-            await expect(tool).toBeFocused()
-            await expect(harness.fixturePage.locator(HOST)).toHaveCount(1)
-            await page.locator("#page-pen-width-toggle").click()
-            await expect(page.locator("#page-pen-width-popup")).toBeVisible()
-            const range = page.locator("#page-pen-width")
-            await expect(range).toBeVisible()
-            const rangeBox = await range.boundingBox()
-            if (!rangeBox) throw new Error("Missing vertical pen width geometry")
-            expect(rangeBox.height).toBeGreaterThan(rangeBox.width)
-            await reachable(page)
-            await page.keyboard.press("Escape")
-            await expect(page.locator("#page-pen-width-popup")).toBeHidden()
-            await expect(harness.fixturePage.locator(HOST)).toHaveCount(1)
-            const colors = page.locator("#page-pen-color")
-            const palette = page.locator("#page-pen-palette")
-            const swatch = (color: string) => palette.locator(`[data-pen-color="${color}"]`)
-            await expect(palette).toBeHidden()
-            await chooseColor("blue")
-            await colors.press("ArrowDown")
-            await expect(colors).toHaveAttribute("aria-expanded", "true")
-            await expect(palette).toBeVisible()
-            await paletteState(page, "blue")
-            await reachable(page)
-            // Navigation changes focus only. Selection waits for explicit activation.
-            for (const [key, color] of [
-              ["Home", "red"],
-              ["ArrowRight", "yellow"],
-              ["ArrowDown", "green"],
-              ["ArrowLeft", "yellow"],
-              ["ArrowUp", "red"],
-              ["ArrowUp", "black"],
-              ["Home", "red"],
-              ["End", "black"],
-              ["ArrowDown", "red"],
-              ["ArrowDown", "yellow"],
-            ]) {
-              await page.keyboard.press(key as string)
-              await expect(swatch(color as string)).toBeFocused()
-              await expect(colors).toHaveAttribute("data-color", "blue")
-              await expect(swatch("blue")).toHaveAttribute("aria-checked", "true")
-              await expect(swatch("yellow")).toHaveAttribute("aria-checked", "false")
-            }
-            await page.keyboard.press("Enter")
-            await expect(palette).toBeHidden()
-            await expect(colors).toHaveAttribute("aria-expanded", "false")
-            await expect(colors).toHaveAttribute("data-color", "yellow")
-            await expect(colors).toBeEnabled()
-            await expect(colors).toBeFocused()
-            await colors.press("ArrowUp")
-            await expect(palette).toBeVisible()
-            await paletteState(page, "yellow")
-            await page.keyboard.press("End")
-            await expect(swatch("black")).toBeFocused()
-            await page.keyboard.press("Space")
-            await expect(palette).toBeHidden()
-            await expect(colors).toHaveAttribute("aria-expanded", "false")
-            await expect(colors).toHaveAttribute("data-color", "black")
-            await expect(colors).toBeEnabled()
-            await expect(colors).toBeFocused()
-            await colors.click()
-            await paletteState(page, "black")
-            await reachable(page)
-            await page.screenshot({
-              path: test
-                .info()
-                .outputPath(`pen-${width}-${fontSize}-${colorScheme}-${forcedColors}.png`),
-            })
-            await page.keyboard.press("Escape")
-            await expect(palette).toBeHidden()
-            await expect(colors).toHaveAttribute("aria-expanded", "false")
-            await expect(colors).toBeFocused()
-            await expect(harness.fixturePage.locator(HOST)).toHaveCount(1)
-            await expect(page.locator("#page-pen-undo")).toBeEnabled()
-            await colors.press("ArrowDown")
-            await expect(palette).toBeVisible()
-            await page.keyboard.press("Tab")
-            await expect(palette).toBeHidden()
-            await expect(page.locator("#page-pen-width-toggle")).toBeFocused()
-            await page.keyboard.press("Enter")
-            await expect(page.locator("#page-pen-width-popup")).toBeVisible()
-            await expect(range).toBeFocused()
-            await page.keyboard.press("Tab")
-            await expect(page.locator("#page-pen-width-popup")).toBeHidden()
-            await expect(page.locator("#page-pen-undo")).toBeFocused()
-            await colors.focus()
-            await colors.press("ArrowUp")
-            await expect(palette).toBeVisible()
-            await page.keyboard.press("Shift+Tab")
-            await expect(palette).toBeHidden()
-            await expect(tool).toBeFocused()
-            await tool.press("ArrowDown")
-            await page.keyboard.press("Shift+Tab")
-            await expect(toolMenu).toBeHidden()
-            await expect(page.locator("#page-pen")).toBeFocused()
-            await expect(harness.fixturePage.locator(HOST)).toHaveCount(1)
+for (const width of [320, 360]) {
+  for (const fontSize of [12, 24]) {
+    for (const colorScheme of ["light", "dark"] as const) {
+      for (const forcedColors of ["none", "active"] as const) {
+        test(`records narrow UI evidence with named swatches and palette keyboard operation: ${width}px / ${fontSize}px / ${colorScheme} / ${forcedColors}`, async () => {
+          await start()
+          await stroke()
+          const page = harness.controller
+          await page.setViewportSize({ width, height: 900 })
+          await page.emulateMedia({ colorScheme, forcedColors, reducedMotion: "reduce" })
+          await page.evaluate(
+            (size) => document.documentElement.style.setProperty("--app-font-size", `${size}px`),
+            fontSize,
+          )
+          await expect(page.locator("html")).toHaveCSS("font-size", `${fontSize}px`)
+          await reachable(page)
+          const tool = page.locator("#page-pen-tool")
+          const toolMenu = page.locator("#page-pen-tool-menu")
+          await tool.press("ArrowDown")
+          await expect(toolMenu).toHaveRole("menu")
+          for (const [id, name] of [
+            ["pen", "Freehand"],
+            ["arrow", "Arrow"],
+            ["rectangle", "Rectangle"],
+          ]) {
+            const choice = toolMenu.locator(`[data-pen-tool="${id}"]`)
+            await expect(choice).toHaveRole("menuitemradio")
+            await expect(choice).toHaveAccessibleName(name as string)
+            expect(
+              await choice.locator("span").evaluate((label) => {
+                const range = document.createRange()
+                range.selectNodeContents(label)
+                return range.getClientRects().length
+              }),
+            ).toBe(1)
+          }
+          await page.keyboard.press("Home")
+          await page.keyboard.press("ArrowDown")
+          await expect(toolMenu.locator('[data-pen-tool="arrow"]')).toBeFocused()
+          await page.keyboard.press("Enter")
+          await expect(tool).toHaveAttribute("data-tool", "arrow")
+          await expect(tool).toBeEnabled()
+          await expect(tool).toBeFocused()
+          await tool.press("ArrowUp")
+          await page.keyboard.press("End")
+          await page.keyboard.press("Space")
+          await expect(tool).toHaveAttribute("data-tool", "rectangle")
+          await expect(tool).toBeEnabled()
+          await tool.click()
+          await expect(toolMenu.locator('[data-pen-tool="rectangle"]')).toHaveAttribute(
+            "aria-checked",
+            "true",
+          )
+          await reachable(page)
+          await page.screenshot({
+            path: test
+              .info()
+              .outputPath(`shapes-${width}-${fontSize}-${colorScheme}-${forcedColors}.png`),
           })
-        }
+          await page.keyboard.press("Escape")
+          await expect(toolMenu).toBeHidden()
+          await expect(tool).toBeFocused()
+          await expect(harness.fixturePage.locator(HOST)).toHaveCount(1)
+          await page.locator("#page-pen-width-toggle").click()
+          await expect(page.locator("#page-pen-width-popup")).toBeVisible()
+          const range = page.locator("#page-pen-width")
+          await expect(range).toBeVisible()
+          const rangeBox = await range.boundingBox()
+          if (!rangeBox) throw new Error("Missing vertical pen width geometry")
+          expect(rangeBox.height).toBeGreaterThan(rangeBox.width)
+          await reachable(page)
+          await page.keyboard.press("Escape")
+          await expect(page.locator("#page-pen-width-popup")).toBeHidden()
+          await expect(harness.fixturePage.locator(HOST)).toHaveCount(1)
+          const colors = page.locator("#page-pen-color")
+          const palette = page.locator("#page-pen-palette")
+          const swatch = (color: string) => palette.locator(`[data-pen-color="${color}"]`)
+          await expect(palette).toBeHidden()
+          await chooseColor("blue")
+          await colors.press("ArrowDown")
+          await expect(colors).toHaveAttribute("aria-expanded", "true")
+          await expect(palette).toBeVisible()
+          await paletteState(page, "blue")
+          await reachable(page)
+          // Navigation changes focus only. Selection waits for explicit activation.
+          for (const [key, color] of [
+            ["Home", "red"],
+            ["ArrowRight", "yellow"],
+            ["ArrowDown", "green"],
+            ["ArrowLeft", "yellow"],
+            ["ArrowUp", "red"],
+            ["ArrowUp", "black"],
+            ["Home", "red"],
+            ["End", "black"],
+            ["ArrowDown", "red"],
+            ["ArrowDown", "yellow"],
+          ]) {
+            await page.keyboard.press(key as string)
+            await expect(swatch(color as string)).toBeFocused()
+            await expect(colors).toHaveAttribute("data-color", "blue")
+            await expect(swatch("blue")).toHaveAttribute("aria-checked", "true")
+            await expect(swatch("yellow")).toHaveAttribute("aria-checked", "false")
+          }
+          await page.keyboard.press("Enter")
+          await expect(palette).toBeHidden()
+          await expect(colors).toHaveAttribute("aria-expanded", "false")
+          await expect(colors).toHaveAttribute("data-color", "yellow")
+          await expect(colors).toBeEnabled()
+          await expect(colors).toBeFocused()
+          await colors.press("ArrowUp")
+          await expect(palette).toBeVisible()
+          await paletteState(page, "yellow")
+          await page.keyboard.press("End")
+          await expect(swatch("black")).toBeFocused()
+          await page.keyboard.press("Space")
+          await expect(palette).toBeHidden()
+          await expect(colors).toHaveAttribute("aria-expanded", "false")
+          await expect(colors).toHaveAttribute("data-color", "black")
+          await expect(colors).toBeEnabled()
+          await expect(colors).toBeFocused()
+          await colors.click()
+          await paletteState(page, "black")
+          await reachable(page)
+          await page.screenshot({
+            path: test
+              .info()
+              .outputPath(`pen-${width}-${fontSize}-${colorScheme}-${forcedColors}.png`),
+          })
+          await page.keyboard.press("Escape")
+          await expect(palette).toBeHidden()
+          await expect(colors).toHaveAttribute("aria-expanded", "false")
+          await expect(colors).toBeFocused()
+          await expect(harness.fixturePage.locator(HOST)).toHaveCount(1)
+          await expect(page.locator("#page-pen-undo")).toBeEnabled()
+          await colors.press("ArrowDown")
+          await expect(palette).toBeVisible()
+          await page.keyboard.press("Tab")
+          await expect(palette).toBeHidden()
+          await expect(page.locator("#page-pen-width-toggle")).toBeFocused()
+          await page.keyboard.press("Enter")
+          await expect(page.locator("#page-pen-width-popup")).toBeVisible()
+          await expect(range).toBeFocused()
+          await page.keyboard.press("Tab")
+          await expect(page.locator("#page-pen-width-popup")).toBeHidden()
+          await expect(page.locator("#page-pen-undo")).toBeFocused()
+          await colors.focus()
+          await colors.press("ArrowUp")
+          await expect(palette).toBeVisible()
+          await page.keyboard.press("Shift+Tab")
+          await expect(palette).toBeHidden()
+          await expect(tool).toBeFocused()
+          await tool.press("ArrowDown")
+          await page.keyboard.press("Shift+Tab")
+          await expect(toolMenu).toBeHidden()
+          await expect(page.locator("#page-pen")).toBeFocused()
+          await expect(harness.fixturePage.locator(HOST)).toHaveCount(1)
+        })
       }
     }
   }
+}
+
+test("defers language changes during drawing and keeps the unsent draft", async () => {
+  await start()
+  await stroke()
+  const page = harness.controller
+  await page.setViewportSize({ width: 360, height: 900 })
+  await page.emulateMedia({ colorScheme: "dark", forcedColors: "active", reducedMotion: "reduce" })
+  await page.evaluate(() => document.documentElement.style.setProperty("--app-font-size", "24px"))
+  await chooseTool("rectangle")
+  await chooseColor("black")
   await page.locator("#prompt").fill("Keep this unsent drawing draft")
   await paste()
   const preview = await page.locator("#pasted-images img").getAttribute("src")
