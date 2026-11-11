@@ -26,13 +26,44 @@ const AUTH_REQUIRED = "Sign in to OpenAI Codex with an account before generating
 
 type Configuration = Pick<BrowserConfiguration, "credentials" | "models">
 
+const SIZE_PATTERN = "^(auto|[1-9][0-9]{2,3}x[1-9][0-9]{2,3})$"
+const SIZE_DESCRIPTION =
+  "Output size: auto or WIDTHxHEIGHT, such as 512x512 or 1536x1024. Each side must be 256–3840 pixels in steps of 16, with at most 8294400 pixels and a 1:3 to 3:1 aspect ratio. Smaller sizes can reduce output bytes but do not guarantee a result below 3 MB."
+
+function parseSize(value: unknown): string {
+  if (value === undefined || value === "auto") return "auto"
+  if (
+    typeof value === "string" &&
+    value.length <= 9 &&
+    value.trim() === value &&
+    new RegExp(SIZE_PATTERN).test(value)
+  ) {
+    const [width = 0, height = 0] = value.split("x").map(Number)
+    if (
+      width >= 256 &&
+      height >= 256 &&
+      width <= 3840 &&
+      height <= 3840 &&
+      width % 16 === 0 &&
+      height % 16 === 0 &&
+      width * height <= 8_294_400 &&
+      width <= height * 3 &&
+      height <= width * 3
+    )
+      return value
+  }
+  throw new ImagegenError(`Invalid image size. ${SIZE_DESCRIPTION}`)
+}
+
 function parseRequest(value: unknown): ImageRequest {
   if (
     typeof value !== "object" ||
     value === null ||
     Array.isArray(value) ||
     !("prompt" in value) ||
-    Object.keys(value).some((key) => key !== "prompt" && key !== "transparentBackground") ||
+    Object.keys(value).some(
+      (key) => key !== "prompt" && key !== "transparentBackground" && key !== "size",
+    ) ||
     typeof value.prompt !== "string" ||
     !value.prompt.trim() ||
     value.prompt.length > MAX_IMAGE_PROMPT_CHARS ||
@@ -46,6 +77,7 @@ function parseRequest(value: unknown): ImageRequest {
   return {
     prompt: value.prompt,
     transparentBackground: "transparentBackground" in value && value.transparentBackground === true,
+    size: parseSize("size" in value ? value.size : undefined),
   }
 }
 
@@ -71,11 +103,14 @@ export async function createImagegenTools(
       name: "codex_imagegen",
       label: "Generate image",
       description:
-        "Generate one image from a text prompt using the configured OpenAI Codex account (gpt-image-2). Optional transparentBackground requests transparency. Requires fresh confirmation and consumes account quota. The result is displayed and saved in this conversation; no filesystem path or image editing is supported. Never automatically repeat a failed or cancelled generation.",
+        "Generate one image from a text prompt using the configured OpenAI Codex account (gpt-image-2). Optional size controls output dimensions; use a smaller size such as 512x512 to reduce output bytes. Optional transparentBackground requests transparency. Requires fresh confirmation and consumes account quota. The result is displayed and saved in this conversation; no filesystem path or image editing is supported. Never automatically repeat a failed or cancelled generation.",
       parameters: Type.Object(
         {
           prompt: Type.String({ minLength: 1, maxLength: MAX_IMAGE_PROMPT_CHARS }),
           transparentBackground: Type.Optional(Type.Boolean()),
+          size: Type.Optional(
+            Type.String({ pattern: SIZE_PATTERN, maxLength: 9, description: SIZE_DESCRIPTION }),
+          ),
         },
         { additionalProperties: false },
       ),
@@ -98,6 +133,7 @@ export async function createImagegenTools(
               targetUrl: IMAGE_ENDPOINT,
               prompt: request.prompt,
               transparentBackground: request.transparentBackground,
+              size: request.size,
             },
             executionSignal,
             undefined,

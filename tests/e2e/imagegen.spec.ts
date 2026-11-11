@@ -68,7 +68,11 @@ async function configure(harness: ExtensionHarness): Promise<void> {
   })
 }
 
-async function mockRequests(harness: ExtensionHarness, transparentBackground?: boolean) {
+async function mockRequests(
+  harness: ExtensionHarness,
+  transparentBackground?: boolean,
+  size?: string,
+) {
   const model: CodexRequest[] = []
   const images: { method: string; body: unknown; headers: Record<string, string> }[] = []
   await harness.context.route(CODEX_RESPONSES_URL, async (route) => {
@@ -82,6 +86,7 @@ async function mockRequests(harness: ExtensionHarness, transparentBackground?: b
           ? toolCallResponse(index, "codex_imagegen", {
               prompt: PROMPT,
               ...(transparentBackground === undefined ? {} : { transparentBackground }),
+              ...(size === undefined ? {} : { size }),
             })
           : finalTextResponse(index, `Image turn ${index / 2} complete`),
     })
@@ -103,7 +108,11 @@ async function mockRequests(harness: ExtensionHarness, transparentBackground?: b
   return { model, images }
 }
 
-async function requestImage(page: Page, transparentBackground: boolean): Promise<void> {
+async function requestImage(
+  page: Page,
+  transparentBackground: boolean,
+  size = "auto",
+): Promise<void> {
   await page.locator("#prompt").fill("Generate the requested image")
   await page.locator("#send").click()
   await expect(page.locator("#confirm-dialog")).toBeVisible()
@@ -113,6 +122,7 @@ async function requestImage(page: Page, transparentBackground: boolean): Promise
   await expect(page.locator("#confirm-message")).toContainText(
     `"transparentBackground": ${transparentBackground}`,
   )
+  await expect(page.locator("#confirm-message")).toContainText(`"size": "${size}"`)
   // Send already approves the chat endpoint. Count only requests made by this confirmation.
   await page.evaluate(() => {
     ;(window as PermissionProbe).imagegenRequestedOrigins = []
@@ -165,12 +175,12 @@ async function savedSessions(page: Page): Promise<SessionRecord[]> {
   })
 }
 
-test("confirms image generation without page context and restores the saved raster without replay", async () => {
+test("confirms image generation size without page context and restores the saved raster without replay", async () => {
   const harness = await launchExtensionHarness()
   try {
-    const requests = await mockRequests(harness, true)
+    const requests = await mockRequests(harness, true, "512x512")
     await configure(harness)
-    await requestImage(harness.controller, true)
+    await requestImage(harness.controller, true, "512x512")
     expect(declaredToolNames(requests.model[0])).toContain("codex_imagegen")
     await expect(harness.controller.locator("#element-picker")).toBeDisabled()
     expect(requests.model).toHaveLength(1)
@@ -189,7 +199,7 @@ test("confirms image generation without page context and restores the saved rast
         background: "transparent",
         model: "gpt-image-2",
         quality: "auto",
-        size: "auto",
+        size: "512x512",
       },
       headers: {
         authorization: `Bearer ${ACCESS_TOKEN}`,
@@ -230,7 +240,7 @@ test("confirms image generation without page context and restores the saved rast
 
     // An identical call still needs fresh confirmation, even in convenient mode.
     await harness.fixturePage.bringToFront()
-    await requestImage(harness.controller, true)
+    await requestImage(harness.controller, true, "512x512")
     expect(requests.images).toHaveLength(1)
     await harness.controller.locator('#confirm-dialog button[value="cancel"]').click()
     await expectFinished(harness.controller, 2)

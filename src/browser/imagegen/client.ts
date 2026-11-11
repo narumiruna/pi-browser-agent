@@ -12,6 +12,7 @@ export class ImagegenError extends Error {}
 export interface ImageRequest {
   prompt: string
   transparentBackground: boolean
+  size: string
 }
 
 export async function imagegenWait<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
@@ -98,7 +99,7 @@ export async function generateImageRequest(
         background: request.transparentBackground ? "transparent" : "opaque",
         model: "gpt-image-2",
         quality: "auto",
-        size: "auto",
+        size: request.size,
       }),
     })
     void pending.then(

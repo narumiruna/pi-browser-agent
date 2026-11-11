@@ -110,7 +110,12 @@ describe("Codex image JSON protocol", () => {
     expect(confirm.mock.calls[0]).toEqual(
       expect.arrayContaining([
         expect.stringContaining("account quota"),
-        { targetUrl: IMAGE_ENDPOINT, prompt: "  An icon  ", transparentBackground: true },
+        {
+          targetUrl: IMAGE_ENDPOINT,
+          prompt: "  An icon  ",
+          transparentBackground: true,
+          size: "auto",
+        },
       ]),
     )
     expect(fetcher).toHaveBeenCalledOnce()
@@ -147,6 +152,29 @@ describe("Codex image JSON protocol", () => {
     expect(JSON.stringify(result)).not.toContain("account-test")
     expect(changed.size).toBe(0)
     expect(revoked.size).toBe(0)
+  })
+
+  test.each([
+    undefined,
+    "auto",
+    "256x256",
+    "256x768",
+    "768x256",
+    "512x512",
+    "768x512",
+    "1024x1536",
+    "1536x864",
+    "3840x2160",
+    "2160x3840",
+  ])("confirms and sends output size %s", async (size) => {
+    const confirm = vi.fn(async () => true)
+    await (await tool(confirm)).execute("sized", { prompt: "A small icon", size })
+    expect(confirm.mock.calls[0]).toEqual(
+      expect.arrayContaining([expect.objectContaining({ size: size ?? "auto" })]),
+    )
+    expect(fetcher).toHaveBeenCalledOnce()
+    const [, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit]
+    expect(JSON.parse(init.body as string)).toMatchObject({ size: size ?? "auto" })
   })
 
   test("reads chunked UTF-8 JSON and ignores arbitrary response metadata and headers", async () => {
@@ -232,7 +260,7 @@ describe("Codex image JSON protocol", () => {
       await expect(
         generateImageRequest(
           value,
-          { prompt: "icon", transparentBackground: false },
+          { prompt: "icon", transparentBackground: false, size: "auto" },
           new AbortController().signal,
         ),
       ).rejects.toThrow("valid OpenAI Codex")
@@ -263,6 +291,40 @@ describe("Codex image authorization and lifecycle", () => {
       "nonblank image prompt",
     )
     expect(confirm).not.toHaveBeenCalled()
+    expect(fetcher).not.toHaveBeenCalled()
+  })
+
+  test.each([
+    null,
+    "",
+    512,
+    {},
+    "AUTO",
+    "512X512",
+    "0512x512",
+    "512.0x512",
+    "512x512 ",
+    "512x512\n",
+    "512x512\r",
+    "16x16",
+    "240x512",
+    "512x240",
+    "513x512",
+    "512x513",
+    "4096x2160",
+    "2160x4096",
+    "3840x2176",
+    "2176x3840",
+    "256x784",
+    "784x256",
+    "9999999999x512",
+  ])("rejects invalid output size %j before confirmation or authentication", async (size) => {
+    const confirm = vi.fn(async () => true)
+    await expect(
+      (await tool(confirm)).execute("invalid-size", { prompt: "A small icon", size }),
+    ).rejects.toThrow("image size")
+    expect(confirm).not.toHaveBeenCalled()
+    expect(auth).not.toHaveBeenCalled()
     expect(fetcher).not.toHaveBeenCalled()
   })
 
