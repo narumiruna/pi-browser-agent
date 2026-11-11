@@ -138,6 +138,8 @@ export default {
     "Gọi công cụ WebMCP do trang này cung cấp? Công cụ có thể gây tác động phụ, ngay cả khi được gọi lại với các đối số giống hệt nhau.",
   "Call this remote MCP tool? Arguments go to this server; results go to the selected model and saved session. This call may have side effects. Every call requires confirmation.":
     "Gọi công cụ MCP từ xa này? Đối số được gửi đến máy chủ này; kết quả được gửi đến mô hình đã chọn và phiên đã lưu. Lần gọi này có thể gây tác động phụ. Mỗi lần gọi đều cần xác nhận.",
+  "Generate an image with OpenAI Codex? The prompt goes to OpenAI; the image goes to the selected model and saved session. This uses account quota. Cancellation may not stop generation. Every call requires confirmation.":
+    "Tạo ảnh bằng OpenAI Codex? Lời nhắc được gửi đến OpenAI; ảnh được gửi đến mô hình đã chọn và lưu trong phiên. Thao tác này sử dụng hạn mức tài khoản. Việc hủy có thể không dừng quá trình tạo ảnh. Mỗi lần gọi đều cần xác nhận.",
   "Calling a remote tool": "Đang gọi công cụ từ xa",
   Cancel: "Hủy",
   "Cancel element selection": "Hủy chọn phần tử",

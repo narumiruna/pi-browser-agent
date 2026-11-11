@@ -139,6 +139,8 @@ export const english = {
     "Call this page-provided WebMCP tool? It may have side effects, even when called again with identical arguments.",
   "Call this remote MCP tool? Arguments go to this server; results go to the selected model and saved session. This call may have side effects. Every call requires confirmation.":
     "Call this remote MCP tool? Arguments go to this server; results go to the selected model and saved session. This call may have side effects. Every call requires confirmation.",
+  "Generate an image with OpenAI Codex? The prompt goes to OpenAI; the image goes to the selected model and saved session. This uses account quota. Cancellation may not stop generation. Every call requires confirmation.":
+    "Generate an image with OpenAI Codex? The prompt goes to OpenAI; the image goes to the selected model and saved session. This uses account quota. Cancellation may not stop generation. Every call requires confirmation.",
   "Calling a remote tool": "Calling a remote tool",
   Cancel: "Cancel",
   "Cancel element selection": "Cancel element selection",

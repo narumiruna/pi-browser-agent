@@ -136,6 +136,8 @@ export default {
     "このページが提供する WebMCP ツールを呼び出しますか？同じ引数で再度呼び出す場合も、副作用が生じる可能性があります。",
   "Call this remote MCP tool? Arguments go to this server; results go to the selected model and saved session. This call may have side effects. Every call requires confirmation.":
     "このリモート MCP ツールを呼び出しますか？引数はこのサーバーに送信され、結果は選択したモデルに送信されてセッションに保存されます。この呼び出しには副作用が生じる可能性があります。呼び出しのたびに確認が必要です。",
+  "Generate an image with OpenAI Codex? The prompt goes to OpenAI; the image goes to the selected model and saved session. This uses account quota. Cancellation may not stop generation. Every call requires confirmation.":
+    "OpenAI Codex で画像を生成しますか？プロンプトは OpenAI に送信されます。画像は選択したモデルに送信され、セッションに保存されます。アカウントの利用枠を消費します。キャンセルしても生成が停止しない場合があります。呼び出しごとに確認が必要です。",
   "Calling a remote tool": "リモートツールを呼び出し中",
   Cancel: "キャンセル",
   "Cancel element selection": "要素の選択をキャンセル",

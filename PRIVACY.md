@@ -1,6 +1,6 @@
 # Privacy Policy for Pi Browser Agent
 
-**Effective date:** November 1, 2026
+**Effective date:** November 12, 2026
 
 Pi Browser Agent is a Chrome extension that provides an AI assistant for the page the user is viewing. This policy explains what information Pi Browser Agent handles, why it is handled, where it is stored, and when it is shared.
 
@@ -34,6 +34,12 @@ Only the cropped PNG appears in the existing composer previews for local review.
 
 Rectangle state, completed revisions, tokens, the temporary source, and unsent crops remain in memory. Source resources are released when no longer needed; this is not a secure-memory-erasure claim. A cleaned static crop can survive a later tab change, not session replacement or panel disposal. Sent crops follow ordinary session retention, and deleting local history does not delete provider-held data. Cropping limits only the attached image: prompts, selected-element data, prior history, and separately approved browser reads can include other content. See [region capture](docs/region-capture.md).
 
+
+### Image generation
+
+With a configured OpenAI Codex account, the assistant can request one generated image through `codex_imagegen`. Each request requires fresh confirmation of the full prompt, background choice, and fixed ChatGPT endpoint in every confirmation mode. The image prompt and fixed generation options go to OpenAI, even when the chat model uses another provider. Conversation history and page data are not sent to the image endpoint unless included in the confirmed prompt. OAuth credentials and the account identifier authenticate only to the fixed endpoint; requests omit cookies and reject redirects.
+
+Validated static PNG, JPEG, or WebP images of at most 3 MB return as tool results. They can be sent to the selected chat provider on continuation and are stored under ordinary conversation retention and size limits. Cancelling a request cannot guarantee that server generation stops or that quota is refunded. Failed, cancelled, or restored requests are never automatically repeated. Deleting a local session does not delete OpenAI or chat-provider records. See [image generation](docs/image-generation.md).
 
 ### Current-page information
 
@@ -88,6 +94,7 @@ Pi Browser Agent uses information only to:
 Pi Browser Agent can share information in these circumstances:
 - **Selected AI provider:** When the user sends a prompt or approves a tool operation, Pi Browser Agent sends the provider the information needed for the conversation. Depending on the request, this may include prompts, prior conversation content, the current page URL, visible or selected page content, element descriptions, attached images, approved screenshots, approved bookmark titles and URLs, enabled skill metadata, loaded skill bodies, and tool results. Provider credentials are sent only to the associated provider endpoint for authentication.
 - **OpenAI authentication:** If the user chooses OpenAI Codex account login, Pi Browser Agent communicates with OpenAI's authentication and ChatGPT services to complete and refresh the device authorization flow.
+- **OpenAI image generation:** A freshly confirmed generation sends the displayed image prompt and fixed options to the Codex image endpoint using the configured Codex account. The returned image can also reach the selected chat provider and the local conversation transcript.
 - **GitHub:** An explicit repository fetch and selected-file review send repository and selected blob identifiers to `api.github.com` to list and read public skill text. Requests use no cookies, provider credentials, or GitHub authentication. Opening a reviewed source link separately contacts GitHub through the browser.
 - **Configured remote MCP server:** Explicit setup or a later submitted run discovers enabled server tools. A confirmed call sends the displayed tool name and arguments to the approved endpoint. Tool metadata and results can also reach the selected AI provider and local transcript. MCP tokens authenticate only to their configured endpoint.
 - **Chrome speech provider:** If the user enables voice input, Chrome's speech service may process spoken audio and return transcript text.

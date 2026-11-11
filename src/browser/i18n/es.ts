@@ -150,6 +150,8 @@ export default {
     "¿Invocar esta herramienta WebMCP proporcionada por la página? Puede tener efectos secundarios, incluso al invocarla de nuevo con argumentos idénticos.",
   "Call this remote MCP tool? Arguments go to this server; results go to the selected model and saved session. This call may have side effects. Every call requires confirmation.":
     "¿Invocar esta herramienta MCP remota? Los argumentos se envían a este servidor; los resultados, al modelo seleccionado y a la sesión guardada. Esta llamada puede tener efectos secundarios. Cada llamada requiere confirmación.",
+  "Generate an image with OpenAI Codex? The prompt goes to OpenAI; the image goes to the selected model and saved session. This uses account quota. Cancellation may not stop generation. Every call requires confirmation.":
+    "¿Generar una imagen con OpenAI Codex? La instrucción se envía a OpenAI; la imagen se envía al modelo seleccionado y se guarda en la sesión. Esto consume la cuota de la cuenta. La cancelación podría no detener la generación. Cada llamada requiere confirmación.",
   "Calling a remote tool": "Invocando una herramienta remota",
   Cancel: "Cancelar",
   "Cancel element selection": "Cancelar selección de elementos",

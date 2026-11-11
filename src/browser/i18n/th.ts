@@ -126,6 +126,8 @@ export default {
     "เรียกเครื่องมือ WebMCP ที่หน้านี้ให้มาหรือไม่? อาจมีผลข้างเคียง แม้เรียกซ้ำด้วยอาร์กิวเมนต์ที่เหมือนกัน",
   "Call this remote MCP tool? Arguments go to this server; results go to the selected model and saved session. This call may have side effects. Every call requires confirmation.":
     "เรียกเครื่องมือ MCP ระยะไกลนี้หรือไม่? อาร์กิวเมนต์จะส่งไปยังเซิร์ฟเวอร์นี้ ผลลัพธ์จะส่งไปยังโมเดลที่เลือกและเซสชันที่บันทึก การเรียกนี้อาจมีผลข้างเคียง ต้องยืนยันทุกครั้งที่เรียก",
+  "Generate an image with OpenAI Codex? The prompt goes to OpenAI; the image goes to the selected model and saved session. This uses account quota. Cancellation may not stop generation. Every call requires confirmation.":
+    "สร้างรูปภาพด้วย OpenAI Codex หรือไม่? พรอมต์จะถูกส่งไปยัง OpenAI ส่วนรูปภาพจะถูกส่งไปยังโมเดลที่เลือกและบันทึกไว้ในเซสชัน การดำเนินการนี้ใช้โควตาของบัญชี การยกเลิกอาจไม่หยุดการสร้างรูปภาพ ต้องยืนยันทุกครั้งที่เรียกใช้",
   "Calling a remote tool": "กำลังเรียกเครื่องมือระยะไกล",
   Cancel: "ยกเลิก",
   "Cancel element selection": "ยกเลิกการเลือกองค์ประกอบ",
