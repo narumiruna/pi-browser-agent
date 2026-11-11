@@ -12,6 +12,10 @@ on:
 jobs:
   ci:
     runs-on: ubuntu-latest
+    container:
+      # Keep this version aligned with playwright-core in package-lock.json.
+      image: mcr.microsoft.com/playwright:v1.64.1-noble
+      options: --ipc=host
     steps:
       - uses: actions/checkout@v7
         with:
@@ -21,5 +25,4 @@ jobs:
           node-version: 26
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
       - run: npm run ci

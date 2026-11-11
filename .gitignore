@@ -146,3 +146,6 @@ vite.config.ts.timestamp-*
 
 # Extension.js local session state
 .extension-js
+
+# Pi local session state
+.pi/
