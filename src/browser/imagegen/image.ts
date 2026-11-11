@@ -171,8 +171,14 @@ export async function decodeGeneratedImage(
       imageOrientation: "none",
     })
     try {
-      requireValid(bitmap.width === width && bitmap.height === height)
-      return { content: { type: "image", data: base64, mimeType }, width, height }
+      const dimensions = { width: bitmap.width, height: bitmap.height }
+      // JPEG EXIF orientation can transpose browser dimensions even with imageOrientation: "none".
+      // An exact transpose preserves the header's side and pixel bounds.
+      requireValid(
+        (dimensions.width === width && dimensions.height === height) ||
+          (mimeType === "image/jpeg" && dimensions.width === height && dimensions.height === width),
+      )
+      return { content: { type: "image", data: base64, mimeType }, ...dimensions }
     } finally {
       bitmap.close()
     }

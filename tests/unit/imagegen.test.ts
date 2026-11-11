@@ -13,8 +13,8 @@ import { createImagegenTools } from "../../src/browser/imagegen/tool.js"
 
 const PNG =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aOfoAAAAASUVORK5CYII="
-function token(account = "account-test", alg = "RS256") {
-  return `${btoa(JSON.stringify({ alg })).replace(/=/g, "")}.${btoa(JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: account } })).replace(/=/g, "")}.c2ln`
+function token(account = "account-test", alg = "RS256", signature = "c2ln") {
+  return `${btoa(JSON.stringify({ alg })).replace(/=/g, "")}.${btoa(JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: account } })).replace(/=/g, "")}.${signature}`
 }
 let credential: Credential | undefined
 let allowed: boolean
@@ -358,6 +358,131 @@ describe("Codex image authorization and lifecycle", () => {
     expect(fetcher).not.toHaveBeenCalled()
   })
 
+  test("rejects account replacement during confirmation even without a storage event", async () => {
+    const confirm = vi.fn(async () => {
+      credential = {
+        type: "oauth",
+        access: token("replacement-account"),
+        refresh: "replacement-refresh",
+        expires: Date.now() + 3600000,
+        accountId: "replacement-account",
+      }
+      return true
+    })
+    await expect(execute(confirm)).rejects.toThrow("Sign in to OpenAI Codex")
+    expect(auth).not.toHaveBeenCalled()
+    expect(fetcher).not.toHaveBeenCalled()
+    expect(changed.size).toBe(0)
+  })
+
+  test.each(["replacement", "removal", "remove and restore"])(
+    "cancels pending confirmation on credential %s without waiting for the dialog",
+    async (kind) => {
+      const pending = deferred<boolean>()
+      const confirm = vi.fn(async () => pending.promise)
+      const original = credential
+      const running = execute(confirm)
+      const failure = expect(running).rejects.toThrow("cancelled before confirmation")
+      await vi.waitFor(() => expect(confirm).toHaveBeenCalledOnce())
+      credential =
+        kind === "replacement"
+          ? {
+              type: "oauth",
+              access: token("replacement-account"),
+              refresh: "replacement-refresh",
+              expires: Date.now() + 3600000,
+            }
+          : undefined
+      for (const listener of changed)
+        listener({ [CREDENTIALS_KEY]: { newValue: { "openai-codex": credential } } }, "local")
+      if (kind === "remove and restore") {
+        credential = original
+        for (const listener of changed)
+          listener({ [CREDENTIALS_KEY]: { newValue: { "openai-codex": credential } } }, "local")
+      }
+      await failure
+      expect((confirm.mock.calls as unknown[][])[0]?.[2]).toMatchObject({ aborted: true })
+      pending.resolve(true)
+      await Promise.resolve()
+      expect(auth).not.toHaveBeenCalled()
+      expect(fetcher).not.toHaveBeenCalled()
+      expect(changed.size).toBe(0)
+      expect(revoked.size).toBe(0)
+    },
+  )
+
+  test("permits same-account refresh while confirmation is open", async () => {
+    const rotated = token("account-test", "RS256", "cm90YXRlZA")
+    const confirm = vi.fn(async () => {
+      credential = {
+        type: "oauth",
+        access: rotated,
+        refresh: "rotated-refresh",
+        expires: Date.now() + 3600000,
+        accountId: "account-test",
+      }
+      for (const listener of changed)
+        listener({ [CREDENTIALS_KEY]: { newValue: { "openai-codex": credential } } }, "local")
+      return true
+    })
+    auth.mockResolvedValue({ auth: { apiKey: rotated } })
+    await execute(confirm)
+    expect(fetcher).toHaveBeenCalledOnce()
+    expect(fetcher.mock.calls[0]?.[1].headers.Authorization).toBe(`Bearer ${rotated}`)
+  })
+
+  test("cancels account replacement during authentication and discards its late result", async () => {
+    const late = deferred<AuthResult>()
+    auth.mockReturnValue(late.promise)
+    const running = execute()
+    const failure = expect(running).rejects.toThrow("cancelled")
+    await vi.waitFor(() => expect(auth).toHaveBeenCalledOnce())
+    credential = {
+      type: "oauth",
+      access: token("replacement-account"),
+      refresh: "replacement-refresh",
+      expires: Date.now() + 3600000,
+      accountId: "replacement-account",
+    }
+    for (const listener of changed)
+      listener({ [CREDENTIALS_KEY]: { newValue: { "openai-codex": credential } } }, "local")
+    await failure
+    late.resolve({ auth: { apiKey: credential.access } })
+    await Promise.resolve()
+    expect(fetcher).not.toHaveBeenCalled()
+    expect(changed.size).toBe(0)
+    expect(revoked.size).toBe(0)
+  })
+
+  test("rejects authentication that resolves another account without a storage event", async () => {
+    auth.mockImplementation(async () => {
+      credential = {
+        type: "oauth",
+        access: token("replacement-account"),
+        refresh: "replacement-refresh",
+        expires: Date.now() + 3600000,
+      }
+      return { auth: { apiKey: credential.access } }
+    })
+    await expect(execute()).rejects.toThrow("Sign in to OpenAI Codex")
+    expect(fetcher).not.toHaveBeenCalled()
+  })
+
+  test("rejects stored account metadata that conflicts with the access-token claim", async () => {
+    credential = {
+      type: "oauth",
+      access: token("replacement-account"),
+      refresh: "private-refresh",
+      expires: Date.now() + 3600000,
+      accountId: "account-test",
+    }
+    const confirm = vi.fn(async () => true)
+    await expect(execute(confirm)).rejects.toThrow("Sign in to OpenAI Codex")
+    expect(confirm).not.toHaveBeenCalled()
+    expect(auth).not.toHaveBeenCalled()
+    expect(fetcher).not.toHaveBeenCalled()
+  })
+
   test("rejects custom resolved auth endpoints instead of forwarding credential or headers", async () => {
     auth.mockResolvedValue({
       auth: { apiKey: token(), baseUrl: "https://other.test", headers: { "x-secret": "private" } },
@@ -481,13 +606,14 @@ describe("Codex image authorization and lifecycle", () => {
   })
 
   test("accepts the existing serialized OAuth refresh and ignores unrelated credential changes", async () => {
-    const rotated = token("refreshed-account")
+    const rotated = token("account-test", "RS256", "cm90YXRlZA")
     auth.mockImplementation(async () => {
       credential = {
         type: "oauth",
         access: rotated,
         refresh: "rotated-refresh",
         expires: Date.now() + 3600000,
+        accountId: "account-test",
       }
       for (const listener of changed)
         listener({ [CREDENTIALS_KEY]: { newValue: { "openai-codex": credential } } }, "local")
@@ -510,7 +636,8 @@ describe("Codex image authorization and lifecycle", () => {
     })
     await execute()
     expect(fetcher).toHaveBeenCalledOnce()
-    expect(fetcher.mock.calls[0]?.[1].headers["ChatGPT-Account-ID"]).toBe("refreshed-account")
+    expect(fetcher.mock.calls[0]?.[1].headers["ChatGPT-Account-ID"]).toBe("account-test")
+    expect(fetcher.mock.calls[0]?.[1].headers.Authorization).toBe(`Bearer ${rotated}`)
   })
 
   test("cancels a late authentication resolution without dispatch", async () => {

@@ -114,6 +114,34 @@ describe("generated image decoding", () => {
     expect(bitmap.close).toHaveBeenCalledOnce()
   })
 
+  test.each([0xc0, 0xc2])(
+    "accepts transposed JPEG dimensions and closes the bitmap (marker %s)",
+    async (marker) => {
+      bitmap.width = 3
+      bitmap.height = 2
+      const base64 = encode(jpeg(2, 3, marker))
+      await expect(decodeGeneratedImage(base64)).resolves.toEqual({
+        content: { type: "image", data: base64, mimeType: "image/jpeg" },
+        width: 3,
+        height: 2,
+      })
+      const [blob] = decode.mock.calls[0] ?? []
+      expect(Buffer.from(await blob.arrayBuffer())).toEqual(Buffer.from(base64, "base64"))
+      expect(bitmap.close).toHaveBeenCalledOnce()
+    },
+  )
+
+  test.each([
+    { width: 3, height: 3 },
+    { width: 2, height: 4 },
+    { width: 0, height: 3 },
+    { width: 4097, height: 3 },
+  ])("rejects non-transpose JPEG mismatch and closes the bitmap (%j)", async (dimensions) => {
+    Object.assign(bitmap, dimensions)
+    await expect(decodeGeneratedImage(encode(jpeg()))).rejects.toThrow(ERROR)
+    expect(bitmap.close).toHaveBeenCalledOnce()
+  })
+
   test.each([
     "",
     "a",
@@ -242,7 +270,7 @@ describe("generated image decoding", () => {
     { width: 2, height: 4 },
     { width: 0, height: 3 },
     { width: 4097, height: 3 },
-  ])("rejects decoded dimension mismatch and closes the bitmap (%j)", async (dimensions) => {
+  ])("rejects PNG mismatches and closes the bitmap (%j)", async (dimensions) => {
     Object.assign(bitmap, dimensions)
     await expect(decodeGeneratedImage(encode(png()))).rejects.toThrow(ERROR)
     expect(bitmap.close).toHaveBeenCalledOnce()

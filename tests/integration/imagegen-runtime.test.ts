@@ -3,6 +3,7 @@ import { IDBFactory } from "fake-indexeddb"
 import { afterEach, beforeEach, expect, test, vi } from "vitest"
 import { BrowserAgentRuntime } from "../../src/browser/agent/runtime.js"
 import { IMAGE_ENDPOINT } from "../../src/browser/imagegen/client.js"
+import { createImagegenTools } from "../../src/browser/imagegen/tool.js"
 import type { SessionLease } from "../../src/browser/sessions/session-lease.js"
 
 const PNG =
@@ -164,6 +165,56 @@ test("generates with a different chat provider and no page; saves the raster wit
   expect(restored.activeSession.messages).toEqual(saved?.messages)
   expect(fetch).toHaveBeenCalledOnce()
   expect(restored.agent.state.isStreaming).toBe(false)
+})
+
+test("image authentication permits the real serialized same-account OAuth refresh", async () => {
+  const { agent } = runtime()
+  await agent.initialize()
+  const original = await agent.configuration.credentials.read("openai-codex")
+  if (original?.type !== "oauth") throw new Error("Missing test credential")
+  await agent.configuration.credentials.modify("openai-codex", async () => ({
+    ...original,
+    accountId: "test-account",
+    expires: Date.now() - 1,
+  }))
+  const rotated = TOKEN.replace(/\.c2ln$/, ".cm90YXRlZA")
+  vi.mocked(fetch).mockImplementation(async (url) => {
+    if (url === "https://auth.openai.com/oauth/token")
+      return new Response(
+        JSON.stringify({
+          access_token: rotated,
+          refresh_token: "rotated-refresh",
+          expires_in: 3600,
+        }),
+        { headers: { "content-type": "application/json" } },
+      )
+    if (url !== IMAGE_ENDPOINT) throw new Error("Unexpected test endpoint")
+    return new Response(JSON.stringify({ data: [{ b64_json: PNG }] }), {
+      headers: { "content-type": "application/json" },
+    })
+  })
+  const [tool] = await createImagegenTools(
+    agent.configuration,
+    vi.fn(async () => true),
+  )
+  if (!tool) throw new Error("Missing image tool")
+  const result = await tool.execute("refresh-image", { prompt: "A red square" })
+  expect(result.content).toContainEqual({ type: "image", data: PNG, mimeType: "image/png" })
+  expect(fetch).toHaveBeenCalledTimes(2)
+  expect(vi.mocked(fetch).mock.calls[1]).toEqual([
+    IMAGE_ENDPOINT,
+    expect.objectContaining({
+      headers: expect.objectContaining({
+        Authorization: `Bearer ${rotated}`,
+        "ChatGPT-Account-ID": "test-account",
+      }),
+    }),
+  ])
+  expect(await agent.configuration.credentials.read("openai-codex")).toMatchObject({
+    access: rotated,
+    refresh: "rotated-refresh",
+    accountId: "test-account",
+  })
 })
 
 test("a later explicit run drops image generation after Codex credential removal", async () => {

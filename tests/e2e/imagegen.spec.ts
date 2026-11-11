@@ -72,6 +72,7 @@ async function mockRequests(
   harness: ExtensionHarness,
   transparentBackground?: boolean,
   size?: string,
+  imageBase64 = PNG,
 ) {
   const model: CodexRequest[] = []
   const images: { method: string; body: unknown; headers: Record<string, string> }[] = []
@@ -102,7 +103,7 @@ async function mockRequests(
       status: 200,
       contentType: "application/json",
       headers: { "x-codex-imagegen-request-id": "e2e-image-request" },
-      body: JSON.stringify({ data: [{ b64_json: PNG }] }),
+      body: JSON.stringify({ data: [{ b64_json: imageBase64 }] }),
     })
   })
   return { model, images }
@@ -138,11 +139,14 @@ async function expectFinished(page: Page, turn: number): Promise<void> {
   await expect(page.locator("#error")).toBeEmpty()
 }
 
-async function expectPreview(page: Page): Promise<void> {
+async function expectPreview(
+  page: Page,
+  image = { base64: PNG, mimeType: "image/png", width: 1, height: 1 },
+): Promise<void> {
   const preview = page.locator("#transcript .message.toolResult img.message-image")
   await expect(preview).toHaveCount(1)
   await expect(preview).toBeVisible()
-  await expect(preview).toHaveAttribute("src", `data:image/png;base64,${PNG}`)
+  await expect(preview).toHaveAttribute("src", `data:${image.mimeType};base64,${image.base64}`)
   await expect
     .poll(() =>
       preview.evaluate((image) => {
@@ -150,7 +154,39 @@ async function expectPreview(page: Page): Promise<void> {
         return [raster.complete, raster.naturalWidth, raster.naturalHeight]
       }),
     )
-    .toEqual([true, 1, 1])
+    .toEqual([true, image.width, image.height])
+}
+
+async function orientedJpeg(page: Page, orientation: number): Promise<string> {
+  const base64 = await page.evaluate(() => {
+    const canvas = document.createElement("canvas")
+    canvas.width = 2
+    canvas.height = 3
+    const context = canvas.getContext("2d")
+    if (!context) throw new Error("Canvas context unavailable")
+    context.fillStyle = "red"
+    context.fillRect(0, 0, 2, 3)
+    context.fillStyle = "blue"
+    context.fillRect(0, 0, 1, 1)
+    return canvas.toDataURL("image/jpeg").split(",")[1] as string
+  })
+  const jpeg = Buffer.from(base64, "base64")
+  expect([...jpeg.subarray(0, 2)]).toEqual([0xff, 0xd8])
+
+  // Little-endian TIFF with one SHORT Orientation entry in IFD0 and no next IFD.
+  const tiff = Buffer.alloc(26)
+  tiff.write("II", 0, "ascii")
+  tiff.writeUInt16LE(42, 2)
+  tiff.writeUInt32LE(8, 4)
+  tiff.writeUInt16LE(1, 8)
+  tiff.writeUInt16LE(0x0112, 10)
+  tiff.writeUInt16LE(3, 12)
+  tiff.writeUInt32LE(1, 14)
+  tiff.writeUInt16LE(orientation, 18)
+  const payload = Buffer.concat([Buffer.from("Exif\0\0", "ascii"), tiff])
+  const app1 = Buffer.from([0xff, 0xe1, 0, 0])
+  app1.writeUInt16BE(payload.length + 2, 2)
+  return Buffer.concat([jpeg.subarray(0, 2), app1, payload, jpeg.subarray(2)]).toString("base64")
 }
 
 async function savedSessions(page: Page): Promise<SessionRecord[]> {
@@ -252,6 +288,114 @@ test("confirms image generation size without page context and restores the saved
     await harness.close()
   }
 })
+
+for (const orientation of [5, 6, 7, 8]) {
+  test(`accepts a real JPEG with EXIF orientation ${orientation} and saves preview dimensions`, async () => {
+    const harness = await launchExtensionHarness()
+    try {
+      const base64 = await orientedJpeg(harness.controller, orientation)
+      const image = { base64, mimeType: "image/jpeg", width: 3, height: 2 }
+      const requests = await mockRequests(harness, false, undefined, base64)
+      await configure(harness)
+      await requestImage(harness.controller, false)
+      expect(requests.images).toHaveLength(0)
+      await harness.controller.locator("#confirm-action").click()
+      await expectFinished(harness.controller, 1)
+      await expectPreview(harness.controller, image)
+      expect(requests.images).toHaveLength(1)
+      expect(requests.model).toHaveLength(2)
+      expect(JSON.stringify(requests.model[1])).toContain(base64)
+      await expect
+        .poll(async () =>
+          (await savedSessions(harness.controller)).flatMap((session) => session.messages),
+        )
+        .toContainEqual(
+          expect.objectContaining({
+            role: "toolResult",
+            toolName: "codex_imagegen",
+            isError: false,
+            content: expect.arrayContaining([
+              { type: "image", mimeType: "image/jpeg", data: base64 },
+            ]),
+            details: expect.objectContaining({ width: 3, height: 2 }),
+          }),
+        )
+
+      await harness.controller.reload({ waitUntil: "domcontentloaded" })
+      await waitForConversationReady(harness.controller)
+      await expectFinished(harness.controller, 1)
+      await expectPreview(harness.controller, image)
+      expect(requests.images).toHaveLength(1)
+      expect(requests.model).toHaveLength(2)
+      expect(harness.pageErrors).toEqual([])
+    } finally {
+      await harness.close()
+    }
+  })
+}
+
+for (const sameAccount of [false, true]) {
+  test(`${sameAccount ? "permits same-account refresh" : "cancels account replacement"} from Settings during image confirmation`, async () => {
+    const harness = await launchExtensionHarness()
+    try {
+      const requests = await mockRequests(harness)
+      await configure(harness)
+      await requestImage(harness.controller, false)
+      const accountId = sameAccount ? ACCOUNT_ID : "replacement-imagegen-account"
+      const access = [
+        Buffer.from(JSON.stringify({ alg: "RS256", typ: "JWT" })).toString("base64url"),
+        Buffer.from(
+          JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: accountId } }),
+        ).toString("base64url"),
+        Buffer.from("rotated-imagegen-signature").toString("base64url"),
+      ].join(".")
+      const settings = await harness.context.newPage()
+      await settings.goto(`${harness.controller.url()}?view=settings`)
+      await settings.evaluate(
+        async ({ access, accountId }) => {
+          await chrome.storage.local.set({
+            piBrowserAgentCredentialsV1: {
+              "openai-codex": {
+                type: "oauth",
+                access,
+                accountId,
+                refresh: "replacement-imagegen-refresh",
+                expires: Date.now() + 3_600_000,
+              },
+            },
+          })
+        },
+        { access, accountId },
+      )
+      if (sameAccount) {
+        await expect(harness.controller.locator("#confirm-dialog")).toBeVisible()
+        await harness.controller.locator("#confirm-action").click()
+      }
+      await expectFinished(harness.controller, 1)
+      if (sameAccount) {
+        expect(requests.images).toHaveLength(1)
+        expect(requests.images[0]?.headers).toMatchObject({
+          authorization: `Bearer ${access}`,
+          "chatgpt-account-id": ACCOUNT_ID,
+        })
+        await expectPreview(harness.controller)
+      } else {
+        expect(requests.images).toHaveLength(0)
+        expect(JSON.stringify(requests.model[1])).toContain("cancelled before confirmation")
+        await expect(harness.controller.locator("#transcript img.message-image")).toHaveCount(0)
+      }
+      const count = requests.images.length
+      await harness.controller.reload({ waitUntil: "domcontentloaded" })
+      await waitForConversationReady(harness.controller)
+      await expectFinished(harness.controller, 1)
+      expect(requests.images).toHaveLength(count)
+      expect(requests.model).toHaveLength(2)
+      expect(harness.pageErrors).toEqual([])
+    } finally {
+      await harness.close()
+    }
+  })
+}
 
 test("declining image generation in convenient mode sends no image request", async () => {
   const harness = await launchExtensionHarness()

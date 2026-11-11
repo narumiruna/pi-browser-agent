@@ -1,7 +1,7 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core"
 import { Type } from "typebox"
 import type { ConfirmationHandler } from "../agent/browser-tools.js"
-import { AUTH_ORIGINS, OPENAI_PROVIDER_ID } from "../auth/codex-oauth.js"
+import { AUTH_ORIGINS, extractAccountId, OPENAI_PROVIDER_ID } from "../auth/codex-oauth.js"
 import { CREDENTIALS_KEY } from "../auth/credential-store.js"
 import type { BrowserConfiguration } from "../configuration.js"
 import { t } from "../i18n/index.js"
@@ -81,6 +81,27 @@ function parseRequest(value: unknown): ImageRequest {
   }
 }
 
+/** Token rotation is valid only for the same account, including legacy credentials without accountId. */
+function credentialAccount(value: unknown): string | undefined {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !("type" in value) ||
+    value.type !== "oauth" ||
+    !("access" in value) ||
+    typeof value.access !== "string"
+  )
+    return undefined
+  try {
+    const id = extractAccountId(value.access)
+    if ("accountId" in value && value.accountId !== undefined && value.accountId !== id)
+      return undefined
+    return id
+  } catch {
+    return undefined
+  }
+}
+
 async function approved(): Promise<void> {
   if (
     !(await Promise.all(AUTH_ORIGINS.map((origin) => hasApprovedHostPermission(origin)))).every(
@@ -124,49 +145,28 @@ export async function createImagegenTools(
           configuration.credentials.read(OPENAI_PROVIDER_ID, { signal: caller }),
           caller,
         )
-        if (credential?.type !== "oauth") throw new ImagegenError(AUTH_REQUIRED)
+        const expectedAccount = credentialAccount(credential)
+        if (!expectedAccount) throw new ImagegenError(AUTH_REQUIRED)
         caller.throwIfAborted()
-        if (
-          !(await confirm(
-            CONFIRMATION,
-            {
-              targetUrl: IMAGE_ENDPOINT,
-              prompt: request.prompt,
-              transparentBackground: request.transparentBackground,
-              size: request.size,
-            },
-            executionSignal,
-            undefined,
-            { message: t(CONFIRMATION) },
-          ))
-        )
-          throw new ImagegenError("Image generation was declined")
-        executionSignal?.throwIfAborted()
         const controller = new AbortController()
-        const signal = AbortSignal.any([
-          controller.signal,
-          ...(executionSignal ? [executionSignal] : []),
-        ])
-        const timer = setTimeout(
-          () => controller.abort(new ImagegenError("Image generation timed out")),
-          IMAGE_REQUEST_TIMEOUT_MS,
-        )
+        const signal = AbortSignal.any([controller.signal, caller])
+        let timer: ReturnType<typeof setTimeout> | undefined
+        let confirmed = false
         let expectedAccess: string | undefined
         const changed = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
-          if (area !== "local" || !(CREDENTIALS_KEY in changes) || expectedAccess === undefined)
-            return
+          if (area !== "local" || !(CREDENTIALS_KEY in changes)) return
           const values: unknown = changes[CREDENTIALS_KEY]?.newValue
           const next =
             typeof values === "object" && values !== null && OPENAI_PROVIDER_ID in values
               ? values[OPENAI_PROVIDER_ID]
               : undefined
           if (
-            typeof next !== "object" ||
-            next === null ||
-            !("type" in next) ||
-            next.type !== "oauth" ||
-            !("access" in next) ||
-            next.access !== expectedAccess
+            credentialAccount(next) !== expectedAccount ||
+            (expectedAccess !== undefined &&
+              (typeof next !== "object" ||
+                next === null ||
+                !("access" in next) ||
+                next.access !== expectedAccess))
           )
             controller.abort(
               new ImagegenError("OpenAI Codex credential changed during image generation"),
@@ -187,13 +187,38 @@ export async function createImagegenTools(
             signal,
           )
           if (
-            credential?.type !== "oauth" ||
-            (expectedAccess !== undefined && credential.access !== expectedAccess)
+            credentialAccount(credential) !== expectedAccount ||
+            (expectedAccess !== undefined &&
+              (credential?.type !== "oauth" || credential.access !== expectedAccess))
           )
             throw new ImagegenError(AUTH_REQUIRED)
           signal.throwIfAborted()
         }
         try {
+          if (
+            !(await imagegenWait(
+              confirm(
+                CONFIRMATION,
+                {
+                  targetUrl: IMAGE_ENDPOINT,
+                  prompt: request.prompt,
+                  transparentBackground: request.transparentBackground,
+                  size: request.size,
+                },
+                signal,
+                undefined,
+                { message: t(CONFIRMATION) },
+              ),
+              signal,
+            ))
+          )
+            throw new ImagegenError("Image generation was declined")
+          signal.throwIfAborted()
+          confirmed = true
+          timer = setTimeout(
+            () => controller.abort(new ImagegenError("Image generation timed out")),
+            IMAGE_REQUEST_TIMEOUT_MS,
+          )
           await assertCurrent()
           const authController = new AbortController()
           const authTimer = setTimeout(
@@ -220,6 +245,8 @@ export async function createImagegenTools(
               ].includes(auth.baseUrl))
           )
             throw new ImagegenError(AUTH_REQUIRED)
+          if (credentialAccount({ type: "oauth", access: auth.apiKey }) !== expectedAccount)
+            throw new ImagegenError(AUTH_REQUIRED)
           expectedAccess = auth.apiKey
           await assertCurrent()
           const result = await generateImageRequest(expectedAccess, request, signal)
@@ -239,6 +266,12 @@ export async function createImagegenTools(
             details,
           }
         } catch (error) {
+          if (!confirmed) {
+            if (signal.aborted)
+              throw new ImagegenError("Image generation was cancelled before confirmation")
+            if (error instanceof ImagegenError) throw error
+            throw new ImagegenError("Image generation confirmation failed")
+          }
           const known = error instanceof ImagegenError || error instanceof GeneratedImageError
           const message = signal.aborted
             ? "Image generation was cancelled or timed out"
