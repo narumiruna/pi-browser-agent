@@ -18,7 +18,7 @@
     "build": "npm run probe:browser && npm run build:chrome && npm run typecheck && npm run audit:artifact",
     "build:chrome": "extension build --browser=chrome",
     "changeset": "changeset",
-    "check": "biome ci .",
+    "check": "biome ci src",
     "ci": "npm run check && npm test && npm run build && npm run test:e2e",
     "dev:chrome": "extension dev --browser=chrome",
     "pack": "npm run build && extension build --browser=chrome --zip --zip-filename=pi-browser-agent.zip",
