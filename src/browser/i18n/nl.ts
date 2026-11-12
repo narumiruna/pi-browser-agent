@@ -147,6 +147,8 @@ export default {
     "Dit door de pagina aangeboden WebMCP-hulpmiddel aanroepen? Dit kan neveneffecten hebben, ook bij een herhaalde aanroep met identieke argumenten.",
   "Call this remote MCP tool? Arguments go to this server; results go to the selected model and saved session. This call may have side effects. Every call requires confirmation.":
     "Dit externe MCP-hulpmiddel aanroepen? Argumenten gaan naar deze server; resultaten gaan naar het geselecteerde model en de opgeslagen sessie. Deze aanroep kan neveneffecten hebben. Elke aanroep vereist bevestiging.",
+  "Generate an image with OpenAI Codex? The prompt goes to OpenAI; the image goes to the selected model and saved session. This uses account quota. Cancellation may not stop generation. Every call requires confirmation.":
+    "Een afbeelding genereren met OpenAI Codex? De prompt wordt naar OpenAI verzonden; de afbeelding wordt naar het geselecteerde model verzonden en in de sessie opgeslagen. Dit verbruikt accountquotum. Annuleren stopt de generatie mogelijk niet. Elke aanroep vereist bevestiging.",
   "Calling a remote tool": "Extern hulpmiddel aanroepen",
   Cancel: "Annuleren",
   "Cancel element selection": "Elementselectie annuleren",

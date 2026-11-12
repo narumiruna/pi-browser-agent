@@ -138,6 +138,8 @@ export default {
     "इस पेज का दिया हुआ WebMCP टूल कॉल करें? इसके अतिरिक्त प्रभाव हो सकते हैं, भले ही इसे एक जैसे आर्ग्युमेंट के साथ फिर कॉल किया जाए।",
   "Call this remote MCP tool? Arguments go to this server; results go to the selected model and saved session. This call may have side effects. Every call requires confirmation.":
     "यह रिमोट MCP टूल कॉल करें? आर्ग्युमेंट इस सर्वर को जाते हैं; परिणाम चुने गए मॉडल और सहेजे गए सत्र में जाते हैं। इस कॉल के अतिरिक्त प्रभाव हो सकते हैं। हर कॉल के लिए पुष्टि चाहिए।",
+  "Generate an image with OpenAI Codex? The prompt goes to OpenAI; the image goes to the selected model and saved session. This uses account quota. Cancellation may not stop generation. Every call requires confirmation.":
+    "OpenAI Codex से इमेज जनरेट करें? प्रॉम्प्ट OpenAI को भेजा जाता है; इमेज चुने गए मॉडल को भेजी जाती है और सत्र में सहेजी जाती है। इससे खाते का कोटा उपयोग होता है। रद्द करने से जनरेशन रुकना निश्चित नहीं है। हर कॉल के लिए पुष्टि आवश्यक है।",
   "Calling a remote tool": "रिमोट टूल कॉल हो रहा है",
   Cancel: "रद्द करें",
   "Cancel element selection": "तत्व का चयन रद्द करें",

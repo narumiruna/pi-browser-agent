@@ -45,6 +45,10 @@ Thinking choices use SDK `getSupportedThinkingLevels()` intersected with the exi
 
 If an OAuth access token is near expiry, refresh occurs inside `CredentialStore.modify()`. Credential-map mutations serialize across providers and Side Panel contexts through a Web Lock; later callers reuse a newly refreshed credential, and rotated refresh and access tokens are committed together. A refresh error preserves the previous credential for an explicit retry or new login; it does not trigger another provider or destination.
 
+## Image generation authentication
+
+The `codex_imagegen` tool reuses the stored `openai-codex` OAuth credential and serialized refresh path. It does not accept an OpenAI API key or read Codex CLI credential files. The active chat model can use another provider. A stored login enables the tool for a new run but does not prove image entitlement. Every generation requires fresh confirmation and exact-origin access before the Side Panel resolves authentication and sends one fixed-endpoint request. Raw credential values and account claims are not returned to the model or stored in the transcript. See [image generation](image-generation.md).
+
 ## Remote MCP authentication
 
 Remote MCP has separate configuration and token stores; it never uses provider credentials. **Settings → MCP** accepts a public HTTPS endpoint and an optional bearer token. **Test and enable** requests Chrome host access from its click gesture and approves the exact endpoint, including its port and path. A successful connection test enables the server for new runs. All tool calls require a separate fresh confirmation.

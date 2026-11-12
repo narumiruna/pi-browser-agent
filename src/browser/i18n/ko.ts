@@ -139,6 +139,8 @@ export default {
     "이 페이지가 제공하는 WebMCP 도구를 호출할까요? 동일한 인수로 다시 호출하더라도 부수 효과가 발생할 수 있습니다.",
   "Call this remote MCP tool? Arguments go to this server; results go to the selected model and saved session. This call may have side effects. Every call requires confirmation.":
     "이 원격 MCP 도구를 호출할까요? 인수는 이 서버로 전송되고, 결과는 선택한 모델로 전송되며 세션에 저장됩니다. 이 호출은 부수 효과를 일으킬 수 있습니다. 호출할 때마다 확인이 필요합니다.",
+  "Generate an image with OpenAI Codex? The prompt goes to OpenAI; the image goes to the selected model and saved session. This uses account quota. Cancellation may not stop generation. Every call requires confirmation.":
+    "OpenAI Codex로 이미지를 생성하시겠습니까? 프롬프트는 OpenAI로 전송되며, 이미지는 선택한 모델로 전송되고 세션에 저장됩니다. 계정 할당량이 사용됩니다. 취소해도 생성이 중지되지 않을 수 있습니다. 호출할 때마다 확인이 필요합니다.",
   "Calling a remote tool": "원격 도구 호출 중",
   Cancel: "취소",
   "Cancel element selection": "요소 선택 취소",

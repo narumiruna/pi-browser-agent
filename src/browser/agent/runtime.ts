@@ -15,6 +15,7 @@ import {
 } from "@earendil-works/pi-ai"
 import { safeErrorMessage } from "../auth/redaction.js"
 import { BrowserConfiguration } from "../configuration.js"
+import { createImagegenTools } from "../imagegen/tool.js"
 import { McpManager } from "../mcp/manager.js"
 import {
   ELEMENT_PICKER_LIMITS,
@@ -460,10 +461,13 @@ export class BrowserAgentRuntime {
         }
       }
       let remoteTools: AgentTool[]
+      let imageTools: AgentTool[]
       let skillRun: SkillRun
       try {
         this.callbacks.onPreparing?.(true)
         skillRun = new SkillRun(await new SkillStore().list())
+        assertPreparing()
+        imageTools = await createImagegenTools(this.configuration, this.callbacks.confirm)
         assertPreparing()
         remoteTools = await this.mcp.prepare()
         assertPreparing()
@@ -478,7 +482,7 @@ export class BrowserAgentRuntime {
       this.skillRun?.finish()
       this.skillRun = skillRun
       this.updateAvailableTools()
-      this.agent.state.tools.push(...skillRun.tools(), ...remoteTools)
+      this.agent.state.tools.push(...skillRun.tools(), ...imageTools, ...remoteTools)
       this.updateSystemPrompt()
       assertSubmission?.()
       if (images.length > 0) await this.agent.prompt(multimodalUserMessage(content, images))

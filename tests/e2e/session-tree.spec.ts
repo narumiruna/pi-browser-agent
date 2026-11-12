@@ -281,7 +281,9 @@ test("edits the same user into branches A and B and continues from the original 
 
     await probeNavigation(page)
     await openTree(page)
-    await expect(dialog(page).getByRole("treeitem")).toHaveCount(5)
+    // Each branch from legacy history adds the available image tool as a system node.
+    await expect(dialog(page).getByRole("treeitem")).toHaveCount(6)
+    await expect(dialog(page).locator("[role=treeitem][data-role=system]")).toHaveCount(1)
     await expect(row(page, "user", "Original request")).toHaveAttribute(
       "data-node-id",
       originalUser ?? "",
@@ -296,7 +298,7 @@ test("edits the same user into branches A and B and continues from the original 
 
     await probeNavigation(page)
     await openTree(page)
-    await expect(dialog(page).getByRole("treeitem")).toHaveCount(7)
+    await expect(dialog(page).getByRole("treeitem")).toHaveCount(9)
     await expect(row(page, "assistant", "Original answer")).toHaveAttribute(
       "data-node-id",
       originalAssistant ?? "",
@@ -323,7 +325,7 @@ test("edits the same user into branches A and B and continues from the original 
     ])
       expect(payload).not.toContain(text)
     const { record } = await saved(page)
-    expect(record.tree?.nodes).toHaveLength(8)
+    expect(record.tree?.nodes).toHaveLength(11)
     expect(projection(record)).toHaveLength(4)
     expect(JSON.stringify(record.tree)).toContain("Branch A private request")
     expect(JSON.stringify(record.tree)).toContain("Branch B private request")
@@ -357,7 +359,17 @@ test("nested user edits start at their parent and root branching retains every o
     await answer(page, "Nested edited request", 1)
     const nested = (await saved(page)).record.tree
     expect(nested?.nodes.slice(0, 4)).toEqual(originalNodes)
-    expect(nested?.nodes[4]?.parentId).toBe(parentId)
+    expect(nested?.nodes[4]).toMatchObject({
+      parentId,
+      message: {
+        role: "system",
+        toolsAdded: [expect.objectContaining({ name: "codex_imagegen" })],
+      },
+    })
+    expect(nested?.nodes[5]).toMatchObject({
+      parentId: nested?.nodes[4]?.id,
+      message: { role: "user" },
+    })
     const nestedPayload = JSON.stringify(mock.requests[0])
     expect(nestedPayload).toContain("Original answer")
     expect(nestedPayload).not.toContain("Second original request")
@@ -375,10 +387,10 @@ test("nested user edits start at their parent and root branching retains every o
     expect(JSON.stringify(mock.requests[1])).not.toContain("Original")
     expect(JSON.stringify(mock.requests[1])).not.toContain("Nested edited request")
     await openTree(page)
-    await expect(dialog(page).getByRole("treeitem")).toHaveCount(9)
+    await expect(dialog(page).getByRole("treeitem")).toHaveCount(11)
     await select(row(page, "assistant", "Second original answer"))
     expect(projection((await saved(page)).record)).toEqual(history)
-    expect((await saved(page)).record.tree?.nodes).toHaveLength(8)
+    expect((await saved(page)).record.tree?.nodes).toHaveLength(10)
     expect(mock.requests).toHaveLength(2)
     expect(mock.unexpected).toEqual([])
     expect(harness.pageErrors).toEqual([])
@@ -563,7 +575,7 @@ test("reload and full Chrome restart preserve inactive branches and the selected
     await openTree(page)
     await select(root(page))
     const before = (await saved(page)).record
-    expect(before.tree?.nodes).toHaveLength(4)
+    expect(before.tree?.nodes).toHaveLength(5)
     expect(before.tree?.activeLeafId).toBeNull()
     await page.reload({ waitUntil: "domcontentloaded" })
     await waitForConversationReady(page)
@@ -572,7 +584,7 @@ test("reload and full Chrome restart preserve inactive branches and the selected
     await openTree(page)
     await expect(root(page)).toBeFocused()
     await expect(root(page)).toHaveAttribute("aria-current", "location")
-    await expect(dialog(page).getByRole("treeitem")).toHaveCount(5)
+    await expect(dialog(page).getByRole("treeitem")).toHaveCount(6)
     await dialog(page).press("Escape")
     expect(mock.requests).toHaveLength(1)
     expect(mock.unexpected).toEqual([])

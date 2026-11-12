@@ -119,6 +119,12 @@ Connections live in the Side Panel. Each request rechecks the exact endpoint, co
 
 Every call uses fresh confirmation, sequential execution, and `replay: "never"`. Storage and permission listeners invalidate clients and pending confirmations across trusted contexts. Runtime abort/session changes close local work; shutdown also removes listeners. Neither saved history nor startup recreates a connection. Details and compatibility evidence are in [remote MCP](mcp.md).
 
+### Image generation
+
+`src/browser/imagegen/` owns the `codex_imagegen` tool, bounded JSON client, and raster validation. Run preparation adds this tool only when a Codex OAuth credential is stored, independently of the selected chat provider, page context, and browser-tool preferences. Every call uses fresh confirmation, sequential execution, and `replay: "never"`. Confirm uses the existing exact-destination permission gesture; the Side Panel resolves OAuth through `BrowserConfiguration.models.getAuth()` and the serialized credential store.
+
+The tool validates the optional output `size` before confirmation and sends its confirmed value in the existing JSON request; omission uses `auto`. The client sends one fixed-endpoint JSON request, omits cookies, rejects redirects, and bounds authentication, body bytes, image bytes, dimensions, and operation duration. The tool binds confirmation to the original account claim, checks stored account metadata when present, and permits same-account credential changes before authentication resolves. This includes OAuth refresh and explicit replacement with credentials for the same account. A change to the account, credential removal, a changed access token after authentication, origin revocation, and run cancellation invalidate pending work. Image headers are checked before browser raster decoding. Validated original raster bytes return through ordinary image tool results and existing transcript rendering/storage. No worker message, filesystem path, artifact store, or automatic generation replay is added. See [protocol, limits, and verification](image-generation.md).
+
 ### Skill import and loading
 
 `src/browser/skills/` owns the shared bounded YAML parser, GitHub discovery, the existing version-1 store, and run snapshots. `src/browser/sidepanel/skills-settings.ts` owns input, candidate selection, plain-text source review, cancellation, and explicit import/replacement. GitHub work runs in trusted Settings, not the service worker or the model runtime.

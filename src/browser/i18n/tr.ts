@@ -142,6 +142,8 @@ export default {
     "Sayfanın sağladığı bu WebMCP aracı çağrılsın mı? Aynı bağımsız değişkenlerle tekrar çağrılsa bile yan etkileri olabilir.",
   "Call this remote MCP tool? Arguments go to this server; results go to the selected model and saved session. This call may have side effects. Every call requires confirmation.":
     "Bu uzak MCP aracı çağrılsın mı? Bağımsız değişkenler bu sunucuya; sonuçlar seçili modele ve kayıtlı oturuma gider. Bu çağrının yan etkileri olabilir. Her çağrı onay gerektirir.",
+  "Generate an image with OpenAI Codex? The prompt goes to OpenAI; the image goes to the selected model and saved session. This uses account quota. Cancellation may not stop generation. Every call requires confirmation.":
+    "OpenAI Codex ile bir görsel oluşturulsun mu? İstem OpenAI'a gönderilir; görsel seçilen modele gönderilir ve oturuma kaydedilir. Bu işlem hesap kotasını kullanır. İptal etmek oluşturmayı durdurmayabilir. Her çağrı için onay gerekir.",
   "Calling a remote tool": "Uzak araç çağrılıyor",
   Cancel: "İptal",
   "Cancel element selection": "Öğe seçimini iptal et",

@@ -140,6 +140,8 @@ export default {
     "Panggil alat WebMCP yang disediakan halaman ini? Alat ini dapat menimbulkan efek samping, bahkan saat dipanggil lagi dengan argumen yang identik.",
   "Call this remote MCP tool? Arguments go to this server; results go to the selected model and saved session. This call may have side effects. Every call requires confirmation.":
     "Panggil alat MCP jarak jauh ini? Argumen dikirim ke server ini; hasil dikirim ke model yang dipilih dan sesi tersimpan. Panggilan ini dapat menimbulkan efek samping. Setiap panggilan memerlukan konfirmasi.",
+  "Generate an image with OpenAI Codex? The prompt goes to OpenAI; the image goes to the selected model and saved session. This uses account quota. Cancellation may not stop generation. Every call requires confirmation.":
+    "Buat gambar dengan OpenAI Codex? Prompt dikirim ke OpenAI; gambar dikirim ke model yang dipilih dan disimpan dalam sesi. Ini menggunakan kuota akun. Pembatalan mungkin tidak menghentikan pembuatan gambar. Setiap panggilan memerlukan konfirmasi.",
   "Calling a remote tool": "Memanggil alat jarak jauh",
   Cancel: "Batal",
   "Cancel element selection": "Batalkan pemilihan elemen",

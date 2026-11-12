@@ -150,6 +150,8 @@ export default {
     "Вызвать этот инструмент WebMCP, предоставленный страницей? Он может иметь побочные эффекты даже при повторном вызове с одинаковыми аргументами.",
   "Call this remote MCP tool? Arguments go to this server; results go to the selected model and saved session. This call may have side effects. Every call requires confirmation.":
     "Вызвать этот удалённый инструмент MCP? Аргументы передаются этому серверу; результаты — выбранной модели и в сохранённый сеанс. Вызов может иметь побочные эффекты. Каждый вызов требует подтверждения.",
+  "Generate an image with OpenAI Codex? The prompt goes to OpenAI; the image goes to the selected model and saved session. This uses account quota. Cancellation may not stop generation. Every call requires confirmation.":
+    "Создать изображение с помощью OpenAI Codex? Запрос будет отправлен в OpenAI; изображение будет отправлено выбранной модели и сохранено в сеансе. Это расходует квоту учётной записи. Отмена может не остановить создание изображения. Каждый вызов требует подтверждения.",
   "Calling a remote tool": "Вызов удалённого инструмента",
   Cancel: "Отмена",
   "Cancel element selection": "Отменить выбор элемента",

@@ -51,6 +51,12 @@ The extension CSP permits HTTP(S) connections so a user-selected built-in provid
 
 `browser_scroll`, `browser_select_option`, and `browser_get_element_details` add no Chrome permission or persistent store. They require the current site's existing Chrome permission and app approval. Scroll and details need no operation confirmation; native option selection always requires fresh confirmation. Scroll/selection discard volatile element snapshots. Returned viewport or element metadata follows normal model-tool and transcript storage. Details expose no field values. See [browser interaction tools](browser-interactions.md).
 
+## Image generation permissions and storage
+
+`codex_imagegen` adds no manifest permission or credential store. Existing account login approves the two OpenAI origins. Each generation requires fresh app confirmation; its Confirm gesture approves the fixed `https://chatgpt.com` endpoint through the existing exact-destination flow. The tool checks Chrome permission and recorded exact-origin approval before OAuth resolution, dispatch, and publication. Revocation cancels local work; screenshot `<all_urls>` access alone cannot approve generation.
+
+The trusted Side Panel sends the confirmed prompt and requested output size to OpenAI. A validated static image of at most 3,000,000 bytes and bounded metadata return as an ordinary tool result, go to the selected chat provider on continuation subject to its image support, and use existing IndexedDB session retention. No new storage key, worker message, filesystem access, or schema migration is added. The 5 MB total session limit still applies, including tree duplication. Deleting a session removes local embedded images, not provider-held data. Restoring a session never repeats generation. See [image generation](image-generation.md).
+
 ## Remote MCP permissions and storage
 
 MCP uses the existing optional HTTPS host pattern; it adds no required permission. **Test and enable** is the only MCP host-request gesture. Authorization also requires a stored connection approval for the full normalized endpoint and its configuration revision. A screenshot grant alone cannot approve a server. Chrome's hostname patterns do not include a port or path; MCP checks both independently on every request.
