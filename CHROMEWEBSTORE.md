@@ -69,7 +69,7 @@ The extension handles user data and can transmit it off-device. It has no develo
 
 Data-use statements from `PRIVACY.md`: data is not sold, used for advertising or creditworthiness, or used for purposes unrelated to the extension. The publisher must complete the store certification.
 
-Full-page and scoped text reads exclude form controls and editable subtrees. Clearing all conversations refuses while another conversation owns a session, so that conversation cannot restore deleted local data. Deleting local data cannot retract provider-held data.
+Full-page and scoped text reads exclude form controls and editable subtrees. Selecting a non-editable child does not bypass an editable ancestor. Clearing all conversations refuses while another conversation owns a session, so that conversation cannot restore deleted local data. Deleting local data cannot retract provider-held data.
 
 ## Privacy policy
 

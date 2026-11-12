@@ -16,6 +16,14 @@ Automated verification used Node.js 26.10.0, npm 11.19.1, Extension.js 4.1.39, a
 
 The release owner must still verify browser-owned Side Panel behavior, native permission prompts, and real provider authentication before release. These checks require a current production build and an owner-controlled test account; automated mocked responses do not verify them. The existing [Chrome 116 startup limitation](#known-minimum-version-baseline-limitation) is unchanged. Store submission and minimum-version acceptance are not established by these results.
 
+## PR #151 feedback — 2026-11-12
+
+The page-text selector guard now checks the selected element and each ancestor. A non-editable child inside an editable draft remains excluded. Unit regressions fail with the old guard and pass with this change. The real-browser regression verifies native editability, denied reads, and a readable standalone non-editable control.
+
+`npm run check`, all 2,446 unit/integration tests, and `npm run build` passed. The build includes typecheck, the browser-boundary probe, and the 50-file artifact audit; three existing bundle-budget warnings remain. The relevant browser interaction, action-foundation, and Side Panel round-trip files passed all 78 scenarios with two workers. The full E2E suite was not repeated for this feedback update.
+
+The late-provider cancellation tests now assert that `credentials.modify` never starts after cancellation. The locked SDK rejects the login abort race before that write. No pending write exists on this test path. Review outcomes and evidence are recorded in `docs/reviews/pr-151-review.md`. Existing native UI, real-provider, and Chrome 116 release restrictions remain unchanged.
+
 ## Recorded environment
 
 - Extension: `pi-browser-agent` 0.1.0

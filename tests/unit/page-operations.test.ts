@@ -94,6 +94,41 @@ describe("page operations", () => {
     expect(readPrivate).not.toHaveBeenCalled()
   })
 
+  test.each(["#non-editable", "#draft"])(
+    "rejects non-editable scope %s inside an excluded editable ancestor",
+    async (selector) => {
+      document.body.innerHTML = `<div id="editor" contenteditable="true"><span id="non-editable" contenteditable="false"><b id="draft">Private draft</b></span></div>`
+      const editor = document.getElementById("editor") as HTMLElement
+      Object.defineProperty(editor, "isContentEditable", { configurable: true, value: true })
+      const readPrivate = vi.fn(() => {
+        throw new Error("Private text must not be read")
+      })
+      for (const id of ["non-editable", "draft"]) {
+        const element = document.getElementById(id) as HTMLElement
+        makeRendered(element)
+        Object.defineProperty(element, "isContentEditable", { configurable: true, value: false })
+        Object.defineProperty(element, "innerText", { configurable: true, get: readPrivate })
+      }
+
+      expect(await executePageOperation("getVisibleText", { selector }, false)).toMatchObject({
+        ok: false,
+        error: { code: "PERMISSION_DENIED" },
+      })
+      expect(readPrivate).not.toHaveBeenCalled()
+    },
+  )
+
+  test("allows standalone non-editable text outside an editable ancestor", async () => {
+    document.body.innerHTML = '<p id="preview" contenteditable="false">Public preview</p>'
+    const preview = document.getElementById("preview") as HTMLElement
+    makeRendered(preview, "Public preview")
+    Object.defineProperty(preview, "isContentEditable", { configurable: true, value: false })
+
+    expect(
+      await executePageOperation("getVisibleText", { selector: "#preview" }, false),
+    ).toMatchObject({ ok: true, result: { text: "Public preview" } })
+  })
+
   test("preserves paragraph boundaries when an excluded field requires filtered text", async () => {
     document.body.innerHTML = '<p id="alpha">Alpha</p><p id="beta">Beta</p><input type="hidden">'
     makeRendered(document.body)

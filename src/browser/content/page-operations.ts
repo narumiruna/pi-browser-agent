@@ -1387,8 +1387,14 @@ export async function executePageOperation(
             if (!match) return failure("INVALID_REQUEST", "No element matches the page selector")
             if (!(match instanceof HTMLElement))
               return failure("INVALID_REQUEST", "The page selector must match an HTML element")
-            if (match.closest("input, textarea, select, option") || match.isContentEditable)
-              return failure("PERMISSION_DENIED", "Form field contents cannot be read")
+            for (
+              let current: HTMLElement | null = match;
+              current;
+              current = current.parentElement
+            ) {
+              if (current.matches("input, textarea, select, option") || current.isContentEditable)
+                return failure("PERMISSION_DENIED", "Form field contents cannot be read")
+            }
             const style = getComputedStyle(match)
             if (["hidden", "collapse"].includes(style.visibility))
               return failure("INVALID_REQUEST", "The selected page element is not rendered")

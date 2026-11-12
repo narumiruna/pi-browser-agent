@@ -134,7 +134,8 @@ test("page reads exclude editable drafts and form contents in real rendered scop
     const { run, request } = await prepare(harness)
     await harness.fixturePage.setContent(`<!doctype html><main>
       <p>Public <b>before</b> text</p>
-      <div id="editor" contenteditable="true"><span id="draft">Private editable draft</span></div>
+      <div id="editor" contenteditable="true"><span id="draft">Private editable draft</span><span id="non-editable-draft" contenteditable="false"><b id="nested-draft">Private non-editable draft</b></span></div>
+      <p id="public-preview" contenteditable="false">Public standalone preview</p>
       <input value="Private input"><textarea>Private textarea draft</textarea>
       <select><option>Private option label</option></select>
       <p>Public after text</p><aside hidden>Private hidden text</aside>
@@ -146,11 +147,30 @@ test("page reads exclude editable drafts and form contents in real rendered scop
       expect(result.text).not.toContain("Private")
       if ("selector" in params) expect(result.text).not.toContain("Outside scope")
     }
-    for (const selector of ["#editor", "#draft", "input", "textarea", "select", "option"])
+    expect(
+      await harness.fixturePage.evaluate(() =>
+        ["editor", "non-editable-draft", "nested-draft", "public-preview"].map(
+          (id) => (document.getElementById(id) as HTMLElement).isContentEditable,
+        ),
+      ),
+    ).toEqual([true, false, false, false])
+    for (const selector of [
+      "#editor",
+      "#draft",
+      "#non-editable-draft",
+      "#nested-draft",
+      "input",
+      "textarea",
+      "select",
+      "option",
+    ])
       expect(await request("page.getVisibleText", { selector })).toMatchObject({
         ok: false,
         error: { code: "PERMISSION_DENIED" },
       })
+    expect(await run("page.getVisibleText", { selector: "#public-preview" })).toMatchObject({
+      text: "Public standalone preview",
+    })
     await harness.fixturePage.setContent(
       '<main><p>Alpha</p><p>Beta</p><input type="hidden" value="Private hidden input"></main>',
     )

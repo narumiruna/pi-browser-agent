@@ -266,6 +266,7 @@ describe("awaitable authentication actions", () => {
         expires: Date.now() + 3_600_000,
       }
       await credentials.modify(OPENAI_PROVIDER_ID, async () => original)
+      const modify = vi.spyOn(credentials, "modify")
       const models = createModels({ credentials })
       const provider = createBrowserCodexProvider()
       const oauth = provider.auth.oauth
@@ -316,6 +317,8 @@ describe("awaitable authentication actions", () => {
       expect(ui.button(mode === "settings" ? "configure-provider" : "login").disabled).toBe(false)
       finishLogin({ ...original, access: "late-access", refresh: "late-refresh" })
       await pendingLogin
+      // Models.login has already rejected its abort race, before any store mutation.
+      expect(modify).not.toHaveBeenCalled()
       await expect(credentials.read(OPENAI_PROVIDER_ID)).resolves.toEqual(original)
       expect(ui.onProvidersChanged).not.toHaveBeenCalled()
       expect(ui.onStatus).not.toHaveBeenCalled()

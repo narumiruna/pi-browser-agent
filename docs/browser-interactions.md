@@ -6,7 +6,7 @@ All objects reject unknown properties. References consist of both `snapshotId` (
 
 ## Page text reads
 
-`browser_read_page` excludes form controls and effectively editable subtrees from both full-page and scoped reads. A selector inside a form control or editable subtree is denied. A document with `designMode` enabled is also denied. The UTF-16 offset applies to the filtered rendered text. Filtering does not change the live page; scopes without excluded subtrees keep native rendered whitespace.
+`browser_read_page` excludes form controls and effectively editable subtrees from both full-page and scoped reads. A selector inside a form control or editable subtree is denied, even if the selected element or an intermediate ancestor has `contenteditable="false"`. Standalone non-editable content outside an editable ancestor remains readable. A document with `designMode` enabled is also denied. The UTF-16 offset applies to the filtered rendered text. Filtering does not change the live page; scopes without excluded subtrees keep native rendered whitespace.
 
 ## Discovery and reference lifetime
 
