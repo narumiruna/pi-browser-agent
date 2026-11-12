@@ -2,6 +2,28 @@
 
 Use a production build from `npm run build`. Do not test login with development output or record tokens, authorization codes, screenshots, or account IDs.
 
+## Extension review fixes — 2026-11-12
+
+Automated verification used Node.js 26.10.0, npm 11.19.1, Extension.js 4.1.39, and Chromium 158.0.8127.18. The production source version remains 0.12.0; the patch changeset supplies the next release version.
+
+- `npm run check` and `npm run typecheck` passed.
+- `npm test` passed: 2,443 tests in 84 files.
+- `npm run build` passed the browser-boundary probe, production build, typecheck, and 50-file artifact audit. Three bundle-budget warnings remain.
+- The two changed browser test files passed all 9 scenarios. Native Escape after a prior MCP approval sent no additional remote tool call. Real rendered page reads excluded editable drafts and form contents.
+- An unsharded E2E attempt reached the 300-second command limit without an assertion failure. Complete reruns with `npm run test:e2e -- --shard=1/2 --workers=2` and `npm run test:e2e -- --shard=2/2 --workers=2` passed all 364 scenarios (203 and 161). No scenario was skipped.
+- Final independent review found a paragraph-separator regression in filtered reads. The fix has an exact-text unit and browser regression; the full unit/integration suite, production build, and both changed E2E files passed again after that correction.
+- Worker integration tests cover synchronous context invalidation, navigation cancellation, and WebMCP cancellation before execution. Session tests cover clear refusal with a live peer, queued restoration, failed clear recovery, and shutdown. Authentication tests use the real Models path with mocked credentials and responses.
+
+The release owner must still verify browser-owned Side Panel behavior, native permission prompts, and real provider authentication before release. These checks require a current production build and an owner-controlled test account; automated mocked responses do not verify them. The existing [Chrome 116 startup limitation](#known-minimum-version-baseline-limitation) is unchanged. Store submission and minimum-version acceptance are not established by these results.
+
+## PR #151 feedback — 2026-11-12
+
+The page-text selector guard now checks the selected element and each ancestor. A non-editable child inside an editable draft remains excluded. Unit regressions fail with the old guard and pass with this change. The real-browser regression verifies native editability, denied reads, and a readable standalone non-editable control.
+
+`npm run check`, all 2,446 unit/integration tests, and `npm run build` passed. The build includes typecheck, the browser-boundary probe, and the 50-file artifact audit; three existing bundle-budget warnings remain. The relevant browser interaction, action-foundation, and Side Panel round-trip files passed all 78 scenarios with two workers. The full E2E suite was not repeated for this feedback update.
+
+The late-provider cancellation tests now assert that `credentials.modify` never starts after cancellation. The locked SDK rejects the login abort race before that write. No pending write exists on this test path. Review outcomes and evidence are recorded in `docs/reviews/pr-151-review.md`. Existing native UI, real-provider, and Chrome 116 release restrictions remain unchanged.
+
 ## Recorded environment
 
 - Extension: `pi-browser-agent` 0.1.0

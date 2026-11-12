@@ -2,6 +2,7 @@
 
 import { beforeEach, describe, expect, test, vi } from "vitest"
 import { executePageOperation } from "../../src/browser/content/page-operations.js"
+import type { JsonObject } from "../../src/browser/runtime/types.js"
 import { executeWebMcpOperation } from "../../src/browser/webmcp/adapter.js"
 
 function makeVisible(element: HTMLElement): void {
@@ -16,6 +17,15 @@ function makeVisible(element: HTMLElement): void {
     y: 0,
     toJSON: () => ({}),
   })
+}
+
+function makeRendered(element: HTMLElement, text?: string): void {
+  makeVisible(element)
+  vi.spyOn(element, "getClientRects").mockReturnValue([
+    element.getBoundingClientRect(),
+  ] as unknown as DOMRectList)
+  if (text !== undefined)
+    Object.defineProperty(element, "innerText", { configurable: true, value: text })
 }
 
 describe("page operations", () => {
@@ -41,14 +51,105 @@ describe("page operations", () => {
 
   test("reads visible text without collecting input values", async () => {
     document.body.innerHTML = '<main>Hello browser</main><input value="private value">'
-    Object.defineProperty(document.body, "innerText", {
-      configurable: true,
-      value: "Hello browser",
-    })
+    makeRendered(document.body)
+    makeRendered(document.querySelector<HTMLElement>("main") as HTMLElement, "Hello browser")
 
     const result = await executePageOperation("getVisibleText", {}, false)
     expect(result).toMatchObject({ ok: true, result: { text: "Hello browser" } })
     expect(JSON.stringify(result)).not.toContain("private value")
+  })
+
+  test("excludes editable and form subtrees from full-page and scoped reads", async () => {
+    document.body.innerHTML = `<main><p id="before">Public before</p><div contenteditable="true"><span id="draft">Private draft</span></div><textarea>Private textarea</textarea><select><option>Private option</option></select><p id="after">Public after</p></main>`
+    const main = document.querySelector<HTMLElement>("main") as HTMLElement
+    const editor = document.querySelector<HTMLElement>("[contenteditable]") as HTMLElement
+    const draft = document.querySelector<HTMLElement>("#draft") as HTMLElement
+    for (const element of [document.body, main]) makeRendered(element)
+    for (const element of [editor, draft])
+      Object.defineProperty(element, "isContentEditable", { configurable: true, value: true })
+    for (const [id, text] of [
+      ["before", "Public before"],
+      ["after", "Public after"],
+    ] as const)
+      makeRendered(document.getElementById(id) as HTMLElement, text)
+    const readPrivate = vi.fn(() => {
+      throw new Error("Private text must not be read")
+    })
+    Object.defineProperty(editor, "innerText", { configurable: true, get: readPrivate })
+    const scopes: JsonObject[] = [{}, { selector: "main" }]
+    for (const params of scopes) {
+      const result = await executePageOperation("getVisibleText", params, false)
+      expect(result).toMatchObject({
+        ok: true,
+        result: { text: expect.stringContaining("Public before") },
+      })
+      expect(JSON.stringify(result)).toContain("Public after")
+      expect(JSON.stringify(result)).not.toContain("Private")
+    }
+    for (const selector of ["[contenteditable]", "#draft", "textarea", "select", "option"])
+      expect(await executePageOperation("getVisibleText", { selector }, false)).toMatchObject({
+        ok: false,
+        error: { code: "PERMISSION_DENIED" },
+      })
+    expect(readPrivate).not.toHaveBeenCalled()
+  })
+
+  test.each(["#non-editable", "#draft"])(
+    "rejects non-editable scope %s inside an excluded editable ancestor",
+    async (selector) => {
+      document.body.innerHTML = `<div id="editor" contenteditable="true"><span id="non-editable" contenteditable="false"><b id="draft">Private draft</b></span></div>`
+      const editor = document.getElementById("editor") as HTMLElement
+      Object.defineProperty(editor, "isContentEditable", { configurable: true, value: true })
+      const readPrivate = vi.fn(() => {
+        throw new Error("Private text must not be read")
+      })
+      for (const id of ["non-editable", "draft"]) {
+        const element = document.getElementById(id) as HTMLElement
+        makeRendered(element)
+        Object.defineProperty(element, "isContentEditable", { configurable: true, value: false })
+        Object.defineProperty(element, "innerText", { configurable: true, get: readPrivate })
+      }
+
+      expect(await executePageOperation("getVisibleText", { selector }, false)).toMatchObject({
+        ok: false,
+        error: { code: "PERMISSION_DENIED" },
+      })
+      expect(readPrivate).not.toHaveBeenCalled()
+    },
+  )
+
+  test("allows standalone non-editable text outside an editable ancestor", async () => {
+    document.body.innerHTML = '<p id="preview" contenteditable="false">Public preview</p>'
+    const preview = document.getElementById("preview") as HTMLElement
+    makeRendered(preview, "Public preview")
+    Object.defineProperty(preview, "isContentEditable", { configurable: true, value: false })
+
+    expect(
+      await executePageOperation("getVisibleText", { selector: "#preview" }, false),
+    ).toMatchObject({ ok: true, result: { text: "Public preview" } })
+  })
+
+  test("preserves paragraph boundaries when an excluded field requires filtered text", async () => {
+    document.body.innerHTML = '<p id="alpha">Alpha</p><p id="beta">Beta</p><input type="hidden">'
+    makeRendered(document.body)
+    makeRendered(document.getElementById("alpha") as HTMLElement, "Alpha")
+    makeRendered(document.getElementById("beta") as HTMLElement, "Beta")
+    expect(await executePageOperation("getVisibleText", {}, false)).toMatchObject({
+      ok: true,
+      result: { text: "Alpha\n\nBeta" },
+    })
+  })
+
+  test("rejects page text when document designMode makes the page editable", async () => {
+    Object.defineProperty(document, "designMode", { configurable: true, value: "on" })
+    try {
+      expect(await executePageOperation("getVisibleText", {}, false)).toMatchObject({
+        ok: false,
+        error: { code: "PERMISSION_DENIED" },
+      })
+    } finally {
+      Object.defineProperty(document, "designMode", { configurable: true, value: "off" })
+    }
   })
 
   test("reads one rendered CSS scope with an offset and preserves page metadata", async () => {

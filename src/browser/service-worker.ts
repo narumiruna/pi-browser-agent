@@ -374,6 +374,15 @@ function currentBoundContext(): TabContext | undefined {
   return boundContext ? { ...boundContext } : undefined
 }
 
+function invalidateBoundContext(): void {
+  elementSnapshot = undefined
+  if (!boundContext) return
+  // Record the event before any asynchronous refresh can be superseded.
+  contextEpoch = Math.max(contextEpoch, boundContext.epoch) + 1
+  boundContext = { ...boundContext, epoch: contextEpoch }
+  emitTabChanged()
+}
+
 function sameTab(left: chrome.tabs.Tab | undefined, right: chrome.tabs.Tab | undefined): boolean {
   return left?.id === right?.id && left?.url === right?.url && left?.windowId === right?.windowId
 }
@@ -403,42 +412,19 @@ async function findFocusedVisibleTab(version: number): Promise<chrome.tabs.Tab |
   return null
 }
 
-async function finishVisibleTabSync(
-  version: number,
-  updatedTabId?: number,
-): Promise<TabContext | undefined> {
-  const previous = boundContext
+async function finishVisibleTabSync(version: number): Promise<TabContext | undefined> {
   const tab = await findFocusedVisibleTab(version)
   if (tab === null || version !== visibleTabSyncVersion) {
     return latestVisibleTabContext(version)
   }
-
-  const context = setBoundTab(tab)
-  if (
-    context &&
-    tab?.id === updatedTabId &&
-    previous?.tabId === context.tabId &&
-    previous.url === context.url &&
-    previous.epoch === context.epoch
-  ) {
-    contextEpoch = Math.max(contextEpoch, context.epoch) + 1
-    elementSnapshot = undefined
-    boundContext = { ...context, epoch: contextEpoch }
-    emitTabChanged()
-    return { ...boundContext }
-  }
-  return context
+  return setBoundTab(tab)
 }
 
-function syncVisibleTab(updatedTabId?: number): Promise<TabContext | undefined> {
+function syncVisibleTab(): Promise<TabContext | undefined> {
   const version = ++visibleTabSyncVersion
-  const promise = finishVisibleTabSync(version, updatedTabId)
+  const promise = finishVisibleTabSync(version)
   latestVisibleTabSync = { version, promise }
   return promise
-}
-
-async function syncUpdatedVisibleTab(updatedTabId: number): Promise<void> {
-  await syncVisibleTab(updatedTabId)
 }
 
 async function initialize(): Promise<void> {
@@ -774,7 +760,10 @@ async function runConditionWait(
   )
 }
 
-async function runClick(request: RuntimeRequest<"page.click">): Promise<JsonValue> {
+async function runClick(
+  request: RuntimeRequest<"page.click">,
+  signal: AbortSignal,
+): Promise<JsonValue> {
   if (!request.confirmed) return runPageOperation("click", request)
   const inspection = await runPageOperation("inspectClick", request)
   const data =
@@ -812,6 +801,7 @@ async function runClick(request: RuntimeRequest<"page.click">): Promise<JsonValu
     result.navigationAllowed === true
   ) {
     const current = await revalidateRequestContext(request, context)
+    if (signal.aborted) throw new RuntimeError("REQUEST_CANCELLED", "Browser request was cancelled")
     await chrome.tabs.update(current.tabId, { url: targetUrl.href })
     const updated = await syncVisibleTab()
     if (!updated || updated.tabId !== current.tabId) throwStaleContext(current, updated)
@@ -828,6 +818,7 @@ function truncateStructuredResult(value: JsonValue): JsonValue {
 async function runWebMcp(
   operation: WebMcpOperation,
   request: RuntimeRequest<"webmcp.listTools" | "webmcp.callTool">,
+  signal: AbortSignal,
 ): Promise<JsonValue> {
   const context = await refreshBoundContext()
   assertTabContext(request.tabContext, context)
@@ -837,7 +828,9 @@ async function runWebMcp(
       "Grant access to the current site before using WebMCP",
     )
   }
-  await assertReadableDocument(context)
+  if (signal.aborted) throw new RuntimeError("REQUEST_CANCELLED", "Browser request was cancelled")
+  await assertReadableDocument(context, signal)
+  if (signal.aborted) throw new RuntimeError("REQUEST_CANCELLED", "Browser request was cancelled")
   let results: chrome.scripting.InjectionResult<
     Awaited<ReturnType<typeof executeWebMcpOperation>>
   >[]
@@ -845,9 +838,10 @@ async function runWebMcp(
     results = await chrome.scripting.executeScript({
       target: { tabId: context.tabId },
       func: executeWebMcpOperation,
-      args: [operation, request.params, request.confirmed ?? false, context],
+      args: [operation, request.params, request.confirmed ?? false, context, request.requestId],
     })
   } catch (error) {
+    if (signal.aborted) throw new RuntimeError("REQUEST_CANCELLED", "Browser request was cancelled")
     throw await injectionFailure(context, error, "Chrome denied WebMCP access")
   }
   const outcome = results[0]?.result
@@ -943,7 +937,10 @@ async function runBookmarkRead(
   return searchBookmarks(request.params.query, limit)
 }
 
-async function navigate(request: RuntimeRequest<"tabs.navigate">): Promise<JsonValue> {
+async function navigate(
+  request: RuntimeRequest<"tabs.navigate">,
+  signal: AbortSignal,
+): Promise<JsonValue> {
   const context = await refreshBoundContext()
   assertTabContext(request.tabContext, context)
   if (!(await hasHostPermission(context.url))) {
@@ -952,7 +949,8 @@ async function navigate(request: RuntimeRequest<"tabs.navigate">): Promise<JsonV
       "Grant access to the current site before navigating",
     )
   }
-  await assertReadableDocument(context)
+  if (signal.aborted) throw new RuntimeError("REQUEST_CANCELLED", "Browser request was cancelled")
+  await assertReadableDocument(context, signal)
   const target = request.params.url
   if (!isSupportedPageUrl(target)) {
     throw new RuntimeError("INVALID_REQUEST", "Navigation requires an HTTP or HTTPS URL")
@@ -976,6 +974,7 @@ async function navigate(request: RuntimeRequest<"tabs.navigate">): Promise<JsonV
     )
   }
   const current = await revalidateRequestContext(request, context)
+  if (signal.aborted) throw new RuntimeError("REQUEST_CANCELLED", "Browser request was cancelled")
   await chrome.tabs.update(current.tabId, { url: targetUrl.href })
   const updated = await syncVisibleTab()
   if (!updated || updated.tabId !== current.tabId) throwStaleContext(current, updated)
@@ -1160,7 +1159,7 @@ async function dispatch(request: RuntimeRequest, signal: AbortSignal): Promise<J
       result = await getActiveTab(request)
       break
     case "tabs.navigate":
-      result = await navigate(request)
+      result = await navigate(request, signal)
       break
     case "bookmarks.search":
     case "bookmarks.getRecent":
@@ -1223,7 +1222,7 @@ async function dispatch(request: RuntimeRequest, signal: AbortSignal): Promise<J
       result = await captureVisible(request)
       break
     case "page.click":
-      result = await runClick(request)
+      result = await runClick(request, signal)
       break
     case "page.type":
       result = await runPageOperation("type", request)
@@ -1250,10 +1249,10 @@ async function dispatch(request: RuntimeRequest, signal: AbortSignal): Promise<J
       result = await runPageOperation("setChecked", request)
       break
     case "webmcp.listTools":
-      result = truncateStructuredResult(await runWebMcp("webmcp.listTools", request))
+      result = truncateStructuredResult(await runWebMcp("webmcp.listTools", request, signal))
       break
     case "webmcp.callTool":
-      result = truncateStructuredResult(await runWebMcp("webmcp.callTool", request))
+      result = truncateStructuredResult(await runWebMcp("webmcp.callTool", request, signal))
       break
     default: {
       const unhandled: never = request
@@ -1327,10 +1326,10 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   }
   if (activeElementPicker?.context.tabId === tabId) void stopActiveElementPicker("navigation")
   if (boundContext?.tabId === tabId) {
-    elementSnapshot = undefined
+    invalidateBoundContext()
     waitContextVersion += 1
   }
-  void initialization.then(() => syncUpdatedVisibleTab(tabId)).catch(() => undefined)
+  void initialization.then(() => syncVisibleTab()).catch(() => undefined)
 })
 
 chrome.tabs.onActivated.addListener(() => {
@@ -1340,7 +1339,7 @@ chrome.tabs.onActivated.addListener(() => {
   pickerShortcut.invalidate()
   elementPickerOperationVersion += 1
   if (activeElementPicker) void stopActiveElementPicker("tab-activated")
-  elementSnapshot = undefined
+  invalidateBoundContext()
   void initialization.then(() => syncVisibleTab()).catch(() => undefined)
 })
 
@@ -1362,7 +1361,7 @@ chrome.windows.onFocusChanged.addListener((windowId) => {
   pickerShortcut.invalidate()
   elementPickerOperationVersion += 1
   if (activeElementPicker) void stopActiveElementPicker("window-focus-changed")
-  elementSnapshot = undefined
+  invalidateBoundContext()
   if (windowId === chrome.windows.WINDOW_ID_NONE) {
     clearBoundTab()
     // Register recovery immediately so in-flight lookups await the focus handoff.

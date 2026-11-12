@@ -128,6 +128,67 @@ async function prepare(harness: ExtensionHarness) {
   return { request, run, discover, assertInvalidated }
 }
 
+test("page reads exclude editable drafts and form contents in real rendered scopes", async () => {
+  const harness = await launchExtensionHarness()
+  try {
+    const { run, request } = await prepare(harness)
+    await harness.fixturePage.setContent(`<!doctype html><main>
+      <p>Public <b>before</b> text</p>
+      <div id="editor" contenteditable="true"><span id="draft">Private editable draft</span><span id="non-editable-draft" contenteditable="false"><b id="nested-draft">Private non-editable draft</b></span></div>
+      <p id="public-preview" contenteditable="false">Public standalone preview</p>
+      <input value="Private input"><textarea>Private textarea draft</textarea>
+      <select><option>Private option label</option></select>
+      <p>Public after text</p><aside hidden>Private hidden text</aside>
+    </main><p>Outside scope</p>`)
+    for (const params of [{}, { selector: "main" }]) {
+      const result = await run<{ text: string }>("page.getVisibleText", params)
+      expect(result.text).toContain("Public before text")
+      expect(result.text).toContain("Public after text")
+      expect(result.text).not.toContain("Private")
+      if ("selector" in params) expect(result.text).not.toContain("Outside scope")
+    }
+    expect(
+      await harness.fixturePage.evaluate(() =>
+        ["editor", "non-editable-draft", "nested-draft", "public-preview"].map(
+          (id) => (document.getElementById(id) as HTMLElement).isContentEditable,
+        ),
+      ),
+    ).toEqual([true, false, false, false])
+    for (const selector of [
+      "#editor",
+      "#draft",
+      "#non-editable-draft",
+      "#nested-draft",
+      "input",
+      "textarea",
+      "select",
+      "option",
+    ])
+      expect(await request("page.getVisibleText", { selector })).toMatchObject({
+        ok: false,
+        error: { code: "PERMISSION_DENIED" },
+      })
+    expect(await run("page.getVisibleText", { selector: "#public-preview" })).toMatchObject({
+      text: "Public standalone preview",
+    })
+    await harness.fixturePage.setContent(
+      '<main><p>Alpha</p><p>Beta</p><input type="hidden" value="Private hidden input"></main>',
+    )
+    expect(await run("page.getVisibleText", { selector: "main" })).toMatchObject({
+      text: "Alpha\n\nBeta",
+    })
+    await harness.fixturePage.evaluate(() => {
+      document.designMode = "on"
+    })
+    expect(await request("page.getVisibleText", {})).toMatchObject({
+      ok: false,
+      error: { code: "PERMISSION_DENIED" },
+    })
+  } finally {
+    await harness.close()
+  }
+})
+
 test("viewport scroll reports actual geometry and invalidates references even at a boundary", async () => {
   const harness = await launchExtensionHarness()
   try {

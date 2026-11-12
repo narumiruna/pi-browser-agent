@@ -18,18 +18,28 @@ import {
 
 class FakeLockManager {
   private readonly held = new Set<string>()
+  private readonly tails = new Map<string, Promise<void>>()
 
-  async request(
+  async request<T>(
     name: string,
-    _options: LockOptions,
-    callback: (lock: Lock | null) => Promise<void>,
-  ): Promise<void> {
-    if (this.held.has(name)) return callback(null)
+    options: LockOptions,
+    callback: (lock: Lock | null) => Promise<T>,
+  ): Promise<T> {
+    if (options.ifAvailable && this.tails.has(name)) return callback(null)
+    const previous = this.tails.get(name) ?? Promise.resolve()
+    let release!: () => void
+    const tail = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    this.tails.set(name, tail)
+    await previous
     this.held.add(name)
     try {
-      await callback({ name, mode: "exclusive" } as Lock)
+      return await callback({ name, mode: "exclusive" } as Lock)
     } finally {
       this.held.delete(name)
+      if (this.tails.get(name) === tail) this.tails.delete(name)
+      release()
     }
   }
 

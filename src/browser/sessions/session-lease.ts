@@ -1,4 +1,5 @@
 const LOCK_PREFIX = "pi-browser-agent-session:"
+const OWNERSHIP_LOCK = "pi-browser-agent-session-ownership"
 
 interface HeldLease {
   id: string
@@ -15,8 +16,29 @@ export class SessionLease {
     return this.current?.id
   }
 
-  async claim(id: string): Promise<boolean> {
-    if (this.current?.id === id) return true
+  async claim(id: string, prepare?: () => Promise<boolean>): Promise<boolean> {
+    return this.locks.request(OWNERSHIP_LOCK, { mode: "exclusive" }, () =>
+      this.claimCoordinated(id, prepare),
+    )
+  }
+
+  async clearWithReplacement(id: string, clear: () => Promise<void>): Promise<void> {
+    await this.locks.request(OWNERSHIP_LOCK, { mode: "exclusive" }, async () => {
+      const protectedIds = await this.protectedSessionIds()
+      if ([...protectedIds].some((id) => id !== this.current?.id)) {
+        throw new Error("Close the other Side Panels before clearing all session data")
+      }
+      // Claim the replacement before deleting data. A failed clear keeps the old lease.
+      const claimed = await this.claimCoordinated(id, async () => {
+        await clear()
+        return true
+      })
+      if (!claimed) throw new Error("Unable to claim a replacement session")
+    })
+  }
+
+  private async claimCoordinated(id: string, prepare?: () => Promise<boolean>): Promise<boolean> {
+    if (this.current?.id === id) return prepare ? prepare() : true
 
     let release = (): void => undefined
     const held = new Promise<void>((resolve) => {
@@ -42,6 +64,18 @@ export class SessionLease {
     if (!(await acquired)) {
       await completion
       return false
+    }
+
+    try {
+      if (prepare && !(await prepare())) {
+        release()
+        await completion
+        return false
+      }
+    } catch (error) {
+      release()
+      await completion
+      throw error
     }
 
     const previous = this.current

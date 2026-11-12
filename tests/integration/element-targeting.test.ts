@@ -864,6 +864,237 @@ describe("worker element reference lifecycle", () => {
   })
 })
 
+describe("worker deferred navigation cancellation", () => {
+  beforeEach(() => {
+    document.body.innerHTML = '<a id="destination" href="https://destination.test/next">Go</a>'
+    vi.mocked(chrome.storage.local.get).mockImplementation(async () => ({
+      piBrowserAgentApprovedHostPermissions: [
+        `${location.protocol}//${location.hostname}/*`,
+        "https://destination.test/*",
+      ],
+    }))
+  })
+
+  test.each(["destination permission", "final context"] as const)(
+    "cancelled navigation cannot update the tab after awaited %s",
+    async (stage) => {
+      let entered = false
+      let release: () => void = () => undefined
+      const gate = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const pause = async () => {
+        entered = true
+        await gate
+      }
+      vi.mocked(chrome.permissions.contains).mockImplementation(async (permissions) => {
+        if (permissions.origins?.includes("https://destination.test/*")) {
+          if (stage === "destination permission") await pause()
+          else {
+            vi.mocked(chrome.tabs.query).mockImplementationOnce(async () => {
+              await pause()
+              return [tab] as chrome.tabs.Tab[]
+            })
+          }
+        }
+        return true
+      })
+      const navigating = send(
+        "tabs.navigate",
+        { url: "https://destination.test/next" },
+        { confirmed: true, requestId: "cancel-navigation" },
+      )
+      try {
+        await vi.waitFor(() => expect(entered).toBe(true))
+        expect(await send("requests.cancel", { requestId: "cancel-navigation" })).toMatchObject({
+          ok: true,
+          result: { cancelled: true },
+        })
+      } finally {
+        release()
+      }
+      expect(await navigating).toMatchObject({ ok: false, error: { code: "REQUEST_CANCELLED" } })
+      expect(chrome.tabs.update).not.toHaveBeenCalled()
+    },
+  )
+
+  test.each(["selector", "reference"] as const)(
+    "cancelled deferred %s click cannot update the tab after its final context lookup",
+    async (targetKind) => {
+      const target =
+        targetKind === "reference" ? await discover("Go") : { selector: "#destination" }
+      let entered = false
+      let release: () => void = () => undefined
+      const gate = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      // inspectClick returns first. The next injection authorizes navigation without performing it.
+      afterInjection = async () => {
+        afterInjection = async () => {
+          vi.mocked(
+            chrome.tabs.query as (queryInfo: chrome.tabs.QueryInfo) => Promise<chrome.tabs.Tab[]>,
+          )
+            .mockResolvedValueOnce([tab] as chrome.tabs.Tab[])
+            .mockResolvedValueOnce([tab] as chrome.tabs.Tab[])
+            .mockImplementationOnce(async () => {
+              // The first two queries revalidate the injected result; this lookup is runClick's.
+              entered = true
+              await gate
+              return [tab] as chrome.tabs.Tab[]
+            })
+        }
+      }
+      const clicking = send("page.click", target, { confirmed: true, requestId: "cancel-click" })
+      try {
+        await vi.waitFor(() => expect(entered).toBe(true))
+        expect(await send("requests.cancel", { requestId: "cancel-click" })).toMatchObject({
+          ok: true,
+          result: { cancelled: true },
+        })
+      } finally {
+        release()
+      }
+      expect(await clicking).toMatchObject({ ok: false, error: { code: "REQUEST_CANCELLED" } })
+      expect(chrome.tabs.update).not.toHaveBeenCalled()
+    },
+  )
+})
+
+describe("worker WebMCP cancellation", () => {
+  afterEach(() => {
+    Reflect.deleteProperty(document, "modelContext")
+  })
+
+  test.each(["discovery", "final permission"] as const)(
+    "cancellation during %s prevents the native call at the trusted assertion",
+    async (stage) => {
+      let entered = false
+      let release: () => void = () => undefined
+      const gate = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const pause = async () => {
+        entered = true
+        await gate
+      }
+      const executeTool = vi.fn(async () => ({ changed: true }))
+      Object.defineProperty(document, "modelContext", {
+        configurable: true,
+        value: {
+          getTools: async () => {
+            if (stage === "discovery") await pause()
+            else {
+              vi.mocked(chrome.permissions.contains).mockImplementationOnce(async () => {
+                await pause()
+                return true
+              })
+            }
+            return [{ name: "mutate", inputSchema: {} }]
+          },
+          executeTool,
+        },
+      })
+      const sendMessage = vi.spyOn(chrome.runtime, "sendMessage")
+      const calling = send(
+        "webmcp.callTool",
+        { name: "mutate", arguments: {} },
+        { confirmed: true, requestId: "cancel-webmcp" },
+      )
+      try {
+        await vi.waitFor(() => expect(entered).toBe(true))
+        expect(await send("requests.cancel", { requestId: "cancel-webmcp" })).toMatchObject({
+          ok: true,
+          result: { cancelled: true },
+        })
+      } finally {
+        release()
+      }
+      expect(await calling).toMatchObject({ ok: false, error: { code: "REQUEST_CANCELLED" } })
+      expect(sendMessage).toHaveBeenCalledWith({
+        kind: "assert-current-mutation-target",
+        tabContext: context,
+        requestId: "cancel-webmcp",
+      })
+      expect(executeTool).not.toHaveBeenCalled()
+      const injection = executeScript.mock.calls.find(
+        ([call]) => call.func.name === "executeWebMcpOperation",
+      )?.[0]
+      expect(injection?.args?.[4]).toBe("cancel-webmcp")
+    },
+  )
+
+  test.each(["webmcp.listTools", "webmcp.callTool"] as const)(
+    "%s does not inject after cancellation during site permission lookup",
+    async (method) => {
+      vi.mocked(chrome.permissions.contains).mockImplementationOnce(async () => {
+        expect(
+          await send("requests.cancel", { requestId: "cancel-webmcp-permission" }),
+        ).toMatchObject({ ok: true, result: { cancelled: true } })
+        return true
+      })
+      expect(
+        await send(method, method === "webmcp.callTool" ? { name: "mutate", arguments: {} } : {}, {
+          confirmed: true,
+          requestId: "cancel-webmcp-permission",
+        }),
+      ).toMatchObject({ ok: false, error: { code: "REQUEST_CANCELLED" } })
+      expect(executeScript).not.toHaveBeenCalled()
+    },
+  )
+
+  test.each(["webmcp.listTools", "webmcp.callTool"] as const)(
+    "%s does not inject after cancellation during document context validation",
+    async (method) => {
+      let entered = false
+      let release: () => void = () => undefined
+      const gate = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      executeScript.mockImplementationOnce(async ({ func }) => {
+        expect(func.name).toBe("readDocumentContentType")
+        vi.mocked(chrome.tabs.query).mockImplementationOnce(async () => {
+          entered = true
+          await gate
+          return [tab] as chrome.tabs.Tab[]
+        })
+        return [{ result: document.contentType }]
+      })
+      const calling = send(
+        method,
+        method === "webmcp.callTool" ? { name: "mutate", arguments: {} } : {},
+        { confirmed: true, requestId: "cancel-before-webmcp" },
+      )
+      try {
+        await vi.waitFor(() => expect(entered).toBe(true))
+        expect(await send("requests.cancel", { requestId: "cancel-before-webmcp" })).toMatchObject({
+          ok: true,
+        })
+      } finally {
+        release()
+      }
+      expect(await calling).toMatchObject({ ok: false, error: { code: "REQUEST_CANCELLED" } })
+      expect(
+        executeScript.mock.calls.filter(([call]) => call.func.name === "executeWebMcpOperation"),
+      ).toHaveLength(0)
+    },
+  )
+
+  test("keeps a successful native result when the call itself navigates", async () => {
+    const executeTool = vi.fn(async () => {
+      updated(tab.id, { status: "loading" })
+      return { changed: true }
+    })
+    Object.defineProperty(document, "modelContext", {
+      configurable: true,
+      value: { getTools: async () => [{ name: "mutate", inputSchema: {} }], executeTool },
+    })
+    expect(
+      await send("webmcp.callTool", { name: "mutate", arguments: {} }, { confirmed: true }),
+    ).toMatchObject({ ok: true, result: { changed: true } })
+    expect(executeTool).toHaveBeenCalledOnce()
+  })
+})
+
 describe("worker browser interactions", () => {
   function viewportFixture() {
     const root = document.documentElement

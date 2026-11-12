@@ -34,7 +34,7 @@ Thinking choices use SDK `getSupportedThinkingLevels()` intersected with the exi
 1. After **Sign in with an account** and **OpenAI Codex** are selected, Pi Browser Agent requests optional access to `https://auth.openai.com/*` and `https://chatgpt.com/*`.
 2. The Side Panel requests a device authorization from OpenAI.
 3. It displays the verification URI and user code.
-4. Polling follows the server interval, adds five seconds after `slow_down`, and stops on completion, denial, expiry, cancellation, or an unexpected response.
+4. Polling follows the server interval, adds five seconds after `slow_down`, and stops on completion, denial, expiry, cancellation, or an unexpected response. Both **Cancel** and Escape cancel the device-login dialog; a late response cannot replace the stored credential.
 5. The returned authorization code and verifier are exchanged at the token endpoint.
 6. The access-token JWT must contain a non-empty `chatgpt_account_id` claim.
 7. The full credential is stored in trusted `chrome.storage.local`.
@@ -44,6 +44,8 @@ Thinking choices use SDK `getSupportedThinkingLevels()` intersected with the exi
 `pi-ai` resolves the selected provider's credential through `ChromeCredentialStore`. Browser environment and filesystem lookups always return unavailable, so requests cannot silently pick up machine credentials. Static API-key entry requests no model endpoint access; before sending, Pi Browser Agent requests optional access to the exact selected model endpoint. Authentication status names the provider and method without exposing credential values. Pi Browser Agent never inserts API keys into host-permission patterns, UI status, runtime messages, model messages, or diagnostics.
 
 If an OAuth access token is near expiry, refresh occurs inside `CredentialStore.modify()`. Credential-map mutations serialize across providers and Side Panel contexts through a Web Lock; later callers reuse a newly refreshed credential, and rotated refresh and access tokens are committed together. A refresh error preserves the previous credential for an explicit retry or new login; it does not trigger another provider or destination.
+
+**Refresh credential** explicitly refreshes the selected OAuth provider under the same credential-store lock. Its 15-second timeout starts after lock acquisition. A finite token lifetime is valid; refresh does not request an impossible minimum lifetime. API-key and missing credentials cannot use this action.
 
 ## Image generation authentication
 

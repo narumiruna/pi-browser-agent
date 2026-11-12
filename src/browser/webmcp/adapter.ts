@@ -16,6 +16,7 @@ export async function executeWebMcpOperation(
   params: JsonObject,
   confirmed: boolean,
   expectedContext: TabContext | null = null,
+  requestId: string | null = null,
 ): Promise<PageOperationResult> {
   const success = (result: JsonValue): PageOperationSuccess => ({ ok: true, result })
   const failure = (
@@ -118,10 +119,15 @@ export async function executeWebMcpOperation(
       const assertion = (await chrome.runtime.sendMessage({
         kind: "assert-current-mutation-target",
         tabContext: expectedContext,
-      })) as { ok?: boolean; error?: { message?: string } } | undefined
+        ...(requestId === null ? {} : { requestId }),
+      })) as { ok?: boolean; error?: { code?: string; message?: string } } | undefined
       if (!assertion?.ok) {
         return failure(
-          "STALE_CONTEXT",
+          assertion?.error?.code === "REQUEST_CANCELLED"
+            ? "REQUEST_CANCELLED"
+            : assertion?.error?.code === "PERMISSION_DENIED"
+              ? "PERMISSION_DENIED"
+              : "STALE_CONTEXT",
           assertion?.error?.message ?? "The page is no longer in the focused browser window",
         )
       }

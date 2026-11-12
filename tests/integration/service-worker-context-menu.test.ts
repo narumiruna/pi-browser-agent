@@ -320,6 +320,94 @@ describe("service worker visible-tab targeting", () => {
         result: { page: { title: "" }, tabContext: beforeTitle.result.tabContext },
       })
     })
+    for (const superseder of ["state lookup", "title update"]) {
+      const beforeReload = (await appState(`before-reload-${superseder}`)) as {
+        result: { tabContext: { tabId: number; url: string; epoch: number } }
+      }
+      let releaseReloadLookup: () => void = () => undefined
+      delayedWindowLookup = new Promise<void>((resolve) => {
+        releaseReloadLookup = resolve
+      })
+      const lookupCount = getWindow.mock.calls.length
+      listeners.updated?.(7, { status: "loading" }, activeTab)
+      try {
+        await vi.waitFor(() => expect(getWindow.mock.calls.length).toBeGreaterThan(lookupCount))
+        if (superseder === "title update") {
+          activeTab = { ...activeTab, title: "Reloaded" }
+          listeners.updated?.(7, { title: activeTab.title }, activeTab)
+        }
+        // This no-argument refresh supersedes the blocked navigation refresh.
+        const afterReload = (await appState(`after-reload-${superseder}`)) as {
+          result: { tabContext: { tabId: number; url: string; epoch: number } }
+        }
+        expect(afterReload.result.tabContext).toMatchObject({
+          tabId: 7,
+          url: beforeReload.result.tabContext.url,
+          epoch: expect.any(Number),
+        })
+        expect(afterReload.result.tabContext.epoch).toBeGreaterThan(
+          beforeReload.result.tabContext.epoch,
+        )
+        await expect(
+          request({
+            kind: "request",
+            requestId: `old-document-read-${superseder}`,
+            method: "page.getVisibleText",
+            params: {},
+            tabContext: beforeReload.result.tabContext,
+          }),
+        ).resolves.toMatchObject({ ok: false, error: { code: "STALE_CONTEXT" } })
+      } finally {
+        releaseReloadLookup()
+      }
+    }
+
+    for (const event of ["activation", "window focus"]) {
+      const beforeAway = (await appState(`before-away-${event}`)) as {
+        result: { tabContext: { tabId: number; url: string; epoch: number } }
+      }
+      const originalTab = activeTab
+      // Neither asynchronous refresh can observe the intermediate target.
+      activeTab = { id: 9, url: "https://away.test/page", windowId: event === "activation" ? 3 : 4 }
+      if (event === "activation") listeners.activated?.({ tabId: 9, windowId: 3 })
+      else {
+        focusedWindowId = 4
+        listeners.focusChanged?.(4)
+      }
+      activeTab = originalTab
+      focusedWindowId = 3
+      if (event === "activation") listeners.activated?.({ tabId: 7, windowId: 3 })
+      else listeners.focusChanged?.(3)
+      const afterReturn = (await appState(`after-return-${event}`)) as {
+        result: { tabContext: { tabId: number; url: string; epoch: number } }
+      }
+      expect(afterReturn.result.tabContext.tabId).toBe(7)
+      expect(afterReturn.result.tabContext.epoch).toBeGreaterThan(
+        beforeAway.result.tabContext.epoch,
+      )
+      await expect(
+        request({
+          kind: "request",
+          requestId: `old-document-navigation-${event}`,
+          method: "tabs.navigate",
+          params: { url: "https://example.test/next" },
+          tabContext: beforeAway.result.tabContext,
+        }),
+      ).resolves.toMatchObject({ ok: false, error: { code: "STALE_CONTEXT" } })
+      expect(updateTab).not.toHaveBeenCalled()
+    }
+    const beforeBackground = await appState("before-background-navigation")
+    listeners.updated?.(
+      99,
+      { status: "loading", url: "https://background.test/next" },
+      {
+        id: 99,
+        url: "https://background.test/next",
+        windowId: 3,
+      },
+    )
+    await expect(appState("after-background-navigation")).resolves.toEqual(beforeBackground)
+
     const beforePicker = (await appState("before-picker-denial")) as {
       result: { tabContext: { tabId: number; url: string; epoch: number } }
     }

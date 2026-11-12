@@ -370,4 +370,79 @@ describe("browser storage", () => {
     await expect(takePendingSelection(3)).resolves.toEqual(selection)
     await expect(takePendingSelection(3)).resolves.toBeUndefined()
   })
+
+  test("a save during a deferred take survives the older removal and does not block other windows", async () => {
+    const key = "piBrowserAgentPendingSelection:3"
+    const older = {
+      windowId: 3,
+      payload: { text: "older", untrusted: true },
+      tabContext: { tabId: 4, url: "https://example.test", epoch: 0 },
+    }
+    const newer = { ...older, payload: { text: "newer", untrusted: true } }
+    const values: Record<string, unknown> = { [key]: older }
+    let release!: () => void
+    const pendingRead = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let reads = 0
+    const get = vi.fn(async (key: string) => {
+      const snapshot = structuredClone(values[key])
+      if (++reads === 1) await pendingRead
+      return { [key]: snapshot }
+    })
+    const set = vi.fn(async (items: Record<string, unknown>) => Object.assign(values, items))
+    vi.stubGlobal("chrome", {
+      storage: {
+        session: {
+          get,
+          set,
+          remove: vi.fn(async (key: string) => {
+            delete values[key]
+          }),
+        },
+      },
+    })
+
+    const taking = takePendingSelection(3)
+    await vi.waitFor(() => expect(get).toHaveBeenCalledOnce())
+    const saving = savePendingSelection(newer)
+    const otherWindow = { ...newer, windowId: 5 }
+    await savePendingSelection(otherWindow)
+    expect(set).toHaveBeenCalledOnce()
+    expect(values[key]).toEqual(older)
+    release()
+    await expect(taking).resolves.toEqual(older)
+    await saving
+    await expect(takePendingSelection(3)).resolves.toEqual(newer)
+    await expect(takePendingSelection(3)).resolves.toBeUndefined()
+    await expect(takePendingSelection(5)).resolves.toEqual(otherWindow)
+  })
+
+  test("serializes concurrent consumers and recovers after a failed storage read", async () => {
+    const selection = {
+      windowId: 3,
+      payload: { text: "selected", untrusted: true },
+      tabContext: { tabId: 4, url: "https://example.test", epoch: 0 },
+    }
+    const values: Record<string, unknown> = {}
+    const get = vi.fn(async (key: string) => ({ [key]: structuredClone(values[key]) }))
+    vi.stubGlobal("chrome", {
+      storage: {
+        session: {
+          get,
+          set: vi.fn(async (items: Record<string, unknown>) => Object.assign(values, items)),
+          remove: vi.fn(async (key: string) => {
+            delete values[key]
+          }),
+        },
+      },
+    })
+    get.mockRejectedValueOnce(new Error("Read failed"))
+    await expect(takePendingSelection(3)).rejects.toThrow("Read failed")
+    await savePendingSelection(selection)
+    await expect(Promise.all([takePendingSelection(3), takePendingSelection(3)])).resolves.toEqual([
+      selection,
+      undefined,
+    ])
+  })
 })

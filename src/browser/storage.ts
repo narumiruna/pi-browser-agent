@@ -213,19 +213,22 @@ function pendingSelectionKey(windowId: number): string {
 }
 
 export async function savePendingSelection(selection: PendingSelection): Promise<void> {
-  await chrome.storage.session.set({ [pendingSelectionKey(selection.windowId)]: selection })
+  const key = pendingSelectionKey(selection.windowId)
+  await withExclusiveStorageWrite(key, () => chrome.storage.session.set({ [key]: selection }))
 }
 
 export async function takePendingSelection(
   windowId: number,
 ): Promise<PendingSelection | undefined> {
   const key = pendingSelectionKey(windowId)
-  const stored = await chrome.storage.session.get(key)
-  const value = stored[key]
-  await chrome.storage.session.remove(key)
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined
-  const selection = value as Partial<PendingSelection>
-  return selection.windowId === windowId && selection.payload && selection.tabContext
-    ? (structuredClone(selection) as PendingSelection)
-    : undefined
+  return withExclusiveStorageWrite(key, async () => {
+    const stored = await chrome.storage.session.get(key)
+    const value = stored[key]
+    await chrome.storage.session.remove(key)
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined
+    const selection = value as Partial<PendingSelection>
+    return selection.windowId === windowId && selection.payload && selection.tabContext
+      ? (structuredClone(selection) as PendingSelection)
+      : undefined
+  })
 }
