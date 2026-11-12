@@ -20,13 +20,11 @@ Instead of manually implementing a roving tabindex or ARIA activedescendant patt
 DO NOT use this or the WAI-ARIA tabs pattern for page navigation, even if it is intended to be presented as a tabbed interface.
 
 Tablist:
-
 - Prefer `<button>` for the tabs to avoid needing to reimplement button-like behavior. Add `type=button` to avoid unexpected submitter behavior if nested within a form.
 - Use `aria-labelledby` or `aria-label` to give the tablist an accessible name.
 - Use `aria-selected` to indicate which tab is currently selected.
 
 Tab panels:
-
 - Set `role=tabpanel` on the tab panels and use `aria-labelledby` or `aria-label` to give the panel an accessible name (e.g. `aria-labelledby` can reference the associated tab).
 - Do not add `aria-controls` to the tabs: no screen reader uses it.
 - Use `hidden="until-found"` to hide tab panels whose tab is not actively selected while still keeping them searchable by the browser’s find-in-page feature. Use `hidden` with no value to remove the content from the browser's search in-page feature as well.
@@ -42,7 +40,6 @@ When it comes to how tabs become selected, one can either make _selection follow
 Default to _selection follows focus_.
 It saves a keypress per tab, is more discoverable, and matches native radio groups.
 Use selection by activation instead when showing a panel has a cost the user should opt into, since arrowing from the first tab to the fifth would pay it for every tab along the way:
-
 - Showing the panel is not instant: content is fetched on demand, or rendering it is noticeably slow.
 - Selecting a tab has side effects: it changes the URL or history, sends analytics, starts media, or saves state.
 - The panel shifts the layout significantly (e.g. panels of very different heights push the rest of the page around).
@@ -56,8 +53,8 @@ Use `nomemory` and move `focusgroupstart` to the selected tab:
 
 ```js
 for (const tab of tabs) {
-  tab.ariaSelected = tab === selected
-  tab.toggleAttribute("focusgroupstart", tab === selected)
+  tab.ariaSelected = tab === selected;
+  tab.toggleAttribute('focusgroupstart', tab === selected);
 }
 ```
 
@@ -90,6 +87,7 @@ Do not apply any styling that changes the dimensions of the tab (e.g., `padding`
 ```
 
 To animate the underline between tabs, move the pseudo-element to the tablist and tether it to the selected tab with anchor positioning. See `anchor-positioning-tab-underline` (via `npx -y modern-web-guidance@latest retrieve "anchor-positioning-tab-underline"`) for details.
+
 
 - DO NOT put padding, borders, margins, or backgrounds on the panel element itself. `hidden=until-found` does not use `display: none`: it only hides the panel's contents, so a hidden panel still renders its padding, border, margin, and background as an empty strip. Put these styles on a child wrapper inside the panel instead.
 - `hidden=until-found` panels still participate in grid and flex layout, so `gap` adds space for every hidden panel. Place all panels in the same grid cell, or avoid `gap` between panels.
@@ -140,18 +138,12 @@ Fade the content with a mask on the scroller itself: an opaque layer minus a gra
   --fade-end-pos: 100%;
   mask:
     linear-gradient(black, black) no-clip subtract,
-    linear-gradient(to var(--fade-dir), black, transparent) var(--fade-start-pos) 0 /
-    var(--fade-start) 100% no-repeat no-clip,
-    linear-gradient(to var(--fade-dir), transparent, black) var(--fade-end-pos) 0 / var(--fade-end)
-    100% no-repeat no-clip;
-  animation:
-    reveal-fade-start linear both,
-    hide-fade-end linear both;
+    linear-gradient(to var(--fade-dir), black, transparent) var(--fade-start-pos) 0 / var(--fade-start) 100% no-repeat no-clip,
+    linear-gradient(to var(--fade-dir), transparent, black) var(--fade-end-pos) 0 / var(--fade-end) 100% no-repeat no-clip;
+  animation: reveal-fade-start linear both, hide-fade-end linear both;
   animation-timeline: scroll(self inline);
   /* Each fade animates over the first or last --fade-size of scrolling */
-  animation-range:
-    0 var(--fade-size),
-    calc(100% - var(--fade-size)) 100%;
+  animation-range: 0 var(--fade-size), calc(100% - var(--fade-size)) 100%;
 
   &:dir(rtl) {
     --fade-dir: left;
@@ -208,38 +200,35 @@ The rest of this section covers only what is specific to tabs.
 ```
 
 ```js
-const observer = new IntersectionObserver(
-  (entries) => {
-    for (const { target: tab, intersectionRatio } of entries) {
-      const overflowed = intersectionRatio < 1
-      // CSS: .clipped:not([aria-selected="true"], :focus) { visibility: hidden; }
-      tab.classList.toggle("clipped", overflowed)
-      menuItemFor(tab).hidden = !overflowed
-    }
-    more.hidden = !tabs.some((tab) => tab.classList.contains("clipped"))
-    reveal()
-  },
-  { root: tablist, threshold: 1 },
-)
+const observer = new IntersectionObserver(entries => {
+  for (const { target: tab, intersectionRatio } of entries) {
+    const overflowed = intersectionRatio < 1;
+    // CSS: .clipped:not([aria-selected="true"], :focus) { visibility: hidden; }
+    tab.classList.toggle('clipped', overflowed);
+    menuItemFor(tab).hidden = !overflowed;
+  }
+  more.hidden = !tabs.some(tab => tab.classList.contains('clipped'));
+  reveal();
+}, { root: tablist, threshold: 1 });
 
-tabs.forEach((tab) => observer.observe(tab))
+tabs.forEach(tab => observer.observe(tab));
 
 // Also call after every selection change.
 // CSS: .displaced { display: none; }
 function reveal() {
-  const tab = tabs.find((tab) => tab.ariaSelected === "true")
-  const before = tabs.slice(0, tabs.indexOf(tab))
-  tabs.forEach((tab) => tab.classList.remove("displaced"))
+  const tab = tabs.find(tab => tab.ariaSelected === 'true');
+  const before = tabs.slice(0, tabs.indexOf(tab));
+  tabs.forEach(tab => tab.classList.remove('displaced'));
   while (before.length && !fits(tab)) {
-    before.pop().classList.add("displaced")
+    before.pop().classList.add('displaced');
   }
 }
 
 // Checks both edges, so it works in either writing direction
 function fits(tab) {
-  const list = tablist.getBoundingClientRect()
-  const { left, right } = tab.getBoundingClientRect()
-  return left >= list.left && right <= list.right
+  const list = tablist.getBoundingClientRect();
+  const { left, right } = tab.getBoundingClientRect();
+  return left >= list.left && right <= list.right;
 }
 ```
 
@@ -255,6 +244,8 @@ It is more well suited to user-driven tablists (e.g. a document editor) rather t
 - If tabs have icons, keep the icon visible and truncate only the label, so a minimum-width tab is still recognizable.
 - Transition `min-inline-size` so tabs resize smoothly when the selection changes, instead of jumping. Set `interpolate-size: allow-keywords` on the tablist so it interpolates to and from `max-content`; no view transition is needed. Only transition it when `prefers-reduced-motion` is `no-preference`. Transitioning `flex-shrink` does not work: any value above 0 shrinks a tab all the way to its minimum when the tabs overflow.
 
+
+
 ## Fallback strategies
 
 ### Fallbacks & browser support for focusgroup
@@ -266,9 +257,9 @@ Unsupported in: Firefox and Safari.
 Load `@microsoft/focusgroup-polyfill` only when native support is missing:
 
 ```js
-if (!Object.hasOwn(HTMLElement.prototype, "focusGroup")) {
-  const { polyfill } = await import("@microsoft/focusgroup-polyfill")
-  polyfill()
+if (!(Object.hasOwn(HTMLElement.prototype, 'focusGroup'))) {
+  const { polyfill } = await import('@microsoft/focusgroup-polyfill');
+  polyfill();
 }
 ```
 
@@ -314,10 +305,8 @@ At either end of the content its cover sits on top of its shadow and hides it; o
       linear-gradient(var(--surface) 30%, transparent) top / 100% 2.5rem no-repeat local,
       linear-gradient(transparent, var(--surface) 70%) bottom / 100% 2.5rem no-repeat local,
       /* Shadows: stay at the edges of the scrollport */
-      radial-gradient(farthest-side at 50% 0, rgb(0 0 0 / 0.15), transparent) top / 100% 0.75rem
-      no-repeat,
-      radial-gradient(farthest-side at 50% 100%, rgb(0 0 0 / 0.15), transparent) bottom / 100%
-      0.75rem no-repeat,
+      radial-gradient(farthest-side at 50% 0, rgb(0 0 0 / .15), transparent) top / 100% .75rem no-repeat,
+      radial-gradient(farthest-side at 50% 100%, rgb(0 0 0 / .15), transparent) bottom / 100% .75rem no-repeat,
       var(--surface);
   }
 }
@@ -330,24 +319,18 @@ The shadows paint behind the content, so content with its own opaque background 
 Use an `IntersectionObserver` to mark which edges have more content, and show the hints from those attributes. Observe the scroller's first and last children, with the scroller as the root and `threshold: 1`: a child that is not fully visible means there is more content beyond it.
 
 ```js
-if (!CSS.supports("animation-timeline", "scroll()")) {
-  for (const scroller of document.querySelectorAll(".scroller")) {
-    const [first, last] = [scroller.firstElementChild, scroller.lastElementChild]
+if (!CSS.supports('animation-timeline', 'scroll()')) {
+  for (const scroller of document.querySelectorAll('.scroller')) {
+    const [first, last] = [scroller.firstElementChild, scroller.lastElementChild];
     // rootMargin: without it, sub-pixel widths can leave an edge child a fraction of a pixel short of fully visible
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const { target, intersectionRatio } of entries) {
-          scroller.classList.toggle(
-            target === first ? "more-start" : "more-end",
-            intersectionRatio < 1,
-          )
-        }
-      },
-      { root: scroller, threshold: 1, rootMargin: "1px" },
-    )
+    const observer = new IntersectionObserver(entries => {
+      for (const { target, intersectionRatio } of entries) {
+        scroller.classList.toggle(target === first ? 'more-start' : 'more-end', intersectionRatio < 1);
+      }
+    }, { root: scroller, threshold: 1, rootMargin: '1px' });
 
-    observer.observe(first)
-    observer.observe(last)
+    observer.observe(first);
+    observer.observe(last);
   }
 }
 ```
@@ -361,9 +344,7 @@ if (!CSS.supports("animation-timeline", "scroll()")) {
 
 /* Fades */
 .scroller {
-  transition:
-    --fade-start 0.2s,
-    --fade-end 0.2s;
+  transition: --fade-start .2s, --fade-end .2s;
 
   &.more-start {
     --fade-start: var(--fade-size);
@@ -379,12 +360,12 @@ If a single child can be larger than the scroller (e.g. one long article), it is
 
 ```js
 // Must be valid children of the scroller (e.g. <li aria-hidden="true"> in a list)
-const [start, end] = [document.createElement("div"), document.createElement("div")]
+const [start, end] = [document.createElement('div'), document.createElement('div')];
 for (const sentinel of [start, end]) {
   // A zero-size sentinel at the very edge never counts as intersecting
-  sentinel.style.cssText = "min-inline-size: 1px; min-block-size: 1px"
+  sentinel.style.cssText = 'min-inline-size: 1px; min-block-size: 1px';
 }
-scroller.prepend(start)
-scroller.append(end)
+scroller.prepend(start);
+scroller.append(end);
 // Observe them as above, with the default threshold, using !isIntersecting instead of intersectionRatio < 1
 ```

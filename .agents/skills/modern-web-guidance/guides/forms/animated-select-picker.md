@@ -11,7 +11,7 @@ To implement an animated select picker:
 1. **Opt-in to customization:** Apply `appearance: base-select` to both the `<select>` element and the `::picker(select)` pseudo-element.
 2. **Enable auto-sizing transitions (Optional):** Define `interpolate-size: allow-keywords` (usually on `:root`) to allow the browser to transition between discrete metric values like `height: auto` and `height: 0`.
 3. **Animate the top-layer container:** Apply standard entry/exit styles to `::picker(select)`. Include `display` and `overlay` in the `transition` property and set `transition-behavior: allow-discrete` so the picker stays rendered in the top layer when transitioning between `display: none` and `display: block`.
-4. **Hook into the opening state with `@starting-style`:** Use `@starting-style` to define the baseline styles the browser should compute _before_ the transition begins. For example, if you want it to fade in, set the opacity to `0` inside the `@starting-style` block.
+4. **Hook into the opening state with `@starting-style`:** Use `@starting-style` to define the baseline styles the browser should compute *before* the transition begins. For example, if you want it to fade in, set the opacity to `0` inside the `@starting-style` block.
 5. **Rotate the icon:** Use pseudo-element focus or active selectors like `:open::picker-icon` to apply transitions (such as rotation or translation) to the arrow indicator.
 
 ## Example Code: Smooth Select Scale and Fade
@@ -95,7 +95,7 @@ The following example demonstrates a custom select styled with standard page ani
   background: white;
   color: black;
   border-radius: 12px;
-  box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 10px 25px -3px rgba(0,0,0,0.1);
   padding: 0.5rem;
   margin-top: 0.25rem;
   width: anchor-size(width);
@@ -174,11 +174,12 @@ For browsers that do not yet support `appearance: base-select`, the `<select>` e
 - **Non-Text Content Ignored**: Older browsers strip HTML tags (like `<svg>` or `<div>`) inside `<option>` tags and render only the text nodes. Ensure the text content of the `<option>` is readable and meaningful on its own.
 - **HTML Structure Handling**: Standard parsers may ignore the `<button>` and `<selectedcontent>` tags inside `<select>` or treat them as invalid. No heavy JavaScript polyfills are strictly required for progressive enhancement if you view standard text as a readable fallback.
 
+
 ```javascript
 document.addEventListener("DOMContentLoaded", () => {
   // Check if browser supports base-select value
   if (!CSS.supports("appearance", "base-select")) {
     // Custom select overrides are not supported natively.
   }
-})
+});
 ```

@@ -123,10 +123,10 @@ View Transitions are a progressive enhancement. If the browser does not support 
 
 ```javascript
 if (document.startViewTransition) {
-  document.startViewTransition(() => updateDOM())
+  document.startViewTransition(() => updateDOM());
 } else {
   // Fallback: Perform the update without animation
-  updateDOM()
+  updateDOM();
 }
 ```
 

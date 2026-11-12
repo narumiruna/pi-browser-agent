@@ -9,7 +9,7 @@ In the past, CSS transitions could not animate elements when they were first add
 To animate an element when toggling its visibility via an attribute (e.g., `hidden` with `display: none`):
 
 1. **Define the visible state**: Set the final property values (e.g., `opacity: 1`) on the base class.
-2. **Define the entry starting state**: Use `@starting-style` to specify the values to transition _from_ when the element becomes visible.
+2. **Define the entry starting state**: Use `@starting-style` to specify the values to transition *from* when the element becomes visible.
 3. **Enable discrete transitions**: Include `display` in the `transition` property and use `transition-behavior: allow-discrete`.
 4. **Define the exit state**: Set the target values in the `hidden` attribute.
 
@@ -71,21 +71,21 @@ For elements added via `appendChild()` or removed via `remove()`:
 
 ```javascript
 // 1. Trigger exit transition
-element.hidden = true
+element.hidden = true;
 
 // 2. Wait for all active transitions/animations to finish,
 //    with a failsafe timeout in case an animation never ends (e.g. for looping animations)
-const animations = element.getAnimations()
+const animations = element.getAnimations();
 if (animations.length > 0) {
   await Promise.race([
     // Promise.allSettled ensures we wait even if some animations fail
-    Promise.allSettled(animations.map((a) => a.finished)),
-    new Promise((r) => setTimeout(r, 2000)),
-  ])
+    Promise.allSettled(animations.map(a => a.finished)),
+    new Promise(r => setTimeout(r, 2000))
+  ]);
 }
 
 // 3. Finally remove the node from the DOM
-element.remove()
+element.remove();
 ```
 
 ## Constraints & Accessibility
@@ -95,7 +95,7 @@ element.remove()
 - **MANDATORY**: Use `@starting-style` for entry animations. Browsers skip transitions on an element's first style update (initial render or `display: none` change) unless this is provided.
 - **DO**: Include `overlay` in the `transition` list if animating top-layer elements like `<dialog>` or `popover` to ensure they stay in the top layer during the exit animation.
 - **DO**: Respect user preferences for reduced motion using the `prefers-reduced-motion` media query.
-- **DO NOT**: Rely on `@starting-style` for exit animations; it only defines the _starting_ point for an entry transition. Exit animations are defined by the transition to the hidden state.
+- **DO NOT**: Rely on `@starting-style` for exit animations; it only defines the *starting* point for an entry transition. Exit animations are defined by the transition to the hidden state.
 
 ## Fallback strategies
 
@@ -116,24 +116,24 @@ Firefox 129+ parses `transition-behavior: allow-discrete` (`CSS.supports('transi
 To reliably detect discrete `display` transition support, probe whether a temporary element's computed `display` remains visible when transitioned to `none` rather than relying solely on `CSS.supports('transition-behavior', 'allow-discrete')`:
 
 ```javascript
-let supportsDisplayTransition
+let supportsDisplayTransition;
 function canTransitionDisplay() {
-  if (supportsDisplayTransition !== undefined) return supportsDisplayTransition
-  if (!window.CSS?.supports?.("transition-behavior", "allow-discrete") || !document.body) {
-    return false
+  if (supportsDisplayTransition !== undefined) return supportsDisplayTransition;
+  if (!window.CSS?.supports?.('transition-behavior', 'allow-discrete') || !document.body) {
+    return false;
   }
-  const probe = document.createElement("div")
+  const probe = document.createElement('div');
   // The shorthand is intentional here: browsers that don't parse allow-discrete
   // drop the whole declaration, so display: none applies instantly and the probe
   // correctly returns false. !important guards against global reduced-motion
   // resets like `* { transition: none !important }`.
-  probe.style.cssText = "transition: display 1s allow-discrete !important; display: block;"
-  document.body.appendChild(probe)
-  getComputedStyle(probe).display
-  probe.style.display = "none"
-  supportsDisplayTransition = getComputedStyle(probe).display === "block"
-  probe.remove()
-  return supportsDisplayTransition
+  probe.style.cssText = 'transition: display 1s allow-discrete !important; display: block;';
+  document.body.appendChild(probe);
+  getComputedStyle(probe).display;
+  probe.style.display = 'none';
+  supportsDisplayTransition = getComputedStyle(probe).display === 'block';
+  probe.remove();
+  return supportsDisplayTransition;
 }
 ```
 
@@ -161,33 +161,33 @@ Entry animations using `@starting-style` work across all modern browsers without
 ```javascript
 async function hideElement(el) {
   if (canTransitionDisplay()) {
-    el.hidden = true
+    el.hidden = true;
   } else {
-    el.setAttribute("data-closing", "")
+    el.setAttribute('data-closing', '');
   }
 
-  const animations = el.getAnimations()
+  const animations = el.getAnimations();
   if (animations.length > 0) {
     await Promise.race([
       Promise.allSettled(animations.map((a) => a.finished)),
       new Promise((r) => setTimeout(r, 2000)),
-    ])
+    ]);
   }
 
   // Skipped if showElement() cancelled the close mid-animation.
-  if (el.hasAttribute("data-closing")) {
-    el.removeAttribute("data-closing")
-    el.hidden = true
+  if (el.hasAttribute('data-closing')) {
+    el.removeAttribute('data-closing');
+    el.hidden = true;
   }
 }
 
 function showElement(el) {
-  el.removeAttribute("data-closing")
-  el.hidden = false
+  el.removeAttribute('data-closing');
+  el.hidden = false;
 }
 
 async function removeElement(el) {
-  await hideElement(el)
-  el.remove()
+  await hideElement(el);
+  el.remove();
 }
 ```

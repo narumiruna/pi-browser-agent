@@ -26,27 +26,27 @@ The `web-vitals` library is a tiny library used to measure Core Web Vitals and o
 ```javascript
 // Use the attribution build to get Long Animation Frame data
 // alongside the INP metric value.
-import { onINP } from "web-vitals/attribution"
+import { onINP } from 'web-vitals/attribution';
 
 onINP((metric) => {
-  const { attribution } = metric
-  const longestScript = attribution.longestScript
+  const { attribution } = metric;
+  const longestScript = attribution.longestScript;
 
   // Sum rendering-phase style and layout durations across all LoAF entries
   // intersecting the INP interaction (primarily explains presentationDelay).
-  let renderStyleDuration = 0
-  let renderLayoutDuration = 0
+  let renderStyleDuration = 0;
+  let renderLayoutDuration = 0;
   for (const entry of attribution.longAnimationFrameEntries) {
-    renderStyleDuration += entry.styleDuration ?? 0
-    renderLayoutDuration += entry.layoutDuration ?? 0
+    renderStyleDuration += entry.styleDuration ?? 0;
+    renderLayoutDuration += entry.layoutDuration ?? 0;
   }
 
   // Beacon script, style, and layout attribution for the INP interaction,
   // so you can identify the root cause in production.
   navigator.sendBeacon(
-    "/analytics",
+    '/analytics',
     JSON.stringify({
-      name: "INP",
+      name: 'INP',
       value: metric.value,
       // These fields give the INP subparts:
       inputDelay: attribution.inputDelay,
@@ -72,10 +72,10 @@ onINP((metric) => {
       // (with totalStyleAndLayoutDuration as a combined fallback):
       renderStyleDuration,
       renderLayoutDuration,
-      totalStyleAndLayoutDuration: attribution.totalStyleAndLayoutDuration,
-    }),
-  )
-})
+      totalStyleAndLayoutDuration: attribution.totalStyleAndLayoutDuration
+    })
+  );
+});
 ```
 
 ## Best Practices
@@ -101,6 +101,5 @@ Unsupported in: Firefox and Safari.
 The Long Animation Frames API provides optional, additional details. It can be safely used without fallbacks. In most cases the performance opportunities it identifies will apply to other browsers as well.
 
 If your Baseline target supports the Long Animation Frames API (`long-animation-frames`) but does not support separate style and layout duration properties (`styleDuration` and `layoutDuration` on `PerformanceLongAnimationFrameTiming`, or `forcedStyleDuration` and `forcedLayoutDuration` on `PerformanceScriptTiming`), fall back to the combined style-and-layout timings:
-
 - Use `script.forcedStyleAndLayoutDuration` on `PerformanceScriptTiming` for synchronous forced style and layout work inside scripts.
 - Use `metric.attribution.totalStyleAndLayoutDuration` in `web-vitals/attribution` (or compute `(entry.paintTime || entry.startTime + entry.duration) - entry.styleAndLayoutStart` on each `PerformanceLongAnimationFrameTiming` entry) for combined style and layout work.

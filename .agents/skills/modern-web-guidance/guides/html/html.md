@@ -33,7 +33,7 @@
 - **DON'T** use generic `<div>` or `<span>` when semantic elements exist, for instance for interactive elements, headings, or independently reusable self-contained content.
 - **DON'T** use boolean attributes with redundant values (e.g., use `disabled`, not `disabled="disabled"`).
 - **DON'T** use generic elements with added ARIA roles or states when native elements with built-in semantics and behavior exist.
-- **DON'T** change the native semantics of elements with ARIA unless it is a critical requirement.
+- **DON'T** change the native semantics of elements with ARIA unless it is a critical requirement. 
 - **DON'T** use `role="presentation"` or `aria-hidden="true"` on focusable elements or their parents and ancestors.
 - **DON'T** disable page zooming capabilities.
 - **DON'T** use more than one `banner`, `main`, or `contentinfo` landmark per page
@@ -144,7 +144,7 @@
 - **DO** apply `loading="lazy"` to off-screen images and iframes to defer bandwidth.
 - **DO** specify `width` and `height` on all `<img>` tags to preserve aspect ratio and prevent Layout Shifts (CLS).
 - **DO** use the `srcset` attribute on `<img>`s for adding multiple versions of the same image at different sizes.
-- **DO** use the `<picture>` element with a fallback `<img>` for more fine-grained image control like switching between image formats, image sizes, and cropping images at different device sizes.
+- **DO** use the `<picture>` element with a fallback `<img>` for more fine-grained image control like switching between image formats, image sizes, and cropping images at different device sizes. 
 
 - **DON'T** apply `loading="lazy"` to above-the-fold or hero images. This delays LCP.
 - **DON'T** overuse `fetchpriority="high"`; prioritization is a zero-sum mechanism. Use `fetchpriority="low"` to demote non-critical trackers or later carousel items.
@@ -208,7 +208,6 @@
 ### Guidelines
 
 See `declarative-dialog-popover-control` (via `npx -y modern-web-guidance@latest retrieve "declarative-dialog-popover-control"`) for more info on fallback strategies for using the Popover API in a cross-browser way.
-
 - **DO** use `<dialog>` for modal overlays (requires JS `.showModal()`) to automatically trap focus, dim backgrounds, and support dismissing via `Esc`. Use the `closedby="any"` attribute to enable native "light-dismiss" (closing on backdrop click) without custom JavaScript.
 - **DO** provide a visible control for closing modal overlays, so that people using voice control software can easily determine how to dismiss the modal dialog.
 - **DO** utilize the Popover API (`popover` attribute) for non-modal UI (menus, tooltips) that do not require focus traps.
@@ -254,11 +253,11 @@ See `declarative-dialog-popover-control` (via `npx -y modern-web-guidance@latest
 
 ### Native UI Overlay & Disclosure Matrix
 
-| Feature         | Modality          | Focus                  | Dismiss Mechanism             | Use Case                   |
-| :-------------- | :---------------- | :--------------------- | :---------------------------- | :------------------------- |
-| **`<dialog>`**  | Modal / Non-modal | Automatic trap (Modal) | Esc / Form / `closedby`       | Critical Actions, Settings |
-| **`[popover]`** | Non-modal         | Standard Tab flow      | Light-dismiss (Click outside) | Menus, Tooltips, Toasts    |
-| **`<details>`** | Inline Disclosure | Standard Tab flow      | Toggle summary                | Accordions, FAQs           |
+| Feature | Modality | Focus | Dismiss Mechanism | Use Case |
+| :--- | :--- | :--- | :--- | :--- |
+| **`<dialog>`** | Modal / Non-modal | Automatic trap (Modal) | Esc / Form / `closedby` | Critical Actions, Settings |
+| **`[popover]`** | Non-modal | Standard Tab flow | Light-dismiss (Click outside) | Menus, Tooltips, Toasts |
+| **`<details>`** | Inline Disclosure | Standard Tab flow | Toggle summary | Accordions, FAQs |
 
 **Heuristic Rule**: Use `<dialog>` for interruptions requiring user action, `popover` for transient info, and `<details>` for inline content expansion.
 
@@ -268,7 +267,7 @@ See `declarative-dialog-popover-control` (via `npx -y modern-web-guidance@latest
 
 - **DO** use `<details>` and `<summary>` for a native disclosure pattern without JS.
 - **DO** use `<details>` and `<summary>` for native accordion patterns without JS. For exclusive accordions, use the `name` attribute on the `<details>` elements. Wrap the entire accordion in a `<section>` element with an accessible name provided using either `aria-labelledby` (referencing the `id` attribute of the element that names this accordion) or `aria-label`
-- **DO** place `<summary>` as the _first_ child of `<details>`.
+- **DO** place `<summary>` as the *first* child of `<details>`.
 - If headings must be used within a `<summary>`, consider if the heading is essential for understanding or navigating the document structure. If it is, use a more robust disclosure approach that allows wrapping the disclosure trigger with the heading (e.g. `<h2><button type="button" aria-expanded="false" aria-controls="significant-section-content">Significant section</button></h2>`). This ensures the heading semantics aren’t lost, and the button and its state are announced.
 - **DO** use `details[open]` attribute for styling expanded states.
 - **DO** use `details::details-content` for styling the contents of the `<details>` element.
@@ -322,8 +321,7 @@ See `declarative-dialog-popover-control` (via `npx -y modern-web-guidance@latest
 ```
 
 ```css
-[inert],
-[inert] * {
+[inert], [inert] * {
   opacity: 0.5;
   cursor: default;
   user-select: none;
@@ -368,7 +366,7 @@ See `forms` (via `npx -y modern-web-guidance@latest retrieve "forms"`) for more 
 - **DO** set `width` and `height` to prevent layout shifts (CLS) on `<video>` elements.
 - **DO** provide a `poster` image fallback for videos.
 - **DO** include subtitles and captions with `<track>`.
-- **DO** ensure background videos are `muted`, provide users with full control over playback, and use `role="none"` or `aria-hidden="true"`. The `controls` attribute must also be omitted to make sure the video is not focusable.
+- **DO** ensure background videos are `muted`, provide users with full control over playback, and use `role="none"` or `aria-hidden="true"`. The `controls` attribute must also be omitted to make sure the video is not focusable.  
 
 - **DON'T** rely on JS for basic video controls if native `controls` attribute is sufficient.
 - **DON'T** apply `role="none"` or `aria-hidden="true"` to focusable elements (such as embedded interactive `<iframe>` components). Hiding elements from the assistive technology tree while leaving them accessible to sequential keyboard navigation violates core accessibility heuristics. The background video exception holds solely because omitting the `controls` attribute renders the `<video>` element fully non-focusable.

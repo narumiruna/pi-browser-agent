@@ -16,15 +16,15 @@ An interest relationship is created by setting the `interestfor` attribute on a 
 For the sake of this use case, we can leverage the `interest` and `loseinterest` events to preview various effects for an interest target. Both of these events are `InterestEvent`s which has a `source` property which is the source of the interest (i.e. the element with the `interestfor` attribute).
 
 ```javascript
-interestingElement.addEventListener("interest", (event) => {
+interestingElement.addEventListener("interest", event => {
   // Apply the preview based on `event.source`
-  event.target.dataset.preview = event.source.dataset.effect
-})
+  event.target.dataset.preview = event.source.dataset.effect;
+});
 
-interestingElement.addEventListener("loseinterest", (event) => {
+interestingElement.addEventListener("loseinterest", event => {
   // Unapply the preview
-  delete event.target.dataset.preview
-})
+  delete event.target.dataset.preview;
+});
 ```
 
 > [!NOTE]
@@ -34,10 +34,8 @@ Active interest sources and targets can be selected with CSS using the `:interes
 
 ```css
 /* Styles to apply when the effect is being previewed */
-:interest-source {
-}
-:interest-target {
-}
+:interest-source {}
+:interest-target {}
 ```
 
 The start and end delay for an interest invoker (i.e. the element with the `interestfor` attribute) can be set with the `interest-delay-start` and `interest-delay-end` CSS properties or the shorthand `interest-delay` property.
@@ -78,12 +76,8 @@ When using the polyfill, the CSS API changes slightly to account for the lack of
 
 ```css
 /* Styles to apply when the effect is being previewed */
-:is(:interest-source, .interest-source) {
-  /* ... */
-}
-:is(:interest-target, .interest-target) {
-  /* ... */
-}
+:is(:interest-source, .interest-source) { /* ... */ }
+:is(:interest-target, .interest-target) { /* ... */ }
 ```
 
 - **CSS Properties:** For `interest-delay`, `interest-delay-start`, and `interest-delay-end`, the polyfill requires using CSS variables as it cannot read the custom properties directly in all browsers.

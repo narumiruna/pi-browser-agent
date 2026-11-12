@@ -21,10 +21,10 @@ const options = {
   rpId: "example.com",
   allowCredentials: [], // Request discoverable passkeys
   userVerification: "preferred",
-}
+};
 
 // Persist expected UV level to user session
-req.session.expectedUserVerification = "preferred"
+req.session.expectedUserVerification = "preferred";
 ```
 
 ### Verification Endpoint
@@ -86,16 +86,17 @@ Activate form autofill suggestions on page load to offer passkey authentication 
 
 ```javascript
 // optionsFetch and loginVerifyFetch are app-defined HTTP methods
-import { optionsFetch, loginVerifyFetch } from "./api.js"
+import { optionsFetch, loginVerifyFetch } from "./api.js";
 
-let autofillAbortController = new AbortController()
+let autofillAbortController = new AbortController();
 
 async function initializeConditionalAutofill() {
   // Feature detect Conditional Get autofill support
-  const capabilities = await PublicKeyCredential.getClientCapabilities()
+  const capabilities = await PublicKeyCredential.getClientCapabilities();
   if (capabilities.conditionalGet === true) {
-    const loginOptionsJSON = await optionsFetch()
-    const publicKey = PublicKeyCredential.parseRequestOptionsFromJSON(loginOptionsJSON)
+    const loginOptionsJSON = await optionsFetch();
+    const publicKey =
+      PublicKeyCredential.parseRequestOptionsFromJSON(loginOptionsJSON);
 
     try {
       // Initiate Conditional UI form autofill suggestions
@@ -103,76 +104,77 @@ async function initializeConditionalAutofill() {
         publicKey,
         signal: autofillAbortController.signal,
         mediation: "conditional",
-      })
+      });
 
       // Segregated verification fetch
-      const encoded = credential.toJSON()
-      const response = await loginVerifyFetch(encoded)
+      const encoded = credential.toJSON();
+      const response = await loginVerifyFetch(encoded);
       if (!response.ok && response.status === 404) {
         // Note: this code path runs pre-authentication, satisfying the unauth precondition
         if (PublicKeyCredential.signalUnknownCredential) {
           await PublicKeyCredential.signalUnknownCredential({
             rpId: publicKey.rpId, // Always use the server-provided rpId; DO NOT use window.location.hostname
             credentialId: encoded.id,
-          })
+          });
         }
       }
     } catch (err) {
       // Silently swallow expected client WebAuthn exceptions
       if (["NotAllowedError", "AbortError"].includes(err.name)) {
-        return
+        return;
       }
-      console.error("Unexpected conditional get error:", err)
+      console.error("Unexpected conditional get error:", err);
     }
   }
 }
 
 async function triggerButtonAuthentication() {
   // Abort any pending Conditional Get call to prevent passkey prompt collisions
-  autofillAbortController.abort()
-  autofillAbortController = new AbortController() // Reset controller for next triggers
+  autofillAbortController.abort();
+  autofillAbortController = new AbortController(); // Reset controller for next triggers
 
-  const loginOptionsJSON = await optionsFetch()
-  const publicKey = PublicKeyCredential.parseRequestOptionsFromJSON(loginOptionsJSON)
+  const loginOptionsJSON = await optionsFetch();
+  const publicKey =
+    PublicKeyCredential.parseRequestOptionsFromJSON(loginOptionsJSON);
 
-  let credential
+  let credential;
   try {
     // Passkey explicit prompt trigger
     credential = await navigator.credentials.get({
       publicKey,
       signal: autofillAbortController.signal,
-    })
+    });
   } catch (err) {
     if (err.name === "NotAllowedError") {
-      console.log("User cancelled passkey login.")
+      console.log("User cancelled passkey login.");
     } else if (err.name === "AbortError") {
-      console.log("The authentication operation was aborted.")
+      console.log("The authentication operation was aborted.");
     }
     // Re-arm Conditional autofill Suggestions after cancelled explicit button prompts
-    initializeConditionalAutofill()
-    return // Safe exit
+    initializeConditionalAutofill();
+    return; // Safe exit
   }
 
   // Segregated verification try/catch (HTTP 404 trigger)
-  const encoded = credential.toJSON()
+  const encoded = credential.toJSON();
   try {
-    const response = await loginVerifyFetch(encoded)
+    const response = await loginVerifyFetch(encoded);
     if (!response.ok && response.status === 404) {
       // Note: this code path runs pre-authentication, satisfying the unauth precondition
       if (PublicKeyCredential.signalUnknownCredential) {
         await PublicKeyCredential.signalUnknownCredential({
           rpId: publicKey.rpId, // Always use the server-provided rpId; DO NOT use window.location.hostname
           credentialId: encoded.id, // Base64URL-encoded credential ID
-        })
+        });
       }
     }
   } catch (serverErr) {
-    console.error("Verification request error:", serverErr)
+    console.error("Verification request error:", serverErr);
   }
 }
 
 // Trigger Conditional Get on load
-window.addEventListener("DOMContentLoaded", initializeConditionalAutofill)
+window.addEventListener("DOMContentLoaded", initializeConditionalAutofill);
 ```
 
 ## Fallback Strategies
@@ -186,7 +188,7 @@ Load `webauthn-polyfills` so `PublicKeyCredential.getClientCapabilities()` is av
 
 ```js
 // With a bundler (`npm install webauthn-polyfills`):
-import "webauthn-polyfills"
+import 'webauthn-polyfills';
 ```
 
 Without a bundler, serve the package from your own origin, or import it from a CDN such as `https://esm.sh/webauthn-polyfills@0.1.7` (pin the exact version). For third-party URLs, add Subresource Integrity: the `integrity` attribute on the `<script>` tag, or an import map's `integrity` field for `import` statements.
@@ -210,7 +212,7 @@ Load `webauthn-polyfills` so `PublicKeyCredential.parseRequestOptionsFromJSON()`
 
 ```js
 // With a bundler (`npm install webauthn-polyfills`):
-import "webauthn-polyfills"
+import 'webauthn-polyfills';
 ```
 
 Without a bundler, serve the package from your own origin, or import it from a CDN such as `https://esm.sh/webauthn-polyfills@0.1.7` (pin the exact version). For third-party URLs, add Subresource Integrity: the `integrity` attribute on the `<script>` tag, or an import map's `integrity` field for `import` statements.

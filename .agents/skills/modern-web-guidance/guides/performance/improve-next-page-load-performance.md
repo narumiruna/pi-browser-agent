@@ -1,6 +1,6 @@
 # Improve next page load performance
 
-One of the most effective ways to improve page load performance for users navigating a site is to initiate loading the next page they're about to visit _before_ they visit it. This can be done through a technique called speculative loading using the Speculation Rules API.
+One of the most effective ways to improve page load performance for users navigating a site is to initiate loading the next page they're about to visit *before* they visit it. This can be done through a technique called speculative loading using the Speculation Rules API.
 
 ## How it works
 

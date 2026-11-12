@@ -8,9 +8,9 @@ Each menu in the bar is a complete popup menu: invoker-triggered popover, nested
 
 ## Structure
 
-- Put `role="menubar"` with an `aria-label` on the container of the top-level triggers, never on a popover. Each top-level trigger is a direct child of the menubar, immediately followed by its popover.
-- Style the bar as one continuous strip with no gaps or borders between triggers. Visually separate buttons signal one `Tab` stop each; a continuous bar signals one widget.
-- Give the trigger with `aria-expanded="true"` a visible active style so users can tell which menu is open or previewed.
+* Put `role="menubar"` with an `aria-label` on the container of the top-level triggers, never on a popover. Each top-level trigger is a direct child of the menubar, immediately followed by its popover.
+* Style the bar as one continuous strip with no gaps or borders between triggers. Visually separate buttons signal one `Tab` stop each; a continuous bar signals one widget.
+* Give the trigger with `aria-expanded="true"` a visible active style so users can tell which menu is open or previewed.
 
 ```html
 <div role="menubar" aria-label="Document commands">
@@ -37,15 +37,15 @@ Each menu in the bar is a complete popup menu: invoker-triggered popover, nested
 
 The menu guide's keyboard model applies inside every menu. The bar adds, on top of it:
 
-- **One tab stop.** `Tab` enters at the first top-level trigger. `ArrowLeft` and `ArrowRight` move between top-level triggers and wrap at either end. `Home` and `End` on a trigger enter its menu at the first or last item.
-  - **Note: which trigger `Tab` returns to.** The APG allows either the first trigger or the last one used. The guide specifies the first, but moving the tab stop with `ArrowLeft` and `ArrowRight` means that after keyboard navigation `Shift`+`Tab` returns to the last trigger reached. Pointer use does not move it, so the same sequence can land on a different trigger. Either behavior is acceptable; pick one and keep it consistent.
-- **Preview.** Focusing a top-level trigger shows its menu and sets `aria-expanded="true"`. Focus stays on the trigger, and no item is focused. Blurring the trigger closes a preview-only menu.
-- **Enter and Space on a preview.** They close the preview and keep focus on the trigger. The native `toggle-popover` action handles this, so the script must not intercept these keys.
-- **ArrowDown on a preview.** Converts it to an open menu and focuses the first item.
-- **ArrowLeft or ArrowRight in an open top-level menu.** Closes it and previews the adjacent menu with focus on its trigger, wrapping at either end. `ArrowDown` then enters it. Left and Right never land inside a menu.
-- **ArrowRight on a submenu item without a child submenu.** Closes the hierarchy and previews the next top-level menu while focus stays on its trigger. `ArrowDown` then enters it.
-- **Pointer over another top-level trigger while a menu is open.** Closes it and previews the hovered one, focusing its trigger without a ring. Nothing open: hover does nothing.
-- **Tab.** Leaves the bar from a trigger or from inside any menu, closing every open menu.
+* **One tab stop.** `Tab` enters at the first top-level trigger. `ArrowLeft` and `ArrowRight` move between top-level triggers and wrap at either end. `Home` and `End` on a trigger enter its menu at the first or last item.
+  * **Note: which trigger `Tab` returns to.** The APG allows either the first trigger or the last one used. The guide specifies the first, but moving the tab stop with `ArrowLeft` and `ArrowRight` means that after keyboard navigation `Shift`+`Tab` returns to the last trigger reached. Pointer use does not move it, so the same sequence can land on a different trigger. Either behavior is acceptable; pick one and keep it consistent.
+* **Preview.** Focusing a top-level trigger shows its menu and sets `aria-expanded="true"`. Focus stays on the trigger, and no item is focused. Blurring the trigger closes a preview-only menu.
+* **Enter and Space on a preview.** They close the preview and keep focus on the trigger. The native `toggle-popover` action handles this, so the script must not intercept these keys.
+* **ArrowDown on a preview.** Converts it to an open menu and focuses the first item.
+* **ArrowLeft or ArrowRight in an open top-level menu.** Closes it and previews the adjacent menu with focus on its trigger, wrapping at either end. `ArrowDown` then enters it. Left and Right never land inside a menu.
+* **ArrowRight on a submenu item without a child submenu.** Closes the hierarchy and previews the next top-level menu while focus stays on its trigger. `ArrowDown` then enters it.
+* **Pointer over another top-level trigger while a menu is open.** Closes it and previews the hovered one, focusing its trigger without a ring. Nothing open: hover does nothing.
+* **Tab.** Leaves the bar from a trigger or from inside any menu, closing every open menu.
 
 ## Implementing the bar
 
@@ -55,23 +55,15 @@ The menu guide's keyboard model applies inside every menu. The bar adds, on top 
 
 ```js
 // Direct children only: submenu triggers live inside the bar's nested popovers.
-const rootTriggers = [...document.querySelectorAll('[role="menubar"] > [commandfor]')]
+const rootTriggers = [...document.querySelectorAll('[role="menubar"] > [commandfor]')];
 
 // Left/Right always land on the adjacent trigger as a preview, never inside its menu, as in
 // native menubars. ArrowDown then enters.
 function moveToRootTrigger(from, direction) {
-  const next =
-    rootTriggers[
-      (rootTriggers.indexOf(from) + direction + rootTriggers.length) % rootTriggers.length
-    ]
-  rootTriggers.forEach((trigger) => {
-    trigger.tabIndex = trigger === next ? 0 : -1
-  })
-  rootTriggers
-    .map(menuFor)
-    .filter(isOpen)
-    .forEach((menu) => menu.hidePopover())
-  next.focus({ preventScroll: true }) // Focusing the trigger previews its menu.
+  const next = rootTriggers[(rootTriggers.indexOf(from) + direction + rootTriggers.length) % rootTriggers.length];
+  rootTriggers.forEach(trigger => { trigger.tabIndex = trigger === next ? 0 : -1; });
+  rootTriggers.map(menuFor).filter(isOpen).forEach(menu => menu.hidePopover());
+  next.focus({ preventScroll: true }); // Focusing the trigger previews its menu.
 }
 ```
 
@@ -93,11 +85,11 @@ function moveToRootTrigger(from, direction) {
 
 An instruction cannot guarantee behavior, so test the result. Open the page and check each of these with the real keyboard and mouse; fix and re-test any that fail. Check the menus themselves against the menu guide's list.
 
-- **One tab stop.** `Tab` lands on the first trigger once and previews its menu; `Shift`+`Tab` from the page content returns to the bar once, not to every trigger.
-- **Arrow keys.** `ArrowRight` and `ArrowLeft` on a trigger preview the adjacent menu, wrapping, without focusing an item; `ArrowDown` enters; inside an open menu, `ArrowRight` and `ArrowLeft` switch to the adjacent menu as a preview.
-- **Hover.** With File open, pointing at Edit switches to it instantly; with nothing open, pointing at a trigger does nothing.
-- **Window focus.** Switching to another window and back does not reopen the last menu.
-- **Leaving.** `Tab` from a trigger or from inside a menu closes everything and leaves the bar.
+* **One tab stop.** `Tab` lands on the first trigger once and previews its menu; `Shift`+`Tab` from the page content returns to the bar once, not to every trigger.
+* **Arrow keys.** `ArrowRight` and `ArrowLeft` on a trigger preview the adjacent menu, wrapping, without focusing an item; `ArrowDown` enters; inside an open menu, `ArrowRight` and `ArrowLeft` switch to the adjacent menu as a preview.
+* **Hover.** With File open, pointing at Edit switches to it instantly; with nothing open, pointing at a trigger does nothing.
+* **Window focus.** Switching to another window and back does not reopen the last menu.
+* **Leaving.** `Tab` from a trigger or from inside a menu closes everything and leaves the bar.
 
 ## Fallback strategies
 
@@ -114,35 +106,27 @@ Unsupported in: Firefox and Safari.
 Keep `focusgroup="menu nomemory"` in the markup. If `'focusGroup' in HTMLElement.prototype` is false, install Up, Down, Home, and End, set `role="menu"` on each menu container, and `role="menuitem"` on buttons with no role; leave checkable items, `<hr>`, and `role="group"` alone. Never install it when native focusgroup is present. Submenu preview, open, and close are author script either way.
 
 ```js
-if (!("focusGroup" in HTMLElement.prototype)) {
-  document.querySelectorAll('[focusgroup~="menu"]').forEach((group) => {
-    group.setAttribute("role", "menu")
-    group.querySelectorAll("button:not([role])").forEach((item) => {
-      item.setAttribute("role", "menuitem")
-    })
-    group.addEventListener(
-      "keydown",
-      (event) => {
-        if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return
-        // Own items only: a nested submenu has its own focusgroup, a role="group" wrapper does not.
-        const items = [...group.querySelectorAll("button")]
-          .filter((item) => item.closest("[focusgroup]") === group)
-          .filter((item) => !item.disabled && item.getAttribute("aria-disabled") !== "true")
-        const current = items.indexOf(document.activeElement)
-        if (current < 0) return
-        const next =
-          event.key === "Home"
-            ? 0
-            : event.key === "End"
-              ? items.length - 1
-              : (current + (event.key === "ArrowUp" ? -1 : 1) + items.length) % items.length
-        event.preventDefault()
-        event.stopImmediatePropagation()
-        items[next].focus({ preventScroll: true })
-      },
-      true,
-    )
-  })
+if (!('focusGroup' in HTMLElement.prototype)) {
+  document.querySelectorAll('[focusgroup~="menu"]').forEach(group => {
+    group.setAttribute('role', 'menu');
+    group.querySelectorAll('button:not([role])').forEach(item => {
+      item.setAttribute('role', 'menuitem');
+    });
+    group.addEventListener('keydown', event => {
+      if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+      // Own items only: a nested submenu has its own focusgroup, a role="group" wrapper does not.
+      const items = [...group.querySelectorAll('button')]
+        .filter(item => item.closest('[focusgroup]') === group)
+        .filter(item => !item.disabled && item.getAttribute('aria-disabled') !== 'true');
+      const current = items.indexOf(document.activeElement);
+      if (current < 0) return;
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 :
+        (current + (event.key === 'ArrowUp' ? -1 : 1) + items.length) % items.length;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      items[next].focus({ preventScroll: true });
+    }, true);
+  });
 }
 ```
 
@@ -160,14 +144,13 @@ With a bundler or import map:
 ```js
 // MANDATORY: Feature detect 'popover' on HTMLElement.prototype.
 if (!Object.hasOwn(HTMLElement.prototype, "popover")) {
-  import("@oddbird/popover-polyfill")
+  import("@oddbird/popover-polyfill");
 }
 ```
 
 If not using a package manager, import from a CDN, e.g. `"https://unpkg.com/@oddbird/popover-polyfill@latest/dist/popover.min.js"`.
 
 Caveats when using the polyfill:
-
 - Do NOT use the `popover` IDL attribute for any code that may run before the polyfill is fully loaded. It will not be mirrored as an attribute, the popover will not be picked up by the polyfill, and the property will be shadowing the accessor the polyfill adds forever. Use `setAttribute()`/`removeAttribute()` instead.
 - **Styling caveat:** The polyfill cannot define the real `:popover-open` pseudo-class, so it applies a `.\:popover-open` class instead. **MANDATORY:** Combine the two with `:is()` or `:where()`, otherwise browsers that lack `:popover-open` discard the entire rule:
 
@@ -185,9 +168,9 @@ Unsupported in: Chrome, Edge, and Firefox.
 
 Without CSS Anchor Positioning, a popover falls back to the UA's centered viewport placement. Never ship that for a menu: it detaches the menu from its trigger, and a centered submenu covers its parent. Gate the anchored rules behind `@supports (position-area: block-end)` and position the menu from script when it fails:
 
-- Place the menu below its trigger (top level) or beside it (submenu), flipping to the other side and clamping to the viewport when it would overflow.
-- Run it in the `toggle` handler when the menu opens, and apply the result as `left` and `top` on the menu. Use `position: fixed` with `inset: auto` and `margin: 0` so the coordinates are viewport-relative.
-- Keep these overrides inside `@supports not (position-area: block-end)`, so browsers with anchor positioning are unaffected.
+* Place the menu below its trigger (top level) or beside it (submenu), flipping to the other side and clamping to the viewport when it would overflow.
+* Run it in the `toggle` handler when the menu opens, and apply the result as `left` and `top` on the menu. Use `position: fixed` with `inset: auto` and `margin: 0` so the coordinates are viewport-relative.
+* Keep these overrides inside `@supports not (position-area: block-end)`, so browsers with anchor positioning are unaffected.
 
 Baseline status for the api.HTMLElement.showPopover.options_source_parameter.implicit_anchor_reference capability: Newly available. It's been Baseline since 2026-01-13.
 Supported by: Chrome 137 (May 2025), Edge 137 (May 2025), Firefox 147 (Jan 2026), and Safari 26 (Sep 2025).
@@ -203,11 +186,11 @@ Supported by: Chrome 135 (Apr 2025), Edge 135 (Apr 2025), Firefox 144 (Oct 2025)
 
 Without invokers, `command="toggle-popover"` does nothing, so script must toggle the menu.
 
-- Feature-detect the interface, not an instance: `'commandForElement' in HTMLButtonElement.prototype`.
-- On each trigger `click`, call `preventDefault()` so a browser with invokers cannot toggle twice.
-- If the menu is open, close it with `closeAndRestore(menu)`. Otherwise call `menu.showPopover({ source: trigger })`.
-- Mark the menu in `enterOnOpen` unless the click came from the pressed trigger (`pointerTrigger`), so only keyboard opens enter the menu.
-- `Enter` and `Space` still work because they generate a click on buttons.
+* Feature-detect the interface, not an instance: `'commandForElement' in HTMLButtonElement.prototype`.
+* On each trigger `click`, call `preventDefault()` so a browser with invokers cannot toggle twice.
+* If the menu is open, close it with `closeAndRestore(menu)`. Otherwise call `menu.showPopover({ source: trigger })`.
+* Mark the menu in `enterOnOpen` unless the click came from the pressed trigger (`pointerTrigger`), so only keyboard opens enter the menu.
+* `Enter` and `Space` still work because they generate a click on buttons.
 
 ### Fallbacks & browser support for `:has()`
 
@@ -227,11 +210,7 @@ If your Baseline target lacks `sign()`, skip `--bridge-side` and pick the edge a
 @supports not (width: calc(sign(1px) * 1px)) {
   [data-bridge]::before {
     --bridge-edge: clamp(100vw, 50% + var(--pointer-x) * 1e6, 100% - 100vw);
-    --bridge-apex: calc(
-      100vw +
-      var(--pointer-x) +
-      clamp(-1 * var(--bridge-slack), var(--pointer-x) * 1e6, var(--bridge-slack))
-    );
+    --bridge-apex: calc(100vw + var(--pointer-x) + clamp(-1 * var(--bridge-slack), var(--pointer-x) * 1e6, var(--bridge-slack)));
   }
 }
 ```

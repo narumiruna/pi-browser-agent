@@ -7,7 +7,7 @@ Regular `<canvas>` content is not exposed to browser features such as screen rea
 1. Check if HTML-in-Canvas is supported in the browser:
 
 ```js
-if ("content" in HTMLCanvasElement.prototype) {
+if ('content' in HTMLCanvasElement.prototype) {
   // Use HTML in Canvas API
 } else {
   // Use fallback strategy
@@ -30,20 +30,22 @@ if ("content" in HTMLCanvasElement.prototype) {
 
 ```js
 const observer = new ResizeObserver(([entry]) => {
-  const dpc = entry.devicePixelContentBoxSize
+  const dpc = entry.devicePixelContentBoxSize;
   canvas.width = dpc
     ? dpc[0].inlineSize
-    : Math.round(entry.contentRect.width * window.devicePixelRatio)
+    : Math.round(entry.contentRect.width * window.devicePixelRatio);
   canvas.height = dpc
     ? dpc[0].blockSize
-    : Math.round(entry.contentRect.height * window.devicePixelRatio)
-})
+    : Math.round(entry.contentRect.height * window.devicePixelRatio);
+});
 
 const supportsDevicePixelContentBox =
   typeof ResizeObserverEntry !== "undefined" &&
-  "devicePixelContentBoxSize" in ResizeObserverEntry.prototype
-const options = supportsDevicePixelContentBox ? { box: "device-pixel-content-box" } : {}
-observer.observe(canvas, options)
+  "devicePixelContentBoxSize" in ResizeObserverEntry.prototype;
+const options = supportsDevicePixelContentBox
+  ? { box: "device-pixel-content-box" }
+  : {};
+observer.observe(canvas, options);
 ```
 
 5. Render the HTML content to the canvas inside a `canvas.onpaint` event handler. An element can only be drawn after the canvas has painted it: call `canvas.requestPaint()` to request a `paint` event.
@@ -52,10 +54,10 @@ observer.observe(canvas, options)
 
 ```js
 canvas.onpaint = () => {
-  ctx.reset()
+  ctx.reset();
   // Draw the form element at x:0, y:0
-  ctx.drawElementImage(form_element, 0, 0)
-}
+  ctx.drawElementImage(form_element, 0, 0);
+};
 ```
 
 - In WebGL and WebGPU contexts, you copy the element into a texture. Size the texture from `canvas.captureElementImage(element)`. Its `width` and `height` are in canvas grid (backing store) pixels, so round them up with `Math.ceil()`. `captureElementImage()` throws if the element has no paint record yet: call `requestPaint()`, and retry on the next `paint` event.
@@ -64,17 +66,17 @@ canvas.onpaint = () => {
 // Returns the element's size in canvas grid pixels, or null if the element
 // has no paint record yet.
 function getElementImageSize(canvas, element) {
-  let elementImage
+  let elementImage;
   try {
-    elementImage = canvas.captureElementImage(element)
+    elementImage = canvas.captureElementImage(element);
   } catch (err) {
-    canvas.requestPaint() // No paint record yet: retry on the next paint event.
-    return null
+    canvas.requestPaint(); // No paint record yet: retry on the next paint event.
+    return null;
   }
-  const width = Math.ceil(elementImage.width)
-  const height = Math.ceil(elementImage.height)
-  elementImage.close()
-  return width > 0 && height > 0 ? { width, height } : null
+  const width = Math.ceil(elementImage.width);
+  const height = Math.ceil(elementImage.height);
+  elementImage.close();
+  return width > 0 && height > 0 ? { width, height } : null;
 }
 ```
 
@@ -86,27 +88,27 @@ function getElementImageSize(canvas, element) {
 // Binds the texture, and allocates its storage on the first upload, and when
 // the element size changes. `state` stores the allocated size.
 function allocateElementTexture(gl, texture, state, width, height) {
-  gl.bindTexture(gl.TEXTURE_2D, texture)
-  if (state.width === width && state.height === height) return
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  if (state.width === width && state.height === height) return;
 
   gl.texImage2D(
     gl.TEXTURE_2D,
-    0, // Mipmap level
-    gl.RGBA8, // Internal format: 8 bits per RGBA channel
-    width, // Size in canvas grid pixels
+    0,                // Mipmap level
+    gl.RGBA8,         // Internal format: 8 bits per RGBA channel
+    width,            // Size in canvas grid pixels
     height,
-    0, // Border: must be 0
-    gl.RGBA, // Format and type that match RGBA8
+    0,                // Border: must be 0
+    gl.RGBA,          // Format and type that match RGBA8
     gl.UNSIGNED_BYTE,
-    null, // null reserves GPU memory without uploading pixels
-  )
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
-  state.width = width
-  state.height = height
+    null              // null reserves GPU memory without uploading pixels
+  );
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  state.width = width;
+  state.height = height;
 }
 
-const texture = gl.createTexture()
-const textureState = { width: 0, height: 0 }
+const texture = gl.createTexture();
+const textureState = { width: 0, height: 0 };
 ```
 
 - Then, in WebGL context, render the HTML content to the texture using the `texElementSubImage2D` method. Follow these rules:
@@ -117,23 +119,23 @@ const textureState = { width: 0, height: 0 }
 // Uploads the element into the texture. Returns false if the element has no
 // paint record yet. In that case, it's uploaded on the next paint event.
 function uploadElementWebGL(gl, canvas, texture, element, state) {
-  const size = getElementImageSize(canvas, element)
-  if (!size) return false
-  const { width, height } = size
+  const size = getElementImageSize(canvas, element);
+  if (!size) return false;
+  const { width, height } = size;
 
   // Bind the texture, and reallocate it if the size changed (see above).
-  allocateElementTexture(gl, texture, state, width, height)
-  gl.texElementSubImage2D(gl.TEXTURE_2D, 0, 0, 0, element, { width, height })
-  return true
+  allocateElementTexture(gl, texture, state, width, height);
+  gl.texElementSubImage2D(gl.TEXTURE_2D, 0, 0, 0, element, { width, height });
+  return true;
 }
 
 canvas.onpaint = () => {
   try {
-    uploadElementWebGL(gl, canvas, texture, uiElement, textureState)
+    uploadElementWebGL(gl, canvas, texture, uiElement, textureState);
   } catch (err) {
-    console.error("texElementSubImage2D copy failed:", err)
+    console.error('texElementSubImage2D copy failed:', err);
   }
-}
+};
 ```
 
 - In WebGPU context, use the `drawElementImageToTexture` method. Follow these rules:
@@ -146,9 +148,9 @@ canvas.onpaint = () => {
 // when the element size changes.
 function ensureElementTexture(device, state, width, height) {
   if (state.texture?.width === width && state.texture?.height === height) {
-    return state.texture
+    return state.texture;
   }
-  state.texture?.destroy()
+  state.texture?.destroy();
   state.texture = device.createTexture({
     size: { width, height },
     format: "rgba8unorm",
@@ -156,26 +158,26 @@ function ensureElementTexture(device, state, width, height) {
       GPUTextureUsage.TEXTURE_BINDING |
       GPUTextureUsage.COPY_DST |
       GPUTextureUsage.RENDER_ATTACHMENT,
-  })
-  return state.texture // Recreate the bind groups that used the previous texture.
+  });
+  return state.texture; // Recreate the bind groups that used the previous texture.
 }
 
-const textureState = { texture: null }
+const textureState = { texture: null };
 
 canvas.onpaint = () => {
-  const size = getElementImageSize(canvas, uiElement)
-  if (!size) return
-  const previousTexture = textureState.texture
-  const texture = ensureElementTexture(device, textureState, size.width, size.height)
+  const size = getElementImageSize(canvas, uiElement);
+  if (!size) return;
+  const previousTexture = textureState.texture;
+  const texture = ensureElementTexture(device, textureState, size.width, size.height);
   if (texture !== previousTexture) {
     // New texture: create, or rebuild, the bind groups that reference it.
   }
   try {
-    device.queue.drawElementImageToTexture({ source: uiElement }, { texture, size })
+    device.queue.drawElementImageToTexture({ source: uiElement }, { texture, size });
   } catch (err) {
-    console.error("drawElementImageToTexture copy failed:", err)
+    console.error('drawElementImageToTexture copy failed:', err);
   }
-}
+};
 ```
 
 When using a `requestAnimationFrame` loop to render the scene, call `canvas.requestPaint()` within the loop to ensure that the HTML content is rendered to the canvas. `event.changedElements` lists the elements whose rendering changed. Make sure you only redraw the element, or re-upload its texture, if there has been an update to the descendant HTML elements:
@@ -183,17 +185,17 @@ When using a `requestAnimationFrame` loop to render the scene, call `canvas.requ
 ```js
 function render() {
   // Request to update the canvas
-  canvas.requestPaint()
-  requestAnimationFrame(render)
+  canvas.requestPaint();
+  requestAnimationFrame(render);
 }
-requestAnimationFrame(render)
+requestAnimationFrame(render);
 
 canvas.onpaint = (event) => {
   if (event.changedElements && event.changedElements.length > 0) {
     // Redraw the element, or update its texture, as shown above
   }
   // In WebGL and WebGPU, render the scene, and sync the element geometry as shown in step 6
-}
+};
 ```
 
 6. Sync the element geometry.
@@ -239,16 +241,15 @@ The browser needs to know where the HTML element is drawn, so that its DOM posit
 
 Then pass the transform to `canvas.updateElementGeometry()` as `canvasTransform`. This moves the HTML element to sit directly on top of its rendered pixels. This ensures that when a user clicks a button or selects text, they are actually hitting the real HTML element. The browser also uses the transform for the element's accessibility bounds, for example, for screen reader focus rings:
 
-```js
-canvas.updateElementGeometry(targetHTMLElement, {
-  canvasTransform: computeCanvasTransform(canvas, targetHTMLElement, htmlElementMVP),
-})
-```
+  ```js
+  canvas.updateElementGeometry(targetHTMLElement, {
+    canvasTransform: computeCanvasTransform(canvas, targetHTMLElement, htmlElementMVP),
+  });
+  ```
 
 Use these options to control hit testing:
-
-- Each `updateElementGeometry()` call moves the element to the top of the hit-testing order. Pass `{ preserveHitTestOrder: true }` to keep its position.
-- Call `canvas.clearElementGeometry(element)` to remove an element from hit testing, for example, when you hide it.
+  - Each `updateElementGeometry()` call moves the element to the top of the hit-testing order. Pass `{ preserveHitTestOrder: true }` to keep its position.
+  - Call `canvas.clearElementGeometry(element)` to remove an element from hit testing, for example, when you hide it.
 
 ## Example code
 

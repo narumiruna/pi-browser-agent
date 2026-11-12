@@ -23,20 +23,18 @@ The `Temporal` API pairs `Temporal.ZonedDateTime` with `Temporal.Duration` and `
 ```javascript
 // 1. Get the current time in an explicit target IANA time zone (or omit the
 // argument to use the system's current time zone).
-const tz = "America/New_York"
-const now = Temporal.Now.zonedDateTimeISO(tz)
+const tz = 'America/New_York';
+const now = Temporal.Now.zonedDateTimeISO(tz);
 
 // 2. Combine separate date and time strings directly.
 // Do not build an ISO string with template literals; chain Temporal methods instead.
-const startDateStr = "2025-01-01"
-const startTimeStr = "12:00:00"
-const endDateStr = "2025-01-31"
-const endTimeStr = "12:00:00"
+const startDateStr = '2025-01-01';
+const startTimeStr = '12:00:00';
+const endDateStr = '2025-01-31';
+const endTimeStr = '12:00:00';
 
-const start = Temporal.PlainDate.from(startDateStr)
-  .toPlainDateTime(startTimeStr)
-  .toZonedDateTime(tz)
-const end = Temporal.PlainDate.from(endDateStr).toPlainDateTime(endTimeStr).toZonedDateTime(tz)
+const start = Temporal.PlainDate.from(startDateStr).toPlainDateTime(startTimeStr).toZonedDateTime(tz);
+const end = Temporal.PlainDate.from(endDateStr).toPlainDateTime(endTimeStr).toZonedDateTime(tz);
 
 // 3. Calculate differences using .since() and .until()
 // ZonedDateTime differences default to largestUnit: 'hour' (days are not a fixed
@@ -44,34 +42,34 @@ const end = Temporal.PlainDate.from(endDateStr).toPlainDateTime(endTimeStr).toZo
 // largestUnit: 'day' or a calendar unit ('week', 'month', 'year') when you want a
 // human-scale breakdown instead of e.g. PT720H. smallestUnit rounds away
 // seconds and sub-second noise so the formatted string stays readable.
-const timeActive = now.since(start, { largestUnit: "year", smallestUnit: "minute" })
-const timeRemaining = now.until(end, { largestUnit: "year", smallestUnit: "minute" })
+const timeActive = now.since(start, { largestUnit: 'year', smallestUnit: 'minute' });
+const timeRemaining = now.until(end, { largestUnit: 'year', smallestUnit: 'minute' });
 
 // 4. Format durations for display with .toLocaleString() (Intl.DurationFormat)
 // instead of manually concatenating unit numbers and suffixes. 'en-US' is used
 // here for deterministic output; pass undefined to use the user's locale.
-console.log(`Active: ${timeActive.toLocaleString("en-US", { style: "narrow" })}`)
-console.log(`Remaining: ${timeRemaining.toLocaleString("en-US", { style: "long" })}`)
+console.log(`Active: ${timeActive.toLocaleString('en-US', { style: 'narrow' })}`);
+console.log(`Remaining: ${timeRemaining.toLocaleString('en-US', { style: 'long' })}`);
 
 // Use .toString() for ISO 8601 serialization (e.g., API payloads or <time datetime="...">)
-console.log(`ISO 8601: ${timeRemaining.toString()}`)
+console.log(`ISO 8601: ${timeRemaining.toString()}`);
 
 // 5. Check status via .sign, and compare durations with Temporal.Duration.compare()
-const isExpired = timeRemaining.sign < 0
+const isExpired = timeRemaining.sign < 0;
 // Pass relativeTo when comparing durations that may include calendar months/years or DST shifts
-const isPastHalfway = Temporal.Duration.compare(timeActive, timeRemaining, { relativeTo: now }) > 0
+const isPastHalfway = Temporal.Duration.compare(timeActive, timeRemaining, { relativeTo: now }) > 0;
 ```
 
 ### Example: Balancing Standalone Durations (`round` and `Intl.DurationFormat`)
 
 ```javascript
 // Convert a raw unit count (e.g., 90 minutes) into a balanced breakdown (1 hour, 30 minutes)
-const rawDuration = Temporal.Duration.from({ minutes: 90 })
-const balanced = rawDuration.round({ largestUnit: "hour" })
+const rawDuration = Temporal.Duration.from({ minutes: 90 });
+const balanced = rawDuration.round({ largestUnit: 'hour' });
 
 // Format via duration.toLocaleString() or directly with Intl.DurationFormat
-const formatter = new Intl.DurationFormat("en-US", { style: "long" })
-console.log(formatter.format(balanced)) // "1 hour, 30 minutes"
+const formatter = new Intl.DurationFormat('en-US', { style: 'long' });
+console.log(formatter.format(balanced)); // "1 hour, 30 minutes"
 ```
 
 ## Strategic Implementation & Best Practices
@@ -83,7 +81,7 @@ console.log(formatter.format(balanced)) // "1 hour, 30 minutes"
 - **DO** format durations for user display using `duration.toLocaleString()` or `new Intl.DurationFormat(locale, { style })` (`'long'`, `'short'`, `'narrow'`, or `'digital'`) instead of manually interpolating `${duration.years}y ${duration.months}m...`.
 - **DO** use `duration.toString()` for machine-readable ISO 8601 duration strings (e.g., `PT1H30M`), never as user-facing copy.
 - **DO** render a `PlainTime` as `HH:MM` (e.g., for `<input type="time">`) using `.toPlainTime().toString({ smallestUnit: 'minute' })` rather than string `.slice(0, 5)`.
-- **DO NOT** modify instances directly; `Temporal` objects are **immutable**. Operations like `.add()`, `.subtract()`, `.round()`, or `.with()` return a _new_ instance.
+- **DO NOT** modify instances directly; `Temporal` objects are **immutable**. Operations like `.add()`, `.subtract()`, `.round()`, or `.with()` return a *new* instance.
 - **DO NOT** fall back to `Date` / `.getTime()` arithmetic for the differential itself; `Date` has no time-zone-aware calendar math and only millisecond precision.
 - **DO** use the native `.sign` property of the computed `Temporal.Duration` (or `Temporal.ZonedDateTime.compare()`) to check if a duration represents a past/expired time point (`sign < 0`) or a future pending start.
 
@@ -101,16 +99,16 @@ Note that importing `temporal-polyfill` does not automatically assign the `Tempo
 
 ```javascript
 // Check if Temporal is supported natively
-;(async () => {
-  if (typeof Temporal === "undefined") {
+(async () => {
+  if (typeof Temporal === 'undefined') {
     // Load the polyfill conditionally
-    const module = await import("https://esm.sh/temporal-polyfill")
-    globalThis.Temporal = module.Temporal
+    const module = await import('https://esm.sh/temporal-polyfill');
+    globalThis.Temporal = module.Temporal;
     // Extend Date.prototype if needed
-    Date.prototype.toTemporalInstant = module.toTemporalInstant
+    Date.prototype.toTemporalInstant = module.toTemporalInstant;
   }
-  initializeApp()
-})()
+  initializeApp();
+})();
 ```
 
 ### Intl.DurationFormat

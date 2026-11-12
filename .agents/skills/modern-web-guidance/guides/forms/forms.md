@@ -46,13 +46,13 @@
 
 ### Selection Control Decision Matrix
 
-| Options Count     | Choice Type            | Recommended Element                | Usability & Accessibility Logic                                                                                     |
-| :---------------- | :--------------------- | :--------------------------------- | :------------------------------------------------------------------------------------------------------------------ |
-| **1**             | Binary toggle (Yes/No) | `<input type="checkbox">`          | **Reversible State**: Can be checked and unchecked with space unlike a radio button, which gets stuck once checked. |
-| **2–5**           | Single (Exclusive)     | `<input type="radio">`             | **Zero-click scanning**: All choices are immediately visible. Faster scan time.                                     |
-| **6+**            | Single (Exclusive)     | `<select>`                         | **Space conservation**: Use only when vertical space is premium or the list is long.                                |
-| **10+ / Dynamic** | Single (Exclusive)     | `<input list="id">` (`<datalist>`) | **Fuzzy Search**: Prevents scrolling fatigue in massive sets (e.g., countries).                                     |
-| **2+**            | Multi-select           | `<input type="checkbox">`          | **Standard semantics**: Native non-exclusive toggles.                                                               |
+| Options Count | Choice Type | Recommended Element | Usability & Accessibility Logic |
+| :--- | :--- | :--- | :--- |
+| **1** | Binary toggle (Yes/No) | `<input type="checkbox">` | **Reversible State**: Can be checked and unchecked with space unlike a radio button, which gets stuck once checked. |
+| **2–5** | Single (Exclusive) | `<input type="radio">` | **Zero-click scanning**: All choices are immediately visible. Faster scan time. |
+| **6+** | Single (Exclusive) | `<select>` | **Space conservation**: Use only when vertical space is premium or the list is long. |
+| **10+ / Dynamic** | Single (Exclusive) | `<input list="id">` (`<datalist>`) | **Fuzzy Search**: Prevents scrolling fatigue in massive sets (e.g., countries). |
+| **2+** | Multi-select | `<input type="checkbox">` | **Standard semantics**: Native non-exclusive toggles. |
 
 **Single-Sentence Mental Model**: "Expose 2 to 5 mutually exclusive options as visible radio buttons when choices are fewer than six; use `<select>` only when space is constrained or the list is long."
 
@@ -71,7 +71,7 @@
 - **DO** use non-color visual cues (icons, text) to communicate state (don't rely on color alone).
 - **DO** indicate clearly which fields are required both visually in the label and programmatically with the `required` attribute.
 - **DO** use `aria-live` for dynamic error announcements.
-
+  
 - **DON'T** use `aria-label` when a visible `<label>` can be used or override visible text with a mismatched `aria-label`.
 
 ### Code Example
@@ -134,7 +134,7 @@
 - **DO** move focus to the first invalid field (or an error summary) when a form submission fails validation.
 
 - **DON'T** use the raw `:invalid` CSS pseudo-class alone for error styling to ensure empty required fields are not marked as invalid before the user interacts with the form.
-- **DON'T** disable submit buttons to block validation; let users submit and highlight errors. However, **DO** disable the button _after_ a valid submission is clicked to prevent double-posts.
+- **DON'T** disable submit buttons to block validation; let users submit and highlight errors. However, **DO** disable the button *after* a valid submission is clicked to prevent double-posts.
 - **DON'T** trigger validation errors or `aria-live` error announcements on every keystroke while the user is typing (validate on submit or `blur`, and clear errors on `input` once resolved).
 
 ### Code Example
@@ -156,11 +156,11 @@
 
 ### Validation Event Timing Matrix
 
-| Event Trigger           | Phase         | Action Allowed                            | UX / Accessibility Logic                                                                                                                 |
-| :---------------------- | :------------ | :---------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------- |
-| **`input`**             | Active Typing | **Clear** existing errors only.           | **Non-intrusive**: Do not yell at the user before they finish typing.                                                                    |
-| **`blur` / `focusout`** | Exiting Field | **Run** check (if edited) and show error. | **Contextual validation**: Validate once the user indicates they are "done" with a field.                                                |
-| **`submit`**            | Final Attempt | **Block** and route focus.                | **Final gatekeeper**: Intercepts bad payloads and moves keyboard and screen reader focus to the first invalid field or an error summary. |
+| Event Trigger | Phase | Action Allowed | UX / Accessibility Logic |
+| :--- | :--- | :--- | :--- |
+| **`input`** | Active Typing | **Clear** existing errors only. | **Non-intrusive**: Do not yell at the user before they finish typing. |
+| **`blur` / `focusout`** | Exiting Field | **Run** check (if edited) and show error. | **Contextual validation**: Validate once the user indicates they are "done" with a field. |
+| **`submit`** | Final Attempt | **Block** and route focus. | **Final gatekeeper**: Intercepts bad payloads and moves keyboard and screen reader focus to the first invalid field or an error summary. |
 
 **Single-Sentence Mental Model**: "Validate on `blur` (if edited) to avoid premature warnings while typing, and reset error states on `input` as soon as the user fixes the value, and route the focus to the first error or summary on `submit`."
 
@@ -264,11 +264,11 @@ input {
 ### Code Example
 
 ```js
-form.addEventListener("submit", (e) => {
-  e.preventDefault()
-  const data = new FormData(form)
+form.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const data = new FormData(form);
   // fetch('/submit', { method: 'POST', body: data });
-})
+});
 ```
 
 ## 8. Identity, Payments, and Advanced Security
@@ -321,6 +321,7 @@ form.addEventListener("submit", (e) => {
 </form>
 ```
 
+
 ## 9. Address Collection
 
 ### Guidelines
@@ -352,6 +353,7 @@ form.addEventListener("submit", (e) => {
   <button type="submit">Save Address</button>
 </form>
 ```
+
 
 ## 10. Usability Testing and Analytics
 

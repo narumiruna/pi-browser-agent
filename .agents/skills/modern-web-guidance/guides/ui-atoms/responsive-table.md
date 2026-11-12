@@ -45,7 +45,6 @@ Give the wrapper a `role="region"` attribute to communicate its purpose. Provide
 ```
 
 ### 2. Configure Sticky Headers
-
 Enable scrolling and make headers sticky. Use logical properties and explicit z-index values to manage the stacking order.
 
 ```css
@@ -77,23 +76,17 @@ tbody th {
 ```
 
 ### 3. Responsive Stacked Layout
-
 When space is limited, hide the original header row and transform the table into cards. Inject labels using pseudo-elements. Only provide alternative text for non-text content, otherwise this may result in both the text content and accessible name being announced by screen readers.
 
 ```css
 @container (width < 600px) {
-  table,
-  thead,
-  tbody,
-  tr,
-  th,
-  td {
+  table, thead, tbody, tr, th, td {
     display: block;
   }
 
   thead {
     /* MANDATORY: Hide column header from layout and screen readers. */
-    display: none;
+    display: none
   }
 
   tr {

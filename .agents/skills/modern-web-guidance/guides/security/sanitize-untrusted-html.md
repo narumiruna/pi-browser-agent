@@ -14,14 +14,14 @@ const untrustedHTML = `
   <script>alert('XSS')</script>
   <img src="x" onerror="alert('XSS')">
   <div onclick="doBadThing()">Click me</div>
-`
+`;
 
-const container = document.getElementById("output")
+const container = document.getElementById('output');
 
 // Sanitize and insert in one call
 // The default sanitizer removes scripts and event handlers, plus other
 // elements and attributes outside its built-in allowlist (such as style)
-container.setHTML(untrustedHTML)
+container.setHTML(untrustedHTML);
 ```
 
 ## 2. Using Custom Sanitizer Configurations
@@ -35,13 +35,13 @@ When using `Element.setHTML()` and `Document.parseHTML()`, the default `Sanitize
 const config = {
   elements: ["p", "b", "i", "strong", "em"],
   attributes: ["class"],
-  replaceWithChildrenElements: ["div"],
-}
+  replaceWithChildrenElements: ['div']
+};
 
-const mySanitizer = new Sanitizer(config)
+const mySanitizer = new Sanitizer(config);
 
 // Apply custom sanitization
-container.setHTML(untrustedHTML, { sanitizer: mySanitizer })
+container.setHTML(untrustedHTML, { sanitizer: mySanitizer });
 ```
 
 Elements that are not in `elements` are removed **together with their content**. List wrapper elements whose text you want to keep (such as `div` above) in `replaceWithChildrenElements`, which removes the element but keeps its children.
@@ -55,11 +55,11 @@ If you need to parse untrusted HTML without immediately inserting it into the li
 Move the resulting nodes into the page rather than serializing them to a string and re-parsing it with `innerHTML`, which can reintroduce mutation XSS (mXSS).
 
 ```javascript
-const rawHTML = '<p>Hello <script>console.log("bad")</script></p>'
+const rawHTML = '<p>Hello <script>console.log("bad")</script></p>';
 
-const doc = Document.parseHTML(rawHTML)
+const doc = Document.parseHTML(rawHTML);
 // doc.body now contains the sanitized nodes: <p>Hello </p>
-preview.replaceChildren(...doc.body.childNodes)
+preview.replaceChildren(...doc.body.childNodes);
 ```
 
 ## Fallbacks & browser support for Sanitizer API
@@ -71,31 +71,31 @@ Unsupported in: Safari.
 If the native Sanitizer API is not available in your target browsers, load a library like **DOMPurify** only when native support is missing, to avoid shipping it to browsers that don't need it. Use `in` checks for feature detection so the check itself works in older browsers.
 
 ```javascript
-let domPurifyPromise
+let domPurifyPromise;
 
 function loadDOMPurify() {
   // Code-split with your bundler so DOMPurify is only downloaded when needed
-  domPurifyPromise ??= import("dompurify").then((mod) => mod.default ?? mod)
-  return domPurifyPromise
+  domPurifyPromise ??= import('dompurify').then((mod) => mod.default ?? mod);
+  return domPurifyPromise;
 }
 
 export async function safeSetHTML(el, html) {
-  const elements = ["p", "b", "i", "strong", "em"]
-  const attributes = ["class"]
+  const elements = ['p', 'b', 'i', 'strong', 'em'];
+  const attributes = ['class'];
 
-  if ("setHTML" in Element.prototype) {
+  if ('setHTML' in Element.prototype) {
     // setHTML() accepts a plain configuration object as the sanitizer
-    el.setHTML(html, { sanitizer: { elements, attributes } })
+    el.setHTML(html, { sanitizer: { elements, attributes } });
   } else {
-    const DOMPurify = await loadDOMPurify()
+    const DOMPurify = await loadDOMPurify();
     el.innerHTML = DOMPurify.sanitize(html, {
-      ALLOWED_TAGS: [...elements, "#text"],
+      ALLOWED_TAGS: [...elements, '#text'],
       ALLOWED_ATTR: attributes,
       // Match the native Sanitizer: strip aria-*/data-* and disallowed element content
       ALLOW_ARIA_ATTR: false,
       ALLOW_DATA_ATTR: false,
-      KEEP_CONTENT: false,
-    })
+      KEEP_CONTENT: false
+    });
   }
 }
 ```

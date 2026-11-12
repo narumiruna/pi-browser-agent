@@ -11,21 +11,21 @@ To highlight text ranges, you must collect the target text nodes, create `Range`
 Use a `TreeWalker` to collect all text nodes in the target element, then create `Range` objects pointing at the character offsets you want to highlight.
 
 ```javascript
-const article = document.querySelector("article")
+const article = document.querySelector("article");
 
 // MANDATORY: Use TreeWalker to collect text nodes — do not manipulate innerHTML.
-const treeWalker = document.createTreeWalker(article, NodeFilter.SHOW_TEXT)
-const allTextNodes = []
-let currentNode = treeWalker.nextNode()
+const treeWalker = document.createTreeWalker(article, NodeFilter.SHOW_TEXT);
+const allTextNodes = [];
+let currentNode = treeWalker.nextNode();
 while (currentNode) {
-  allTextNodes.push(currentNode)
-  currentNode = treeWalker.nextNode()
+  allTextNodes.push(currentNode);
+  currentNode = treeWalker.nextNode();
 }
 
 // MANDATORY: Set range start/end on text nodes, not element nodes.
-const range = new Range()
-range.setStart(textNode, matchStartIndex)
-range.setEnd(textNode, matchEndIndex)
+const range = new Range();
+range.setStart(textNode, matchStartIndex);
+range.setEnd(textNode, matchEndIndex);
 ```
 
 Cache the text-node list and only rebuild it when the DOM content actually changes, since walking the tree is expensive.
@@ -35,7 +35,7 @@ Cache the text-node list and only rebuild it when the DOM content actually chang
 Group one or more `Range` objects into a `Highlight`. Multiple ranges that share the same style belong in a single highlight.
 
 ```javascript
-const searchHighlight = new Highlight(...matchingRanges)
+const searchHighlight = new Highlight(...matchingRanges);
 ```
 
 ### 3. Register the highlight in the registry
@@ -45,22 +45,22 @@ Register each `Highlight` under a custom name using `CSS.highlights`, which is a
 ```javascript
 // MANDATORY: Clear previous highlights before registering new ones
 // to avoid stale ranges persisting on the page.
-CSS.highlights.clear()
+CSS.highlights.clear();
 
-CSS.highlights.set("search-results", searchHighlight)
+CSS.highlights.set("search-results", searchHighlight);
 ```
 
 When multiple highlights overlap, use the `priority` property to control stacking order. Higher priority highlights paint on top.
 
 ```javascript
-const primary = new Highlight(...primaryRanges)
-primary.priority = 1
+const primary = new Highlight(...primaryRanges);
+primary.priority = 1;
 
-const secondary = new Highlight(...secondaryRanges)
-secondary.priority = 0 // painted first (behind primary)
+const secondary = new Highlight(...secondaryRanges);
+secondary.priority = 0; // painted first (behind primary)
 
-CSS.highlights.set("primary", primary)
-CSS.highlights.set("secondary", secondary)
+CSS.highlights.set("primary", primary);
+CSS.highlights.set("secondary", secondary);
 ```
 
 ### 4. Style with `::highlight()`
@@ -69,7 +69,7 @@ Use the `::highlight()` pseudo-element in CSS to style each registered highlight
 
 ```css
 ::highlight(search-results) {
-  background-color: #0000ff;
+  background-color: #0000FF;
   color: white;
 }
 ```
@@ -84,7 +84,7 @@ Custom highlights are purely presentational and are not exposed to the accessibi
 
 Make sure that there is sufficient contrast between the highlight background color and text color to meeting WCAG 2.2 Success Criterion 1.4.3 Contrast (Minimum) (Level AA). The contrast ratio must be at least 4.5:1 for text with a font size of less than 18 point or 14 point bold, and at least 3:1 for text with a font size of greater than 18 point or 14 point bold.
 
-Make sure that the contrast ratio between the highlight background color and adjacent colors is at least 3:1 to meet WCAG 2.2 Success Criterion 1.4.11 Non-text Content (Level AA).
+Make sure that the contrast ratio between the highlight background color and adjacent colors is at least 3:1 to meet WCAG 2.2 Success Criterion 1.4.11 Non-text Content (Level AA). 
 The contrast can be less than 3:1 if the highlighted text uses another visual indicator (e.g. `text-decoration: underline;` or the inclusion of a subtle `text-shadow` on the text) to further indicate that the text is highlighted.
 
 Highlights must not rely solely on color to convey meaning. For example, if a highlight indicates an error, pair it with another visual indicator such as `text-decoration: wavy underline`, an adjacent text label, or an icon.
@@ -111,29 +111,29 @@ If the highlight is critical for the user experience, fall back to wrapping matc
 ```javascript
 if (!CSS.highlights) {
   // Walk text nodes and wrap matches in <mark>, preserving structure.
-  const walker = document.createTreeWalker(article, NodeFilter.SHOW_TEXT)
-  const nodes = []
-  for (let n = walker.nextNode(); n; n = walker.nextNode()) nodes.push(n)
+  const walker = document.createTreeWalker(article, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) nodes.push(n);
 
-  const term = searchTerm.toLowerCase()
+  const term = searchTerm.toLowerCase();
   for (const textNode of nodes) {
-    const text = textNode.textContent
-    let pos = text.toLowerCase().indexOf(term)
-    if (pos === -1) continue
+    const text = textNode.textContent;
+    let pos = text.toLowerCase().indexOf(term);
+    if (pos === -1) continue;
 
-    const frag = document.createDocumentFragment()
-    let last = 0
+    const frag = document.createDocumentFragment();
+    let last = 0;
     while (pos !== -1) {
-      frag.append(text.slice(last, pos))
-      const mark = document.createElement("mark")
+      frag.append(text.slice(last, pos));
+      const mark = document.createElement("mark");
       // textContent assignment avoids HTML injection.
-      mark.textContent = text.slice(pos, pos + term.length)
-      frag.append(mark)
-      last = pos + term.length
-      pos = text.toLowerCase().indexOf(term, last)
+      mark.textContent = text.slice(pos, pos + term.length);
+      frag.append(mark);
+      last = pos + term.length;
+      pos = text.toLowerCase().indexOf(term, last);
     }
-    frag.append(text.slice(last))
-    textNode.replaceWith(frag)
+    frag.append(text.slice(last));
+    textNode.replaceWith(frag);
   }
 }
 ```

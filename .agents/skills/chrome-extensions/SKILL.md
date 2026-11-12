@@ -1,17 +1,16 @@
 ---
-
 name: chrome-extensions
 description: >
-Build and publish Chrome Extensions using Manifest V3 best practices. Use this skill
-whenever the user asks to create, modify, debug, or understand Chrome browser extensions,
-add-ons, or anything involving the Chrome Extensions API. Trigger on mentions of: 'Chrome
-extension', 'browser extension', 'manifest.json', 'content script', 'service worker' (in
-browser context), 'popup' (in browser extension context), 'side panel', 'chrome.* API',
-'declarativeNetRequest', 'omnibox', 'context menu' (in extension context), 'userScripts',
-'user script', 'script manager', or any request to build functionality that integrates with
-the Chrome browser UI. Also trigger for publishing to the Chrome Web Store: 'publish
-extension', preparing an extension for publishing, responding to a review rejection, writing
-permission justifications, or drafting a privacy policy.
+  Build and publish Chrome Extensions using Manifest V3 best practices. Use this skill
+  whenever the user asks to create, modify, debug, or understand Chrome browser extensions,
+  add-ons, or anything involving the Chrome Extensions API. Trigger on mentions of: 'Chrome
+  extension', 'browser extension', 'manifest.json', 'content script', 'service worker' (in
+  browser context), 'popup' (in browser extension context), 'side panel', 'chrome.* API',
+  'declarativeNetRequest', 'omnibox', 'context menu' (in extension context), 'userScripts',
+  'user script', 'script manager', or any request to build functionality that integrates with
+  the Chrome browser UI. Also trigger for publishing to the Chrome Web Store: 'publish
+  extension', preparing an extension for publishing, responding to a review rejection, writing
+  permission justifications, or drafting a privacy policy.
 ---
 
 # Chrome Extensions
@@ -48,8 +47,8 @@ Defining `"side_panel": {"default_path": "..."}` does NOT make it openable. Add 
 // In service-worker.js — open side panel on extension icon click
 // IMPORTANT: chrome.action.onClicked ONLY fires when there is NO default_popup
 chrome.action.onClicked.addListener(async (tab) => {
-  await chrome.sidePanel.open({ windowId: tab.windowId })
-})
+  await chrome.sidePanel.open({ windowId: tab.windowId });
+});
 ```
 
 If the extension has both a popup AND side panel, add a button in the popup that calls `chrome.sidePanel.open()`. Alternatively, use `chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })` — but the property is `openPanelOnActionClick`, NOT `openPanelOnActionIconClick`; the "Icon" variant causes a synchronous TypeError that silently aborts the service worker. Do NOT also define `default_popup` when using `setPanelBehavior`. See `references/extensions/side-panel.md`.
@@ -60,24 +59,22 @@ Extension CSP blocks `eval()`, `new Function()`, inline `<script>` in all extens
 
 ```js
 // ❌ BROKEN — direct iframe DOM access throws SecurityError
-iframe.contentDocument.write(html)
+iframe.contentDocument.write(html);
 
 // ❌ BROKEN — eval in extension page
-eval(userCode) // CSP blocks this
+eval(userCode); // CSP blocks this
 
 // ✅ OPTION A: Sandbox in manifest + postMessage
 // manifest.json: { "sandbox": { "pages": ["sandbox.html"] } }
-iframe.contentWindow.postMessage({ html, css, js }, "*")
+iframe.contentWindow.postMessage({ html, css, js }, '*');
 // sandbox.html receives and runs:
-window.addEventListener("message", (e) => {
-  eval(e.data.js) /* allowed in sandbox */
-})
+window.addEventListener('message', (e) => { eval(e.data.js); /* allowed in sandbox */ });
 
 // ✅ OPTION B: Blob URL (creates separate origin, bypasses extension CSP)
-iframe.src = URL.createObjectURL(new Blob([doc], { type: "text/html" }))
+iframe.src = URL.createObjectURL(new Blob([doc], { type: 'text/html' }));
 
 // ✅ OPTION C: srcdoc
-iframe.srcdoc = `<style>${css}</style>${html}<script>${js}<\/script>`
+iframe.srcdoc = `<style>${css}</style>${html}<script>${js}<\/script>`;
 ```
 
 See `references/extensions/csp-sandbox.md` for full details.
@@ -91,27 +88,25 @@ Without it, `tab.url` silently returns `undefined` — no error thrown. See
 
 ```js
 // ❌ BAD
-chrome.tabs.query({ active: true, currentWindow: true }).then((tabs) => {
-  chrome.scripting
-    .executeScript({ target: { tabId: tabs[0].id }, files: ["content.js"] })
-    .then(() => {})
-})
+chrome.tabs.query({active: true, currentWindow: true}).then(tabs => {
+  chrome.scripting.executeScript({target: {tabId: tabs[0].id}, files: ['content.js']}).then(() => {});
+});
 
 // ✅ GOOD
-const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["content.js"] })
+const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] });
 ```
 
 For `runtime.onMessage` listeners that do async work:
 
 ```js
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  ;(async () => {
-    const data = await chrome.storage.local.get("key")
-    sendResponse({ data })
-  })()
-  return true // keeps channel open
-})
+  (async () => {
+    const data = await chrome.storage.local.get('key');
+    sendResponse({ data });
+  })();
+  return true; // keeps channel open
+});
 ```
 
 #### 6. Content scripts: don't block the main thread
@@ -120,15 +115,13 @@ When modifying many DOM elements, batch with `requestAnimationFrame` and yield b
 
 ```js
 async function highlightAll(elements) {
-  const BATCH = 20
+  const BATCH = 20;
   for (let i = 0; i < elements.length; i += BATCH) {
-    await new Promise((r) =>
-      requestAnimationFrame(() => {
-        elements.slice(i, i + BATCH).forEach((el) => (el.style.backgroundColor = "yellow"))
-        r()
-      }),
-    )
-    if (globalThis.scheduler?.yield) await scheduler.yield()
+    await new Promise(r => requestAnimationFrame(() => {
+      elements.slice(i, i + BATCH).forEach(el => el.style.backgroundColor = 'yellow');
+      r();
+    }));
+    if (globalThis.scheduler?.yield) await scheduler.yield();
   }
 }
 ```
@@ -139,18 +132,16 @@ See `references/extensions/content-scripts.md`.
 
 ```js
 // ❌ BROKEN — state lost when SW terminates (~30s of inactivity)
-let count = 0
-chrome.tabs.onUpdated.addListener(() => {
-  count++
-})
+let count = 0;
+chrome.tabs.onUpdated.addListener(() => { count++; });
 
 // ✅ CORRECT — persist in chrome.storage, read on every event
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
-  if (changeInfo.status !== "complete") return
-  const { count = 0 } = await chrome.storage.local.get("count")
-  await chrome.storage.local.set({ count: count + 1 })
-  await chrome.action.setBadgeText({ text: String(count + 1) })
-})
+  if (changeInfo.status !== 'complete') return;
+  const { count = 0 } = await chrome.storage.local.get('count');
+  await chrome.storage.local.set({ count: count + 1 });
+  await chrome.action.setBadgeText({ text: String(count + 1) });
+});
 ```
 
 Use `chrome.alarms` instead of `setTimeout`/`setInterval`. See `references/extensions/service-worker.md`.
@@ -160,7 +151,6 @@ Use `chrome.alarms` instead of `setTimeout`/`setInterval`. See `references/exten
 When using Google sign-in, the OAuth client_id is tied to a specific extension ID. The ID changes between unpacked development and the Chrome Web Store.
 
 To stabilize the ID during development, add a `"key"` field to manifest.json:
-
 1. Pack the extension once (chrome://extensions → Pack)
 2. Extract the public key from the .crx
 3. Add `"key": "MIIBIjANBgkqh..."` to manifest.json
@@ -176,7 +166,7 @@ When a context menu item performs an action (save, copy, etc.), confirm it to th
 The `LanguageModel` API works in all extension contexts — service worker, popup, and side panel — with no additional manifest permissions required. Extensions also get `LanguageModel.params()`, which is unavailable on the web:
 
 ```js
-const params = await LanguageModel.params()
+const params = await LanguageModel.params();
 // { defaultTopK: 3, maxTopK: 128, defaultTemperature: 1, maxTemperature: 2 }
 ```
 
@@ -212,10 +202,10 @@ relative to the devtools page that calls `chrome.devtools.panels.create()`.
 
 ```js
 // ❌ BROKEN — path relative to devtools/ directory
-chrome.devtools.panels.create("My Panel", "", "panel/panel.html")
+chrome.devtools.panels.create("My Panel", "", "panel/panel.html");
 
 // ✅ CORRECT — full path from extension root
-chrome.devtools.panels.create("My Panel", "", "devtools/panel/panel.html")
+chrome.devtools.panels.create("My Panel", "", "devtools/panel/panel.html");
 ```
 
 See `references/extensions/devtools.md`.
@@ -227,14 +217,13 @@ are unavailable, including `chrome.downloads`, `chrome.tabs`, `chrome.action`, a
 
 ```js
 // ❌ BROKEN — chrome.downloads is undefined in offscreen documents
-chrome.downloads.download({ url, filename: "recording.webm" }) // TypeError
+chrome.downloads.download({ url, filename: 'recording.webm' }); // TypeError
 
 // ❌ BROKEN — chrome.action is undefined in offscreen documents
-chrome.action.setBadgeText({ text: "REC" }) // TypeError
+chrome.action.setBadgeText({ text: 'REC' }); // TypeError
 ```
 
 **The only APIs available in offscreen documents are:**
-
 - `chrome.runtime.sendMessage` / `chrome.runtime.onMessage`
 - `chrome.runtime.getURL`
 - Standard Web APIs (DOM, fetch, MediaRecorder, Canvas, Web Audio, etc.)
@@ -248,22 +237,17 @@ If the file doesn't exist or the path is wrong, the call fails with `"Unable to 
 
 ```js
 // ❌ BROKEN — icon file doesn't exist
-chrome.notifications.create("reminder", {
-  type: "basic",
-  iconUrl: "icons/icon-128.png", // File not in extension!
-  title: "Reminder",
-  message: "Time is up!",
-})
+chrome.notifications.create('reminder', {
+  type: 'basic',
+  iconUrl: 'icons/icon-128.png', // File not in extension!
+  title: 'Reminder',
+  message: 'Time is up!'
+});
 
 // ✅ Generate a data URL at runtime via OffscreenCanvas — no file needed.
 // See `references/extensions/icons.md` for a reusable implementation.
-const iconUrl = await getIconDataUrl()
-chrome.notifications.create("reminder", {
-  type: "basic",
-  iconUrl,
-  title: "Reminder",
-  message: "Time is up!",
-})
+const iconUrl = await getIconDataUrl();
+chrome.notifications.create('reminder', { type: 'basic', iconUrl, title: 'Reminder', message: 'Time is up!' });
 ```
 
 This applies to ALL image references in chrome.* APIs — notifications, `chrome.action.setIcon`,
@@ -277,46 +261,40 @@ easily trigger this. Use explicit state locking:
 
 ```js
 // ❌ BROKEN — no guard against rapid clicks
-let isRecording = false
+let isRecording = false;
 chrome.action.onClicked.addListener(async (tab) => {
-  if (isRecording) {
-    stopRecording()
-    isRecording = false
-  } else {
-    isRecording = true
-    startRecording(tab)
-  } // Second click = "active stream" error
-})
+  if (isRecording) { stopRecording(); isRecording = false; }
+  else { isRecording = true; startRecording(tab); } // Second click = "active stream" error
+});
 
 // ✅ CORRECT — use transitional states to lock out concurrent operations
 // State machine: 'idle' → 'starting' → 'recording' → 'stopping' → 'idle'
 // Store state in chrome.storage.session (survives SW restart, cleared on browser close)
 chrome.action.onClicked.addListener(async (tab) => {
-  const { recordingState = "idle" } = await chrome.storage.session.get("recordingState")
+  const { recordingState = 'idle' } = await chrome.storage.session.get('recordingState');
 
-  if (recordingState === "starting" || recordingState === "stopping") return
+  if (recordingState === 'starting' || recordingState === 'stopping') return;
 
-  if (recordingState === "idle") {
-    await chrome.storage.session.set({ recordingState: "starting" })
+  if (recordingState === 'idle') {
+    await chrome.storage.session.set({ recordingState: 'starting' });
     try {
-      await startRecording(tab)
-      await chrome.storage.session.set({ recordingState: "recording" })
-      await chrome.action.setBadgeText({ text: "REC" })
-      await chrome.action.setBadgeBackgroundColor({ color: "#FF0000" })
+      await startRecording(tab);
+      await chrome.storage.session.set({ recordingState: 'recording' });
+      await chrome.action.setBadgeText({ text: 'REC' });
+      await chrome.action.setBadgeBackgroundColor({ color: '#FF0000' });
     } catch (err) {
-      console.error("Failed to start recording:", err)
-      await chrome.storage.session.set({ recordingState: "idle" })
+      console.error('Failed to start recording:', err);
+      await chrome.storage.session.set({ recordingState: 'idle' });
     }
-  } else if (recordingState === "recording") {
-    await chrome.storage.session.set({ recordingState: "stopping" })
-    try {
-      await stopRecording()
-    } finally {
-      await chrome.storage.session.set({ recordingState: "idle" })
-      await chrome.action.setBadgeText({ text: "" })
+  } else if (recordingState === 'recording') {
+    await chrome.storage.session.set({ recordingState: 'stopping' });
+    try { await stopRecording(); }
+    finally {
+      await chrome.storage.session.set({ recordingState: 'idle' });
+      await chrome.action.setBadgeText({ text: '' });
     }
   }
-})
+});
 ```
 
 This pattern applies to any chrome API that manages exclusive resources:
@@ -367,13 +345,13 @@ Unlike `chrome.tabs.query()`, the `chrome.windows` API does NOT have a `.query()
 
 ```js
 // ❌ BROKEN — chrome.windows.query does not exist
-const windows = await chrome.windows.query({ focused: true })
+const windows = await chrome.windows.query({ focused: true });
 // TypeError: chrome.windows.query is not a function
 
 // ✅ CORRECT — use the right method for your need
-const focused = await chrome.windows.getLastFocused({ populate: true })
-const current = await chrome.windows.getCurrent({ populate: true })
-const all = await chrome.windows.getAll({ populate: true })
+const focused = await chrome.windows.getLastFocused({ populate: true });
+const current = await chrome.windows.getCurrent({ populate: true });
+const all     = await chrome.windows.getAll({ populate: true });
 ```
 
 **`chrome.windows` methods:** `getAll`, `getLastFocused`, `getCurrent`, `get(windowId)`, `create`, `update`, `remove`. See `references/extensions/tab-management.md`.
@@ -390,7 +368,6 @@ it as the first thing in the listener, with nothing awaited before it — see
 ### Always Manifest V3
 
 Never generate Manifest V2 code.
-
 - `background.service_worker` not `background.scripts`
 - `chrome.action` not `chrome.browserAction`
 - `chrome.scripting.executeScript` not `chrome.tabs.executeScript`
@@ -416,7 +393,6 @@ a single doc instead of scrambling at publish time.
 #### When to create CHROMEWEBSTORE.md
 
 Create it the moment any of these happen:
-
 - The user says they want to publish an extension
 - The user asks to "prepare for the store" or "get ready to publish"
 - You're building a new extension that will clearly end up on the store
@@ -428,7 +404,6 @@ before generating the file.
 #### When to update CHROMEWEBSTORE.md
 
 Update it whenever:
-
 - **User-facing changes**: Bump the "Last Updated" date, update the feature list in
   descriptions, and add an entry to Version History
 - **manifest.json changes**: If permissions, host_permissions, or content_scripts changed,
@@ -444,7 +419,6 @@ Update it whenever:
 ### How to fill it out
 
 For each section, pull information from the actual project files:
-
 1. Read `manifest.json` to extract name, version, description, permissions, host_permissions
 2. Scan the codebase for data collection (storage, fetch calls, analytics)
 3. Check for icon files and their dimensions
@@ -458,13 +432,13 @@ pass.
 **Never mention implementation details.** Users care what the extension does for them, not
 how it was built. Strip any mention of APIs, libraries, frameworks, or code patterns:
 
-| ❌ Implementation detail (cut it)                       | ✅ User benefit (keep it)                                     |
-| ------------------------------------------------------- | ------------------------------------------------------------- |
-| "Uses a MutationObserver to detect page changes"        | "Automatically detects new content as you browse"             |
-| "Built with custom elements and Shadow DOM"             | "Works seamlessly without affecting page styles"              |
+| ❌ Implementation detail (cut it) | ✅ User benefit (keep it) |
+|-----------------------------------|--------------------------|
+| "Uses a MutationObserver to detect page changes" | "Automatically detects new content as you browse" |
+| "Built with custom elements and Shadow DOM" | "Works seamlessly without affecting page styles" |
 | "Powered by a service worker for background processing" | "Runs quietly in the background without slowing your browser" |
-| "Leverages the chrome.storage.sync API"                 | "Your settings sync across all your devices"                  |
-| "Implements declarativeNetRequest for filtering"        | "Blocks ads and trackers without reading your page content"   |
+| "Leverages the chrome.storage.sync API" | "Your settings sync across all your devices" |
+| "Implements declarativeNetRequest for filtering" | "Blocks ads and trackers without reading your page content" |
 
 ### CHROMEWEBSTORE.md Sections
 
@@ -478,7 +452,6 @@ for guidance on generating a privacy policy.
 
 Before submission, run through `references/webstore/review-checklist.md`. The most common
 first-submission failures:
-
 - Every permission and host_permission must have a specific justification (not "needed to work")
 - Privacy policy URL must be live and match the data use disclosure form
 - At least 1 screenshot at 1280×800 or 640×400
@@ -496,31 +469,31 @@ searching again").
 
 For detailed API patterns and publishing guidance, read the relevant file BEFORE writing code or content:
 
-| Topic                           | Reference                                          |
-| ------------------------------- | -------------------------------------------------- |
-| Permissions                     | `references/extensions/permissions.md`             |
-| Side panels                     | `references/extensions/side-panel.md`              |
-| Content scripts & DOM           | `references/extensions/content-scripts.md`         |
-| Popups                          | `references/extensions/popup-ui.md`                |
-| Service worker lifetime         | `references/extensions/service-worker.md`          |
-| Code execution & CSP            | `references/extensions/csp-sandbox.md`             |
-| API calls                       | `references/extensions/api-calling.md`             |
-| Declarative Net Request         | `references/extensions/declarative-net-request.md` |
-| Chrome Prompt API               | `references/extensions/prompt-api.md`              |
-| DevTools panels                 | `references/extensions/devtools.md`                |
-| Authentication                  | `references/extensions/auth-identity.md`           |
-| Context menus                   | `references/extensions/context-menus.md`           |
-| Omnibox                         | `references/extensions/omnibox.md`                 |
-| Storage                         | `references/extensions/storage.md`                 |
-| Tab & window management         | `references/extensions/tab-management.md`          |
-| Tab/desktop capture             | `references/extensions/media-capture.md`           |
-| User scripts                    | `references/extensions/user-scripts.md`            |
-| Message passing                 | `references/extensions/message-passing.md`         |
-| Icons                           | `references/extensions/icons.md`                   |
-| CHROMEWEBSTORE.md template      | `references/webstore/chromewebstore-template.md`   |
-| Privacy policy guidance         | `references/webstore/privacy-policy.md`            |
-| Pre-publish review checklist    | `references/webstore/review-checklist.md`          |
-| Store listing tips & rejections | `references/webstore/store-listing.md`             |
+| Topic | Reference |
+|-------|-----------|
+| Permissions | `references/extensions/permissions.md` |
+| Side panels | `references/extensions/side-panel.md` |
+| Content scripts & DOM | `references/extensions/content-scripts.md` |
+| Popups | `references/extensions/popup-ui.md` |
+| Service worker lifetime | `references/extensions/service-worker.md` |
+| Code execution & CSP | `references/extensions/csp-sandbox.md` |
+| API calls | `references/extensions/api-calling.md` |
+| Declarative Net Request | `references/extensions/declarative-net-request.md` |
+| Chrome Prompt API | `references/extensions/prompt-api.md` |
+| DevTools panels | `references/extensions/devtools.md` |
+| Authentication | `references/extensions/auth-identity.md` |
+| Context menus | `references/extensions/context-menus.md` |
+| Omnibox | `references/extensions/omnibox.md` |
+| Storage | `references/extensions/storage.md` |
+| Tab & window management | `references/extensions/tab-management.md` |
+| Tab/desktop capture | `references/extensions/media-capture.md` |
+| User scripts | `references/extensions/user-scripts.md` |
+| Message passing | `references/extensions/message-passing.md` |
+| Icons | `references/extensions/icons.md` |
+| CHROMEWEBSTORE.md template | `references/webstore/chromewebstore-template.md` |
+| Privacy policy guidance | `references/webstore/privacy-policy.md` |
+| Pre-publish review checklist | `references/webstore/review-checklist.md` |
+| Store listing tips & rejections | `references/webstore/store-listing.md` |
 
 ## Output Checklist
 

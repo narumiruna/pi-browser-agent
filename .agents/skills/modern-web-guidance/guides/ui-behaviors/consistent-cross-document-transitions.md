@@ -198,39 +198,39 @@ If `view-transition-name` values are assigned statically in CSS, or if you are o
 
 ```javascript
 // transition-setup.js
-window.addEventListener("pagereveal", async (event) => {
-  if (!event.viewTransition) return
+window.addEventListener('pagereveal', async (event) => {
+  if (!event.viewTransition) return;
 
-  const from = navigation.activation?.from
-  if (!from) return
+  const from = navigation.activation?.from;
+  if (!from) return;
 
-  const fromUrl = new URL(from.url)
+  const fromUrl = new URL(from.url);
 
   // DO: Assign view-transition-name based on navigation context.
   // This enables a morph animation from the product card on the
   // list page to the heading on the detail page.
-  if (fromUrl.pathname === "/products/") {
-    const heading = document.querySelector("main h1")
-    if (!heading) return
+  if (fromUrl.pathname === '/products/') {
+    const heading = document.querySelector('main h1');
+    if (!heading) return;
 
-    heading.style.viewTransitionName = "product-title"
+    heading.style.viewTransitionName = 'product-title';
 
     try {
-      await event.viewTransition.ready
+      await event.viewTransition.ready;
     } catch (error) {
       // Skipped view transitions reject `ready` with InvalidStateError.
-      if (error.name !== "InvalidStateError") {
-        throw error
+      if (error.name !== 'InvalidStateError') {
+        throw error;
       }
     } finally {
       // MANDATORY: Remove the temporary name after the transition
       // finishes. Stale names interfere with subsequent navigations
       // and prevent the page from entering the bfcache.
-      await event.viewTransition.finished
-      heading.style.viewTransitionName = ""
+      await event.viewTransition.finished;
+      heading.style.viewTransitionName = '';
     }
   }
-})
+});
 ```
 
 ## Best Practices

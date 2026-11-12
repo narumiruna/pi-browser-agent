@@ -69,7 +69,6 @@ Things that are easy to get wrong:
 ### Accessibility Constraints (WCAG 1.4.13)
 
 Even with `interestfor` handling the semantics above, your implementation MUST still satisfy WCAG 1.4.13 (Content on Hover or Focus):
-
 - **Dismissible:** Users must be able to dismiss the tooltip without moving pointer hover or keyboard focus (e.g., by pressing the `Escape` key). The native `popover` attribute manages this binding automatically.
 - **Hoverable:** The pointer must be able to move over the tooltip content itself without the tooltip disappearing. This allows users with magnification tools to read the tooltip text safely.
 - **Persistent:** The tooltip must remain visible until the hover or focus trigger is removed, the user explicitly dismisses it, or its content is no longer valid.
@@ -136,12 +135,8 @@ When using the polyfill, the CSS API changes slightly to account for the lack of
 
 ```css
 /* Styles to apply when the effect is being previewed */
-:is(:interest-source, .interest-source) {
-  /* ... */
-}
-:is(:interest-target, .interest-target) {
-  /* ... */
-}
+:is(:interest-source, .interest-source) { /* ... */ }
+:is(:interest-target, .interest-target) { /* ... */ }
 ```
 
 - **CSS Properties:** For `interest-delay`, `interest-delay-start`, and `interest-delay-end`, the polyfill requires using CSS variables as it cannot read the custom properties directly in all browsers.
@@ -170,14 +165,13 @@ With a bundler or import map:
 ```js
 // MANDATORY: Feature detect 'popover' on HTMLElement.prototype.
 if (!Object.hasOwn(HTMLElement.prototype, "popover")) {
-  import("@oddbird/popover-polyfill")
+  import("@oddbird/popover-polyfill");
 }
 ```
 
 If not using a package manager, import from a CDN, e.g. `"https://unpkg.com/@oddbird/popover-polyfill@latest/dist/popover.min.js"`.
 
 Caveats when using the polyfill:
-
 - Do NOT use the `popover` IDL attribute for any code that may run before the polyfill is fully loaded. It will not be mirrored as an attribute, the popover will not be picked up by the polyfill, and the property will be shadowing the accessor the polyfill adds forever. Use `setAttribute()`/`removeAttribute()` instead.
 - **Styling caveat:** The polyfill cannot define the real `:popover-open` pseudo-class, so it applies a `.\:popover-open` class instead. **MANDATORY:** Combine the two with `:is()` or `:where()`, otherwise browsers that lack `:popover-open` discard the entire rule:
 
@@ -199,21 +193,16 @@ A toggletip can also be opened by click, with no interest to lose, so a `manual`
 
 ```js
 // The `popover` property reports the state the browser actually uses: "manual" when `hint` is unsupported.
-const probe = document.createElement("div")
-probe.popover = "hint"
+const probe = document.createElement("div");
+probe.popover = "hint";
 if (probe.popover !== "hint") {
-  document.addEventListener(
-    "beforetoggle",
-    ({ target, newState }) => {
-      const toggletip =
-        target.getAttribute("popover") === "hint" &&
-        document.querySelector(`[popovertarget="${CSS.escape(target.id)}"]`)
-      if (newState === "open" && toggletip) {
-        target.popover = "auto"
-      }
-    },
-    true,
-  )
+  document.addEventListener("beforetoggle", ({ target, newState }) => {
+    const toggletip = target.getAttribute("popover") === "hint"
+      && document.querySelector(`[popovertarget="${CSS.escape(target.id)}"]`);
+    if (newState === "open" && toggletip) {
+      target.popover = "auto";
+    }
+  }, true);
 }
 ```
 
@@ -236,7 +225,7 @@ With a bundler or import map:
 ```js
 // MANDATORY: Feature-detect anchor positioning support before loading the polyfill.
 if (!CSS.supports("anchor-name: --a")) {
-  import("@oddbird/css-anchor-positioning")
+  import("@oddbird/css-anchor-positioning");
 }
 ```
 
@@ -252,7 +241,6 @@ Without a bundler, import from a CDN inside a `<script type="module">`:
 ```
 
 **Polyfill caveats:**
-
 - **No implicit anchors:** The polyfill does not support implicit anchor associations (such as those created by `popovertarget`, `commandfor`, `interestfor`, or `showPopover({ source })`). You **MUST** set a unique explicit `anchor-name` on each trigger and a matching `position-anchor` on the positioned element.
 - **No `position-area` with `position-try-fallbacks`:** `position-area` with `position-try-fallbacks` is not supported by the polyfill. When using the polyfill on elements needing fallbacks, position elements using `anchor()` functions on inset properties (`top`, `left`, `right`, `bottom`) with `inset: auto` instead of `position-area`.
 - **Do not wrap polyfilled rules in `@supports`:** Browsers without native anchor positioning evaluate `@supports (position-area: ...)` and `@supports (anchor-name: --a)` to `false` and discard the block before the polyfill can process it.
@@ -285,10 +273,7 @@ Instead, gate `inset: auto` and `margin: 0` inside `@supports` for the specific 
     inset: auto;
     margin: 0;
     position-area: block-end span-inline-end;
-    position-try-fallbacks:
-      flip-block,
-      flip-inline,
-      flip-block flip-inline;
+    position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
   }
 }
 

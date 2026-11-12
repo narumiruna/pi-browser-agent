@@ -24,7 +24,7 @@
 ### Light and dark color schemes
 
 - **Support light and dark color schemes**: Honor `@media (prefers-color-scheme: dark)` and pair it with the `color-scheme` CSS property so form controls, scrollbars, and other UA-rendered surfaces match.
-  See `dark-mode` (via `npx -y modern-web-guidance@latest retrieve "dark-mode"`) for more details.
+See `dark-mode` (via `npx -y modern-web-guidance@latest retrieve "dark-mode"`) for more details.
 
 ### Forced Colors Mode
 
@@ -37,7 +37,7 @@
 Before generating tints dynamically, check if you can use an existing, predefined, design token. This allows much more designer control and ensures consistency.
 
 If you need to generate lighter or darker colors dynamically:
-
 - **DO NOT** just adjust the lightness channel in `oklch`/`oklab` or `lch`/`lab`, e.g. `oklab(from var(--primary) 0.9 a b)`. While that is theoretically the correct way, browsers do not yet implement gamut mapping, so the resulting color is unpredictable.
 - You can use `color-mix()` to mix with white or black (preferably in `oklab`). This keeps the color safely in gamut, but tends to over-desaturate colors and produce washed out tints and shades.
 - You MAY combine lightness adjustment with any of the other methods (e.g. `color-mix(in oklab, oklch(from var(--primary) 0.9 c h), white 30%)`) for a balance between the two, but avoid going above 30% for the lightness adjustment.
+

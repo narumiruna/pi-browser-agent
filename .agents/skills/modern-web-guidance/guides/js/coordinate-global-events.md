@@ -16,34 +16,32 @@ To coordinate global events and handle potential DST conflicts:
 
 ```javascript
 // 1. Define the event time and target time zone
-const date = "2025-03-09"
-const time = "02:30" // This time is skipped in New York during Spring Forward
-const timeZone = "America/New_York"
-const inputStr = `${date}T${time}[${timeZone}]`
+const date = "2025-03-09";
+const time = "02:30"; // This time is skipped in New York during Spring Forward
+const timeZone = "America/New_York";
+const inputStr = `${date}T${time}[${timeZone}]`;
 
 // 2. Detect conflicts using 'reject'
-let hasConflict = false
+let hasConflict = false;
 try {
   // 'reject' throws RangeError if the time is ambiguous or does not exist
-  Temporal.ZonedDateTime.from(inputStr, { disambiguation: "reject" })
+  Temporal.ZonedDateTime.from(inputStr, { disambiguation: 'reject' });
 } catch (e) {
   if (e instanceof RangeError) {
-    hasConflict = true
-    console.log("This time falls in a DST transition gap or overlap.")
+    hasConflict = true;
+    console.log("This time falls in a DST transition gap or overlap.");
   }
 }
 
 // 3. Resolve the time safely using 'compatible' (default)
 // 'compatible' will resolve to a valid time even if skipped or repeated
-const hostTime = Temporal.ZonedDateTime.from(inputStr, { disambiguation: "compatible" })
-console.log(`Resolved time: ${hostTime.toString()}`)
+const hostTime = Temporal.ZonedDateTime.from(inputStr, { disambiguation: 'compatible' });
+console.log(`Resolved time: ${hostTime.toString()}`);
 
 // 4. Convert to another time zone (e.g., Tokyo)
-const tokyoTime = hostTime.withTimeZone("Asia/Tokyo")
+const tokyoTime = hostTime.withTimeZone("Asia/Tokyo");
 // Use toLocaleString() for user-facing display instead of manual hour/minute padding
-console.log(
-  `Tokyo time: ${tokyoTime.toLocaleString("en-US", { hour: "numeric", minute: "2-digit" })}`,
-)
+console.log(`Tokyo time: ${tokyoTime.toLocaleString('en-US', { hour: 'numeric', minute: '2-digit' })}`);
 ```
 
 ## Strategic Implementation & Best Practices
@@ -69,14 +67,14 @@ Note that importing `temporal-polyfill` does not automatically assign the `Tempo
 
 ```javascript
 // Check if Temporal is supported natively
-;(async () => {
-  if (typeof Temporal === "undefined") {
+(async () => {
+  if (typeof Temporal === 'undefined') {
     // Load the polyfill conditionally
-    const module = await import("https://esm.sh/temporal-polyfill")
-    globalThis.Temporal = module.Temporal
+    const module = await import('https://esm.sh/temporal-polyfill');
+    globalThis.Temporal = module.Temporal;
     // Extend Date.prototype if needed
-    Date.prototype.toTemporalInstant = module.toTemporalInstant
+    Date.prototype.toTemporalInstant = module.toTemporalInstant;
   }
-  initializeApp()
-})()
+  initializeApp();
+})();
 ```

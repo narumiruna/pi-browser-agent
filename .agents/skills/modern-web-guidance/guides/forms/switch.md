@@ -46,8 +46,8 @@ If your Baseline target does not support `<input type="checkbox" switch>`, load 
 Use the package-loading approach appropriate to your project. The example below assumes your setup can resolve module specifiers:
 
 ```javascript
-if (!("switch" in HTMLInputElement.prototype)) {
-  import("input-switch-polyfill")
+if (!('switch' in HTMLInputElement.prototype)) {
+  import('input-switch-polyfill');
 }
 ```
 

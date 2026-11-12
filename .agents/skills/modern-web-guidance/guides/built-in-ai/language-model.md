@@ -20,29 +20,29 @@ The Prompt API is currently available in Chrome as of version 148 (Desktop) for 
 Check model availability before triggering a download:
 
 ```javascript
-const availability = await LanguageModel.availability()
+const availability = await LanguageModel.availability();
 
 function createSession() {
-  return LanguageModel.create({
-    monitor(m) {
-      // Inform the user while the model downloads so the UI doesn't appear frozen.
-      m.addEventListener("downloadprogress", (e) => {
-        console.log(`Downloaded ${e.loaded * 100}%`)
-        progressEl.value = e.loaded // a <progress max="1"> with an accessible name
-      })
-    },
-  })
+	return LanguageModel.create({
+		monitor(m) {
+			// Inform the user while the model downloads so the UI doesn't appear frozen.
+			m.addEventListener('downloadprogress', (e) => {
+				console.log(`Downloaded ${e.loaded * 100}%`);
+				progressEl.value = e.loaded; // a <progress max="1"> with an accessible name
+			});
+		},
+	});
 }
 
 // Do not call create() when unavailable — the model cannot run on this device.
-if (availability === "available") {
-  const session = await createSession()
-} else if (availability !== "unavailable") {
-  // Starting the download requires a user gesture.
-  downloadButton.addEventListener("click", async () => {
-    const session = await createSession()
-    downloadStatusEl.textContent = "Model downloaded" // a polite live region
-  })
+if (availability === 'available') {
+	const session = await createSession();
+} else if (availability !== 'unavailable') {
+	// Starting the download requires a user gesture.
+	downloadButton.addEventListener('click', async () => {
+		const session = await createSession();
+		downloadStatusEl.textContent = 'Model downloaded'; // a polite live region
+	});
 }
 ```
 
@@ -59,27 +59,27 @@ For short responses, use `prompt()`. For longer content, use `promptStreaming()`
 **MANDATORY**: Never assign model output to `innerHTML`. Model output is untrusted and can contain injected markup. Always use `textContent` or a sanitizer.
 
 ```javascript
-const session = await LanguageModel.create()
+const session = await LanguageModel.create();
 
 // prompt() accumulates the full response before resolving — use for short, one-shot output.
-const result = await session.prompt("Write a haiku about coding.")
+const result = await session.prompt('Write a haiku about coding.');
 // textContent, not innerHTML — model output is untrusted and must not be parsed as markup.
-outputEl.textContent = result
+outputEl.textContent = result;
 
 // promptStreaming() yields independent chunks that must be concatenated;
 // use for longer content so each chunk can be rendered progressively.
-const stream = session.promptStreaming("Write a long story about a robot.")
-let completeResult = ""
-outputEl.setAttribute("aria-busy", "true") // outputEl: <div aria-live="polite">
+const stream = session.promptStreaming('Write a long story about a robot.');
+let completeResult = '';
+outputEl.setAttribute('aria-busy', 'true'); // outputEl: <div aria-live="polite">
 try {
-  for await (const chunk of stream) {
-    completeResult += chunk
-    outputEl.append(chunk)
-  }
+	for await (const chunk of stream) {
+		completeResult += chunk;
+		outputEl.append(chunk);
+	}
 } finally {
-  outputEl.setAttribute("aria-busy", "false")
+	outputEl.setAttribute('aria-busy', 'false');
 }
-console.log("Full story:", completeResult)
+console.log('Full story:', completeResult);
 ```
 
 Make the element that receives the output a polite live region that is in the page from page load, and set `aria-busy="true"` on it while a response streams in, so assistive technologies announce the complete response rather than each chunk (WCAG 4.1.3 Status Messages). Don't move focus while it streams in.
@@ -92,20 +92,20 @@ The Prompt API supports text, audio, and visual inputs (images, canvas, video fr
 
 ```javascript
 const session = await LanguageModel.create({
-  // Declaring expected input types lets the browser optimize model loading.
-  expectedInputs: [{ type: "text" }, { type: "image" }],
-  expectedOutputs: [{ type: "text" }],
-})
+	// Declaring expected input types lets the browser optimize model loading.
+	expectedInputs: [{ type: 'text' }, { type: 'image' }],
+	expectedOutputs: [{ type: 'text' }],
+});
 
 const response = await session.prompt([
-  {
-    role: "user",
-    content: [
-      { type: "text", value: "What is in this image?" },
-      { type: "image", value: document.querySelector("canvas") },
-    ],
-  },
-])
+	{
+		role: 'user',
+		content: [
+			{ type: 'text', value: 'What is in this image?' },
+			{ type: 'image', value: document.querySelector('canvas') },
+		],
+	},
+]);
 ```
 
 ## 3. Advanced Session Management
@@ -122,21 +122,21 @@ Cloning is efficient for starting parallel conversations that share the same ini
 
 ```javascript
 const mainSession = await LanguageModel.create({
-  initialPrompts: [{ role: "system", content: "You speak like a pirate." }],
-})
+	initialPrompts: [{ role: 'system', content: 'You speak like a pirate.' }],
+});
 
-const branchA = await mainSession.clone()
-const branchB = await mainSession.clone()
+const branchA = await mainSession.clone();
+const branchB = await mainSession.clone();
 
 // Run independent tasks on each clone, then destroy the clones when done.
-await branchA.prompt("Greet the crew.")
-branchA.destroy()
+await branchA.prompt('Greet the crew.');
+branchA.destroy();
 
-await branchB.prompt("Chart a course.")
-branchB.destroy()
+await branchB.prompt('Chart a course.');
+branchB.destroy();
 
 // Keep mainSession if you plan to clone it again later, or destroy it once no more clones are needed.
-mainSession.destroy()
+mainSession.destroy();
 ```
 
 ### Restoring Past Sessions
@@ -147,10 +147,10 @@ While a native "restore" feature is in development, you can recreate a session b
 
 ```javascript
 // || '[]' ensures JSON.parse never receives null when the key doesn't exist yet.
-const history = JSON.parse(localStorage.getItem("chat_history") || "[]")
+const history = JSON.parse(localStorage.getItem('chat_history') || '[]');
 const session = await LanguageModel.create({
-  initialPrompts: history, // Array of {role, content} objects
-})
+	initialPrompts: history, // Array of {role, content} objects
+});
 ```
 
 ## 4. Structured Output with JSON Schema
@@ -162,20 +162,21 @@ To prevent the model from adding "chatter" (e.g., "Sure, here is your JSON:"), u
 ```javascript
 // Pass the schema as a plain object — do not JSON.stringify() it first.
 const schema = {
-  type: "object",
-  properties: {
-    rating: { type: "number", minimum: 1, maximum: 5 },
-    is_positive: { type: "boolean" },
-  },
-  required: ["rating", "is_positive"],
-}
+	type: 'object',
+	properties: {
+		rating: { type: 'number', minimum: 1, maximum: 5 },
+		is_positive: { type: 'boolean' },
+	},
+	required: ['rating', 'is_positive'],
+};
 
-const result = await session.prompt("Rate the following feedback: 'The food was great!'", {
-  responseConstraint: schema,
-})
+const result = await session.prompt(
+	"Rate the following feedback: 'The food was great!'",
+	{ responseConstraint: schema },
+);
 
-const data = JSON.parse(result)
-console.log(data.rating) // 5
+const data = JSON.parse(result);
+console.log(data.rating); // 5
 ```
 
 ### Constraints and Prefixes
@@ -184,9 +185,9 @@ You can guide the model further by prefilling the assistant's response using `pr
 
 ````javascript
 const character = await session.prompt([
-  { role: "user", content: "Create a character sheet" },
-  { role: "assistant", content: "```json\n", prefix: true },
-])
+	{ role: 'user', content: 'Create a character sheet' },
+	{ role: 'assistant', content: '```json\n', prefix: true },
+]);
 ````
 
 ## 5. Best Practices and Safety
@@ -207,7 +208,7 @@ For the full detailed list of dos and don'ts, see https://developer.chrome.com/d
 
 #### Prepare the model at a reasonable time
 
-_Applies to: all APIs, for example, Summarizer, Translator, and Writer._
+*Applies to: all APIs, for example, Summarizer, Translator, and Writer.*
 
 **Do:** Initialize the session as soon as you've clearly established the user's intention to use the AI feature, for example, when a user navigates into a relevant AI tools surface, hovers over an AI workspace, or interacts with the feature's surrounding UI. Pre-warming the session allows the model to load into memory quietly in the background while the user is setting up their task, eliminating avoidable cold-start latency.
 Try to be one step ahead by starting the next most likely AI task as soon as you start rendering the current result, for example, if the feature is designed for iterative use.
@@ -219,7 +220,7 @@ Try to be one step ahead by starting the next most likely AI task as soon as you
 
 #### Set initial prompts during creation
 
-_Applies to: Prompt API._
+*Applies to: Prompt API.*
 
 **Do:** Provide system instructions during session initialization to improve the
 speed of the first prompt.
@@ -230,7 +231,7 @@ process those instructions at the last moment.
 
 #### Clone sessions for repetitive tasks
 
-_Applies to: Prompt API._
+*Applies to: Prompt API.*
 
 For the Prompt API, each session [tracks the context of the
 conversation](https://developer.chrome.com/docs/ai/prompt-api?content_ref=each+session+keeps+track+of+the+context+of+the+conversation+previous+interactions+are+taken+into+account+for+future+interactions+until+the+session+s+context+window+is+full),
@@ -251,7 +252,7 @@ only what you need.
 
 #### Destroy unused sessions
 
-_Applies to: All APIs._
+*Applies to: All APIs.*
 
 **Do:** Explicitly call [`destroy()`](https://developer.chrome.com/docs/ai/prompt-api#terminate_a_session) on
 sessions that you no longer need, to free up memory when a feature
@@ -266,8 +267,8 @@ frees up memory more quickly.
 
 #### Render streaming responses safely and efficiently
 
-_Applies to: All APIs with streaming support (Prompt, Summarizer, Writer,
-Rewriter, and Translator)._
+*Applies to: All APIs with streaming support (Prompt, Summarizer, Writer,
+Rewriter, and Translator).*
 
 **Do:** Treat all LLM output as untrusted content. Sanitize the full combined
 output, not just chunks, because malicious code could be split across updates.
@@ -282,7 +283,7 @@ injection.
 
 #### Optimize input for speed
 
-_Applies to: All APIs._
+*Applies to: All APIs.*
 
 **Do:** Only pass to the model what's strictly needed. Strip everything that's
 irrelevant to the task at hand. For large datasets, provide a short overview and
@@ -294,7 +295,7 @@ can make the AI feature seem broken on many devices.
 
 #### Use structured output for predictable results
 
-_Applies to: Prompt API._
+*Applies to: Prompt API.*
 
 **Do:** When you need the model to return data in a specific format, use
 [structured
@@ -308,8 +309,8 @@ alone. Models might include conversational filler that breaks your parser.
 
 #### Decouple generation from length constraints
 
-_Applies to: Prompt API, as it's the only API that supports [structured output
-schemas](https://developer.chrome.com/docs/ai/structured-output-for-prompt-api)._
+*Applies to: Prompt API, as it's the only API that supports [structured output
+schemas](https://developer.chrome.com/docs/ai/structured-output-for-prompt-api).*
 
 **Do:** Let the model generate its response naturally, and then use client-side
 logic to truncate the text to fit your UI.
@@ -322,7 +323,7 @@ resulting in nonsensical output.
 
 #### Keep the user informed
 
-_Applies to: All APIs._
+*Applies to: All APIs.*
 
 **Do:** Depending on the complexity and expected duration of the task, use animations, visual cues, and progress indicators to keep the user informed. The
 optimal approach depends on your use case and the expected length of the API
@@ -336,7 +337,7 @@ output. Some ideas:
 
 #### Align with the user's mental model of time and work
 
-_Applies to: All APIs._
+*Applies to: All APIs.*
 
 **Do:** Consider an artificial delay of one or two seconds if a response is
 nearly instant. Paradoxically, users might find results more trustworthy when
@@ -347,7 +348,7 @@ of the task. Use animations to signal that an AI process has occurred.
 
 #### Allow users to quickly navigate and undo AI edits
 
-_Applies to: All APIs._
+*Applies to: All APIs.*
 
 **Do:** Equip your UI with a stepper or navigation history that lets users
 explore different results confidently, and let them quickly undo AI edits. This
@@ -358,7 +359,7 @@ liked without a way to go back, revert, or compare versions.
 
 #### Empower user control and overrides
 
-_Applies to: All APIs._
+*Applies to: All APIs.*
 
 **Do:** Make the user the final editor of all generated content. Provide intuitive overrides so the user maintains full ownership for the final output. The APIs may produce incorrect results.
 
@@ -366,7 +367,7 @@ _Applies to: All APIs._
 
 #### Cache results for repeated tasks
 
-_Applies to: All APIs._
+*Applies to: All APIs.*
 
 **Do:** Implement a local result cache (for example, using `sessionStorage` or
 `IndexedDB`) for repeated inputs or queries. Normalize the input by trimming
@@ -388,7 +389,7 @@ Unsupported in: Edge, Firefox, and Safari.
 Before use, check if the LanguageModel object is available in the global scope:
 
 ```js
-if ("LanguageModel" in self) {
+if ('LanguageModel' in self) {
   // The Prompt API is supported.
 } else {
   // Execute fallback strategy
@@ -397,5 +398,5 @@ if ("LanguageModel" in self) {
 
 If the Prompt API is unsupported or availability checks return 'unavailable', you must gracefully fall back:
 
-- Remote API Fallback: Redirect the detection request to a server endpoint or a cloud API (such as the Vertex AI Gemini API).
-- Local API Fallback: Redirect the detection request to a local endpoint, for example, using Transformers.js.
+* Remote API Fallback: Redirect the detection request to a server endpoint or a cloud API (such as the Vertex AI Gemini API).
+* Local API Fallback: Redirect the detection request to a local endpoint, for example, using Transformers.js. 

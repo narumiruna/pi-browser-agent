@@ -6,7 +6,6 @@ Chrome Extensions enforce a strict Content Security Policy that cannot be relaxe
 pages (popup, side panel, options, new tab, etc.).
 
 Blocked by default:
-
 - `eval()`, `new Function()`, `setTimeout("string")`
 - Inline `<script>` tags
 - Inline event handlers (`onclick="..."`, `onload="..."`, etc.)
@@ -28,11 +27,10 @@ Blocked by default:
 ```
 
 In `popup.js`:
-
 ```js
-document.getElementById("btn").addEventListener("click", () => {
+document.getElementById('btn').addEventListener('click', () => {
   // Handle click
-})
+});
 ```
 
 ## Executing User Code (Code Playground Pattern)
@@ -73,44 +71,41 @@ Correct pattern:
 
 ```js
 // playground.js — send code to sandbox
-const iframe = document.getElementById("preview")
-iframe.contentWindow.postMessage(
-  {
-    html: htmlCode,
-    css: cssCode,
-    js: jsCode,
-  },
-  "*",
-)
+const iframe = document.getElementById('preview');
+iframe.contentWindow.postMessage({
+  html: htmlCode,
+  css: cssCode,
+  js: jsCode
+}, '*');
 
 // sandbox.js — receive and execute
-window.addEventListener("message", (event) => {
-  const { html, css, js } = event.data
+window.addEventListener('message', (event) => {
+  const { html, css, js } = event.data;
   // Clear previous content
-  document.body.innerHTML = ""
-  document.head.querySelectorAll("style.user-style").forEach((s) => s.remove())
+  document.body.innerHTML = '';
+  document.head.querySelectorAll('style.user-style').forEach(s => s.remove());
 
   // Apply HTML
-  const container = document.createElement("div")
-  container.innerHTML = html
-  document.body.appendChild(container)
+  const container = document.createElement('div');
+  container.innerHTML = html;
+  document.body.appendChild(container);
 
   // Apply CSS
-  const style = document.createElement("style")
-  style.className = "user-style"
-  style.textContent = css
-  document.head.appendChild(style)
+  const style = document.createElement('style');
+  style.className = 'user-style';
+  style.textContent = css;
+  document.head.appendChild(style);
 
   // Execute JS (eval is allowed in sandbox!)
   try {
-    eval(js)
+    eval(js);
   } catch (e) {
-    const errEl = document.createElement("pre")
-    errEl.style.color = "red"
-    errEl.textContent = e.message
-    document.body.appendChild(errEl)
+    const errEl = document.createElement('pre');
+    errEl.style.color = 'red';
+    errEl.textContent = e.message;
+    document.body.appendChild(errEl);
   }
-})
+});
 ```
 
 ### Option 2: Blob URL in iframe
@@ -128,27 +123,27 @@ function updatePreview(htmlCode, cssCode, jsCode) {
   <script>${jsCode}<\/script>
 </body>
 </html>
-`
-  const blob = new Blob([html], { type: "text/html" })
-  const url = URL.createObjectURL(blob)
-  const iframe = document.getElementById("preview")
+`;
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const iframe = document.getElementById('preview');
   // Revoke previous URL
-  if (iframe.dataset.blobUrl) URL.revokeObjectURL(iframe.dataset.blobUrl)
-  iframe.dataset.blobUrl = url
-  iframe.src = url
+  if (iframe.dataset.blobUrl) URL.revokeObjectURL(iframe.dataset.blobUrl);
+  iframe.dataset.blobUrl = url;
+  iframe.src = url;
 }
 ```
 
 ### Option 3: srcdoc Attribute
 
 ```js
-const iframe = document.getElementById("preview")
+const iframe = document.getElementById('preview');
 iframe.srcdoc = `
   <!DOCTYPE html>
   <style>${cssCode}</style>
   ${htmlCode}
   <script>${jsCode}<\/script>
-`
+`;
 ```
 
 Both blob URLs and srcdoc create a separate origin, so they bypass the extension's CSP.
@@ -159,16 +154,16 @@ from the extension page (same cross-origin restriction as sandbox).
 
 ```js
 // ❌ WILL FAIL: Trying to set iframe content directly
-iframe.contentDocument.open()
-iframe.contentDocument.write(html)
-iframe.contentDocument.close()
+iframe.contentDocument.open();
+iframe.contentDocument.write(html);
+iframe.contentDocument.close();
 
 // ❌ WILL FAIL: Accessing cross-origin sandbox DOM
-const doc = iframe.contentWindow.document
-doc.body.innerHTML = html
+const doc = iframe.contentWindow.document;
+doc.body.innerHTML = html;
 
 // ❌ WILL FAIL: eval in a normal extension page
-eval(userCode) // CSP blocks this
+eval(userCode); // CSP blocks this
 ```
 
 ## CSP for Remote Resources

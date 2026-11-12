@@ -147,22 +147,18 @@ Unsupported in: Safari.
 Without `closedby`, a modal still closes with `Esc` and the back gesture; only click-outside is lost, so this is graceful degradation. `closedby="none"` is ignored the same way: `Esc` fires `cancel` and then closes the dialog. Keep the unsaved-changes guard in a `cancel` handler, not in `closedby="none"` alone, so it also protects where `closedby` is missing. If your Baseline target requires light dismiss, add this where `closedby` is missing:
 
 ```js
-if (!("closedBy" in HTMLDialogElement.prototype)) {
+if (!('closedBy' in HTMLDialogElement.prototype)) {
   // Test the pointer position, not event.target: the <dialog> is also the target for its own
   // padding and the gaps between its children, so a target check would close on those clicks
   const outside = (e, dialog) => {
-    const r = dialog.getBoundingClientRect()
-    return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom
-  }
+    const r = dialog.getBoundingClientRect();
+    return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+  };
   for (const dialog of document.querySelectorAll('dialog[closedby="any"]')) {
-    let pressedOutside = false
-    dialog.addEventListener("pointerdown", (e) => {
-      pressedOutside = outside(e, dialog)
-    })
+    let pressedOutside = false;
+    dialog.addEventListener('pointerdown', (e) => { pressedOutside = outside(e, dialog); });
     // Require the press and the release outside, so a text-selection drag that ends on the backdrop does not dismiss
-    dialog.addEventListener("pointerup", (e) => {
-      if (pressedOutside && outside(e, dialog)) dialog.close()
-    })
+    dialog.addEventListener('pointerup', (e) => { if (pressedOutside && outside(e, dialog)) dialog.close(); });
   }
 }
 ```
@@ -184,8 +180,8 @@ If your Baseline target does not include Invoker Commands, keep the same markup 
 
 ```js
 // MANDATORY: feature detect on HTMLButtonElement.prototype and load only when native support is missing
-if (!("commandForElement" in HTMLButtonElement.prototype)) {
-  import("invokers-polyfill") // npm install invokers-polyfill
+if (!('commandForElement' in HTMLButtonElement.prototype)) {
+  import('invokers-polyfill'); // npm install invokers-polyfill
 }
 ```
 
@@ -205,14 +201,13 @@ With a bundler or import map:
 ```js
 // MANDATORY: Feature detect 'popover' on HTMLElement.prototype.
 if (!Object.hasOwn(HTMLElement.prototype, "popover")) {
-  import("@oddbird/popover-polyfill")
+  import("@oddbird/popover-polyfill");
 }
 ```
 
 If not using a package manager, import from a CDN, e.g. `"https://unpkg.com/@oddbird/popover-polyfill@latest/dist/popover.min.js"`.
 
 Caveats when using the polyfill:
-
 - Do NOT use the `popover` IDL attribute for any code that may run before the polyfill is fully loaded. It will not be mirrored as an attribute, the popover will not be picked up by the polyfill, and the property will be shadowing the accessor the polyfill adds forever. Use `setAttribute()`/`removeAttribute()` instead.
 - **Styling caveat:** The polyfill cannot define the real `:popover-open` pseudo-class, so it applies a `.\:popover-open` class instead. **MANDATORY:** Combine the two with `:is()` or `:where()`, otherwise browsers that lack `:popover-open` discard the entire rule:
 

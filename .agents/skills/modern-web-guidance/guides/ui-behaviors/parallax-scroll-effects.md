@@ -55,12 +55,13 @@ Here’s how to create a basic parallax effect:
     }
     ```
 
-5.  **Stagger the animations:** To make the layers move at different speeds, you can use one of two main approaches: **staggering in the keyframes**, or **staggering the `animation-range`**.
+5.  **Stagger the animations:** To make the layers move at different speeds, you can use one of two main approaches: **staggering in the keyframes**, or **staggering the `animation-range`**. 
 
     Choose **staggering in the keyframes** when layers share a common animation timeline and range but require distinct travel distances (simplest for a fixed number of layers). Choose **staggering the `animation-range`** when layers should enter and exit at different scroll thresholds across a long container.
 
     Both of these approaches can use hardcoded values, or can use the `sibling-index()`/`sibling-count()` implementation. The hardcoded values are easiest and also useful when having only a limited amount of layers. The `sibling-index()`/`sibling-count()` implementation is handy when you have many layers.
-    -   **Staggering in the keyframes:**
+
+    *   **Staggering in the keyframes:**
 
         Using **hardcoded values**, you can define a custom property for each layer to manually control its parallax offset.
 
@@ -86,7 +87,7 @@ Here’s how to create a basic parallax effect:
         }
         ```
 
-    -   **Staggering the `animation-range`:**
+    *   **Staggering the `animation-range`:**
 
         Using **hardcoded values**, you can explicitly define the boundaries of the `animation-range` on each layer individually.
 
@@ -165,12 +166,13 @@ When using scroll-driven animations, it's important to follow a few best practic
   - If the animation is only considered to be decorative, opt for Progressive Enhancement and **DO NOT** provide a fallback.
 - **DO** respect user preferences: Some users prefer to have less motion on the web. Use the `prefers-reduced-motion` media query to disable or reduce your animations for these users.
 - **DO** try to animate only performant CSS properties: For the smoothest animations, stick to animating properties that can be handled by the browser's compositor thread, such as `transform` and `opacity`. Animating other properties like `width` or `height` can lead to performance issues.
-- **DO** use the correct declaration order: When using the `animation` shorthand property, declare `animation-timeline` and `animation-range` _after_ it to prevent the shorthand from resetting the timeline.
+- **DO** use the correct declaration order: When using the `animation` shorthand property, declare `animation-timeline` and `animation-range` *after* it to prevent the shorthand from resetting the timeline.
 
 As for setting the `animation-range`:
 
 - **DO** give all layers the same start offset, e.g. `entry 25%`
 - **DO** give all layers a different end offset that uses `sibling-count()` and `sibling-index()` to distribute the offsets, e.g. `exit calc(100% / sibling-count() * sibling-index())`.
+
 
 ## Browser support and fallback strategies
 
@@ -188,49 +190,44 @@ For this use-case specifically, the following script applies the fallback for br
 ```js
 // Fallback for browsers that don't support scroll-driven animations
 // Like the CSS, it doesn't run when the user prefers reduced motion.
-if (
-  !CSS.supports("(animation-timeline: view()) and (animation-range: entry)") &&
-  !matchMedia("(prefers-reduced-motion: reduce)").matches
-) {
-  const wrapper = document.querySelector(".wrapper")
-  const layers = document.querySelectorAll(".layer")
+if (!CSS.supports('(animation-timeline: view()) and (animation-range: entry)') &&
+    !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  const wrapper = document.querySelector('.wrapper');
+  const layers = document.querySelectorAll('.layer');
 
-  const observer = new IntersectionObserver(
-    (entries) => {
-      entries.forEach((entry) => {
-        if (entry.isIntersecting) {
-          window.addEventListener("scroll", onScroll)
-        } else {
-          window.removeEventListener("scroll", onScroll)
-        }
-      })
-    },
-    { threshold: 0 },
-  )
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        window.addEventListener('scroll', onScroll);
+      } else {
+        window.removeEventListener('scroll', onScroll);
+      }
+    });
+  }, { threshold: 0 });
 
-  observer.observe(wrapper)
+  observer.observe(wrapper);
 
   function onScroll() {
-    const scrollY = window.scrollY
-    const wrapperRect = wrapper.getBoundingClientRect()
-    const wrapperTop = wrapperRect.top + scrollY
-    const wrapperHeight = wrapperRect.height
-    const windowHeight = window.innerHeight
+    const scrollY = window.scrollY;
+    const wrapperRect = wrapper.getBoundingClientRect();
+    const wrapperTop = wrapperRect.top + scrollY;
+    const wrapperHeight = wrapperRect.height;
+    const windowHeight = window.innerHeight;
 
     if (scrollY >= wrapperTop - windowHeight && scrollY <= wrapperTop + wrapperHeight) {
-      const scrollPercent = (scrollY - (wrapperTop - windowHeight)) / (wrapperHeight + windowHeight)
-
+      const scrollPercent = (scrollY - (wrapperTop - windowHeight)) / (wrapperHeight + windowHeight);
+      
       layers.forEach((layer, index) => {
         // This matches the effect as defined in the CSS example above.
         // Customize this further if needed.
-        const initialTranslateY = 100 * index
-        const translateY = initialTranslateY * (1 - scrollPercent)
-        layer.style.transform = `translateY(${translateY}px)`
-      })
+        const initialTranslateY = 100 * index;
+        const translateY = initialTranslateY * (1 - scrollPercent);
+        layer.style.transform = `translateY(${translateY}px)`;
+      });
     }
   }
 
   // Trigger onScroll once to set initial positions
-  onScroll()
+  onScroll();
 }
 ```

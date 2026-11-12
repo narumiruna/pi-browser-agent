@@ -3,7 +3,6 @@
 A scrollspy navigation is a common UI pattern that automatically highlights the navigation link corresponding to the section of the page currently in the viewport. This provides users with a clear sense of where they are in a long document as they scroll.
 
 This pattern is common in two scenarios:
-
 - **Single-page websites**: Where the primary site navigation links to different sections of a single page rather than separate URLs.
 - **Long-form content**: Where a table of contents or sidebar navigation tracks the user's progress through an article, guide, or documentation.
 
@@ -21,6 +20,7 @@ Traditionally, the scrollspy pattern required JavaScript and the `IntersectionOb
 This example highlights the active link in a fixed navigation menu as the user scrolls through sections.
 
 ```css
+
 /* MANDATORY: The container of markers must have scroll-target-group: auto */
 nav {
   /* Enables automatic tracking of fragment links */

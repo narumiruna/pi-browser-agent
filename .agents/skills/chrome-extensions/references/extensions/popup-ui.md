@@ -48,15 +48,15 @@ Popup state is lost when closed. Use `chrome.storage` for persistence:
 
 ```js
 // Save on change
-document.getElementById("input").addEventListener("input", (e) => {
-  chrome.storage.local.set({ savedInput: e.target.value })
-})
+document.getElementById('input').addEventListener('input', (e) => {
+  chrome.storage.local.set({ savedInput: e.target.value });
+});
 
 // Restore on open
-document.addEventListener("DOMContentLoaded", async () => {
-  const { savedInput = "" } = await chrome.storage.local.get("savedInput")
-  document.getElementById("input").value = savedInput
-})
+document.addEventListener('DOMContentLoaded', async () => {
+  const { savedInput = '' } = await chrome.storage.local.get('savedInput');
+  document.getElementById('input').value = savedInput;
+});
 ```
 
 Note: `localStorage` technically works in popups (they have a persistent origin), but
@@ -67,14 +67,12 @@ and supports sync.
 
 ```js
 // From popup
-const response = await chrome.runtime.sendMessage({ type: "GET_STATUS" })
+const response = await chrome.runtime.sendMessage({ type: 'GET_STATUS' });
 
 // Long-lived connection
-const port = chrome.runtime.connect({ name: "popup" })
-port.postMessage({ type: "INIT" })
-port.onMessage.addListener((msg) => {
-  /* handle */
-})
+const port = chrome.runtime.connect({ name: 'popup' });
+port.postMessage({ type: 'INIT' });
+port.onMessage.addListener((msg) => { /* handle */ });
 ```
 
 ## Dynamic Popup vs No Popup
@@ -86,12 +84,11 @@ If you want the action click to do something instead of showing a popup, remove
 // In service worker — only fires if NO popup is set
 chrome.action.onClicked.addListener((tab) => {
   // Open side panel, inject script, etc.
-})
+});
 ```
 
 You can toggle between popup and no-popup dynamically:
-
 ```js
-chrome.action.setPopup({ popup: "popup/popup.html" }) // Enable popup
-chrome.action.setPopup({ popup: "" }) // Disable popup (enables onClicked)
+chrome.action.setPopup({ popup: 'popup/popup.html' }); // Enable popup
+chrome.action.setPopup({ popup: '' }); // Disable popup (enables onClicked)
 ```

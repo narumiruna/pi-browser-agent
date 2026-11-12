@@ -1,6 +1,6 @@
 # Pre-rendering custom elements
 
-Pre-rendering means shipping a custom element's markup — including its shadow tree — from the server, so the component is styled and structured _before_ any JavaScript runs. The main platform primitive for this is **Declarative Shadow DOM (DSD)**: the parser attaches the shadow root from HTML alone, and the element is later upgraded ("hydrated") by its class if one is registered. Use this pattern for server-side rendering, streaming, and avoiding a flash of unstyled content (FOUC).
+Pre-rendering means shipping a custom element's markup — including its shadow tree — from the server, so the component is styled and structured *before* any JavaScript runs. The main platform primitive for this is **Declarative Shadow DOM (DSD)**: the parser attaches the shadow root from HTML alone, and the element is later upgraded ("hydrated") by its class if one is registered. Use this pattern for server-side rendering, streaming, and avoiding a flash of unstyled content (FOUC).
 
 ## Authoring a declarative shadow root
 
@@ -31,18 +31,17 @@ When the matching class is registered, the browser upgrades the host. Because th
 ```javascript
 class MyCard extends HTMLElement {
   constructor() {
-    super()
+    super();
     // Reuse the server-rendered shadow root if present; only create one if absent.
     if (!this.shadowRoot) {
-      this.attachShadow({ mode: "open" })
-      this.shadowRoot.append(template.content.cloneNode(true))
+      this.attachShadow({ mode: 'open' });
+      this.shadowRoot.append(template.content.cloneNode(true));
     }
     // Hydrate in place: attach listeners once against existing markup (not unguarded
     // in connectedCallback, which re-runs if the element moves in the DOM), and do
     // NOT re-render; that would discard the server's DOM and flash.
-    this.shadowRoot
-      .getElementById("toggle")
-      ?.addEventListener("click", () => this.toggleAttribute("open"))
+    this.shadowRoot.getElementById('toggle')
+      ?.addEventListener('click', () => this.toggleAttribute('open'));
   }
 }
 ```

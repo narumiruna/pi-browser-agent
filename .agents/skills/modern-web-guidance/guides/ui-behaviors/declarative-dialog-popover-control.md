@@ -82,8 +82,8 @@ Install the polyfill via npm (`npm install invokers-polyfill`). This approach is
 ```javascript
 // MANDATORY: Feature detect 'commandForElement' on HTMLButtonElement.prototype.
 // Conditionally load the invokers-polyfill only in browsers lacking native support.
-if (!("commandForElement" in HTMLButtonElement.prototype)) {
-  import("invokers-polyfill")
+if (!('commandForElement' in HTMLButtonElement.prototype)) {
+  import('invokers-polyfill');
 }
 ```
 
@@ -105,18 +105,18 @@ MANDATORY: This polyfill does not handle the ARIA states (e.g., `aria-expanded`)
 
 ```javascript
 // 2. Manually manage ARIA states in your listener
-document.getElementById("action-target").addEventListener("command", (event) => {
-  const command = event.command
-  const target = event.target
-  const source = event.source // The button that triggered the command
+document.getElementById('action-target').addEventListener('command', (event) => {
+  const command = event.command;
+  const target = event.target;
+  const source = event.source; // The button that triggered the command
 
-  if (command === "--spin") {
-    const isSpun = target.classList.toggle("is-spun")
-
+  if (command === '--spin') {
+    const isSpun = target.classList.toggle('is-spun');
+    
     // Polyfill tip: Manually update ARIA to match the new state
-    source?.setAttribute("aria-pressed", isSpun)
+    source?.setAttribute('aria-pressed', isSpun);
   }
-})
+});
 ```
 
 ### Fallbacks & browser support for Popover
@@ -133,14 +133,13 @@ With a bundler or import map:
 ```js
 // MANDATORY: Feature detect 'popover' on HTMLElement.prototype.
 if (!Object.hasOwn(HTMLElement.prototype, "popover")) {
-  import("@oddbird/popover-polyfill")
+  import("@oddbird/popover-polyfill");
 }
 ```
 
 If not using a package manager, import from a CDN, e.g. `"https://unpkg.com/@oddbird/popover-polyfill@latest/dist/popover.min.js"`.
 
 Caveats when using the polyfill:
-
 - Do NOT use the `popover` IDL attribute for any code that may run before the polyfill is fully loaded. It will not be mirrored as an attribute, the popover will not be picked up by the polyfill, and the property will be shadowing the accessor the polyfill adds forever. Use `setAttribute()`/`removeAttribute()` instead.
 - **Styling caveat:** The polyfill cannot define the real `:popover-open` pseudo-class, so it applies a `.\:popover-open` class instead. **MANDATORY:** Combine the two with `:is()` or `:where()`, otherwise browsers that lack `:popover-open` discard the entire rule:
 

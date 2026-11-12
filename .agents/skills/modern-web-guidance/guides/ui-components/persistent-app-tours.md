@@ -5,7 +5,6 @@ Onboarding tours require overlays that persist while users interact with the hig
 ## Recommended Implementation
 
 ### HTML
-
 ```html
 <div id="feature-target">Highlight this feature</div>
 
@@ -18,7 +17,6 @@ Onboarding tours require overlays that persist while users interact with the hig
 ```
 
 ### CSS
-
 ```css
 #feature-target {
   anchor-name: --feature-target;
@@ -38,27 +36,26 @@ Onboarding tours require overlays that persist while users interact with the hig
 ```
 
 ### JavaScript
-
 ```javascript
-const tourStep = document.getElementById("tour-step")
-tourStep.showPopover()
+const tourStep = document.getElementById('tour-step');
+tourStep.showPopover();
 
 // At this point, as this is an initial onboarding tour popover, set the rest of the document to be inert. Ensure that the onboarding modal popover is not a child of this element, otherwise it too will be rendered inert and therefore inaccessible.
 // Ensure that inert is removed once the initial onboarding tour has finished
-const main = document.querySelector("main")
-main.inert = true
+const main = document.querySelector("main");
+main.inert = true;
 
 // MANDATORY: Programmatically route focus into the non-modal popover so keyboard/assistive technology users immediately perceive the new context
-tourStep.querySelector("button").focus()
+tourStep.querySelector('button').focus();
 ```
 
 ## Implementation Guidelines
 
-- **MANDATORY:** Use `popover="manual"` to prevent the tour step from closing accidentally during user interaction.
-- **MANDATORY:** Mark the container with `role="dialog"` and link its heading via `aria-labelledby`.
-- **MANDATORY:** Shift programmatic focus inside the popover immediately after opening to prevent focus abandonment.
-- **DO** use CSS Anchor Positioning to tether the tour step to the specific feature being explained.
-- **DO** provide an explicit "Close" or "Next" button within the popover that uses `popovertargetaction="hide"`.
+* **MANDATORY:** Use `popover="manual"` to prevent the tour step from closing accidentally during user interaction.
+* **MANDATORY:** Mark the container with `role="dialog"` and link its heading via `aria-labelledby`.
+* **MANDATORY:** Shift programmatic focus inside the popover immediately after opening to prevent focus abandonment.
+* **DO** use CSS Anchor Positioning to tether the tour step to the specific feature being explained.
+* **DO** provide an explicit "Close" or "Next" button within the popover that uses `popovertargetaction="hide"`.
 
 ## Accessibility considerations
 
@@ -88,14 +85,13 @@ With a bundler or import map:
 ```js
 // MANDATORY: Feature detect 'popover' on HTMLElement.prototype.
 if (!Object.hasOwn(HTMLElement.prototype, "popover")) {
-  import("@oddbird/popover-polyfill")
+  import("@oddbird/popover-polyfill");
 }
 ```
 
 If not using a package manager, import from a CDN, e.g. `"https://unpkg.com/@oddbird/popover-polyfill@latest/dist/popover.min.js"`.
 
 Caveats when using the polyfill:
-
 - Do NOT use the `popover` IDL attribute for any code that may run before the polyfill is fully loaded. It will not be mirrored as an attribute, the popover will not be picked up by the polyfill, and the property will be shadowing the accessor the polyfill adds forever. Use `setAttribute()`/`removeAttribute()` instead.
 - **Styling caveat:** The polyfill cannot define the real `:popover-open` pseudo-class, so it applies a `.\:popover-open` class instead. **MANDATORY:** Combine the two with `:is()` or `:where()`, otherwise browsers that lack `:popover-open` discard the entire rule:
 
@@ -124,7 +120,7 @@ With a bundler or import map:
 ```js
 // MANDATORY: Feature-detect anchor positioning support before loading the polyfill.
 if (!CSS.supports("anchor-name: --a")) {
-  import("@oddbird/css-anchor-positioning")
+  import("@oddbird/css-anchor-positioning");
 }
 ```
 
@@ -140,7 +136,6 @@ Without a bundler, import from a CDN inside a `<script type="module">`:
 ```
 
 **Polyfill caveats:**
-
 - **No implicit anchors:** The polyfill does not support implicit anchor associations (such as those created by `popovertarget`, `commandfor`, `interestfor`, or `showPopover({ source })`). You **MUST** set a unique explicit `anchor-name` on each trigger and a matching `position-anchor` on the positioned element.
 - **No `position-area` with `position-try-fallbacks`:** `position-area` with `position-try-fallbacks` is not supported by the polyfill. When using the polyfill on elements needing fallbacks, position elements using `anchor()` functions on inset properties (`top`, `left`, `right`, `bottom`) with `inset: auto` instead of `position-area`.
 - **Do not wrap polyfilled rules in `@supports`:** Browsers without native anchor positioning evaluate `@supports (position-area: ...)` and `@supports (anchor-name: --a)` to `false` and discard the block before the polyfill can process it.
@@ -173,10 +168,7 @@ Instead, gate `inset: auto` and `margin: 0` inside `@supports` for the specific 
     inset: auto;
     margin: 0;
     position-area: block-end span-inline-end;
-    position-try-fallbacks:
-      flip-block,
-      flip-inline,
-      flip-block flip-inline;
+    position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
   }
 }
 

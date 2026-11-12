@@ -301,25 +301,25 @@ When the hidden content is focusable (skip links, focus-receiving wrappers), the
 // NOTE: This pattern applies ONLY to non-standard UI where no native HTML tag exists.
 // Always prioritize native <button> or <input> elements for standard interactions.
 // Elements MUST have the appropriate ARIA role (e.g., role="treeitem" or role="tab").
-customWidget.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") {
-    toggleWidgetState()
+customWidget.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    toggleWidgetState();
   }
-  if (e.key === " ") {
-    e.preventDefault() // Prevent page scrolling on Spacebar keydown
+  if (e.key === ' ') {
+    e.preventDefault(); // Prevent page scrolling on Spacebar keydown
   }
-})
+});
 
-customWidget.addEventListener("keyup", (e) => {
-  if (e.key === " ") {
-    toggleWidgetState()
+customWidget.addEventListener('keyup', (e) => {
+  if (e.key === ' ') {
+    toggleWidgetState();
   }
-})
+});
 
 function toggleWidgetState() {
   // E.g., Manage toggle/expanded states for custom controls
-  const isExpanded = customWidget.getAttribute("aria-expanded") === "true"
-  customWidget.setAttribute("aria-expanded", !isExpanded)
+  const isExpanded = customWidget.getAttribute('aria-expanded') === 'true';
+  customWidget.setAttribute('aria-expanded', !isExpanded);
 }
 ```
 
@@ -454,12 +454,12 @@ function toggleWidgetState() {
 
 ### Content Visibility Decision Matrix
 
-| Intent                 | Visual | Screen Reader | Focusable            | Structural Pattern                                |
-| :--------------------- | :----- | :------------ | :------------------- | :------------------------------------------------ |
-| **Visible to all**     | Yes    | Yes           | Yes                  | Standard rendering                                |
-| **Screen Reader only** | No     | Yes           | Yes (if interactive) | Visually hidden utility (e.g. `.visually-hidden`) |
-| **Visual only**        | Yes    | No            | No                   | `aria-hidden="true"`                              |
-| **Hidden for all**     | No     | No            | No                   | `hidden` attribute / `display: none`              |
+| Intent | Visual | Screen Reader | Focusable | Structural Pattern |
+| :--- | :--- | :--- | :--- | :--- |
+| **Visible to all** | Yes | Yes | Yes | Standard rendering |
+| **Screen Reader only** | No | Yes | Yes (if interactive) | Visually hidden utility (e.g. `.visually-hidden`) |
+| **Visual only** | Yes | No | No | `aria-hidden="true"` |
+| **Hidden for all** | No | No | No | `hidden` attribute / `display: none` |
 
 **Heuristic Rule:** If an element can receive keyboard focus, it must not be hidden via `aria-hidden="true"`.
 
@@ -471,7 +471,7 @@ function toggleWidgetState() {
 
 - **Mandatory - Provide a label for all form controls:** Do not rely on the currently selected input or value as a way of labeling the control. (3.3.2 Labels or Instructions (Level A))
 - **Connect Labels Programmatically:** Use `<label for="id">` linked to `<input id="id">`. (1.3.1 Info and Relationships (Level A))
-- **Don't use placeholders as primary labels:** Placeholders are not persistent labels. Only use placeholders to provide brief hints, such as an example of an appropriate input. (3.3.2 Labels or Instructions (Level A))
+- **Don't use placeholders as primary labels:** Placeholders are not persistent labels. Only use placeholders to provide  brief hints, such as an example of an appropriate input. (3.3.2 Labels or Instructions (Level A))
 - **Link hints to inputs via `aria-describedby`:** Associate help text with inputs, and place the hint above the input so autocomplete popovers don't cover it during editing. (1.3.1 Info and Relationships (Level A))
 
 #### Code Example: A labeled form control with a hint for passwords
@@ -497,11 +497,11 @@ Live regions let assistive tech announce content updates that aren't tied to nav
 
 ### Live Region Urgency Table
 
-| Urgency      | Visual Analogue | `aria-live` Value               | Behavioral Impact                           | Example                        |
-| :----------- | :-------------- | :------------------------------ | :------------------------------------------ | :----------------------------- |
-| **Critical** | Modal / Alert   | `assertive` (or `role="alert"`) | Interrupts immediately, clears speech queue | Session timeout, API failure   |
-| **Standard** | Toast / Banner  | `polite`                        | Announces at next graceful break            | Search results, "Saved" status |
-| **Passive**  | Silent text     | `off`                           | Only if user navigates to it                | Live character count           |
+| Urgency | Visual Analogue | `aria-live` Value | Behavioral Impact | Example |
+| :--- | :--- | :--- | :--- | :--- |
+| **Critical** | Modal / Alert | `assertive` (or `role="alert"`) | Interrupts immediately, clears speech queue | Session timeout, API failure |
+| **Standard**| Toast / Banner | `polite` | Announces at next graceful break | Search results, "Saved" status |
+| **Passive**  | Silent text | `off` | Only if user navigates to it | Live character count |
 
 **Heuristic Rule:** Use `assertive` only for critical, time-sensitive updates that require immediate attention or prevent safe continuation (e.g., data loss, session timeouts, or network drops).
 

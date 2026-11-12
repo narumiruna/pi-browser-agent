@@ -62,6 +62,7 @@ Even when overriding the system default, it can be useful to use the `prefers-co
 
 For example, use a slightly dimmer light theme when the system setting is `dark`, or a more contrasting dark theme when the system setting is `light`, so the page is not visually overpowered by the surrounding UI.
 
+
 ## Fine-grained browser UI customization
 
 Setting `color-scheme` already adapts browser UI to the used color scheme, but this will use OS defaults and/or system colors that may not perfectly align with the website design.
@@ -83,7 +84,6 @@ html {
 
 Browser rendering of `accent-color` varies.
 For indicators generally painted over an accent color background, such as checkbox marks and radio-button dots, browsers may apply different treatments:
-
 - **Chromium** and **Firefox** generally select a contrasting indicator color.
 - **Safari** may instead preserve a white indicator in light mode or a black indicator in dark mode, while modifying the accent color behind it. This adjustment does not always provide sufficient contrast for every supplied color, so test important combinations in Safari, including both light and dark color schemes. Do not assume that Safari will automatically choose whichever indicator color provides the best contrast.
 
@@ -110,7 +110,6 @@ You can use `scrollbar-color` together with `light-dark()` to set custom scrollb
 ### Further customization
 
 Most browser UI exposes pseudo-elements to fully customize its appearance, such as:
-
 - `::placeholder`
 - `::spelling-error`
 - `::grammar-error`
@@ -191,8 +190,8 @@ To adapt to the user's preferences in older browsers, use `prefers-color-scheme`
 }
 
 button.primary {
-  background-color: var(--color-brand);
-  color: var(--color-brand-text);
+	background-color: var(--color-brand);
+	color: var(--color-brand-text);
 }
 ```
 
@@ -227,8 +226,7 @@ For browsers that support `color-scheme` but not yet `light-dark()`, light and d
   accent-color: var(--accent-color);
 }
 
-pre,
-code {
+pre, code {
   color-scheme: dark;
 
   /* **Mandatory**: any inherited color properties must be set again, even if to the same design tokens */
@@ -260,10 +258,7 @@ Define the switch once on `:root`. Every use site then only needs both images in
 }
 
 .hero {
-  background-image: image-set(
-    url(hero-light.png) var(--light-type),
-    url(hero-dark.png) var(--dark-type)
-  );
+  background-image: image-set(url(hero-light.png) var(--light-type), url(hero-dark.png) var(--dark-type));
 
   @supports (background-image: light-dark(url("a"), url("b"))) {
     background-image: light-dark(url(hero-light.png), url(hero-dark.png));

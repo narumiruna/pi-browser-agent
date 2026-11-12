@@ -5,7 +5,6 @@ Sticky headers are a common UI pattern, but they often need to change their appe
 ## Implementation Steps
 
 ### 1. Create the Sticky Container
-
 You need a container that will act as the sticky element and the container for the scroll state query.
 
 ```html
@@ -23,7 +22,6 @@ You need a container that will act as the sticky element and the container for t
 ```
 
 ### 2. Apply CSS for Sticky Behavior and Container Type
-
 Set `container-type: scroll-state` on the `position: sticky` element, not on its scrollable ancestor. Always specify a `container-name`, since these queries may be nested and unnamed containers will collide. You can also combine it with size queries, e.g., `container-type: scroll-state inline-size`.
 
 ```css
@@ -40,9 +38,7 @@ Set `container-type: scroll-state` on the `position: sticky` element, not on its
   /* Base styles for the header */
   background: #f0f0f0;
   padding: 20px;
-  transition:
-    background-color 0.3s,
-    box-shadow 0.3s;
+  transition: background-color 0.3s, box-shadow 0.3s;
 }
 ```
 
@@ -53,12 +49,12 @@ Add `scroll-padding-top` to the scrollport and set the value to be equal or grea
 ```css
 html {
   /* Accounts for the height of the header */
-  scroll-padding-top: var(--header-height);
+  scroll-padding-top: var(--header-height); 
 }
 ```
 
-### 3. Target the Stuck State
 
+### 3. Target the Stuck State
 Use the `@container scroll-state(...)` query to apply styles when the header is stuck.
 
 ```css
@@ -91,7 +87,6 @@ Apply `overflow-anchor: none` to the direct parent of the `position: sticky` ele
 DO NOT: Rely on `overflow-anchor: none` for elements stuck to the **bottom**. Scroll anchoring only compensates for layout shifts above the current scroll position, so it has no effect on bottom-stuck elements. Avoid changing box-model properties in the stuck state for bottom-stuck headers.
 
 ### Fallback strategies
-
 Browser support for Container scroll-state queries: Limited availability.
 Supported by: Chrome 144 (Jan 2026) and Edge 144 (Jan 2026).
 Unsupported in: Firefox and Safari.
@@ -103,12 +98,12 @@ If stickiness is not essential, but `position: sticky` without different styling
 ```css
 .sticky-container {
   @supports (container-type: scroll-state) {
-    position: sticky;
-    top: 0;
-    container-type: scroll-state;
-    container-name: section-header;
-    z-index: 10;
-  }
+	  position: sticky;
+	  top: 0;
+	  container-type: scroll-state;
+	  container-name: section-header;
+	  z-index: 10;
+	}
 }
 ```
 **Tip:** If your "stuck" styling requires a different background color for readability, consider setting your layout up so that the default styling works everywhere (Progressive Enhancement). If you must use a fallback, you can gate the `position: sticky` behaviour itself inside an `@supports (container-type: scroll-state)` query.
@@ -118,36 +113,36 @@ If the visual transformation is absolutely critical to the design (e.g., the stu
 ```javascript
 function getScrollParent(node) {
   if (node == null || node === document.body || node === document.documentElement) {
-    return null // default to viewport
+    return null; // default to viewport
   }
   if (node.scrollHeight > node.clientHeight || node.scrollWidth > node.clientWidth) {
-    const overflow = getComputedStyle(node).overflow
-    if (overflow !== "visible" && overflow !== "clip") {
-      return node
+    const overflow = getComputedStyle(node).overflow;
+    if (overflow !== 'visible' && overflow !== 'clip') {
+      return node;
     }
   }
-  return getScrollParent(node.parentNode)
+  return getScrollParent(node.parentNode);
 }
 
-document.querySelectorAll(".sticky-container").forEach((container) => {
-  const root = getScrollParent(container)
-
-  const topOffset = parseFloat(getComputedStyle(container).top) || 0
-
+document.querySelectorAll('.sticky-container').forEach(container => {
+  const root = getScrollParent(container);
+  
+  const topOffset = parseFloat(getComputedStyle(container).top) || 0;
+  
   const observer = new IntersectionObserver(
     ([e]) => {
       // Toggle the fallback class on the sticky header container
-      e.target.classList.toggle("is-stuck", e.intersectionRatio < 1)
+      e.target.classList.toggle('is-stuck', e.intersectionRatio < 1);
     },
-    {
+    { 
       root: root,
       threshold: [1],
-      rootMargin: `-${topOffset + 1}px 0px 0px 0px`,
-    },
-  )
-
-  observer.observe(container)
-})
+      rootMargin: `-${topOffset + 1}px 0px 0px 0px` 
+    }
+  );
+  
+  observer.observe(container);
+});
 ```
 
-_Note: This generic IntersectionObserver pattern can also be used as a polyfill for the `scroll-state(scrollable)` query._
+*Note: This generic IntersectionObserver pattern can also be used as a polyfill for the `scroll-state(scrollable)` query.*

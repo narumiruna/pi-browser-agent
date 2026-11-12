@@ -87,18 +87,22 @@ Instead, design C/C++ entry points to process entire buffers or memory regions
 in a single call and read or write the contiguous buffer in linear memory:
 
 ```js
-import initRenderer from "./renderer.js"
+import initRenderer from './renderer.js';
 
-const wasm = await initRenderer()
-const byteLength = width * height * 4
-const ptr = wasm._malloc(byteLength)
+const wasm = await initRenderer();
+const byteLength = width * height * 4;
+const ptr = wasm._malloc(byteLength);
 
 try {
-  wasm._render_frame(ptr, width, height, samples)
-  const pixels = new Uint8ClampedArray(wasm.HEAPU8.buffer, ptr, byteLength).slice()
-  self.postMessage({ pixels, width, height }, [pixels.buffer])
+  wasm._render_frame(ptr, width, height, samples);
+  const pixels = new Uint8ClampedArray(
+    wasm.HEAPU8.buffer,
+    ptr,
+    byteLength,
+  ).slice();
+  self.postMessage({ pixels, width, height }, [pixels.buffer]);
 } finally {
-  wasm._free(ptr)
+  wasm._free(ptr);
 }
 ```
 

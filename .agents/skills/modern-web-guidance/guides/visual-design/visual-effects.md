@@ -8,7 +8,7 @@
 
 ```css
 .hero {
-  background-image: url("texture.png"), linear-gradient(to bottom, #fff, #eee);
+  background-image: url('texture.png'), linear-gradient(to bottom, #fff, #eee);
   background-blend-mode: soft-light;
 }
 ```
@@ -16,10 +16,9 @@
 ### Gradients and `color-mix()`
 
 Use `in oklch` or `in oklab` to explicitly specify the interpolation color space for gradients or `color-mix()`.
-
 - `in oklch` preserves chroma better, but can more easily get out of device gamut, especially for bigger differences between colors
 - `in oklab` stays in gamut more easily (assuming in-gamut endpoints) but can create washed out desaturated colors in the middle, especially when interpolating between opposite hues.
-- _DON'T_ use `in srgb` unless you have a specific reason to do so (e.g. you are building a color picker that needs to interpolate in srgb).
+- *DON'T* use `in srgb` unless you have a specific reason to do so (e.g. you are building a color picker that needs to interpolate in srgb).
 
 #### Fallback
 

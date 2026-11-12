@@ -76,42 +76,44 @@ No CSS is needed on the scope element itself (`.card` or `.card ul`) to establis
 function runScopedTransition(scopeEl, updateDOM) {
   // MANDATORY: Call startViewTransition on the component element, not document
   const transition = scopeEl.startViewTransition(() => {
-    updateDOM()
-  })
+    updateDOM();
+  });
 
   // Re-triggering startViewTransition() on the same element skips the active transition
   // and rejects `ready`. Catch the rejection to avoid unhandled promise rejection errors.
-  transition.ready.catch(() => {})
+  transition.ready.catch(() => {});
 }
 
 // 2. Reorder items by moving existing DOM nodes (required for `match-element`)
 // Scope to `listEl` since only the list order changes, keeping controls outside `listEl` interactive
 function reorderItems(listEl, orderedIds) {
-  const existing = new Map(Array.from(listEl.children, (li) => [li.dataset.id, li]))
+  const existing = new Map(
+    Array.from(listEl.children, (li) => [li.dataset.id, li]),
+  );
 
   runScopedTransition(listEl, () => {
     for (const id of orderedIds) {
-      const li = existing.get(id)
-      if (li) listEl.appendChild(li)
+      const li = existing.get(id);
+      if (li) listEl.appendChild(li);
     }
-  })
+  });
 }
 
 // 3. Remove an item while preserving exit animation and keyboard focus
 // Scope to the outer `cardEl` so the card itself also transitions its height change
 function removeItem(cardEl, itemEl) {
-  const hadFocus = itemEl.contains(document.activeElement)
+  const hadFocus = itemEl.contains(document.activeElement);
   const nextFocusTarget =
-    itemEl.nextElementSibling?.querySelector("button") ??
-    itemEl.previousElementSibling?.querySelector("button") ??
-    cardEl.querySelector("button")
+    itemEl.nextElementSibling?.querySelector('button') ??
+    itemEl.previousElementSibling?.querySelector('button') ??
+    cardEl.querySelector('button');
 
   runScopedTransition(cardEl, () => {
-    itemEl.remove()
+    itemEl.remove();
     if (hadFocus) {
-      nextFocusTarget?.focus()
+      nextFocusTarget?.focus();
     }
-  })
+  });
 }
 ```
 
@@ -143,9 +145,9 @@ To prevent this from happening, wrap the scope element in a separate wrapper ele
 ```
 
 ```javascript
-document.querySelector("#page").startViewTransition(() => {
+document.querySelector('#page').startViewTransition(() => {
   // do your DOM updates here...
-})
+});
 ```
 
 ```css
@@ -208,20 +210,20 @@ If your Baseline target does not support element-scoped view transitions, degrad
 
 ```javascript
 // Feature detect specifically on Element.prototype (not document.startViewTransition)
-const supportsScopedTransition = "startViewTransition" in Element.prototype
+const supportsScopedTransition = 'startViewTransition' in Element.prototype;
 
 function runWithTransition(scopeEl, updateDOM) {
   if (!supportsScopedTransition) {
     // Fallback: apply the DOM update immediately without animation
-    updateDOM()
-    return
+    updateDOM();
+    return;
   }
 
   const transition = scopeEl.startViewTransition(() => {
-    updateDOM()
-  })
+    updateDOM();
+  });
 
-  transition.ready.catch(() => {})
+  transition.ready.catch(() => {});
 }
 ```
 

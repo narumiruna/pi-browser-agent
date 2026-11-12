@@ -47,7 +47,9 @@ input[type="range"] {
   --attr-min: attr(min type(<number>), 0);
   --attr-max: attr(max type(<number>), 100);
   --control-value: attr(value type(<number>), 50);
-  --slider-progress: calc(progress(var(--control-value), var(--attr-min), var(--attr-max)) * 100%);
+  --slider-progress: calc(
+    progress(var(--control-value), var(--attr-min), var(--attr-max)) * 100%
+  );
 
   appearance: none;
   inline-size: 100%;
@@ -77,7 +79,9 @@ input[type="range"]::-webkit-slider-thumb {
   appearance: none;
   inline-size: var(--slider-thumb-size);
   block-size: var(--slider-thumb-size);
-  margin-block-start: calc((var(--slider-track-size) - var(--slider-thumb-size)) / 2);
+  margin-block-start: calc(
+    (var(--slider-track-size) - var(--slider-thumb-size)) / 2
+  );
   border: 0;
   border-radius: var(--slider-thumb-radius);
   background: var(--slider-thumb-color);
@@ -120,14 +124,14 @@ input[type="range"]:focus-visible {
 When the filled portion of the track is styled differently from the unfilled track, Firefox exposes it via `::-moz-range-progress`. WebKit/Blink do not provide an equivalent pseudo-element, so sync the live input value to `--control-value` on `input` events:
 
 ```js
-const slider = document.querySelector("#range-slider")
+const slider = document.querySelector('#range-slider');
 
 function syncSliderValue() {
-  slider.style.setProperty("--control-value", slider.value)
+  slider.style.setProperty('--control-value', slider.value);
 }
 
-syncSliderValue()
-slider.addEventListener("input", syncSliderValue)
+syncSliderValue();
+slider.addEventListener('input', syncSliderValue);
 ```
 
 ## Limitations
@@ -156,8 +160,7 @@ When `progress()` is unsupported, compute `--slider-progress` with `calc()`:
   input[type="range"] {
     --slider-progress: calc(
       (var(--control-value) - var(--attr-min)) /
-      (var(--attr-max) - var(--attr-min)) *
-      100%
+      (var(--attr-max) - var(--attr-min)) * 100%
     );
   }
 }
@@ -171,8 +174,9 @@ When typed `attr()` is unsupported, sync `--attr-min` and `--attr-max` from the 
 
 ```js
 function syncSliderValue() {
-  slider.style.setProperty("--attr-min", slider.min || 0)
-  slider.style.setProperty("--attr-max", slider.max || 100)
-  slider.style.setProperty("--control-value", slider.value)
+  slider.style.setProperty('--attr-min', slider.min || 0);
+  slider.style.setProperty('--attr-max', slider.max || 100);
+  slider.style.setProperty('--control-value', slider.value);
 }
 ```
+

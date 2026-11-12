@@ -173,3 +173,4 @@ if (getComputedStyle(document.body).getPropertyValue("--style-queries-supported"
   // Use fallback strategy
 }
 ```
+

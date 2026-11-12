@@ -12,7 +12,7 @@ The optimal way to provide real-time analytics updates, while still minimizing b
 
 3. **Reset the event queue when the timeout expires:** If a new analytics event occurs after the scheduled beacon has successfully sent (i.e. the `fetchLater()` result's `activated` value is `true`), reset the event queue.
 
-4. **Let the browser handle the rest:** If the user navigates away or closes the tab before the `activateAfter` timeout expires, the browser will still reliably send the payload from your most recent `fetchLater()` call.
+3. **Let the browser handle the rest:** If the user navigates away or closes the tab before the `activateAfter` timeout expires, the browser will still reliably send the payload from your most recent `fetchLater()` call.
 
 ## Example code
 
@@ -20,61 +20,61 @@ This code tracks all `load` and `click` events on a page, and batches together a
 
 ```javascript
 // Replace with your analytics endpoint.
-const ANALYTICS_ENDPOINT = "/path/to/analytics/endpoint"
+const ANALYTICS_ENDPOINT = '/path/to/analytics/endpoint';
 
 // Replace with a time window of your choice. All analytics events that
 // occur within this time window will be batched together.
-const BATCH_WINDOW = 10 * 1000
+const BATCH_WINDOW = 10 * 1000;
 
 // The maximum number of events to batch. Pick a number that is unlikely
 // to overflow the fetchLater() quota for the page.
-const MAX_QUEUE_SIZE = 100
+const MAX_QUEUE_SIZE = 100;
 
-const eventQueue = []
-let fetchLaterResult
-let fetchLaterController
+const eventQueue = [];
+let fetchLaterResult;
+let fetchLaterController;
 
 function trackEvent(eventData) {
   // If the previously queued beacon has already been sent, or if the
   // max queue size has been met, reset the queue.
   if (fetchLaterResult?.activated || eventQueue.length > MAX_QUEUE_SIZE) {
-    fetchLaterController = null
-    fetchLaterResult = null
-    eventQueue.length = 0
+    fetchLaterController = null;
+    fetchLaterResult = null;
+    eventQueue.length = 0;
   }
 
-  eventQueue.push(eventData)
+  eventQueue.push(eventData);
 
   // Abort any pending beacons before creating a new one.
   if (fetchLaterController) {
-    fetchLaterController.abort()
+    fetchLaterController.abort();
   }
-  fetchLaterController = new AbortController()
+  fetchLaterController = new AbortController();
 
   // Schedule a fetch for the events to be sent when the batch window expires.
   // IMPORTANT: wrap the call in a try/catch to handle quota errors.
   try {
     fetchLaterResult = fetchLater(ANALYTICS_ENDPOINT, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
+      method: 'POST',
+      headers: {'content-type': 'application/json'},
       body: JSON.stringify(eventQueue),
       signal: fetchLaterController.signal,
       activateAfter: BATCH_WINDOW,
-    })
+    });
   } catch (error) {
     // Handle errors as needed.
   }
 }
 
 // Track page loads.
-window.addEventListener("load", () => {
-  trackEvent({ type: "page_load" })
-})
+window.addEventListener('load', () => {
+  trackEvent({type: 'page_load'});
+});
 
 // Track click events.
-window.addEventListener("click", (event) => {
-  trackEvent({ type: "click", target: serializeElement(event.target) })
-})
+window.addEventListener('click', (event) => {
+  trackEvent({type: 'click', target: serializeElement(event.target)});
+});
 ```
 
 ## Best Practices
@@ -102,49 +102,53 @@ The only notable behavior difference with this polyfill is instead of sending th
 
 ```js
 globalThis.fetchLater ??= function fetchLater(url, init = {}) {
-  let timeoutHandle
-  let activated = false
+  let timeoutHandle;
+  let activated = false;
 
   function sendNow() {
     if (!(init.signal && init.signal.aborted)) {
       // Use fetch keepalive if the browser supports it or if custom fetch
       // parameters are specified (e.g. custom headers or methods).
       // Otherwise fall back to `navigator.sendBeacon()`.
-      if ("keepalive" in Request.prototype || init.method !== "POST" || init.headers) {
-        fetch(url, Object.assign({}, init, { keepalive: true }))
-        activated = true
+      if (
+        'keepalive' in Request.prototype ||
+        init.method !== 'POST' ||
+        init.headers
+      ) {
+        fetch(url, Object.assign({}, init, {keepalive: true}));
+        activated = true;
       } else {
-        activated = navigator.sendBeacon(url, init.body)
+        activated = navigator.sendBeacon(url, init.body);
       }
     }
-    destroy()
+    destroy();
   }
 
   function destroy() {
-    document.removeEventListener("visibilitychange", sendNow)
-    clearTimeout(timeoutHandle)
+    document.removeEventListener('visibilitychange', sendNow);
+    clearTimeout(timeoutHandle);
   }
 
-  if (document.visibilityState === "hidden") {
+  if (document.visibilityState === 'hidden') {
     // If the beacon was created while the page is already hidden, send data
     // ASAP but wait until the next microtask to allow all sync code to run.
-    queueMicrotask(sendNow)
+    queueMicrotask(sendNow);
   } else {
-    document.addEventListener("visibilitychange", sendNow)
+    document.addEventListener('visibilitychange', sendNow);
 
-    if (typeof init.activateAfter === "number" && init.activateAfter >= 0) {
-      timeoutHandle = setTimeout(sendNow, init.activateAfter)
+    if (typeof init.activateAfter === 'number' && init.activateAfter >= 0) {
+      timeoutHandle = setTimeout(sendNow, init.activateAfter);
     }
   }
 
   if (init.signal) {
-    init.signal.addEventListener("abort", destroy)
+    init.signal.addEventListener('abort', destroy);
   }
 
   return {
     get activated() {
-      return activated
+      return activated;
     },
-  }
-}
+  };
+};
 ```

@@ -16,7 +16,9 @@ If the API does not support CORS, request host permissions to bypass these restr
 
 ```json
 {
-  "host_permissions": ["https://no-cors-api.example.com/*"]
+  "host_permissions": [
+    "https://no-cors-api.example.com/*"
+  ]
 }
 ```
 
@@ -28,8 +30,8 @@ API calls work from any extension context (service worker, popup, side panel, co
 
 ```js
 // From popup or service worker
-const response = await fetch("https://api.openweathermap.org/data/2.5/weather?q=London&appid=KEY")
-const data = await response.json()
+const response = await fetch('https://api.openweathermap.org/data/2.5/weather?q=London&appid=KEY');
+const data = await response.json();
 ```
 
 **Content scripts** can also make fetch calls, but they follow the web page's CORS rules.
@@ -39,19 +41,19 @@ const data = await response.json()
 ```js
 async function callAPI(url) {
   try {
-    const response = await fetch(url)
+    const response = await fetch(url);
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
-    return await response.json()
+    return await response.json();
   } catch (err) {
     if (err instanceof TypeError) {
       // Network error (offline, DNS failure, etc.)
-      console.error("Network error:", err.message)
+      console.error('Network error:', err.message);
     } else {
-      console.error("API error:", err.message)
+      console.error('API error:', err.message);
     }
-    return null
+    return null;
   }
 }
 ```

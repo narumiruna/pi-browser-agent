@@ -68,9 +68,7 @@ select.custom-select::picker(select) {
   border-radius: 8px;
   padding: 8px;
   box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
-  width: anchor-size(
-    width
-  ); /* Uses Anchor Positioning API to keep the dropdown precisely aligned to the button trigger width */
+  width: anchor-size(width); /* Uses Anchor Positioning API to keep the dropdown precisely aligned to the button trigger width */
 }
 
 select.custom-select option {
@@ -175,11 +173,12 @@ For browsers that do not yet support `appearance: base-select`, the `<select>` e
 - **Non-Text Content Ignored**: Older browsers strip HTML tags (like `<svg>` or `<div>`) inside `<option>` tags and render only the text nodes. Ensure the text content of the `<option>` is readable and meaningful on its own.
 - **HTML Structure Handling**: Standard parsers may ignore the `<button>` and `<selectedcontent>` tags inside `<select>` or treat them as invalid. No heavy JavaScript polyfills are strictly required for progressive enhancement if you view standard text as a readable fallback.
 
+
 ```javascript
 document.addEventListener("DOMContentLoaded", () => {
   // Check if browser supports base-select value
   if (!CSS.supports("appearance", "base-select")) {
     // Custom select overrides are not supported natively.
   }
-})
+});
 ```

@@ -6,31 +6,31 @@
 
 ```js
 // sender (popup, content script, etc.)
-chrome.runtime.sendMessage({ type: "LOG", data: "hello" })
+chrome.runtime.sendMessage({ type: 'LOG', data: 'hello' });
 
 // receiver (service worker)
 chrome.runtime.onMessage.addListener((message, sender) => {
-  if (message.type === "LOG") console.log(message.data)
-})
+  if (message.type === 'LOG') console.log(message.data);
+});
 ```
 
 ### Request/response — IIFE + return true (most compatible)
 
 ```js
 // sender
-const response = await chrome.runtime.sendMessage({ type: "GET_DATA" })
-console.log(response.data)
+const response = await chrome.runtime.sendMessage({ type: 'GET_DATA' });
+console.log(response.data);
 
 // receiver — IIFE keeps the channel open until sendResponse is called
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === "GET_DATA") {
-    ;(async () => {
-      const data = await chrome.storage.local.get("key")
-      sendResponse({ data })
-    })()
-    return true // REQUIRED — tells Chrome to keep the channel open
+  if (message.type === 'GET_DATA') {
+    (async () => {
+      const data = await chrome.storage.local.get('key');
+      sendResponse({ data });
+    })();
+    return true; // REQUIRED — tells Chrome to keep the channel open
   }
-})
+});
 ```
 
 ### Request/response — return a Promise (Chrome 99+)
@@ -39,11 +39,11 @@ Returning a Promise directly from the listener is now supported and cleaner than
 
 ```js
 chrome.runtime.onMessage.addListener((message, sender) => {
-  if (message.type === "GET_DATA") {
-    return chrome.storage.local.get("key") // returned promise resolves the response
+  if (message.type === 'GET_DATA') {
+    return chrome.storage.local.get('key'); // returned promise resolves the response
   }
   // Return nothing (or undefined) for messages this listener doesn't handle
-})
+});
 ```
 
 **Note:** Requires Chrome 99+, only use when minimum Chrome version is set to 99.
@@ -53,10 +53,10 @@ chrome.runtime.onMessage.addListener((message, sender) => {
 
 ```js
 // content script → service worker
-const result = await chrome.runtime.sendMessage({ type: "FETCH_DATA", url: location.href })
+const result = await chrome.runtime.sendMessage({ type: 'FETCH_DATA', url: location.href });
 
 // service worker → specific tab's content script
-await chrome.tabs.sendMessage(tabId, { type: "HIGHLIGHT", selector: ".important" })
+await chrome.tabs.sendMessage(tabId, { type: 'HIGHLIGHT', selector: '.important' });
 ```
 
 ## Service worker → content script (targeted)
@@ -66,11 +66,11 @@ Always check that the tab exists and the content script is injected:
 ```js
 async function sendToContentScript(tabId, message) {
   try {
-    return await chrome.tabs.sendMessage(tabId, message)
+    return await chrome.tabs.sendMessage(tabId, message);
   } catch (err) {
     // Content script not injected yet, or tab navigated away
-    console.warn("Could not reach content script:", err.message)
-    return null
+    console.warn('Could not reach content script:', err.message);
+    return null;
   }
 }
 ```
@@ -81,20 +81,20 @@ Use ports when you need a persistent channel (e.g., streaming data, DevTools pan
 
 ```js
 // opener (popup or content script)
-const port = chrome.runtime.connect({ name: "my-channel" })
-port.postMessage({ type: "START" })
-port.onMessage.addListener((msg) => console.log("received:", msg))
-port.onDisconnect.addListener(() => console.log("disconnected"))
+const port = chrome.runtime.connect({ name: 'my-channel' });
+port.postMessage({ type: 'START' });
+port.onMessage.addListener((msg) => console.log('received:', msg));
+port.onDisconnect.addListener(() => console.log('disconnected'));
 
 // receiver (service worker)
 chrome.runtime.onConnect.addListener((port) => {
-  if (port.name !== "my-channel") return
+  if (port.name !== 'my-channel') return;
   port.onMessage.addListener((msg) => {
-    if (msg.type === "START") {
-      port.postMessage({ status: "ok" })
+    if (msg.type === 'START') {
+      port.postMessage({ status: 'ok' });
     }
-  })
-})
+  });
+});
 ```
 
 ## Common mistakes
@@ -104,15 +104,15 @@ chrome.runtime.onConnect.addListener((port) => {
 ```js
 // ❌ BROKEN — async work completes but channel is already closed
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  fetchSomething().then((data) => sendResponse(data)) // too late
+  fetchSomething().then(data => sendResponse(data)); // too late
   // missing: return true
-})
+});
 
 // ✅ CORRECT
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  fetchSomething().then((data) => sendResponse(data))
-  return true
-})
+  fetchSomething().then(data => sendResponse(data));
+  return true;
+});
 ```
 
 ### Sending to a tab before the content script is ready

@@ -12,27 +12,28 @@ Use either the HTML `<install>` element or the JavaScript
 Decide to use either the HTML `<install>` element or the JavaScript
 `navigator.install()` method based on the following considerations.
 
-- `<install>` element:
-  - Pros:
-    - The browser provides the install control, ensuring a consistent and
+* `<install>` element:
+  * Pros:
+    * The browser provides the install control, ensuring a consistent and
       trustworthy installation experience.
-    - Installing another app does not trigger a separate permission prompt
+    * Installing another app does not trigger a separate permission prompt
       before the installation confirmation dialog.
-    - No JavaScript is required to trigger the installation.
-  - Cons:
-    - Visual customization of the button is restricted.
-    - The number of `<install>` elements on a page is capped by user-agent
+    * No JavaScript is required to trigger the installation.
+  * Cons:
+    * Visual customization of the button is restricted.
+    * The number of `<install>` elements on a page is capped by user-agent
       anti-spam limits, making `navigator.install()` a better fit for large app
       catalogs.
 
-- JavaScript `navigator.install()` method:
-  - Pros:
-    - The installation UI can be fully customized to match the look and feel of
+* JavaScript `navigator.install()` method:
+
+  * Pros:
+    * The installation UI can be fully customized to match the look and feel of
       the website.
-    - The number of installation UI elements is not limited by the browser.
-  - Cons:
-    - Requires JavaScript to trigger the installation.
-    - Installing another app triggers an initial `web-app-installation`
+    * The number of installation UI elements is not limited by the browser.
+  * Cons:
+    * Requires JavaScript to trigger the installation.
+    * Installing another app triggers an initial `web-app-installation`
       permission prompt before the installation confirmation dialog.
 
 ## Prepare the web app
@@ -128,12 +129,12 @@ installation prompts.
 Listen for the `installresult` event to handle installation success and errors
 and use the `event.result` property to determine the outcome:
 
-- `"success"`: the app was installed, or the user approved an action (such as
+* `"success"`: the app was installed, or the user approved an action (such as
   opening) for an already-installed app. Pages cannot distinguish between these
   two cases.
-- `"aborted"`: the user canceled the installation or a browser condition
+* `"aborted"`: the user canceled the installation or a browser condition
   prevented the installation from completing.
-- `"invalid-data"`: the `manifest` or `manifestid` attribute values, manifest
+* `"invalid-data"`: the `manifest` or `manifestid` attribute values, manifest
   response, or required manifest fields are invalid.
 
 ```html
@@ -221,7 +222,7 @@ served over HTTPS with a JSON MIME `Content-Type`), pass its manifest URL:
 ```js
 await navigator.install({
   manifest: "https://app.example/manifest.webmanifest",
-})
+});
 ```
 
 Prefer declaring an explicit, stable `id` in the target manifest. If that
@@ -233,7 +234,7 @@ so the browser can verify the expected identity:
 await navigator.install({
   manifest: "https://app.example/manifest.webmanifest",
   manifestId: "https://app.example/",
-})
+});
 ```
 
 The `manifestId` option can either be absolute or relative. Relative values are
@@ -249,24 +250,24 @@ an already-installed app. Pages cannot distinguish between these two cases.
 The promise rejects with the following errors if the installation fails or is
 canceled:
 
-- `AbortError`:
-  - The user aborted the installation.
-  - The permission was denied.
-  - The environment doesn't support installation.
-  - Multiple concurrent installation attempts.
-  - A page navigation occurred during the installation process.
-- `DataError`:
-  - Missing linked manifest, invalid or unreachable manifest URL, redirect, or non-JSON `Content-Type` header.
-  - Missing required manifest fields, or `start_url` is not same-origin with `manifest`.
-  - The manifest omits `id` and no `manifestId` was provided, or `manifestId` does not match the manifest's processed ID.
-- `NotAllowedError`:
-  - Missing transient user activation.
-- `TypeError`:
-  - An options argument omits `manifest`, or `manifest` or `manifestId` is empty or cannot be parsed as a URL.
-- `InvalidStateError`:
-  - The API was called from a detached document, subframe, or fenced frame.
-- `SecurityError`:
-  - The `web-app-installation` Permissions Policy is disabled or the document is sandboxed.
+* `AbortError`:
+  * The user aborted the installation.
+  * The permission was denied.
+  * The environment doesn't support installation.
+  * Multiple concurrent installation attempts.
+  * A page navigation occurred during the installation process.
+* `DataError`:
+  * Missing linked manifest, invalid or unreachable manifest URL, redirect, or non-JSON `Content-Type` header.
+  * Missing required manifest fields, or `start_url` is not same-origin with `manifest`.
+  * The manifest omits `id` and no `manifestId` was provided, or `manifestId` does not match the manifest's processed ID.
+* `NotAllowedError`:
+  * Missing transient user activation.
+* `TypeError`:
+  * An options argument omits `manifest`, or `manifest` or `manifestId` is empty or cannot be parsed as a URL.
+* `InvalidStateError`:
+  * The API was called from a detached document, subframe, or fenced frame.
+* `SecurityError`:
+  * The `web-app-installation` Permissions Policy is disabled or the document is sandboxed.
 
 ## Fallback strategies
 
@@ -330,63 +331,66 @@ captured event. The event is single-use, so discard it before awaiting the
 user's choice and hide the button unless a new `beforeinstallprompt` event fires.
 
 ```js
-const installButton = document.querySelector("#install-app")
-const installStatus = document.querySelector("#install-status")
-const supportsWebInstall = typeof Navigator.prototype.install === "function"
-let deferredInstallPrompt
+const installButton = document.querySelector("#install-app");
+const installStatus = document.querySelector("#install-status");
+const supportsWebInstall =
+  typeof Navigator.prototype.install === "function";
+let deferredInstallPrompt;
 
 if (supportsWebInstall) {
-  installButton.hidden = false
+  installButton.hidden = false;
 }
 
 window.addEventListener("beforeinstallprompt", (event) => {
-  event.preventDefault()
-  deferredInstallPrompt = event
+  event.preventDefault();
+  deferredInstallPrompt = event;
 
   // Prefer navigator.install() when both mechanisms are available.
   if (!supportsWebInstall) {
-    installButton.hidden = false
+    installButton.hidden = false;
   }
-})
+});
 
 installButton.addEventListener("click", async () => {
   if (installButton.getAttribute("aria-disabled") === "true") {
-    return
+    return;
   }
   // Use aria-disabled instead of disabled so activating the button does not drop focus.
-  installButton.setAttribute("aria-disabled", "true")
+  installButton.setAttribute("aria-disabled", "true");
 
   try {
     if (supportsWebInstall) {
       // Call directly from this handler to preserve transient user activation.
-      await navigator.install()
-      installStatus.textContent = "The app was installed or opened."
-      installButton.hidden = true
+      await navigator.install();
+      installStatus.textContent = "The app was installed or opened.";
+      installButton.hidden = true;
     } else if (deferredInstallPrompt) {
       // Save and clear the single-use event before awaiting the user's choice.
-      const promptEvent = deferredInstallPrompt
-      deferredInstallPrompt = undefined
-      await promptEvent.prompt()
-      const { outcome } = await promptEvent.userChoice
+      const promptEvent = deferredInstallPrompt;
+      deferredInstallPrompt = undefined;
+      await promptEvent.prompt();
+      const { outcome } = await promptEvent.userChoice;
 
       installStatus.textContent =
-        outcome === "accepted" ? "The app was installed." : "Installation canceled."
+        outcome === "accepted"
+          ? "The app was installed."
+          : "Installation canceled.";
       if (!deferredInstallPrompt) {
-        installButton.hidden = true
+        installButton.hidden = true;
       }
     }
   } catch (error) {
     if (error.name === "AbortError") {
       // Cancellation is an expected user choice; keep the button available to retry.
-      installStatus.textContent = "Installation was canceled or could not complete."
+      installStatus.textContent = "Installation was canceled or could not complete.";
     } else {
-      installStatus.textContent = "Installation could not start."
-      console.error(error)
+      installStatus.textContent = "Installation could not start.";
+      console.error(error);
     }
   } finally {
-    installButton.removeAttribute("aria-disabled")
+    installButton.removeAttribute("aria-disabled");
   }
-})
+});
 ```
 
 Do not show a non-functional install button in browsers that support neither

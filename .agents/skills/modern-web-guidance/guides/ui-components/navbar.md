@@ -6,6 +6,7 @@ This guide describes site-navigation integration. It is navigation, not an appli
 
 For component-driven layouts, fluid sizing, and typographic line-wrapping, see `size-aware-styling` (via `npx -y modern-web-guidance@latest retrieve "size-aware-styling"`), `fluid-scaling` (via `npx -y modern-web-guidance@latest retrieve "fluid-scaling"`), and `improve-text-layout-and-legibility` (via `npx -y modern-web-guidance@latest retrieve "improve-text-layout-and-legibility"`).
 
+
 ## Core Markup
 
 Use one `<nav>` landmark for narrow and wide layouts. Wrap it in a semantic `<header>` whose `is-wide` class selects the inline layout. The collapsed layout is the default, so it is also what you get without script.
@@ -53,6 +54,7 @@ Use one `<nav>` landmark for narrow and wide layouts. Wrap it in a semantic `<he
 
 The button declaratively controls the menu with `popovertarget` and `aria-controls`. The `nav` remains the navigation landmark while the menu is closed. The trigger icon is decorative and the visible "Menu" text is the accessible name, so hide the icon from assistive technologies. For how to insert and hide icons, see `icons` (via `npx -y modern-web-guidance@latest retrieve "icons"`). For the general popover control contract, see `declarative-dialog-popover-control` (via `npx -y modern-web-guidance@latest retrieve "declarative-dialog-popover-control"`). Unlike the menu guide, use `popovertarget`: one toggle needs no invoker commands. As in the menu guide, place each popover (the menu list, and the submenu list) immediately after its trigger so browsers add no implicit `aria-details`.
 
+
 ## Narrow Layout: Popover Navigation
 
 When collapsed, keep `popover="auto"` on the navigation list. Anchor the fixed popover to the menu button and constrain its height so a long navigation can scroll without exceeding the viewport.
@@ -87,6 +89,7 @@ There is no hard-coded breakpoint. Script collapses the navigation only when the
 ```
 
 The `anchor()` declaration places the menu below the button; see Fallbacks for browsers without Anchor Positioning. For collision-aware positioning near viewport edges, see `viewport-aware-dropdowns` (via `npx -y modern-web-guidance@latest retrieve "viewport-aware-dropdowns"`).
+
 
 ## Wide Layout: Inline Navigation
 
@@ -123,6 +126,7 @@ When the row fits, hide the collapsed-layout trigger and reset the popover prese
 
 CSS changes the presentation, but JavaScript decides which layout applies and must also synchronize the `popover` attribute with it. Measure the inline row: show it inline, compare `scrollWidth` with `clientWidth` on the header's inner row, then toggle `is-wide`. Add a temporary `is-measuring` class that sets `transition: none` on descendants for the measurement and remove it in `requestAnimationFrame`, otherwise the menu animates from its inline styles on every resize and flickers. Keep the navigation as a popover only in the collapsed layout; remove the attribute in the inline layout. Removing it closes an open popover, so note whether the menu was open and call `showPopover()` again if the layout is still collapsed; otherwise a resize closes the open menu. Run one shared function from `ResizeObserver`s on the header and the navigation list, so font loading and text changes are caught without special cases. Remeasure while inline on every notification, but while collapsed only when the header's width has grown. Switching to inline just to measure on every shrink makes the layout thrash. The tradeoff is that a collapsed menu that gets smaller by itself (for example a shorter translation) stays collapsed until the header grows. Do not infer the layout from a hidden trigger.
 
+
 ## Nested Site Navigation
 
 Use a `<button>` with `aria-expanded` and `aria-controls` as the trigger for nested site navigation, followed immediately by the submenu list. DO NOT use `<details>` and `<summary>`: `<summary>` should map to a `button` role, but has not been consistently implemented in browsers, so screen readers announce it inconsistently (for example as "summary" or "disclosure triangle").
@@ -132,11 +136,11 @@ One list must be an inline disclosure when narrow and a floating popover when wi
 Synchronize the layout state from the same function that handles the navigation list. When inline, set `popover="auto"` on the submenu, clear `hidden`, and let the native `toggle` event drive `aria-expanded`. When narrow, remove `popover`, set `hidden` from script, and let a click handler toggle `hidden` and `aria-expanded`:
 
 ```js
-const wide = inner.scrollWidth <= inner.clientWidth // measured with is-wide set
-if (wide) submenu.setAttribute("popover", "auto")
-else submenu.removeAttribute("popover")
-submenu.hidden = !wide
-trigger.setAttribute("aria-expanded", "false")
+const wide = inner.scrollWidth <= inner.clientWidth; // measured with is-wide set
+if (wide) submenu.setAttribute("popover", "auto");
+else submenu.removeAttribute("popover");
+submenu.hidden = !wide;
+trigger.setAttribute("aria-expanded", "false");
 ```
 
 > [!NOTE]
@@ -183,6 +187,7 @@ Position the wide submenu below its trigger with CSS Anchor Positioning (`positi
 }
 ```
 
+
 ## Indicating the Current Page
 
 Use `aria-current="page"` to identify the current page. Set it at build time or with JavaScript, and use `[aria-current="page"]` as the CSS styling hook. The visual treatment is a design decision; do not assume a particular pseudo-element, border, or orientation. Do not indicate the current page with color alone (WCAG 1.4.1). Ensure the color of the visual indicator has a contrast of at least `3:1` with the background color.
@@ -202,6 +207,7 @@ Optional. In the narrow layout the submenu is an inline list toggled with `hidde
 
 Use logical properties for sizing, spacing, and positioning. Use `dvw` and `dvh` for viewport-relative limits, provide visible `:focus-visible` indicators, and adapt custom borders and current-page indicators under `forced-colors: active`.
 
+
 ## Fallbacks
 
 ### Fallbacks & browser support for Popover
@@ -218,14 +224,13 @@ With a bundler or import map:
 ```js
 // MANDATORY: Feature detect 'popover' on HTMLElement.prototype.
 if (!Object.hasOwn(HTMLElement.prototype, "popover")) {
-  import("@oddbird/popover-polyfill")
+  import("@oddbird/popover-polyfill");
 }
 ```
 
 If not using a package manager, import from a CDN, e.g. `"https://unpkg.com/@oddbird/popover-polyfill@latest/dist/popover.min.js"`.
 
 Caveats when using the polyfill:
-
 - Do NOT use the `popover` IDL attribute for any code that may run before the polyfill is fully loaded. It will not be mirrored as an attribute, the popover will not be picked up by the polyfill, and the property will be shadowing the accessor the polyfill adds forever. Use `setAttribute()`/`removeAttribute()` instead.
 - **Styling caveat:** The polyfill cannot define the real `:popover-open` pseudo-class, so it applies a `.\:popover-open` class instead. **MANDATORY:** Combine the two with `:is()` or `:where()`, otherwise browsers that lack `:popover-open` discard the entire rule:
 
@@ -273,3 +278,4 @@ Supported by: Chrome 108 (Nov 2022), Edge 108 (Dec 2022), Firefox 130 (Sep 2024)
 Gate the optional narrow submenu slide-down rules that override `[hidden]` with `display: grid` behind `@supports (interpolate-size: allow-keywords)`. Without the gate, browsers lacking keyword interpolation snap the list closed instead of sliding; with it, they keep native `[hidden]` behavior. Without `@starting-style` or `transition-behavior: allow-discrete`, the optional popover entry or exit transitions fall back to opening or closing immediately.
 
 Without script nothing adds `is-wide`, so the header stays collapsed: the menu button opens the native popover and the submenu is a nested list. Do not write a separate no-script layout or a `no-js` class.
+

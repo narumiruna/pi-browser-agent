@@ -1,6 +1,6 @@
 # Swipe to reveal
 
-Swipe-to-reveal patterns let users slide a foreground row or content pane horizontally to expose hidden UI—such as contextual action buttons (_Pin_, _Mute_, _Archive_, _Delete_) or a secondary side menu—**without automatically activating any action**. Instead of committing an action during the swipe, the container snaps open to reveal interactive controls that the user can inspect and activate, or swipe back to close.
+Swipe-to-reveal patterns let users slide a foreground row or content pane horizontally to expose hidden UI—such as contextual action buttons (*Pin*, *Mute*, *Archive*, *Delete*) or a secondary side menu—**without automatically activating any action**. Instead of committing an action during the swipe, the container snaps open to reveal interactive controls that the user can inspect and activate, or swipe back to close.
 
 > For a full-width swipe gesture that immediately commits and dismisses an item past a threshold, see `swipe-to-remove` (via `npx -y modern-web-guidance@latest retrieve "swipe-to-remove"`). For revealing a hidden header at the top of a vertical scroll container, see `pull-to-reveal` (via `npx -y modern-web-guidance@latest retrieve "pull-to-reveal"`).
 
@@ -48,12 +48,12 @@ When you wrap an element in an outer scroll container solely to create a swipe-t
 
 The four keywords of `overscroll-behavior` independently control whether excess scroll propagates to an ancestor scroll container (**scroll chaining**) and whether the container displays local overscroll affordances such as elastic rubber-band stretching or edge glow (**local boundary effect**):
 
-| Value     | Scroll Chaining (Propagates to Ancestor) | Local Boundary Effect (Rubber-band / Glow) | Role in Swipe-to-Reveal                                                                                                                                                 |
-| :-------- | :--------------------------------------- | :----------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `auto`    | Yes                                      | Yes                                        | Default behavior; keep this on inner content scrollers where normal bounce feedback is desired, but avoid on the outer swipe wrapper where it causes the menu to bounce |
-| `chain`   | **Yes**                                  | **No**                                     | **Use on the outer `.SwipeReveal` scroller so excess scroll chains into the parent scroller (such as the document) without the menu or action strip bouncing**          |
-| `contain` | No                                       | Yes                                        | Traps scroll inside the container while still bouncing locally                                                                                                          |
-| `none`    | No                                       | No                                         | Blocks both local bounce and scroll chaining to ancestors                                                                                                               |
+| Value | Scroll Chaining (Propagates to Ancestor) | Local Boundary Effect (Rubber-band / Glow) | Role in Swipe-to-Reveal |
+| :--- | :--- | :--- | :--- |
+| `auto` | Yes | Yes | Default behavior; keep this on inner content scrollers where normal bounce feedback is desired, but avoid on the outer swipe wrapper where it causes the menu to bounce |
+| `chain` | **Yes** | **No** | **Use on the outer `.SwipeReveal` scroller so excess scroll chains into the parent scroller (such as the document) without the menu or action strip bouncing** |
+| `contain` | No | Yes | Traps scroll inside the container while still bouncing locally |
+| `none` | No | No | Blocks both local bounce and scroll chaining to ancestors |
 
 Make `.SwipeReveal` a two-column grid (`grid-template-columns: 100% max-content`) where `.SwipeReveal-content` snaps to `start` and `.SwipeReveal-panel` snaps to `end`:
 
@@ -115,66 +115,66 @@ Because the buttons or links inside `.SwipeReveal-panel` are off-screen at rest 
 
 ```js
 for (const trigger of document.querySelectorAll('.SwipeReveal-content [aria-label$="actions"]')) {
-  trigger.addEventListener("click", () => {
-    const reveal = trigger.closest(".SwipeReveal")
-    if (!reveal) return
+  trigger.addEventListener('click', () => {
+    const reveal = trigger.closest('.SwipeReveal');
+    if (!reveal) return;
 
-    const label = (trigger.getAttribute("aria-label") || "").toLowerCase()
-    const isExpanded = trigger.getAttribute("aria-expanded") === "true"
+    const label = (trigger.getAttribute('aria-label') || '').toLowerCase();
+    const isExpanded = trigger.getAttribute('aria-expanded') === 'true';
     if (isExpanded) {
-      if (label.includes("leading")) {
-        let leadingScrollPanelWidth = reveal.querySelector(".SwipeReveal-panel").offsetWidth
+      if (label.includes('leading')) {
+        let leadingScrollPanelWidth = reveal.querySelector('.SwipeReveal-panel').offsetWidth;
         reveal.scrollTo({
           left: leadingScrollPanelWidth,
-          behavior: "smooth",
-        })
-      } else if (label.includes("trailing")) {
-        let leadingScrollPanelWidth = reveal.querySelector(".SwipeReveal-panel").offsetWidth
+          behavior: 'smooth',
+        });
+      } else if (label.includes('trailing')) {
+        let leadingScrollPanelWidth = reveal.querySelector('.SwipeReveal-panel').offsetWidth;
         reveal.scrollTo({
           left: leadingScrollPanelWidth,
-          behavior: "smooth",
-        })
+          behavior: 'smooth',
+        });
       } else {
         reveal.scrollTo({
           left: 0,
-          behavior: "smooth",
-        })
+          behavior: 'smooth',
+        });
       }
 
       for (const actionButton of reveal.querySelectorAll('[aria-label$="actions"]')) {
-        actionButton.setAttribute("aria-expanded", "false")
+        actionButton.setAttribute('aria-expanded', 'false');
       }
-      setActionTabIndexes(reveal, false)
-      return
+      setActionTabIndexes(reveal, false);
+      return;
     }
 
-    const panels = Array.from(reveal.querySelectorAll(".SwipeReveal-panel"))
-    if (panels.length === 0) return
+    const panels = Array.from(reveal.querySelectorAll('.SwipeReveal-panel'));
+    if (panels.length === 0) return;
 
-    let targetScrollLeft = reveal.scrollWidth
+    let targetScrollLeft = reveal.scrollWidth;
 
-    if (label.includes("leading")) {
-      targetScrollLeft = 0
-    } else if (label.includes("trailing")) {
-      targetScrollLeft = reveal.scrollWidth
+    if (label.includes('leading')) {
+      targetScrollLeft = 0;
+    } else if (label.includes('trailing')) {
+      targetScrollLeft = reveal.scrollWidth;
     } else if (panels.length === 1) {
-      targetScrollLeft = reveal.scrollWidth
+      targetScrollLeft = reveal.scrollWidth;
     } else {
-      const content = reveal.querySelector(".SwipeReveal-content")
-      const firstTrigger = content.querySelector('[aria-label$="actions"]')
-      targetScrollLeft = trigger === firstTrigger ? 0 : reveal.scrollWidth
+      const content = reveal.querySelector('.SwipeReveal-content');
+      const firstTrigger = content.querySelector('[aria-label$="actions"]');
+      targetScrollLeft = trigger === firstTrigger ? 0 : reveal.scrollWidth;
     }
 
     reveal.scrollTo({
       left: targetScrollLeft,
-      behavior: "smooth",
-    })
+      behavior: 'smooth',
+    });
 
     for (const actionButton of reveal.querySelectorAll('[aria-label$="actions"]')) {
-      actionButton.setAttribute("aria-expanded", actionButton === trigger ? "true" : "false")
+      actionButton.setAttribute('aria-expanded', actionButton === trigger ? 'true' : 'false');
     }
-    setActionTabIndexes(reveal, true)
-  })
+    setActionTabIndexes(reveal, true);
+  });
 }
 ```
 
@@ -203,6 +203,7 @@ Unsupported in: Firefox and Safari.
 When a `.SwipeReveal` container places a `.SwipeReveal-panel` on the left (`inline-start`) side before `.SwipeReveal-content`, browsers that do not support `scroll-initial-target: nearest` will initially render at scroll offset `0` with the leading panel exposed.
 
 If your Baseline target does not support `scroll-initial-target`, detect support with `CSS.supports('scroll-initial-target', 'nearest')` and call `scrollTo()` with `behavior: 'instant'` on `load` so containers with a leading panel jump straight to `.SwipeReveal-content` without scrolling the page:
+
 
 ## Progressive enhancement
 

@@ -17,27 +17,27 @@ The programmatic scroll methods on `Element` (`scrollIntoView()`, `scroll()`, `s
 - **Handling rapid / interrupted scrolls**: If a new scroll starts on the same scroll container before an ongoing smooth scroll finishes, the browser aborts the ongoing smooth scroll and **resolves** (does not reject) all pending scroll promises on that container. If you need to suppress the post-scroll effect for superseded scrolls when a user clicks rapidly, track an incrementing operation ID and return early after `await` if a newer scroll was started:
 
 ```javascript
-let currentScrollId = 0
-const sections = document.querySelectorAll("section")
+let currentScrollId = 0;
+const sections = document.querySelectorAll('section');
 
 async function scrollToAndHighlight(targetElement) {
-  const scrollId = ++currentScrollId
-  sections.forEach((sec) => sec.classList.remove("highlight"))
+  const scrollId = ++currentScrollId;
+  sections.forEach((sec) => sec.classList.remove('highlight'));
 
-  await targetElement.scrollIntoView({ behavior: "smooth", block: "center" })
+  await targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
   // Abort follow-up effect if another scroll was triggered while awaiting
-  if (scrollId !== currentScrollId) return
+  if (scrollId !== currentScrollId) return;
 
-  targetElement.classList.add("highlight")
+  targetElement.classList.add('highlight');
 }
 ```
 
 - **Focusing the target after scrolling**: When moving keyboard focus to the target element (or a heading inside it with `tabindex="-1"`) after `await targetElement.scrollIntoView(...)`, pass `{ preventScroll: true }` to `focus()` so the focus call does not initiate a second, competing scroll:
 
 ```javascript
-await targetElement.scrollIntoView({ behavior: "smooth", block: "center" })
-targetHeading.focus({ preventScroll: true })
+await targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+targetHeading.focus({ preventScroll: true });
 ```
 
 ## Constraints & Best Practices
@@ -67,37 +67,37 @@ In browsers that do not support scroll method promises, `scrollIntoView()`, `scr
 
 ```javascript
 function scrollIntoViewAsync(element, options, scroller = window) {
-  const result = element.scrollIntoView(options)
+  const result = element.scrollIntoView(options);
 
   // Feature detect: in supporting browsers, scrollIntoView() returns a Promise
   if (result instanceof Promise) {
-    return result
+    return result;
   }
 
   // Fallback for browsers where scrollIntoView() returns undefined
   return new Promise((resolve) => {
-    let timeoutId
+    let timeoutId;
 
     const finish = () => {
-      clearTimeout(timeoutId)
-      scroller.removeEventListener("scrollend", finish)
-      scroller.removeEventListener("scroll", onScroll)
-      resolve()
-    }
+      clearTimeout(timeoutId);
+      scroller.removeEventListener('scrollend', finish);
+      scroller.removeEventListener('scroll', onScroll);
+      resolve();
+    };
 
     const onScroll = () => {
       // Restart the idle timer on every scroll event. If scrollend never fires
       // (browsers without scrollend support), this resolves once scrolling goes idle.
-      clearTimeout(timeoutId)
-      timeoutId = setTimeout(finish, 100)
-    }
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(finish, 100);
+    };
 
-    scroller.addEventListener("scrollend", finish, { once: true })
-    scroller.addEventListener("scroll", onScroll, { passive: true })
+    scroller.addEventListener('scrollend', finish, { once: true });
+    scroller.addEventListener('scroll', onScroll, { passive: true });
 
     // If no scroll event fires within the idle window (e.g., already in view), resolve.
     // 100ms is an example value; it only needs to exceed the gap between scroll events.
-    timeoutId = setTimeout(finish, 100)
-  })
+    timeoutId = setTimeout(finish, 100);
+  });
 }
 ```

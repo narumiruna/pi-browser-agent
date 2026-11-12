@@ -9,19 +9,11 @@ Interfaces feel natural when every input gets an immediate response, motion beha
 ```css
 :where(button) {
   /* example durations */
-  transition:
-    box-shadow 150ms ease-out,
-    scale 150ms ease-out;
+  transition: box-shadow 150ms ease-out, scale 150ms ease-out;
 }
-button:hover {
-  box-shadow: 0 2px 8px rgb(0 0 0 / 0.2);
-}
-a:hover {
-  text-decoration-thickness: 2px;
-}
-button:active {
-  scale: 0.97;
-} /* example value */
+button:hover { box-shadow: 0 2px 8px rgb(0 0 0 / 0.2); }
+a:hover { text-decoration-thickness: 2px; }
+button:active { scale: 0.97; } /* example value */
 
 :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
   outline: 2px solid CanvasText;
@@ -47,27 +39,15 @@ Popovers and dropdowns should visibly open from the control that triggered them:
   transform-origin: top left;
 }
 /* example durations */
-.dropdown:is(:popover-open, .\:popover-open) {
-  animation: fade-in 150ms ease-out both;
-}
+.dropdown:is(:popover-open, .\:popover-open) { animation: fade-in 150ms ease-out both; }
 @media (prefers-reduced-motion: no-preference) {
   .dropdown:is(:popover-open, .\:popover-open) {
     /* optional example spring curve, written inline */
-    animation:
-      grow 300ms linear(0, 0.45 15%, 1.08 35%, 0.97 55%, 1.01 75%, 1) both,
-      fade-in 150ms ease-out both;
+    animation: grow 300ms linear(0, 0.45 15%, 1.08 35%, 0.97 55%, 1.01 75%, 1) both, fade-in 150ms ease-out both;
   }
 }
-@keyframes grow {
-  from {
-    scale: 0.9;
-  }
-}
-@keyframes fade-in {
-  from {
-    opacity: 0;
-  }
-}
+@keyframes grow { from { scale: 0.9; } }
+@keyframes fade-in { from { opacity: 0; } }
 ```
 
 - Keep animations on the compositor (`transform`, its individual properties, and `opacity`) and respect reduced-motion preferences; see `motion` (via `npx -y modern-web-guidance@latest retrieve "motion"`). This example animates the opening only; for exit transitions, see `animate-to-from-top-layer` (via `npx -y modern-web-guidance@latest retrieve "animate-to-from-top-layer"`).
@@ -102,15 +82,10 @@ For large, rapid translations (such as a full-screen sheet sliding into view), a
 
 ```css
 @media (prefers-reduced-motion: no-preference) {
-  .sheet.is-open {
-    animation: sheet-in 300ms ease-out both;
-  } /* example duration */
+  .sheet.is-open { animation: sheet-in 300ms ease-out both; } /* example duration */
 }
 @keyframes sheet-in {
-  from {
-    translate: 0 100%;
-    filter: blur(6px);
-  } /* example blur radius */
+  from { translate: 0 100%; filter: blur(6px); } /* example blur radius */
 }
 ```
 
@@ -125,13 +100,9 @@ For large, rapid translations (such as a full-screen sheet sliding into view), a
   opacity: 0;
 
   .card:hover &,
-  .card:focus-within & {
-    opacity: 1;
-  }
+  .card:focus-within & { opacity: 1; }
 
-  @media (hover: none) {
-    opacity: 1;
-  }
+  @media (hover: none) { opacity: 1; }
 }
 ```
 
@@ -153,14 +124,13 @@ With a bundler or import map:
 ```js
 // MANDATORY: Feature detect 'popover' on HTMLElement.prototype.
 if (!Object.hasOwn(HTMLElement.prototype, "popover")) {
-  import("@oddbird/popover-polyfill")
+  import("@oddbird/popover-polyfill");
 }
 ```
 
 If not using a package manager, import from a CDN, e.g. `"https://unpkg.com/@oddbird/popover-polyfill@latest/dist/popover.min.js"`.
 
 Caveats when using the polyfill:
-
 - Do NOT use the `popover` IDL attribute for any code that may run before the polyfill is fully loaded. It will not be mirrored as an attribute, the popover will not be picked up by the polyfill, and the property will be shadowing the accessor the polyfill adds forever. Use `setAttribute()`/`removeAttribute()` instead.
 - **Styling caveat:** The polyfill cannot define the real `:popover-open` pseudo-class, so it applies a `.\:popover-open` class instead. **MANDATORY:** Combine the two with `:is()` or `:where()`, otherwise browsers that lack `:popover-open` discard the entire rule:
 

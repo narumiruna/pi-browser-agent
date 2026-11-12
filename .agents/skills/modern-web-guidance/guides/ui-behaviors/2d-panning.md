@@ -105,49 +105,49 @@ Because `wheel` (`e.deltaX`, `e.deltaY`) and `pointermove` (`e.clientX`, `e.clie
 
 ```javascript
 // Only attach the main-thread gesture fallback when native support is missing
-if (!CSS.supports("scroll-axis-lock", "none")) {
-  const viewport = document.querySelector(".pan-viewport")
-  let lastPointer = null
+if (!CSS.supports('scroll-axis-lock', 'none')) {
+  const viewport = document.querySelector('.pan-viewport');
+  let lastPointer = null;
 
   // 1. Trackpad and mouse wheel fallback
   viewport.addEventListener(
-    "wheel",
+    'wheel',
     (e) => {
-      if (e.ctrlKey) return // Ctrl+wheel and trackpad pinch zoom the page
-      e.preventDefault()
-      viewport.scrollLeft += e.deltaX
-      viewport.scrollTop += e.deltaY
+      if (e.ctrlKey) return; // Ctrl+wheel and trackpad pinch zoom the page
+      e.preventDefault();
+      viewport.scrollLeft += e.deltaX;
+      viewport.scrollTop += e.deltaY;
     },
     { passive: false },
-  )
+  );
 
   // 2. Touch and pointer drag fallback
-  viewport.addEventListener("pointerdown", (e) => {
+  viewport.addEventListener('pointerdown', (e) => {
     // Ignore non-primary buttons and clicks on native scrollbars
-    const rect = viewport.getBoundingClientRect()
+    const rect = viewport.getBoundingClientRect();
     if (
       !e.isPrimary ||
       e.button !== 0 ||
       e.clientX - rect.left - viewport.clientLeft >= viewport.clientWidth ||
       e.clientY - rect.top - viewport.clientTop >= viewport.clientHeight
     ) {
-      return
+      return;
     }
-    lastPointer = { x: e.clientX, y: e.clientY }
-    viewport.setPointerCapture(e.pointerId)
-  })
+    lastPointer = { x: e.clientX, y: e.clientY };
+    viewport.setPointerCapture(e.pointerId);
+  });
 
-  viewport.addEventListener("pointermove", (e) => {
-    if (!lastPointer) return
-    viewport.scrollLeft -= e.clientX - lastPointer.x
-    viewport.scrollTop -= e.clientY - lastPointer.y
-    lastPointer = { x: e.clientX, y: e.clientY }
-  })
+  viewport.addEventListener('pointermove', (e) => {
+    if (!lastPointer) return;
+    viewport.scrollLeft -= e.clientX - lastPointer.x;
+    viewport.scrollTop -= e.clientY - lastPointer.y;
+    lastPointer = { x: e.clientX, y: e.clientY };
+  });
 
   const endPointerPan = () => {
-    lastPointer = null
-  }
-  viewport.addEventListener("pointerup", endPointerPan)
-  viewport.addEventListener("pointercancel", endPointerPan)
+    lastPointer = null;
+  };
+  viewport.addEventListener('pointerup', endPointerPan);
+  viewport.addEventListener('pointercancel', endPointerPan);
 }
 ```

@@ -157,7 +157,7 @@ DO: Use a lightweight anti-flicker snippet as a fallback only when `blocking="re
 // DO: In your experiment SDK's initialization callback,
 // remove the fallback class to reveal the page.
 function onExperimentReady() {
-  document.documentElement.classList.remove("ab-loading")
+  document.documentElement.classList.remove('ab-loading');
 }
 ```
 

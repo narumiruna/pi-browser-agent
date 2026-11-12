@@ -89,21 +89,21 @@ Adding `loading="lazy"` to offscreen `<video>` and `<audio>` elements instructs 
 
 ```javascript
 // Pause autoplaying videos when the user prefers reduced motion
-const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)")
+const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
 
 function syncReducedMotion(prefersReducedMotion) {
-  for (const video of document.querySelectorAll("video[autoplay]")) {
+  for (const video of document.querySelectorAll('video[autoplay]')) {
     if (prefersReducedMotion) {
-      video.removeAttribute("autoplay")
-      video.pause()
+      video.removeAttribute('autoplay');
+      video.pause();
     }
   }
 }
 
-syncReducedMotion(reducedMotionQuery.matches)
-reducedMotionQuery.addEventListener("change", (event) => {
-  syncReducedMotion(event.matches)
-})
+syncReducedMotion(reducedMotionQuery.matches);
+reducedMotionQuery.addEventListener('change', (event) => {
+  syncReducedMotion(event.matches);
+});
 ```
 
 ## Best practices
@@ -133,60 +133,60 @@ When your Baseline target requires strictly deferring `<video poster>` downloads
 
 ```javascript
 // Feature-detect native media lazy loading on HTMLMediaElement.prototype
-const supportsLazyMedia = Object.hasOwn(HTMLMediaElement.prototype, "loading")
+const supportsLazyMedia = Object.hasOwn(HTMLMediaElement.prototype, 'loading');
 
 if (!supportsLazyMedia) {
   const lazyMediaElements = document.querySelectorAll(
     'video[loading="lazy"], audio[loading="lazy"][controls]',
-  )
+  );
 
   // Example-only rootMargin value; adjust distance threshold for your layout
   const mediaObserver = new IntersectionObserver(
     (entries, observer) => {
       for (const entry of entries) {
-        if (!entry.isIntersecting) continue
+        if (!entry.isIntersecting) continue;
 
-        const media = entry.target
+        const media = entry.target;
 
         // Restore deferred poster and preload attributes when entering the viewport
         if (media.dataset.poster) {
-          media.poster = media.dataset.poster
-          delete media.dataset.poster
+          media.poster = media.dataset.poster;
+          delete media.dataset.poster;
         }
 
         if (media.dataset.preload) {
-          media.preload = media.dataset.preload
-          delete media.dataset.preload
+          media.preload = media.dataset.preload;
+          delete media.dataset.preload;
         }
 
         if (media.dataset.src) {
-          media.src = media.dataset.src
-          delete media.dataset.src
+          media.src = media.dataset.src;
+          delete media.dataset.src;
         }
 
-        for (const source of media.querySelectorAll("source[data-src]")) {
-          source.src = source.dataset.src
-          delete source.dataset.src
+        for (const source of media.querySelectorAll('source[data-src]')) {
+          source.src = source.dataset.src;
+          delete source.dataset.src;
         }
 
-        media.load()
-        observer.unobserve(media)
+        media.load();
+        observer.unobserve(media);
       }
     },
-    { rootMargin: "200px 0px" },
-  )
+    { rootMargin: '200px 0px' },
+  );
 
   for (const media of lazyMediaElements) {
     // Hold back network fetches in unsupported browsers until intersection
-    if (media.hasAttribute("poster")) {
-      media.dataset.poster = media.getAttribute("poster")
-      media.removeAttribute("poster")
+    if (media.hasAttribute('poster')) {
+      media.dataset.poster = media.getAttribute('poster');
+      media.removeAttribute('poster');
     }
-    if (media.hasAttribute("preload") && media.getAttribute("preload") !== "none") {
-      media.dataset.preload = media.getAttribute("preload")
+    if (media.hasAttribute('preload') && media.getAttribute('preload') !== 'none') {
+      media.dataset.preload = media.getAttribute('preload');
     }
-    media.preload = "none"
-    mediaObserver.observe(media)
+    media.preload = 'none';
+    mediaObserver.observe(media);
   }
 }
 ```

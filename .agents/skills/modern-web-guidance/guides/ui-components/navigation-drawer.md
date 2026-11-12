@@ -135,7 +135,7 @@ The scroller is a horizontal grid wider than the viewport: column 1 holds the sh
 
 /* The empty spacer that creates the "closed" snap stop. */
 .Drawer-scroller::after {
-  content: "";
+  content: '';
   scroll-snap-align: end;
   /* Open the drawer already scrolled to this stop (drawer off-screen),
      so the JS only needs to scroll to the open position to
@@ -190,20 +190,16 @@ A scroll-driven animation maps `--drawer-backdrop` from 1 (open) to 0 (closed) a
      interpolate it — the backdrop would jump from 0 to 1 with no
      fade. */
   @property --drawer-backdrop {
-    syntax: "<number>";
+    syntax: '<number>';
     inherits: true;
     initial-value: 0;
   }
 
   @keyframes fade-drawer-backdrop {
     /* Scroll position 0 = drawer fully open = backdrop visible. */
-    0% {
-      --drawer-backdrop: 1;
-    }
+    0% { --drawer-backdrop: 1 }
     /* Scroll position 100% = drawer fully closed = backdrop hidden. */
-    100% {
-      --drawer-backdrop: 0;
-    }
+    100% { --drawer-backdrop: 0 }
   }
 }
 ```
@@ -213,24 +209,24 @@ A scroll-driven animation maps `--drawer-backdrop` from 1 (open) to 0 (closed) a
 Opening is two steps: show the dialog as modal, then scroll the sheet into view. Closing is one step: scroll back to the spacer; an observer (step 4) closes the dialog once the sheet is fully off-screen.
 
 ```js
-const drawer = document.getElementById("drawer")
-const openBtn = document.getElementById("drawer-open")
-const scroller = drawer.querySelector(".Drawer-scroller")
-const sheet = drawer.querySelector(".Drawer-sheet")
-const closeBtn = document.getElementById("drawer-close")
+const drawer = document.getElementById('drawer');
+const openBtn = document.getElementById('drawer-open');
+const scroller = drawer.querySelector('.Drawer-scroller');
+const sheet = drawer.querySelector('.Drawer-sheet');
+const closeBtn = document.getElementById('drawer-close');
 
 function openDrawer() {
   // Show the dialog first so the element is in the top layer before
   // we trigger any scrolling. `scroll-initial-target` (set on the
   // ::after spacer) places the initial scroll position at the closed
   // stop, so the drawer enters the top layer already off-screen.
-  drawer.showModal()
+  drawer.showModal();
 
   // Scroll the sheet into view. The `behavior: 'auto'` option defers
   // to the CSS `scroll-behavior` property, which will be smooth unless
   // the user prefers reduced motion. Snap takes over at the end and
   // locks the drawer fully open.
-  scroller.scrollTo({ left: 0, behavior: "auto" })
+  scroller.scrollTo({left: 0, behavior: 'auto'});
 }
 
 function closeDrawer() {
@@ -239,7 +235,7 @@ function closeDrawer() {
   // and the close animation would not be visible. The
   // IntersectionObserver in step 4 closes the dialog once the sheet
   // has actually left the viewport.
-  scroller.scrollTo({ left: scroller.offsetWidth, behavior: "auto" })
+  scroller.scrollTo({left: scroller.offsetWidth, behavior: 'auto'});
 }
 ```
 
@@ -251,66 +247,66 @@ Because the drawer is a modal `<dialog>`, the browser makes the rest of the page
 
 ```js
 function onDrawerOpened() {
-  openBtn.setAttribute("aria-expanded", "true")
+  openBtn.setAttribute('aria-expanded', 'true');
 }
 
 function onDrawerClosed() {
   // Close the dialog only after the close animation completes,
   // so the slide-out is visible to the user.
-  drawer.close()
-  openBtn.setAttribute("aria-expanded", "false")
+  drawer.close();
+  openBtn.setAttribute('aria-expanded', 'false');
 }
 
 // Treat "any pixel of the sheet visible inside the dialog" as
 // "open enough to count as not closed". This threshold is intentionally
 // tiny so the closed callback only fires once the sheet is truly gone.
-const visibleThreshold = 1 / window.innerWidth
+const visibleThreshold = 1 / window.innerWidth;
 
 const observer = new IntersectionObserver(
   (entries) => {
     // During programmatic scrolling the observer can deliver multiple
     // entries in one batch. Only the most recent describes the
     // current state; earlier entries are intermediate positions.
-    const entry = entries.at(-1)
-    if (entry.intersectionRatio < visibleThreshold) onDrawerClosed()
-    if (entry.intersectionRatio === 1) onDrawerOpened()
+    const entry = entries.at(-1);
+    if (entry.intersectionRatio < visibleThreshold) onDrawerClosed();
+    if (entry.intersectionRatio === 1) onDrawerOpened();
   },
   // root: drawer makes the dialog element the intersection root,
   // so the ratio reflects the sheet's visibility within the dialog
   // (i.e. how much of it has been swiped on-screen).
-  { root: drawer, threshold: [visibleThreshold, 1] },
-)
-observer.observe(sheet)
+  {root: drawer, threshold: [visibleThreshold, 1]},
+);
+observer.observe(sheet);
 ```
 
 ### 5. Wire up the trigger and dismissal handlers
 
 ```js
 // Open trigger.
-openBtn.addEventListener("click", openDrawer)
+openBtn.addEventListener('click', openDrawer);
 
 // Close trigger.
-closeBtn.addEventListener("click", closeDrawer)
+closeBtn.addEventListener('click', closeDrawer);
 
 // Light-dismiss: a tap on the dimmed area (anywhere inside the
 // dialog but outside the sheet) closes the drawer. Do not use
 // closedby="any": the dialog fills the viewport, so taps land on the
 // dialog rather than its ::backdrop, and it would close without the
 // slide-out animation.
-drawer.addEventListener("click", (event) => {
-  if (!sheet.contains(event.target)) closeDrawer()
-})
+drawer.addEventListener('click', (event) => {
+  if (!sheet.contains(event.target)) closeDrawer();
+});
 
 // Escape key. A modal dialog fires `cancel` on Escape; prevent the
 // instant close and slide the drawer out instead.
 // NOTE: Browsers may make `cancel` non-cancelable on repeated Escape
 // presses without user activation in between, closing the dialog instantly.
-drawer.addEventListener("cancel", (event) => {
+drawer.addEventListener('cancel', (event) => {
   if (event.cancelable) {
-    event.preventDefault()
-    closeDrawer()
+    event.preventDefault();
+    closeDrawer();
   }
-})
+});
 ```
 
 ## Implementation for a drawer that also acts as a sidebar
@@ -328,32 +324,32 @@ Follow the [`<dialog>` implementation](#implementation-with-dialog), with these 
   - Handle Escape with a `keydown` listener on `document`, since popovers do not fire `cancel`.
 
 ```js
-const main = document.querySelector("main")
+const main = document.querySelector('main');
 
 function openDrawer() {
-  drawer.showPopover()
+  drawer.showPopover();
   // Mark everything outside the drawer inert immediately on open (include
   // sibling <header>/<footer> landmarks if they live outside <main>).
-  main.inert = true
-  drawer.setAttribute("aria-modal", "true")
-  scroller.scrollTo({ left: 0, behavior: "auto" })
+  main.inert = true;
+  drawer.setAttribute('aria-modal', 'true');
+  scroller.scrollTo({left: 0, behavior: 'auto'});
 }
 
 function onDrawerClosed() {
   // The observer also reports "closed" on page load; ignore it unless open.
-  if (!drawer.hasAttribute("aria-modal")) return
-  drawer.hidePopover()
-  main.inert = false
-  drawer.removeAttribute("aria-modal")
-  openBtn.setAttribute("aria-expanded", "false")
-  openBtn.focus()
+  if (!drawer.hasAttribute('aria-modal')) return;
+  drawer.hidePopover();
+  main.inert = false;
+  drawer.removeAttribute('aria-modal');
+  openBtn.setAttribute('aria-expanded', 'false');
+  openBtn.focus();
 }
 
 // Escape key. Listen on document because focus may be inside the
 // drawer when the user presses Escape.
-document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") closeDrawer()
-})
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') closeDrawer();
+});
 ```
 
 ## Fallback strategies
@@ -374,13 +370,13 @@ Supported by: Chrome 115 (Jul 2023), Edge 115 (Jul 2023), Firefox 159 (Oct 2026)
 Detect with `CSS.supports('animation-timeline: scroll()')` and write `--drawer-backdrop` from a `scroll` event listener if not supported. The CSS `@supports` block in step 2 ensures the keyframes never apply in unsupported browsers, so the JavaScript value is the only writer.
 
 ```js
-if (!CSS.supports("animation-timeline: scroll()")) {
-  scroller.addEventListener("scroll", () => {
+if (!CSS.supports('animation-timeline: scroll()')) {
+  scroller.addEventListener('scroll', () => {
     // Same mapping as the @keyframes: 0 scroll = 1 (open),
     // sheet-width scroll = 0 (closed).
-    const ratio = 1 - scroller.scrollLeft / sheet.offsetWidth
-    drawer.style.setProperty("--drawer-backdrop", ratio)
-  })
+    const ratio = 1 - scroller.scrollLeft / sheet.offsetWidth;
+    drawer.style.setProperty('--drawer-backdrop', ratio);
+  });
 }
 ```
 
@@ -394,19 +390,21 @@ Detect with `CSS.supports('scroll-initial-target', 'nearest')` and inside `openD
 
 ```js
 async function openDrawer() {
-  drawer.showModal() // sidebar variant: showPopover(), main.inert = true, and aria-modal="true"
+  drawer.showModal(); // sidebar variant: showPopover(), main.inert = true, and aria-modal="true"
 
-  if (!CSS.supports("scroll-initial-target", "nearest")) {
+  if (!CSS.supports('scroll-initial-target', 'nearest')) {
     // Jump-scroll to the closed stop so the scroll below
     // animates the drawer in from off-screen.
-    scroller.scrollTo({ left: scroller.offsetWidth, behavior: "instant" })
+    scroller.scrollTo({left: scroller.offsetWidth, behavior: 'instant'});
     // Wait two animation frames for the jump-scroll to commit.
     // A single rAF is not enough — the second `scrollTo` would
     // cancel the first before the browser has a chance to apply it.
-    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+    await new Promise((r) =>
+      requestAnimationFrame(() => requestAnimationFrame(r))
+    );
   }
 
-  scroller.scrollTo({ left: 0, behavior: "auto" })
+  scroller.scrollTo({left: 0, behavior: 'auto'});
 }
 ```
 
@@ -416,6 +414,7 @@ Baseline status for Registered custom properties: Newly available. It's been Bas
 Supported by: Chrome 85 (Aug 2020), Edge 85 (Aug 2020), Firefox 128 (Jul 2024), and Safari 16.4 (Mar 2023).
 
 `@property` is only needed because the scroll-driven animation interpolates `--drawer-backdrop` between keyframes — without registration, the property would be treated as a string and would jump between 0 and 1 with no fade. If the scroll-driven animation fallback above is in place, that JavaScript writes a fresh numeric string to `--drawer-backdrop` on every scroll frame and never interpolates, so no separate `@property` fallback is needed since all browsers that support scroll-driven animations also support `@property`.
+
 
 ### Popover API fallback (sidebar variant only):
 

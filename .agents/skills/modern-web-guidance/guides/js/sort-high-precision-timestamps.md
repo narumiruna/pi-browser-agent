@@ -19,43 +19,41 @@ To parse, sort, and measure intervals between high-precision timestamps:
 ```javascript
 // Events received with nanosecond-precision ISO 8601 timestamps.
 const rawEvents = [
-  { nodeId: "api-2", eventType: "db.query", ts: "2026-04-01T12:00:00.000123456Z" },
-  { nodeId: "api-1", eventType: "request.start", ts: "2026-04-01T12:00:00.000120000Z" },
-  { nodeId: "api-2", eventType: "request.end", ts: "2026-04-01T12:00:00.000987654Z" },
-]
+  { nodeId: 'api-2', eventType: 'db.query', ts: '2026-04-01T12:00:00.000123456Z' },
+  { nodeId: 'api-1', eventType: 'request.start', ts: '2026-04-01T12:00:00.000120000Z' },
+  { nodeId: 'api-2', eventType: 'request.end', ts: '2026-04-01T12:00:00.000987654Z' },
+];
 
 // 1. Parse recorded timestamps as Temporal.Instant (never `new Date(ts)`,
 // which drops everything below the millisecond).
-const events = rawEvents.map((evt) => ({
+const events = rawEvents.map(evt => ({
   ...evt,
   timestamp: Temporal.Instant.from(evt.ts),
-}))
+}));
 
 // 2. Sort chronologically with the static compare() method
 function sequenceEvents(items) {
   // Instant.compare returns -1, 0, or 1, which is what sort() expects.
-  return [...items].sort((a, b) => Temporal.Instant.compare(a.timestamp, b.timestamp))
+  return [...items].sort((a, b) => Temporal.Instant.compare(a.timestamp, b.timestamp));
 }
 
 // 3. Calculate and display the interval between consecutive events
 function analyzeTrace(sortedEvents) {
   for (let i = 1; i < sortedEvents.length; i++) {
-    const prev = sortedEvents[i - 1]
-    const curr = sortedEvents[i]
+    const prev = sortedEvents[i - 1];
+    const curr = sortedEvents[i];
 
     // since() returns a Temporal.Duration that retains nanosecond precision.
-    const gap = curr.timestamp.since(prev.timestamp)
+    const gap = curr.timestamp.since(prev.timestamp);
 
     // 4. toLocaleString() formats the duration for people (e.g., "3μs 456ns").
     // Avoid gap.total('nanoseconds'): spans over ~104 days exceed Number.MAX_SAFE_INTEGER.
     // 'en-US' is used here for deterministic output; pass undefined to use the user's locale.
-    console.log(
-      `${prev.eventType} → ${curr.eventType}: ${gap.toLocaleString("en-US", { style: "narrow" })}`,
-    )
+    console.log(`${prev.eventType} → ${curr.eventType}: ${gap.toLocaleString('en-US', { style: 'narrow' })}`);
   }
 }
 
-analyzeTrace(sequenceEvents(events))
+analyzeTrace(sequenceEvents(events));
 ```
 
 ## Strategic Implementation & Best Practices
@@ -81,14 +79,14 @@ Note that importing `temporal-polyfill` does not automatically assign the `Tempo
 
 ```javascript
 // Check if Temporal is supported natively
-;(async () => {
-  if (typeof Temporal === "undefined") {
+(async () => {
+  if (typeof Temporal === 'undefined') {
     // Load the polyfill conditionally
-    const module = await import("https://esm.sh/temporal-polyfill")
-    globalThis.Temporal = module.Temporal
+    const module = await import('https://esm.sh/temporal-polyfill');
+    globalThis.Temporal = module.Temporal;
     // Extend Date.prototype if needed
-    Date.prototype.toTemporalInstant = module.toTemporalInstant
+    Date.prototype.toTemporalInstant = module.toTemporalInstant;
   }
-  initializeApp()
-})()
+  initializeApp();
+})();
 ```
