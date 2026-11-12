@@ -21,7 +21,9 @@ function runtime() {
       onAgentEvent: vi.fn(),
     },
     {
-      claim: vi.fn(async () => true),
+      claim: vi.fn(async (_id: string, prepare?: () => Promise<boolean>) =>
+        prepare ? prepare() : true,
+      ),
       release: vi.fn(async () => {}),
       protectedSessionIds: vi.fn(async () => new Set<string>()),
     } as unknown as SessionLease,

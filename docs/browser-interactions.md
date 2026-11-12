@@ -4,6 +4,10 @@ These tools use the current active HTTP(S) tab in the focused Chrome window. The
 
 All objects reject unknown properties. References consist of both `snapshotId` (36-character snapshot ID) and `ref` (such as `e1`, at most eight characters) from `browser_list_elements`. Reference actions and option reads do not accept CSS selectors. New text-search and condition-wait selectors accept at most 2,048 Unicode code points. Their string inputs follow JSON Schema character counts; existing selector-based tools keep their existing UTF-16 limits.
 
+## Page text reads
+
+`browser_read_page` excludes form controls and effectively editable subtrees from both full-page and scoped reads. A selector inside a form control or editable subtree is denied. A document with `designMode` enabled is also denied. The UTF-16 offset applies to the filtered rendered text. Filtering does not change the live page; scopes without excluded subtrees keep native rendered whitespace.
+
 ## Discovery and reference lifetime
 
 `browser_list_elements({})` scans at most 2,000 top-frame light-DOM elements and returns at most 50 visible controls and vertical scroll containers. Optional `role` and `type` filters are exact, case-sensitive strings of at most 64 Unicode code points. Optional `name` is a case-sensitive literal substring of the returned bounded name, at most 256 Unicode code points. Returned names retain the existing 256-UTF-16-unit bound. Optional `offset` is a matching-result ordinal from 0 to 2,000, not a DOM-node index. `type` is the native input/button type, or an empty string for other elements. Empty filters retain their literal meaning. Filters do not increase the scan budget.

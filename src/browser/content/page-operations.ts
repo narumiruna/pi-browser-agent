@@ -1387,7 +1387,7 @@ export async function executePageOperation(
             if (!match) return failure("INVALID_REQUEST", "No element matches the page selector")
             if (!(match instanceof HTMLElement))
               return failure("INVALID_REQUEST", "The page selector must match an HTML element")
-            if (match.matches("input, textarea, select, option"))
+            if (match.closest("input, textarea, select, option") || match.isContentEditable)
               return failure("PERMISSION_DENIED", "Form field contents cannot be read")
             const style = getComputedStyle(match)
             if (["hidden", "collapse"].includes(style.visibility))
@@ -1407,8 +1407,58 @@ export async function executePageOperation(
             throw error
           }
         }
-        // biome-ignore lint/performance/useDomNodeTextContent: Page text must exclude hidden content and preserve rendered whitespace.
-        const text = (root?.innerText ?? "").replace(/\n{3,}/g, "\n\n").trim()
+        if (document.designMode?.toLowerCase() === "on" || root?.isContentEditable)
+          return failure("PERMISSION_DENIED", "Form field contents cannot be read")
+        const excluded = new Set<Element>()
+        const split = new Set<Node>()
+        for (const field of root?.querySelectorAll<HTMLElement>(
+          "input, textarea, select, option, [contenteditable]",
+        ) ?? []) {
+          if (!field.matches("input, textarea, select, option") && !field.isContentEditable)
+            continue
+          excluded.add(field)
+          for (let parent = field.parentNode; parent; parent = parent.parentNode) {
+            if (split.has(parent)) break
+            split.add(parent)
+            if (parent === root) break
+          }
+        }
+        const readText = (node: Node): string => {
+          if (node.nodeType === Node.TEXT_NODE) {
+            const parent = node.parentElement
+            if (!parent) return ""
+            const style = getComputedStyle(parent)
+            if (["hidden", "collapse"].includes(style.visibility)) return ""
+            const range = document.createRange()
+            range.selectNodeContents(node)
+            if (range.getClientRects().length === 0) return ""
+            const value = node.nodeValue ?? ""
+            return style.whiteSpace.startsWith("pre") || style.whiteSpace === "break-spaces"
+              ? value
+              : value.replace(/[ \t\r\n\f]+/g, " ")
+          }
+          if (!(node instanceof HTMLElement)) return ""
+          if (excluded.has(node)) return "\n"
+          const style = getComputedStyle(node)
+          if (style.display === "none") return ""
+          if (node.tagName === "BR") return "\n"
+          const block = style.display !== "contents" && !style.display.startsWith("inline")
+          if (style.display !== "contents") {
+            if (node.getClientRects().length === 0) return ""
+            // Native rendered text preserves whitespace without exposing excluded subtrees.
+            if (!split.has(node)) {
+              // biome-ignore lint/performance/useDomNodeTextContent: Hidden content must remain excluded.
+              const value = node.innerText
+              return block ? `\n${value}\n` : value
+            }
+          }
+          const value = Array.from(node.childNodes, readText).join("")
+          return block ? `\n${value}\n` : value
+        }
+        // Keep native whitespace unchanged when no private subtree needs filtering.
+        // biome-ignore lint/performance/useDomNodeTextContent: Page text must exclude hidden content.
+        const value = root ? (excluded.size > 0 ? readText(root) : root.innerText) : ""
+        const text = value.replace(/\n{3,}/g, "\n\n").trim()
         let offset = typeof params.offset === "number" ? params.offset : 0
         if (offset > text.length)
           return failure("INVALID_REQUEST", "Page text offset exceeds the available text")

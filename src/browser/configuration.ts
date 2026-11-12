@@ -152,10 +152,14 @@ export class BrowserConfiguration {
 
   async refreshCredential(providerId: string): Promise<void> {
     return this.runAuthChange(async () => {
-      const auth = await this.models.getAuth(providerId, {
-        minOAuthValidityMs: Number.MAX_SAFE_INTEGER,
+      const oauth = this.models.getProvider(providerId)?.auth.oauth
+      await this.credentials.modify(providerId, async (current) => {
+        if (!oauth || current?.type !== "oauth") {
+          throw new Error("Configure this provider before refreshing its credential")
+        }
+        // Keep token rotation and persistence under the same cross-context lock.
+        return oauth.refresh(current, AbortSignal.timeout(15_000))
       })
-      if (!auth) throw new Error("Configure this provider before refreshing its credential")
     })
   }
 

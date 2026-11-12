@@ -89,9 +89,11 @@ export class AuthenticationController {
       })
     }
 
+    const loginDialog = element<HTMLDialogElement>("login-dialog")
+    loginDialog.addEventListener("cancel", () => this.controller?.abort())
     element<HTMLButtonElement>("cancel-login").addEventListener("click", () => {
       this.controller?.abort()
-      element<HTMLDialogElement>("login-dialog").close()
+      loginDialog.close("cancel")
     })
     element<HTMLButtonElement>("open-verification").addEventListener("click", () => {
       if (this.verificationUri) void chrome.tabs.create({ url: this.verificationUri })
@@ -149,7 +151,10 @@ export class AuthenticationController {
       this.verificationUri = event.verificationUri
       element<HTMLOutputElement>("device-code").textContent = event.userCode
       const dialog = element<HTMLDialogElement>("login-dialog")
-      if (!dialog.open) dialog.showModal()
+      if (!dialog.open) {
+        dialog.returnValue = ""
+        dialog.showModal()
+      }
     } else if (
       this.options.mode === "conversation" &&
       (event.type === "progress" || event.type === "info")
@@ -308,6 +313,7 @@ export class AuthenticationController {
         }
         throw error
       }
+      if (this.controller.signal.aborted) return false
       const loginDialog = element<HTMLDialogElement>("login-dialog")
       if (loginDialog.open) loginDialog.close()
       this.options.onProvidersChanged?.()
@@ -320,6 +326,8 @@ export class AuthenticationController {
       return true
     } finally {
       this.controller = undefined
+      const loginDialog = element<HTMLDialogElement>("login-dialog")
+      if (loginDialog.open) loginDialog.close()
       this.configuring = false
       if (this.loginButton) this.loginButton.disabled = false
       if (this.configureButton) {

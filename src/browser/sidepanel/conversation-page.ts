@@ -208,6 +208,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       ? `${displayedMessage}\n${detailText}`
       : displayedMessage
     confirmError.textContent = ""
+    confirmDialog.returnValue = "cancel"
     confirmDialog.showModal()
     return new Promise((resolve) => {
       let finished = false
@@ -249,8 +250,12 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
         if (finished) return
         finished = true
         signal?.removeEventListener("abort", cancel)
+        confirmDialog.removeEventListener("cancel", dismiss)
         confirmActionButton.removeEventListener("click", requestRequiredAccess)
         resolve(confirmDialog.returnValue === "confirm" && !signal?.aborted)
+      }
+      const dismiss = (): void => {
+        confirmDialog.returnValue = "cancel"
       }
       const cancel = (): void => {
         if (confirmDialog.open) confirmDialog.close("cancel")
@@ -258,6 +263,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       }
       confirmActionButton.addEventListener("click", requestRequiredAccess)
       confirmDialog.addEventListener("close", finish, { once: true })
+      confirmDialog.addEventListener("cancel", dismiss)
       signal?.addEventListener("abort", cancel, { once: true })
       if (signal?.aborted) cancel()
     })

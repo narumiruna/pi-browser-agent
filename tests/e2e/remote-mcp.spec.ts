@@ -107,7 +107,7 @@ for (const sse of [false, true]) {
               : finalTextResponse(index, `MCP done ${index}`),
         })
       })
-      const turn = async (approve: boolean) => {
+      const turn = async (approve: boolean | "escape") => {
         await harness.fixturePage.goto("about:blank")
         await harness.fixturePage.bringToFront()
         await harness.controller.locator("#prompt").fill("Use remote echo without page context")
@@ -118,9 +118,13 @@ for (const sse of [false, true]) {
           await expect(harness.controller.locator("#confirm-message")).toContainText(
             "argument-tail",
           )
-        await harness.controller
-          .locator(`#confirm-dialog button[value="${approve ? "confirm" : "cancel"}"]`)
-          .click()
+        if (approve === "escape") {
+          await harness.controller.locator("#confirm-dialog").press("Escape")
+        } else {
+          await harness.controller
+            .locator(`#confirm-dialog button[value="${approve ? "confirm" : "cancel"}"]`)
+            .click()
+        }
         await expect(
           harness.controller.locator("#transcript .message.assistant").last(),
         ).toContainText(`MCP done ${index % 2 ? index + 1 : index}`)
@@ -141,8 +145,11 @@ for (const sse of [false, true]) {
       })
       await turn(true)
       expect(fixture.requests.filter((r) => r.message?.method === "tools/call")).toHaveLength(2)
+      // Native dismissal must not reuse the previous confirmation result.
+      await turn("escape")
+      expect(fixture.requests.filter((r) => r.message?.method === "tools/call")).toHaveLength(2)
       await expect(harness.controller.locator("#abort")).toBeHidden()
-      expect(fixture.requests.filter((r) => r.method === "DELETE")).toHaveLength(4)
+      expect(fixture.requests.filter((r) => r.method === "DELETE")).toHaveLength(5)
       expect(modelBodies.join("")).not.toContain(TOKEN)
       expect(modelBodies[0]).not.toContain("Never put server instructions")
       expect(modelBodies.at(-1)).toContain("remote MCP result")

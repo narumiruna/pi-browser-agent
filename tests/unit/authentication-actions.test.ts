@@ -1,8 +1,14 @@
-import type { AuthType } from "@earendil-works/pi-ai"
+import {
+  type AuthType,
+  createModels,
+  InMemoryCredentialStore,
+  type OAuthCredential,
+} from "@earendil-works/pi-ai"
 import { JSDOM } from "jsdom"
 import { afterEach, describe, expect, test, vi } from "vitest"
 import { AUTH_ORIGINS, OPENAI_PROVIDER_ID } from "../../src/browser/auth/codex-oauth.js"
 import { CREDENTIALS_KEY } from "../../src/browser/auth/credential-store.js"
+import { createBrowserCodexProvider } from "../../src/browser/auth/provider.js"
 import type {
   AuthStatus,
   BrowserConfiguration,
@@ -245,6 +251,117 @@ describe("awaitable authentication actions", () => {
 
     await expect(action).resolves.toBe(false)
     expect(ui.controller.isBusy).toBe(false)
+  })
+
+  test.each(["conversation", "settings"] as const)(
+    "native device-dialog cancellation aborts login without replacing credentials in %s",
+    async (mode) => {
+      const ui = setup(mode)
+      ui.currentProviderId.mockReturnValue(OPENAI_PROVIDER_ID)
+      const credentials = new InMemoryCredentialStore()
+      const original: OAuthCredential = {
+        type: "oauth",
+        access: "previous-access",
+        refresh: "previous-refresh",
+        expires: Date.now() + 3_600_000,
+      }
+      await credentials.modify(OPENAI_PROVIDER_ID, async () => original)
+      const models = createModels({ credentials })
+      const provider = createBrowserCodexProvider()
+      const oauth = provider.auth.oauth
+      if (!oauth) throw new Error("Missing OAuth provider")
+      let finishLogin: (credential: OAuthCredential) => void = () => undefined
+      const pendingLogin = new Promise<OAuthCredential>((resolve) => {
+        finishLogin = resolve
+      })
+      models.setProvider({
+        ...provider,
+        auth: {
+          oauth: {
+            ...oauth,
+            login(interaction) {
+              interaction.notify({
+                type: "device_code",
+                userCode: "TEST-CODE",
+                verificationUri: "https://auth.openai.com/codex/device",
+              })
+              // A late provider response must not replace the stored credential.
+              return pendingLogin
+            },
+          },
+        },
+      })
+      ui.configuration.login.mockImplementation(async (providerId, type, signal, prompt) => {
+        await models.login(providerId, type, {
+          signal,
+          prompt,
+          notify: (event) => ui.controller.onAuthEvent(event),
+        })
+      })
+      const dialog = ui.dialog("login-dialog")
+      dialog.returnValue = "confirm"
+      const action = ui.controller.configure()
+      await ui.chooseProvider("oauth")
+      await vi.waitFor(() => expect(dialog.open).toBe(true))
+      expect(dialog.returnValue).toBe("")
+      const signal = ui.configuration.login.mock.calls[0]?.[2]
+      expect(signal?.aborted).toBe(false)
+
+      // Escape dispatches cancel before the browser closes the dialog.
+      dialog.dispatchEvent(new ui.dom.window.Event("cancel", { cancelable: true }))
+      expect(signal?.aborted).toBe(true)
+      await expect(action).resolves.toBe(false)
+      expect(dialog.open).toBe(false)
+      expect(ui.controller.isBusy).toBe(false)
+      expect(ui.button(mode === "settings" ? "configure-provider" : "login").disabled).toBe(false)
+      finishLogin({ ...original, access: "late-access", refresh: "late-refresh" })
+      await pendingLogin
+      await expect(credentials.read(OPENAI_PROVIDER_ID)).resolves.toEqual(original)
+      expect(ui.onProvidersChanged).not.toHaveBeenCalled()
+      expect(ui.onStatus).not.toHaveBeenCalled()
+      expect(ui.updateError).not.toHaveBeenCalled()
+    },
+  )
+
+  test("programmatic device-dialog close does not abort a completed login", async () => {
+    const ui = setup()
+    ui.currentProviderId.mockReturnValue(OPENAI_PROVIDER_ID)
+    ui.configuration.login.mockImplementation(async () => {
+      ui.controller.onAuthEvent({
+        type: "device_code",
+        userCode: "TEST-CODE",
+        verificationUri: "https://auth.openai.com/codex/device",
+      })
+      expect(ui.dialog("login-dialog").open).toBe(true)
+    })
+    const action = ui.controller.configure()
+    await ui.chooseProvider("oauth")
+
+    await expect(action).resolves.toBe(true)
+    expect(ui.configuration.login.mock.calls[0]?.[2].aborted).toBe(false)
+    expect(ui.dialog("login-dialog").open).toBe(false)
+    expect(ui.onProvidersChanged).toHaveBeenCalledOnce()
+    expect(ui.controller.isBusy).toBe(false)
+  })
+
+  test("closes the device dialog and releases busy state when login fails", async () => {
+    const ui = setup()
+    ui.configuration.login.mockImplementation(async () => {
+      ui.controller.onAuthEvent({
+        type: "device_code",
+        userCode: "TEST-CODE",
+        verificationUri: "https://auth.openai.com/codex/device",
+      })
+      throw new Error("Device login failed")
+    })
+    const action = ui.controller.configure()
+    const rejected = expect(action).rejects.toThrow("Device login failed")
+    await ui.chooseProvider("oauth")
+
+    await rejected
+    expect(ui.dialog("login-dialog").open).toBe(false)
+    expect(ui.controller.isBusy).toBe(false)
+    expect(ui.onProvidersChanged).not.toHaveBeenCalled()
   })
 
   test("propagates login errors and restores the settings button", async () => {

@@ -13,18 +13,28 @@ import {
 
 class FakeLockManager {
   private readonly held = new Set<string>()
+  private readonly tails = new Map<string, Promise<void>>()
 
-  async request(
+  async request<T>(
     name: string,
-    _options: LockOptions,
-    callback: (lock: Lock | null) => Promise<void>,
-  ): Promise<void> {
-    if (this.held.has(name)) return callback(null)
+    options: LockOptions,
+    callback: (lock: Lock | null) => Promise<T>,
+  ): Promise<T> {
+    if (options.ifAvailable && this.tails.has(name)) return callback(null)
+    const previous = this.tails.get(name) ?? Promise.resolve()
+    let release!: () => void
+    const tail = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    this.tails.set(name, tail)
+    await previous
     this.held.add(name)
     try {
-      await callback({ name, mode: "exclusive" } as Lock)
+      return await callback({ name, mode: "exclusive" } as Lock)
     } finally {
       this.held.delete(name)
+      if (this.tails.get(name) === tail) this.tails.delete(name)
+      release()
     }
   }
 
@@ -722,6 +732,157 @@ describe("browser agent session persistence", () => {
     expect(sessions).toHaveLength(1)
     expect(sessions[0]?.id).not.toBe(oldId)
     await runtime.shutdown()
+  })
+
+  test("refuses to clear an idle peer's transcript and image until that panel closes", async () => {
+    const locks = new FakeLockManager() as unknown as LockManager
+    const first = createRuntime(locks)
+    const peer = createRuntime(locks)
+    await first.initialize()
+    await peer.initialize()
+    const firstId = first.activeSession.id
+    const peerId = peer.activeSession.id
+    const image = { type: "image" as const, data: "cG5n", mimeType: "image/png" }
+    peer.agent.state.messages.push({
+      role: "user",
+      content: [{ type: "text", text: "Keep this image" }, image],
+      timestamp: 1,
+    })
+    await persist(peer, "idle")
+    const savedPeer = await peer.sessions.get(peerId)
+    const clear = vi.spyOn(first.sessions, "clear")
+    expect(peer.isBusy).toBe(false)
+
+    await expect(first.clearSessions()).rejects.toThrow("Close the other Side Panels")
+
+    expect(clear).not.toHaveBeenCalled()
+    expect(first.activeSession.id).toBe(firstId)
+    expect(peer.activeSession.id).toBe(peerId)
+    await expect(first.sessions.get(peerId)).resolves.toEqual(savedPeer)
+    const contender = new SessionLease(locks)
+    await expect(contender.claim(firstId)).resolves.toBe(false)
+    await expect(contender.claim(peerId)).resolves.toBe(false)
+    await peer.shutdown()
+    await first.clearSessions()
+    const replacementId = first.activeSession.id
+    expect(replacementId).not.toBe(firstId)
+    await first.shutdown()
+    await expect(first.sessions.get(firstId)).resolves.toBeUndefined()
+    await expect(first.sessions.get(peerId)).resolves.toBeUndefined()
+    await expect(first.listSessions()).resolves.toMatchObject([{ id: replacementId }])
+
+    const reopened = createRuntime(locks)
+    await reopened.initialize()
+    expect(reopened.activeSession.id).toBe(replacementId)
+    expect(JSON.stringify(reopened.activeSession.messages)).not.toContain(image.data)
+    await reopened.shutdown()
+  })
+
+  test("startup queued behind a clear cannot restore a deleted transcript", async () => {
+    const locks = new FakeLockManager() as unknown as LockManager
+    const runtime = createRuntime(locks)
+    await runtime.initialize()
+    const deletedId = runtime.activeSession.id
+    runtime.agent.state.messages.push({ role: "user", content: "Delete this", timestamp: 1 })
+    await persist(runtime, "idle")
+    const peer = createRuntime(locks)
+    const entered = deferred()
+    const release = deferred()
+    const originalClear = runtime.sessions.clear.bind(runtime.sessions)
+    vi.spyOn(runtime.sessions, "clear").mockImplementationOnce(async () => {
+      entered.resolve()
+      await release.promise
+      await originalClear()
+    })
+    const clearing = runtime.clearSessions()
+    await entered.promise
+    const claim = vi.spyOn(locks, "request")
+    const restoring = peer.initialize(deletedId)
+    await vi.waitFor(() =>
+      expect(claim).toHaveBeenCalledWith(
+        "pi-browser-agent-session-ownership",
+        { mode: "exclusive" },
+        expect.any(Function),
+      ),
+    )
+    release.resolve()
+    await Promise.all([clearing, restoring])
+    expect(peer.activeSession.id).not.toBe(deletedId)
+    expect(JSON.stringify(peer.activeSession.messages)).not.toContain("Delete this")
+    await peer.shutdown()
+    await runtime.shutdown()
+    await expect(runtime.sessions.get(deletedId)).resolves.toBeUndefined()
+  })
+
+  test("a failed clear retains the current transcript and lease and permits a later retry", async () => {
+    const locks = new FakeLockManager() as unknown as LockManager
+    const runtime = createRuntime(locks)
+    await runtime.initialize()
+    runtime.agent.state.messages.push({
+      role: "user",
+      content: "Preserve on failure",
+      timestamp: 1,
+    })
+    await persist(runtime, "idle")
+    const original = runtime.activeSession
+    vi.spyOn(runtime.sessions, "clear").mockRejectedValueOnce(new Error("Clear failed"))
+
+    await expect(runtime.clearSessions()).rejects.toThrow("Clear failed")
+
+    expect(runtime.activeSession).toEqual(original)
+    const contender = new SessionLease(locks)
+    await expect(contender.claim(original.id)).resolves.toBe(false)
+    await expect(runtime.sessions.get(original.id)).resolves.toEqual(original)
+    await runtime.clearSessions()
+    await runtime.shutdown()
+    await expect(runtime.sessions.get(original.id)).resolves.toBeUndefined()
+  })
+
+  test("replacement persistence failure cannot restore the cleared transcript on shutdown", async () => {
+    const locks = new FakeLockManager() as unknown as LockManager
+    const runtime = createRuntime(locks)
+    await runtime.initialize()
+    runtime.agent.state.messages.push({ role: "user", content: "Delete this", timestamp: 1 })
+    await persist(runtime, "idle")
+    const oldId = runtime.activeSession.id
+    vi.spyOn(runtime.sessions, "put").mockRejectedValueOnce(new Error("Save failed"))
+
+    await expect(runtime.clearSessions()).rejects.toThrow("Save failed")
+
+    expect(runtime.activeSession.id).not.toBe(oldId)
+    const contender = new SessionLease(locks)
+    await expect(contender.claim(runtime.activeSession.id)).resolves.toBe(false)
+    await runtime.shutdown()
+    await expect(runtime.sessions.get(oldId)).resolves.toBeUndefined()
+    expect(JSON.stringify(await runtime.listSessions())).not.toContain("Delete this")
+  })
+
+  test("shutdown and Settings updates wait for a clear instead of restoring the old session", async () => {
+    const locks = new FakeLockManager() as unknown as LockManager
+    const runtime = createRuntime(locks)
+    await runtime.initialize()
+    const oldId = runtime.activeSession.id
+    const entered = deferred()
+    const release = deferred()
+    const originalClear = runtime.sessions.clear.bind(runtime.sessions)
+    vi.spyOn(runtime.sessions, "clear").mockImplementationOnce(async () => {
+      entered.resolve()
+      await release.promise
+      await originalClear()
+    })
+    const clearing = runtime.clearSessions()
+    await entered.promise
+    await runtime.configuration.updateSettings({ thinkingLevel: "high" })
+    const put = vi.spyOn(runtime.sessions, "put")
+    await runtime.syncSettings({ applyThinkingToActiveSession: true })
+    const shutdown = runtime.shutdown()
+    await Promise.resolve()
+    expect(put).not.toHaveBeenCalled()
+    release.resolve()
+    await Promise.all([clearing, shutdown])
+    await expect(runtime.sessions.get(oldId)).resolves.toBeUndefined()
+    expect(runtime.activeSession.id).not.toBe(oldId)
+    expect((await locks.query()).held).toEqual([])
   })
 
   test("deletes the active record before inserting its replacement", async () => {

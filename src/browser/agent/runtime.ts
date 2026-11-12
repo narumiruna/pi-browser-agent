@@ -133,6 +133,7 @@ export class BrowserAgentRuntime {
   private treeNavigating = false
   private treeNavigation?: Promise<void>
   private changingSession = false
+  private sessionChange?: Promise<void>
   private shuttingDown = false
   private persistenceFailure?: unknown
   private persistRevision = 0
@@ -226,16 +227,10 @@ export class BrowserAgentRuntime {
     this.currentModel = await this.configuration.initialize()
     this.agent.state.model = this.currentModel
     const preferredId = sessionId ?? (await getActiveSessionId())
-    let restored = preferredId ? await this.sessions.get(preferredId) : undefined
-    if (restored) this.requireModel(restored.model.provider, restored.model.id)
-    if (restored && !(await this.sessionLease.claim(restored.id))) restored = undefined
+    let restored = preferredId ? await this.claimSavedSession(preferredId) : undefined
     if (!restored && !preferredId) {
       const latest = (await this.sessions.list())[0]
-      if (latest) {
-        const candidate = await this.sessions.get(latest.id)
-        if (candidate) this.requireModel(candidate.model.provider, candidate.model.id)
-        if (candidate && (await this.sessionLease.claim(candidate.id))) restored = candidate
-      }
+      if (latest) restored = await this.claimSavedSession(latest.id)
     }
 
     if (restored) {
@@ -386,10 +381,21 @@ export class BrowserAgentRuntime {
     this.assertNotNavigatingTree()
     if (this.changingSession) throw new Error("Wait for the session change to finish")
     this.changingSession = true
+    let finishChange!: () => void
+    this.sessionChange = new Promise<void>((resolve) => {
+      finishChange = resolve
+    })
     try {
       await operation()
     } finally {
       this.changingSession = false
+      this.sessionChange = undefined
+      finishChange()
+      if (
+        !this.shuttingDown &&
+        (this.pendingSettingsModel || this.pendingThinkingLevel !== undefined)
+      )
+        await this.applyPendingSettings()
     }
   }
 
@@ -406,6 +412,7 @@ export class BrowserAgentRuntime {
   }
 
   private async applyPendingSettings(): Promise<void> {
+    if (this.changingSession) return
     const applyModelToActiveSession = this.pendingSettingsModel
     const thinkingLevel = this.pendingThinkingLevel
     this.pendingSettingsModel = false
@@ -528,10 +535,9 @@ export class BrowserAgentRuntime {
   async resumeSession(id: string): Promise<void> {
     await this.changeSession(async () => {
       await this.stopAgent()
-      let record = await this.sessions.get(id)
-      if (!record) throw new Error("Session not found")
-      this.requireModel(record.model.provider, record.model.id)
-      if (!(await this.sessionLease.claim(id))) {
+      let record = await this.claimSavedSession(id)
+      if (!record) {
+        if (!(await this.sessions.get(id))) throw new Error("Session not found")
         throw new Error("That session is open in another Side Panel")
       }
       record = await this.normalizeClaimedSession(record)
@@ -570,8 +576,16 @@ export class BrowserAgentRuntime {
     await this.changeSession(async () => {
       const model = this.configuredModel()
       await this.stopAgent()
-      await this.sessions.clear()
-      await this.activateNewSession(model, "Unable to claim a replacement session")
+      const replacement = createSession(
+        model.id,
+        model.provider,
+        this.configuration.appSettings.thinkingLevel,
+      )
+      await this.sessionLease.clearWithReplacement(replacement.id, () => this.sessions.clear())
+      this.session = replacement
+      this.applySession(replacement)
+      await this.saveSession(replacement)
+      await saveActiveSessionId(replacement.id)
     })
   }
 
@@ -582,6 +596,7 @@ export class BrowserAgentRuntime {
     this.preparationGeneration++
     this.skillRun?.finish()
     if (this.treeNavigation) await this.treeNavigation
+    if (this.sessionChange) await this.sessionChange
     this.mcp.dispose()
     this.agent.abort()
     await this.agent.waitForIdle()
@@ -640,6 +655,18 @@ export class BrowserAgentRuntime {
     if (images.length > 0 && !this.currentModel.input.includes("image")) {
       throw new Error(`${this.currentModel.name} does not support image input`)
     }
+  }
+
+  private async claimSavedSession(id: string): Promise<SessionRecord | undefined> {
+    let record: SessionRecord | undefined
+    const claimed = await this.sessionLease.claim(id, async () => {
+      // Read under the ownership lock: a clear can invalidate an earlier record.
+      record = await this.sessions.get(id)
+      if (!record) return false
+      this.requireModel(record.model.provider, record.model.id)
+      return true
+    })
+    return claimed ? record : undefined
   }
 
   private async normalizeClaimedSession(record: SessionRecord): Promise<SessionRecord> {
