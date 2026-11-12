@@ -1,5 +1,18 @@
 # pi-browser-agent
 
+## 0.12.0
+
+### Minor Changes
+
+- 5dbce18: Add the codex_imagegen tool with existing Codex account login, fresh per-call confirmation, bounded browser image validation, and conversation image results. Generation uses one fixed-endpoint JSON request with cancellation and no automatic retry.
+- 7a12a0c: Add an optional output size to `codex_imagegen`, with bounded pixel dimensions, size confirmation, and unchanged response byte limits and no-retry rules.
+
+### Patch Changes
+
+- 8c967e9: Bind image-generation confirmation to the original Codex account, permit same-account OAuth refresh, and accept EXIF-transposed JPEG dimensions. Correct the OAuth refresh and session-compaction disclosures.
+- 3bf8744: Clarify image-generation cancellation: same-account credential changes can continue before authentication resolves, while later access-token changes cancel local work.
+- 7975e27: Update Pi runtime packages, Markdown parsing, schema validation, and development dependencies. Align authentication tests and documentation with the SDK's OpenAI Codex label.
+
 ## 0.11.1
 
 ### Patch Changes
