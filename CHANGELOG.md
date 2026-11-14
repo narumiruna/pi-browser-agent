@@ -1,5 +1,11 @@
 # pi-browser-agent
 
+## 0.12.1
+
+### Patch Changes
+
+- 649f80e: Fix confirmation dismissal, editable-page text privacy (including non-editable scopes inside editable ancestors), stale browser contexts, and cancellation before navigation or WebMCP execution. Prevent deleted sessions from being restored by another open conversation, preserve concurrent context-menu selections, and correct manual OAuth refresh and device-login cancellation.
+
 ## 0.12.0
 
 ### Minor Changes

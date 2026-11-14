@@ -1,6 +1,6 @@
 {
   "name": "pi-browser-agent",
-  "version": "0.12.0",
+  "version": "0.12.1",
   "description": "A Chrome-native AI assistant with bounded browser tools",
   "type": "module",
   "private": true,
