@@ -51,7 +51,11 @@ test("a repeated 20-point column gutter reads down columns, not across rows", ()
   const text = analyzePdfPage({ documentId: "columns", pageNumber: 1, pageWidth: 600, items })
     .map((block) => block.text)
     .join(" ")
-  expect(text.indexOf("Left paragraph row 3")).toBeLessThan(text.indexOf("Right paragraph row 1"))
+  const left = text.indexOf("Left paragraph row 3")
+  const right = text.indexOf("Right paragraph row 1")
+  expect(left).toBeGreaterThanOrEqual(0)
+  expect(right).toBeGreaterThanOrEqual(0)
+  expect(left).toBeLessThan(right)
 })
 test("ordinary single-row word gaps do not become a column", () => {
   const blocks = analyzePdfPage({

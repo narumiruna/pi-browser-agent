@@ -56,7 +56,7 @@ Encrypted files use the native password dialog. Enter submits **Open PDF**, not 
 
 The original remains selectable beside progressive translations. Navigation, scroll, zoom, source highlighting, translated-text search, page/document text copy, pause/resume, and explicit failed-block retry are available. **Translate entire document** shows a remaining-character estimate and asks for confirmation because it can consume significant API quota. Partial success remains readable after another block fails.
 
-Cancel, document replacement, settings/credential changes, and disconnect cancel old transports. Remote source downloads also abort on Cancel, local-file replacement, or session disconnect, and have a 120-second deadline. Late downloads cannot replace the current document. Changing target/model/templates cannot reuse the old rendered translation map. A reload or interrupted launch requires explicit Start; no interrupted request is silently repeated.
+Cancel, document replacement, settings/credential changes, and disconnect cancel old transports. Remote source downloads also abort on Cancel, local-file replacement, or session disconnect, and have a 120-second deadline. Late downloads cannot replace the current document. A rejected replacement does not stop setup of the installed document. Changing target/model/templates cannot reuse the old rendered translation map. A reload or interrupted launch requires explicit Start; no interrupted request is silently repeated.
 
 ## Limits and storage
 

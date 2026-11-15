@@ -191,6 +191,72 @@ test("a stale PDF continuation cannot overwrite a newer document after old-task 
     release()
   }
 })
+test.each(["destroy", "render", "queue"])(
+  "a rejected replacement does not stop the installed PDF after %s",
+  async (stage) => {
+    const { port } = await setup(1)
+    choose("previous")
+    await vi.waitFor(() =>
+      expect(document.querySelector("#document-title").textContent).toBe("previous"),
+    )
+    await tick()
+    await tick()
+    let release = () => {}
+    let entered = false
+    const gate = new Promise((resolve) => {
+      release = resolve
+    })
+    const stall = async () => {
+      entered = true
+      await gate
+    }
+    if (stage === "destroy")
+      mocks.destroy = async (name) => {
+        if (name === "previous") await stall()
+      }
+    if (stage === "render")
+      mocks.render = async (name, page) => {
+        if (name === "installed" && page === 1) await stall()
+      }
+    if (stage === "queue")
+      mocks.cacheGate = async (blocks) => {
+        if (!entered && blocks.some((block) => block.text.includes("installed paragraph")))
+          await stall()
+      }
+    try {
+      mocks.pageCount = 6
+      choose("installed")
+      await vi.waitFor(() => expect(entered).toBe(true))
+      mocks.pageCount = Pdf.PDF_LIMITS.maximumPages + 1
+      choose("rejected")
+      await vi.waitFor(() =>
+        expect(document.querySelector("#error").textContent).toContain("supported limit"),
+      )
+      release()
+      await vi.waitFor(() =>
+        expect(document.querySelector("#document-title").textContent).toBe("installed"),
+      )
+      await vi.waitFor(() =>
+        expect(
+          port.posted.some((message) =>
+            message.items?.some((item) => item.text.includes("installed paragraph")),
+          ),
+        ).toBe(true),
+      )
+      expect(document.querySelectorAll(".pdf-page")).toHaveLength(6)
+      expect(document.querySelector("#translation-pages").textContent).toContain(
+        "installed paragraph",
+      )
+      expect(document.querySelector("#page-status").textContent).toBe("Page 1 / 6")
+      expect(document.querySelector("#next-page").disabled).toBe(false)
+    } finally {
+      release()
+      await tick()
+      await tick()
+    }
+  },
+)
+
 test("old render completion keeps the current page canvas", async () => {
   await setup(10)
   let release = () => {}

@@ -493,6 +493,8 @@ export class TranslationController {
     intent: TranslationIntent,
     settings: Awaited<ReturnType<typeof Settings.getSettings>>,
   ): Promise<void> {
+    // An old approval must not replace the current startup promise.
+    if (this.disposed || this.intent !== intent) return
     const run = this.beginOwned(intent, settings)
     this.starting = run
     try {

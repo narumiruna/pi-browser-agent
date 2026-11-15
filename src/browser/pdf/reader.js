@@ -410,7 +410,8 @@ async function loadPdfDocument(source) {
   if (previousLoadingTask && previousLoadingTask !== nextLoadingTask) {
     await previousLoadingTask.destroy().catch(() => {})
   }
-  if (loadSequence !== state.loadSequence) return false
+  // A failed attempt does not replace the installed document.
+  if (state.loadingTask !== nextLoadingTask) return false
 
   const title = Pdf.sanitizePdfTitle(metadata?.info?.Title, Pdf.sanitizePdfTitle(source.title))
   elements.documentTitle.textContent = title
@@ -419,7 +420,7 @@ async function loadPdfDocument(source) {
   createTranslationPages(filteredPages)
   setupPageObserver()
   await renderWindow(1)
-  if (loadSequence !== state.loadSequence) return false
+  if (state.loadingTask !== nextLoadingTask) return false
   if (characterCount < state.pageCount * 20) {
     showError(
       "Very little text could be extracted. This may be a scanned PDF and OCR is not supported yet.",
@@ -428,7 +429,7 @@ async function loadPdfDocument(source) {
     setStatus(`${ui("Ready")} · ${state.pageCount}`)
     await queuePageWindow(1)
   }
-  if (loadSequence !== state.loadSequence) return false
+  if (state.loadingTask !== nextLoadingTask) return false
   updateControls()
   return true
 }
