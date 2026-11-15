@@ -9,7 +9,7 @@ import { executePageOperation, type PageOperation } from "./content/page-operati
 import { executeRegionCapture, stopRegionCaptureInjection } from "./content/region-capture.js"
 import { assertTabContext } from "./content/tab-context.js"
 import { installElementPickerShortcut } from "./element-picker-shortcut.js"
-import { CONTEXT_MENU_TITLES } from "./i18n/context-menu.js"
+import { CONTEXT_MENU_TITLES, TRANSLATION_CONTEXT_MENU_TITLES } from "./i18n/context-menu.js"
 import { languagePreferenceFromSettings, resolveLocale } from "./i18n/locales.js"
 import { PageAnnotationWorker } from "./page-annotation-worker.js"
 import {
@@ -31,6 +31,7 @@ import {
 import { classifyPage, type PageCapability } from "./runtime/page-capability.js"
 import { boundPageTextResult, type PageTextResult } from "./runtime/page-text.js"
 import { parseRegionCaptureNotification, REGION_CAPTURE_LIMITS } from "./runtime/region-capture.js"
+import { isTranslationContentMessage } from "./runtime/translation.js"
 import {
   ELEMENT_LIMITS,
   type ElementSnapshot,
@@ -45,6 +46,7 @@ import {
   savePendingSelection,
   takePendingSelection,
 } from "./storage.js"
+import { installTranslationWorker } from "./translation-worker.js"
 import { executeWebMcpOperation, type WebMcpOperation } from "./webmcp/adapter.js"
 
 const SELECTION_CONTEXT_MENU_ID = "pi-browser-agent-send-selection"
@@ -73,6 +75,7 @@ let pendingSelectionTake: Promise<JsonValue> = Promise.resolve(null)
 const pageAnnotation = new PageAnnotationWorker({
   async beforeStart() {
     await initialization
+    await translation.stopForCapture()
     if (regionCapture.occupied)
       throw new RuntimeError("INVALID_REQUEST", "Finish region capture before page drawing")
     elementPickerOperationVersion += 1
@@ -158,6 +161,7 @@ const pageAnnotation = new PageAnnotationWorker({
 const regionCapture = new RegionCaptureWorker({
   async beforeStart() {
     await initialization
+    await translation.stopForCapture()
     if (pageAnnotation.occupied)
       throw new RuntimeError("INVALID_REQUEST", "Finish page drawing before region capture")
     elementPickerOperationVersion += 1
@@ -235,6 +239,32 @@ const regionCapture = new RegionCaptureWorker({
   },
 })
 const initialization = initialize()
+const translation = installTranslationWorker({
+  initialize: initialization,
+  current: refreshBoundContext,
+  async validate(context) {
+    const current = await refreshBoundContext()
+    assertTabContext(context, current)
+    if (
+      pageAnnotation.occupied ||
+      regionCapture.occupied ||
+      activeElementPicker ||
+      startingElementPicker
+    ) {
+      throw new RuntimeError(
+        "INVALID_REQUEST",
+        "Finish the protected page operation before translating",
+      )
+    }
+    if (!(await hasHostPermission(context.url)))
+      throw new RuntimeError("PERMISSION_DENIED", "Translation site access is required")
+    await assertReadableDocument(context)
+    assertTabContext(context, await refreshBoundContext())
+  },
+  invalidateReferences() {
+    elementSnapshot = undefined
+  },
+})
 const pickerShortcut = installElementPickerShortcut({
   async validate(tab) {
     await initialization
@@ -1002,6 +1032,7 @@ async function startElementPicker(
   }
   startingElementPicker = starting
   try {
+    await translation.stopForCapture()
     const context = await refreshBoundContext()
     if (operationVersion !== elementPickerOperationVersion) return { active: false }
     assertTabContext(request.tabContext, context)
@@ -1272,8 +1303,32 @@ function refreshSelectionMenu(): void {
       const stored = await chrome.storage.local.get(SETTINGS_KEY)
       const locale = resolveLocale(languagePreferenceFromSettings(stored[SETTINGS_KEY]))
       const title = CONTEXT_MENU_TITLES[locale]
+      const translationTitles = TRANSLATION_CONTEXT_MENU_TITLES[locale]
       await new Promise<void>((resolve) => {
         chrome.contextMenus.removeAll(() => {
+          for (const menu of [
+            { id: "pi-translate-page", title: translationTitles[0], contexts: ["page"] },
+            {
+              id: "pi-translate-selection",
+              title: translationTitles[1],
+              contexts: ["selection"],
+            },
+            {
+              id: "pi-translate-youtube",
+              title: translationTitles[2],
+              contexts: ["page"],
+              documentUrlPatterns: [
+                "https://youtube.com/*",
+                "https://www.youtube.com/*",
+                "https://m.youtube.com/*",
+              ],
+            },
+            { id: "pi-translate-pdf", title: translationTitles[3], contexts: ["page"] },
+          ] as chrome.contextMenus.CreateProperties[]) {
+            chrome.contextMenus.create(menu, () => {
+              void chrome.runtime.lastError
+            })
+          }
           chrome.contextMenus.create(
             {
               id: SELECTION_CONTEXT_MENU_ID,
@@ -1549,6 +1604,19 @@ chrome.permissions.onRemoved?.addListener(() => {
 })
 
 chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
+  if (typeof message === "object" && message !== null && "kind" in message) {
+    if (message.kind === "translation-intent") return false
+    if (message.kind === "translation") {
+      void translation
+        .handle(message, sender)
+        .then((result) => sendResponse({ ok: true, result }))
+        .catch(() =>
+          sendResponse({ ok: false, error: "Translation access expired or the page changed" }),
+        )
+      return true
+    }
+  }
+  if (isTranslationContentMessage(message)) return false
   if (
     typeof message === "object" &&
     message !== null &&

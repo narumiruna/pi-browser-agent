@@ -143,6 +143,11 @@ async function serviceFixture() {
   vi.stubGlobal("chrome", {
     commands: { onCommand: { addListener: vi.fn() } },
     storage: {
+      session: {
+        get: vi.fn(async () => ({})),
+        set: vi.fn(async () => undefined),
+        remove: vi.fn(async () => undefined),
+      },
       local: {
         setAccessLevel: vi.fn(async () => undefined),
         get: vi.fn(async () => ({

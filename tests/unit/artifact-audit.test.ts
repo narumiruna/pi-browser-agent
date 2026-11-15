@@ -71,6 +71,43 @@ afterEach(async () => {
   )
 })
 
+describe("packaged-only executable policy", () => {
+  test.each(["'unsafe-eval'", "'unsafe-inline'", "https://remote.example"])(
+    "rejects executable source %s",
+    async (source) => {
+      const result = audit(
+        await artifactFixture({
+          manifest: {
+            content_security_policy: {
+              extension_pages: `script-src 'self' ${source}; object-src 'self'`,
+            },
+          },
+        }),
+      )
+      expect(result.status).not.toBe(0)
+      expect(result.stderr).toContain("packaged-only")
+    },
+  )
+  test("permits local PDF decoder compilation without JavaScript eval", async () => {
+    const result = audit(
+      await artifactFixture({
+        manifest: {
+          content_security_policy: {
+            extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'",
+          },
+        },
+      }),
+    )
+    expect(result.status).toBe(0)
+  })
+  test("rejects an unreviewed WebAssembly module", async () => {
+    const root = await artifactFixture({})
+    await writeFile(join(root, "unreviewed.wasm"), "module")
+    const result = audit(root)
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toContain("unexpected WebAssembly")
+  })
+})
 describe("production native localization catalogs", () => {
   const manifest = { default_locale: "en", description: "__MSG_description__" }
   const catalog = JSON.stringify({ description: { message: "A local assistant" } })

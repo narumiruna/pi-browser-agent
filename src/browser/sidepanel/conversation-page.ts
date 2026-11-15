@@ -7,7 +7,7 @@ import {
 import { BrowserAgentRuntime } from "../agent/runtime.js"
 import { safeErrorMessage } from "../auth/redaction.js"
 import { type DocumentLanguageObserver, observeDocumentLanguage } from "../i18n/dom.js"
-import { t } from "../i18n/index.js"
+import { t, translateKnownMessage } from "../i18n/index.js"
 import {
   BOOKMARKS_PERMISSION,
   hasApprovedHostPermission,
@@ -176,6 +176,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   let voiceInput: VoiceInputController | undefined
   let voiceInputStarting = false
   let authentication: AuthenticationController | undefined
+  let translation: import("./translation.js").TranslationController | undefined
   let languageWatcher: DocumentLanguageObserver | undefined
   let currentStatus: ConversationTextKey | (() => string) = "ready"
   let currentStatusOptions: { busy?: boolean; streaming?: boolean } = {}
@@ -371,6 +372,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     element<HTMLButtonElement>("delete-session").disabled = navigationBusy
     element<HTMLButtonElement>("clear-sessions").disabled = navigationBusy
     sendButton.disabled =
+      translation?.active === true ||
       activeSubmissionGuard !== undefined ||
       pendingPasteOperations > 0 ||
       pickerActive ||
@@ -381,6 +383,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       voiceInputStarting ||
       voiceInput?.active === true
     voiceButton.disabled =
+      translation?.active === true ||
       voiceInput === undefined ||
       regionCapture?.occupied === true ||
       pageAnnotation?.occupied === true ||
@@ -393,6 +396,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     grantSiteButton.disabled = currentTabContext === undefined || pageToolsUnavailable
     languageWatcher?.flush()
     elementPickerButton.disabled =
+      translation?.active === true ||
       regionCapture?.occupied === true ||
       pageAnnotation?.occupied === true ||
       activeSubmissionGuard !== undefined ||
@@ -509,6 +513,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       !activeSubmissionGuard &&
       !commandInProgress &&
       !regionCapture?.occupied &&
+      !translation?.active &&
       !pickerActive &&
       !pickerStarting &&
       !pickerStopping &&
@@ -534,6 +539,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       !activeSubmissionGuard &&
       !commandInProgress &&
       !pageAnnotation?.occupied &&
+      !translation?.active &&
       !pickerActive &&
       !pickerStarting &&
       !pickerStopping &&
@@ -792,6 +798,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
 
   function assertPickerActionAvailable(): void {
     if (
+      translation?.active === true ||
       activeSubmissionGuard !== undefined ||
       regionCapture?.occupied === true ||
       pageAnnotation?.occupied === true ||
@@ -1145,6 +1152,10 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   }
 
   function submitPrompt(queueAfterCurrentTask = false): void {
+    if (translation?.active) {
+      setError(t("Wait for the current operation to finish before sending"))
+      return
+    }
     if (regionCapture?.sendBlocked) {
       setError(t("Finish or cancel region capture before sending"))
       return
@@ -1615,6 +1626,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
       return false
     }
     if (event.name === "tab.changed") {
+      translation?.contextChanged()
       if (
         !event.tabContext ||
         !currentTabContext ||
@@ -1696,6 +1708,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     voiceInput?.abort()
     screenshotAnnotation?.close()
     regionCapture?.dispose()
+    translation?.dispose()
     cancelAnnotationSubmission()
     if (pageAnnotation?.occupied) void pageAnnotation.stop().catch(() => undefined)
     treeDialog.close()
@@ -1708,6 +1721,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     return (
       disposed ||
       runtime.isBusy ||
+      translation?.active === true ||
       Boolean(authentication?.isBusy) ||
       Boolean(activeSubmissionGuard) ||
       commandInProgress ||
@@ -1726,6 +1740,24 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
   }
 
   await runtime.initialize()
+  const { TranslationController } = await import("./translation.js")
+  translation = new TranslationController(runtime.configuration, {
+    busy: () =>
+      disposed ||
+      runtime.isBusy ||
+      Boolean(authentication?.isBusy) ||
+      pickerActive ||
+      pickerStarting ||
+      Boolean(pickerStopping) ||
+      Boolean(regionCapture?.occupied) ||
+      Boolean(pageAnnotation?.occupied),
+    error: setError,
+    status: (message) => {
+      currentStatus = () => translateKnownMessage(message)
+      renderRunStatus()
+    },
+    changed: updateSendButton,
+  })
   languageWatcher = observeDocumentLanguage({
     isBusy: isPresentationBusy,
     refresh() {
@@ -1795,5 +1827,8 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     },
   })
   if (disposed) disconnectPickerShortcut()
-  else document.body.dataset.conversationReady = "true"
+  else {
+    document.body.dataset.conversationReady = "true"
+    await translation.initialize()
+  }
 }

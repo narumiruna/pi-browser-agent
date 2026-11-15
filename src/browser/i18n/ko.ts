@@ -1,6 +1,8 @@
 import type { Catalog } from "./en.js"
+import { translationCatalog } from "./translation.js"
 
 export default {
+  ...translationCatalog.ko,
   "Reset page pinch zoom before capturing a region":
     "영역을 캡처하기 전에 페이지의 핀치 확대/축소를 초기화하세요",
   "Capture region": "영역 캡처",

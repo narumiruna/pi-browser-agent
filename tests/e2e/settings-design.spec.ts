@@ -4,7 +4,15 @@ import {
   launchExtensionHarness as launchTemporaryHarness,
 } from "./support/extension-harness.js"
 
-const sections = ["Model", "Tools", "MCP", "Skills", "Appearance", "Instructions"] as const
+const sections = [
+  "Model",
+  "Tools",
+  "MCP",
+  "Skills",
+  "Translation",
+  "Appearance",
+  "Instructions",
+] as const
 
 async function launchExtensionHarness(): Promise<ExtensionHarness> {
   const harness = await launchTemporaryHarness()
@@ -69,7 +77,7 @@ for (const colorScheme of ["light", "dark"] as const) {
     { width: 768, fontSize: 16 },
     { width: 800, fontSize: 12 },
   ]) {
-    test(`all six sections are aligned and reachable at ${width}px / ${fontSize}px in ${colorScheme}`, async () => {
+    test(`all seven sections are aligned and reachable at ${width}px / ${fontSize}px in ${colorScheme}`, async () => {
       test.setTimeout(120_000)
       const harness = await launchExtensionHarness()
       try {

@@ -1,6 +1,8 @@
 import type { Catalog } from "./en.js"
+import { translationCatalog } from "./translation.js"
 
 export default {
+  ...translationCatalog.vi,
   "Reset page pinch zoom before capturing a region":
     "Đặt lại mức thu phóng bằng cử chỉ chụm của trang trước khi chụp vùng",
   "Capture region": "Chụp vùng",

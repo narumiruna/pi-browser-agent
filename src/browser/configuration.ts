@@ -18,6 +18,7 @@ import {
   type SettingsUpdate,
   saveSettings,
 } from "./storage.js"
+import { withExclusiveStorageWrite } from "./storage-lock.js"
 
 export interface AuthStatus {
   loggedIn: boolean
@@ -141,6 +142,12 @@ export class BrowserConfiguration {
     prompt: (prompt: AuthPrompt) => Promise<string>,
   ): Promise<void> {
     return this.runAuthChange(async () => {
+      await withExclusiveStorageWrite("pi-browser-agent-auth-change", () =>
+        chrome.storage.local.set({
+          piBrowserAgentAuthChangeV1: { version: 1, providerId, nonce: crypto.randomUUID() },
+        }),
+      )
+      signal.throwIfAborted()
       await this.models.login(providerId, type, { signal, notify: this.onAuthEvent, prompt })
       if (providerId === "radius") {
         const result = await this.models.refresh({ providers: [providerId], force: true, signal })
@@ -170,9 +177,14 @@ export class BrowserConfiguration {
     })
   }
 
-  async invalidateCredential(providerId = OPENAI_PROVIDER_ID): Promise<void> {
+  async invalidateCredential(
+    providerId = OPENAI_PROVIDER_ID,
+    expectedType?: AuthType,
+  ): Promise<void> {
+    if (expectedType && (await this.credentials.read(providerId))?.type !== expectedType) return
     await this.beforeCredentialRemoval?.()
-    await this.credentials.delete(providerId)
+    if (expectedType) await this.credentials.delete(providerId, { expectedType })
+    else await this.credentials.delete(providerId)
   }
 
   async requiredModelEndpointUrls(currentModel: () => Model<Api>): Promise<string[]> {

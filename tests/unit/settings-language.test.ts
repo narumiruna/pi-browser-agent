@@ -99,6 +99,10 @@ async function setup() {
   vi.stubGlobal("chrome", {
     tabs: { getCurrent: vi.fn(async () => undefined) },
     runtime: { sendMessage },
+    storage: {
+      local: { get: vi.fn(async () => ({})), set: vi.fn(async () => undefined) },
+      onChanged: { addListener: vi.fn(), removeListener: vi.fn() },
+    },
   })
   await initializeSettingsPage(new URLSearchParams())
   const get = <T extends HTMLElement>(id: string): T => {

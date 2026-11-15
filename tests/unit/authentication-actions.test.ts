@@ -747,7 +747,7 @@ describe("Settings credential status", () => {
     if (!onRemoved) throw new Error("Missing permission listener")
     onRemoved({ origins: [AUTH_ORIGINS[0]] })
     await vi.waitFor(() => expect(ui.status.textContent).toBe("OpenAI credential missing"))
-    expect(ui.configuration.invalidateCredential).toHaveBeenCalledWith(OPENAI_PROVIDER_ID)
+    expect(ui.configuration.invalidateCredential).toHaveBeenCalledWith(OPENAI_PROVIDER_ID, "oauth")
     expect(ui.updateError).toHaveBeenLastCalledWith(
       new Error("Authentication is unavailable. Try again."),
     )

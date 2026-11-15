@@ -2,13 +2,13 @@
 
 Pi Browser Agent is a Chrome-native AI assistant. The Side Panel runs `pi-agent-core` and the browser-compatible built-in provider/model catalog from `pi-ai`. Chat works on any tab; bounded page tools work only on the active, accessible HTTP(S) tab in the focused Chrome window. With separate approval, Pi can also search or inspect recent Chrome bookmarks without a web page.
 
-No local agent process, native host, shell, general filesystem access, pairing secret, or loopback connection is required. Skill import reads a selected local file or a selected public GitHub `SKILL.md` after explicit repository fetch and host approval.
+No local agent process, native host, shell, general filesystem access, pairing secret, or loopback connection is required. Skill import reads a selected local file or a selected public GitHub `SKILL.md` after explicit repository fetch and host approval. The separate PDF reader reads only an explicitly selected file or approved remote PDF.
 
 ## Requirements
 
 - Node.js 22.19 or a newer supported even-numbered release
 - Chrome 116 or newer
-- A credential for at least one supported provider, or a ChatGPT Plus/Pro account with Codex access
+- An API key or supported account credential for the selected provider
 
 ## Install and build
 
@@ -49,13 +49,19 @@ Load the production artifact:
 
 Voice input uses Chrome's Web Speech service in the browser language. Spoken audio may be processed by the browser's speech provider; only the resulting editable transcript is submitted to Pi when you select **Send**. The model transport is always SSE. Closing the Side Panel aborts the active run and marks the session interrupted; reopening never automatically repeats a browser mutation.
 
-Pi Browser Agent registers the browser-compatible built-in `pi-ai` providers and their tool-capable chat model catalogs. Credential setup first selects an authentication method and then shows only providers that support that method in Chrome. API-key authentication is available for browser-compatible providers; OpenAI Codex is currently the only account-login choice and uses the browser device flow. Adding a credential does not change the selected model. Radius models load after configuration. Amazon Bedrock is excluded because its `pi-ai` adapter intentionally loads a Node-only AWS SDK module. Other provider OAuth implementations are Node-only, so Pi Browser Agent exposes only their API-key path. The image-generation provider catalog is not exposed. The separate `codex_imagegen` account tool uses the fixed Codex image endpoint and the existing Codex OAuth login.
+Pi Browser Agent registers the browser-compatible built-in `pi-ai` providers and their tool-capable chat model catalogs. Credential setup first selects an authentication method and then shows only providers that support that method in Chrome. API-key authentication is available for browser-compatible providers, with seven shared browser account adapters. Adding a credential does not change the selected model. Radius models load after configuration and exact-origin approval. Amazon Bedrock is excluded because its `pi-ai` adapter intentionally loads a Node-only AWS SDK module. Browser account flows replace Node-only callback implementations; see [authentication and live-account release restrictions](docs/authentication.md). The image-generation provider catalog is not exposed. The separate `codex_imagegen` account tool uses the fixed Codex image endpoint and the existing Codex OAuth login.
+
+## Translation
+
+Right-click an empty page area and choose **Translate this page**, select text and choose **Translate selected text**, or use **Translate YouTube subtitles** on a watch page. These actions translate inline without submitting chat. **Translate PDF** opens a separate reader while retaining the original tab; **Choose PDF** supports selected local or downloaded authenticated files.
+
+**Settings → Translation** has independent provider/model/thinking and target-language choices, templates, appearance previews, subtitle options, disabled domains, and PDF cache clearing. The default target is Traditional Chinese (Taiwan). Missing access requires an explicit approval action. Use the compact Stop control to cancel; navigation and owner closure cannot silently resume old requests. See [translation, limits, evidence, and release handoff](docs/translation.md).
 
 ## Settings
 
-Settings opens in an independent full browser tab with a centered shell at most 1080 px wide. Its six panels remain mounted: **Model**, **Tools**, **MCP**, **Skills**, **Appearance**, and **Instructions**. At widths of 800 px or more, section navigation is vertical; use Up/Down Arrow. Below 800 px, tabs scroll horizontally; use Left/Right Arrow. Home/End selects the first/last section in either layout.
+Settings opens in an independent full browser tab with a centered shell at most 1080 px wide. Its seven panels remain mounted: **Model**, **Tools**, **MCP**, **Skills**, **Translation**, **Appearance**, and **Instructions**. At widths of 800 px or more, section navigation is vertical; use Up/Down Arrow. Below 800 px, tabs scroll horizontally; use Left/Right Arrow. Home/End selects the first/last section in either layout.
 
-Switching sections keeps drafts. **Save general settings** saves changed general fields and explicit model/thinking selections. Untouched preferences saved by another Settings tab remain unchanged. A persistent footer identifies general changes, unsaved MCP edits, and unimported skill reviews separately. Save is disabled when there are no general changes or explicit model/thinking apply intent. Pending credential, approval, MCP, or Skills operations block general Save, Back, and Cancel.
+Switching sections keeps drafts. **Save general settings** saves changed general and translation fields and explicit model/thinking selections. Untouched preferences saved by another Settings tab remain unchanged. A persistent footer identifies general changes, unsaved MCP edits, and unimported skill reviews separately. Save is disabled when there are no general changes or explicit model/thinking apply intent. Pending credential, translation connection-test, approval, MCP, or Skills operations block general Save, Back, and Cancel.
 
 General Save asks before discarding pending MCP or Skills drafts; it does not save them. Back, Escape, and **Cancel** also protect drafts. Browser reload and close use Chrome's unsaved-change warning. Resource actions, credential changes, and **Clear remembered approvals** take effect separately; Cancel does not undo them.
 
@@ -94,7 +100,7 @@ The agent can read visible text and selection, discover visible controls and scr
 - Password and file inputs are denied.
 - Form submissions and downloads always prompt; cross-origin links/navigation and WebMCP calls require either fresh confirmation or a matching approval in the selected confirmation mode. No cached approval replays a failed mutation.
 - A request created before navigation or a visible-tab change is rejected as stale. Chat and approved bookmark reads do not require a supported page; a no-page turn cannot use page tools even after a tab switch.
-- Chrome internal pages, Chrome Web Store pages, local files, and PDF viewers cannot be read or operated by page tools. A site whose URL looks like HTTP(S) but denies script injection also becomes unavailable until navigation/reload. General file/PDF import is not supported; the separate, user-selected `SKILL.md` import does not change that page-tool boundary. Enabling Chrome's file-URL access does not change it.
+- Chrome internal pages, Chrome Web Store pages, local files, and PDF viewers cannot be read or operated by page tools. A site whose URL looks like HTTP(S) but denies script injection also becomes unavailable until navigation/reload. The separate PDF reader and user-selected `SKILL.md` import do not grant page-tool PDF access or general filesystem access. Enabling Chrome's file-URL access does not change it.
 - Visible text and selected text are capped at 50 KB; screenshots are capped at 3 MB.
 - The element picker accepts up to five chips and 16 KB of combined context. It includes bounded visible text, accessibility metadata, an allowlist of attributes, viewport geometry, and a best-effort CSS selector; it excludes field values, hidden text, full HTML, credential-bearing URLs, iframe contents, and shadow-owned controls. Selecting over an iframe captures only its top-frame wrapper. Selectors are descriptive hints, not durable mutation authorization.
 - Picker mode uses a layout-neutral top-layer shield inside the active top-frame light-DOM modal, or under `html` otherwise. It blocks target activation and keeps keyboard focus in the top frame. `Esc`, a repeated button click, selection, target navigation, tab/window focus change, timeout, or closing the Side Panel cancels the mode. Unrelated background-tab navigation does not cancel startup.
@@ -201,6 +207,7 @@ Set the repository Actions secret `PAT_TOKEN` to a fine-grained personal access 
 - [Browser interaction tools](docs/browser-interactions.md)
 - [Draw on the live page](docs/page-annotation.md)
 - [Capture a region](docs/region-capture.md)
+- [Translation](docs/translation.md)
 - [Architecture](docs/architecture.md)
 - [Interface languages](docs/i18n.md)
 - [Authentication](docs/authentication.md)

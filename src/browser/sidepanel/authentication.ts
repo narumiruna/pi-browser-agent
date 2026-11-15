@@ -1,4 +1,5 @@
 import type { AuthEvent, AuthPrompt, AuthType } from "@earendil-works/pi-ai"
+import { browserOAuthOrigins } from "../auth/browser-oauth.js"
 import { AUTH_ORIGINS, OPENAI_PROVIDER_ID } from "../auth/codex-oauth.js"
 import { CREDENTIALS_KEY } from "../auth/credential-store.js"
 import type { BrowserConfiguration } from "../configuration.js"
@@ -54,6 +55,7 @@ export class AuthenticationController {
   private readonly providerPicker: SearchableSelect
   private configuring = false
   private loggingOut = false
+  private authenticatingProviderId?: string
   private controller?: AbortController
   private refreshRequest = 0
   private verificationUri = ""
@@ -123,21 +125,32 @@ export class AuthenticationController {
     })
 
     chrome.permissions.onRemoved.addListener((permissions) => {
-      if (
-        !permissions.origins?.some((origin) =>
-          AUTH_ORIGINS.includes(origin as (typeof AUTH_ORIGINS)[number]),
-        )
+      const affected = [
+        "openai-codex",
+        "anthropic",
+        "github-copilot",
+        "kimi-coding",
+        "openrouter",
+        "radius",
+        "xai",
+      ].filter((id) =>
+        browserOAuthOrigins(id).some((origin) => permissions.origins?.includes(origin)),
       )
-        return
-      this.controller?.abort()
-      if (options.mode === "settings" && options.currentProviderId() === OPENAI_PROVIDER_ID) {
+      if (!affected.length) return
+      if (affected.includes(this.authenticatingProviderId ?? options.currentProviderId()))
+        this.controller?.abort()
+      if (options.mode === "settings" && affected.includes(options.currentProviderId())) {
         ++this.refreshRequest
         this.showUnavailableStatus()
       }
       void run(async () => {
-        await options.configuration.invalidateCredential(OPENAI_PROVIDER_ID)
+        for (const id of affected) await options.configuration.invalidateCredential(id, "oauth")
         await this.refresh()
-        throw new Error(t("OpenAI host access was revoked. Log in again to continue."))
+        if (
+          affected.includes(options.currentProviderId()) &&
+          this.statusOutput?.dataset.loggedIn !== "true"
+        )
+          throw new Error("Account authentication access was revoked")
       }, this.updateError)
     })
 
@@ -147,8 +160,32 @@ export class AuthenticationController {
   }
 
   onAuthEvent(event: AuthEvent): void {
-    if (event.type === "device_code") {
-      this.verificationUri = event.verificationUri
+    if (event.type === "auth_url") {
+      const url = new URL(event.url)
+      const allowed = browserOAuthOrigins(
+        this.authenticatingProviderId ?? this.options.currentProviderId(),
+      )
+      if (
+        url.protocol !== "https:" ||
+        url.username ||
+        url.password ||
+        !allowed.some((origin) => new URL(origin).origin === url.origin)
+      )
+        throw new Error("Invalid provider sign-in URL")
+      void chrome.tabs.create({ url: url.toString() })
+    } else if (event.type === "device_code") {
+      const url = new URL(event.verificationUri)
+      const allowed = browserOAuthOrigins(
+        this.authenticatingProviderId ?? this.options.currentProviderId(),
+      )
+      if (
+        url.protocol !== "https:" ||
+        url.username ||
+        url.password ||
+        !allowed.some((origin) => new URL(origin).origin === url.origin)
+      )
+        throw new Error("Invalid provider verification URL")
+      this.verificationUri = url.href
       element<HTMLOutputElement>("device-code").textContent = event.userCode
       const dialog = element<HTMLDialogElement>("login-dialog")
       if (!dialog.open) {
@@ -202,11 +239,13 @@ export class AuthenticationController {
       }
       let status = await this.options.configuration.authStatus(providerId)
       if (
-        providerId === OPENAI_PROVIDER_ID &&
+        status.type === "oauth" &&
         status.loggedIn &&
-        !(await hasHostPermissions(AUTH_ORIGINS))
+        !(await hasHostPermissions(browserOAuthOrigins(providerId)))
       ) {
-        await this.options.configuration.invalidateCredential(providerId)
+        if (providerId === OPENAI_PROVIDER_ID)
+          await this.options.configuration.invalidateCredential(providerId)
+        else await this.options.configuration.invalidateCredential(providerId, "oauth")
         status = { loggedIn: false }
       }
       if (request !== this.refreshRequest || this.options.currentProviderId() !== providerId) return
@@ -269,7 +308,10 @@ export class AuthenticationController {
     if (this.refreshButton) this.refreshButton.hidden = true
   }
 
-  async configure(guard?: () => void): Promise<boolean> {
+  async configure(
+    guard?: () => void,
+    preferred = this.options.currentProviderId(),
+  ): Promise<boolean> {
     if (this.isBusy) return false
     this.configuring = true
     if (this.loginButton) this.loginButton.disabled = true
@@ -277,7 +319,7 @@ export class AuthenticationController {
     this.options.onStateChanged?.()
 
     try {
-      const preferredProviderId = this.options.currentProviderId()
+      const preferredProviderId = preferred
       let selected: { authType: AuthType; providerId: string } | undefined
       while (!selected) {
         const authType = await this.selectAuthMethod()
@@ -289,6 +331,7 @@ export class AuthenticationController {
       }
 
       const { authType, providerId } = selected
+      this.authenticatingProviderId = providerId
       const provider = this.options.configuration
         .getProviders(authType)
         .find((candidate) => candidate.id === providerId)
@@ -325,6 +368,7 @@ export class AuthenticationController {
       )
       return true
     } finally {
+      this.authenticatingProviderId = undefined
       this.controller = undefined
       const loginDialog = element<HTMLDialogElement>("login-dialog")
       if (loginDialog.open) loginDialog.close()
@@ -481,13 +525,20 @@ async function requestProviderSetupPermission(
   authType: AuthType,
 ): Promise<void> {
   if (authType === "oauth") {
-    if (providerId !== OPENAI_PROVIDER_ID) {
+    const origins =
+      providerId === OPENAI_PROVIDER_ID ? AUTH_ORIGINS : browserOAuthOrigins(providerId)
+    if (origins.length === 0) {
       throw new Error(
         t("Account login is not configured for {provider} in Chrome", { provider: providerId }),
       )
     }
-    const granted = await requestHostPermissions(AUTH_ORIGINS)
-    if (!granted) throw new Error(t("OpenAI host access is required for login"))
+    const granted = await requestHostPermissions(origins)
+    if (!granted)
+      throw new Error(
+        providerId === OPENAI_PROVIDER_ID
+          ? t("OpenAI host access is required for login")
+          : t("Account login is not configured for {provider} in Chrome", { provider: providerId }),
+      )
     return
   }
   if (providerId === "radius") {

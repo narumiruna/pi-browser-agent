@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<meta name="color-scheme" content="light dark" />
+		<title>Pi PDF Reader</title>
+		<link rel="stylesheet" href="../pdf/reader.css" />
+	</head>
+	<body>
+		<header class="toolbar">
+			<div class="document-heading">
+				<h1 id="document-title">Pi PDF Reader</h1>
+				<span id="document-status" role="status" aria-live="polite">Starting…</span>
+			</div>
+			<!-- biome-ignore lint/a11y/useSemanticElements: Keep the toolbar's flex layout while labeling its control group. -->
+			<div class="control-group" role="group" aria-label="Source controls">
+        <button id="pdf-approve" type="button">Start translation and allow access</button>
+        <button id="pdf-settings" type="button" aria-label="Open Settings" title="Open Settings"><span aria-hidden="true">⚙</span></button>
+				<button id="open-original" type="button" disabled>Open original</button>
+				<label class="file-button" for="local-file">Choose PDF</label>
+				<input id="local-file" type="file" accept="application/pdf,.pdf" disabled />
+			</div>
+			<!-- biome-ignore lint/a11y/useSemanticElements: Keep the toolbar's flex layout while labeling its control group. -->
+			<div class="control-group" role="group" aria-label="Page controls">
+				<button id="previous-page" type="button" aria-label="Previous page">− Page</button>
+				<span id="page-status">Page – / –</span>
+				<button id="next-page" type="button" aria-label="Next page">+ Page</button>
+				<button id="zoom-out" type="button" aria-label="Zoom out">−</button>
+				<span id="zoom-status">100%</span>
+				<button id="zoom-in" type="button" aria-label="Zoom in">+</button>
+			</div>
+			<!-- biome-ignore lint/a11y/useSemanticElements: Keep the toolbar's flex layout while labeling its control group. -->
+			<div class="control-group" role="group" aria-label="Translation controls">
+				<button id="translate-all" type="button" disabled>Translate entire document</button>
+				<button id="pause-translation" type="button" disabled>Pause</button>
+				<button id="retry-failed" type="button" disabled>Retry failed</button>
+				<button id="clear-cache" type="button">Clear PDF cache</button>
+				<button id="cancel-translation" type="button" disabled>Cancel</button>
+			</div>
+		</header>
+
+		<section class="notice" aria-label="Privacy notice">
+			PDF pages are processed in this browser.
+			Extracted text is sent to your configured translation API when translation starts.
+		</section>
+		<div id="error" class="error" role="alert" hidden></div>
+
+		<main class="reader">
+			<section class="pane source-pane" aria-labelledby="source-title">
+				<div class="pane-heading">
+					<h2 id="source-title">Original PDF</h2>
+				</div>
+				<!-- biome-ignore lint/a11y/noNoninteractiveTabindex: The scroll pane needs keyboard focus for scrolling. -->
+				<div id="source-scroll" class="pane-scroll source-scroll" tabindex="0">
+					<div id="source-pages" class="source-pages"></div>
+				</div>
+			</section>
+
+			<section class="pane translation-pane" aria-labelledby="translation-title">
+				<div class="pane-heading translation-heading">
+					<h2 id="translation-title">Translation</h2>
+					<label>
+						<span class="visually-hidden">Search translations</span>
+						<input id="translation-search" type="search" placeholder="Search translation" />
+					</label>
+					<button id="copy-page" type="button" disabled>Copy page</button>
+					<button id="copy-document" type="button" disabled>Copy document</button>
+				</div>
+				<!-- biome-ignore lint/a11y/noNoninteractiveTabindex: The scroll pane needs keyboard focus for scrolling. -->
+				<div id="translation-scroll" class="pane-scroll translation-scroll" tabindex="0">
+					<div id="translation-pages"></div>
+				</div>
+			</section>
+		</main>
+
+		<dialog id="password-dialog" aria-labelledby="password-title">
+			<form method="dialog">
+				<h2 id="password-title">Password required</h2>
+				<p>This PDF is encrypted.</p>
+				<label for="pdf-password">PDF password</label>
+				<input id="pdf-password" type="password" autocomplete="off" />
+				<div class="dialog-actions">
+					<button type="submit" value="cancel">Cancel</button>
+					<button id="submit-password" type="submit" value="submit">Open PDF</button>
+				</div>
+			</form>
+		</dialog>
+
+		<script type="module" src="../pdf/index.ts"></script>
+	</body>
+</html>

@@ -1,6 +1,6 @@
 # Authentication
 
-Pi Browser Agent supports API-key authentication for browser-compatible built-in `pi-ai` providers and browser device-code OAuth for OpenAI Codex.
+Pi Browser Agent supports API-key authentication for browser-compatible built-in `pi-ai` providers and seven browser account flows. Chat and translation share provider-scoped credentials, not model selections.
 
 ## Provider setup
 
@@ -19,11 +19,25 @@ Adding a credential does not change the active or pending model selection. Crede
 - Radius requests access to `radius.pi.dev`, stores its key, and refreshes its dynamic model catalog.
 - Google Vertex AI exposes its API-key path. Filesystem-based ADC and service-account-file flows are unavailable in a browser.
 
-OpenAI Codex is currently the only provider under **Sign in with an account**. Pi Browser Agent does not expose other provider OAuth implementations because those `pi-ai` flows intentionally load Node-only callback-server or PKCE modules. Amazon Bedrock is also unavailable because its adapter intentionally loads a Node-only AWS SDK module.
+The account selector uses browser adapters instead of Node-only callback-server implementations:
+
+| Provider        | Browser flow                                             | Authentication origins             |
+| --------------- | -------------------------------------------------------- | ---------------------------------- |
+| Anthropic       | Manual PKCE code/redirect handoff with independent state | `claude.ai`, `platform.claude.com` |
+| GitHub Copilot  | GitHub device code and Copilot token exchange            | `github.com`, `api.github.com`     |
+| Kimi For Coding | Device code                                              | `auth.kimi.com`                    |
+| OpenAI Codex    | Device code and token exchange                           | `auth.openai.com`, `chatgpt.com`   |
+| OpenRouter      | Manual PKCE key exchange                                 | `openrouter.ai`                    |
+| Radius          | Device code                                              | `radius.pi.dev`                    |
+| xAI             | Device code                                              | `auth.x.ai`                        |
+
+Manual handoff can display a provider-registered localhost redirect URI, but Pi Browser Agent starts no callback server/listener and makes no loopback request. Authentication URLs require the selected adapter's HTTPS origin, without URL userinfo. Device polling handles pending, slowdown, expiry, denial, and cancellation. Auth fetches omit cookies, reject redirects, bound JSON responses, and have finite deadlines. Custom OpenAI-compatible Responses translation uses the existing API-key flow, with no placeholder chat model. Amazon Bedrock remains unavailable because its adapter intentionally loads a Node-only AWS SDK module.
+
+Synthetic protocol tests cover these adapters, not live account acceptance. **Do not release the changed Anthropic flow until an authorized owner verifies live sign-in, cancellation, and refresh.** Live provider/account-policy paths for the other adapters also remain unverified. See the retained [translation handoff](translation.md#external-acceptance-and-release-restrictions).
 
 ## Settings status and model choices
 
-The Model panel shows whether the selected provider's credential is missing or configured, with **Account** or **API key** for a configured credential. This status describes stored configuration, not a live model-request test or proof that the next request will succeed. Status refreshes after setup, provider selection, credential changes in another extension context, and Codex permission revocation. Values remain hidden. **Add credential** and **Update credential** reuse the setup flow; there is no new Settings removal action.
+The Model panel shows whether the selected provider's credential is missing or configured, with **Account** or **API key** for a configured credential. This status describes stored configuration, not a live model-request test or proof that the next request will succeed. Status refreshes after setup, provider selection, credential changes in another extension context, and provider-scoped authentication-origin revocation. Values remain hidden. **Add credential** and **Update credential** reuse the setup flow; there is no new Settings removal action.
 
 Credential changes save independently of general settings. Cancel does not undo them. Pending setup blocks general Save, Back, and Cancel; cancelling setup preserves the model draft and prior credential.
 
@@ -61,6 +75,6 @@ Disablement retains the token but cancels current MCP work. Confirmed removal de
 
 ## Credential removal and revocation
 
-**Remove credential** aborts active model work, waits for the agent to stop, and deletes the selected provider credential. Revoking either OpenAI origin immediately aborts active work and removes the Codex credential. Revoking another provider endpoint leaves its credential stored but blocks requests until access is granted again.
+**Remove credential** aborts active model work, waits for the agent to stop, and deletes the selected provider credential. Revoking a supported authentication origin aborts affected work and removes only that provider's OAuth credential; an API-key credential is not deleted by OAuth revocation. Revoking a model-only endpoint leaves its credential stored but blocks requests until access is granted again. Translation also cancels on explicit replacement, credential removal/account changes, or relevant settings changes across trusted views; same-account serialized refresh is allowed to finish its own startup.
 
-To remove all local data, remove provider credentials and MCP servers individually and use **Clear all session data**. Page and provider host permissions can be removed separately from Chrome's extension settings.
+To remove credential and conversation data, remove provider credentials and MCP servers individually and use **Clear all session data**. Translation settings and the separate PDF cache have their own cleanup; **Clear PDF cache** does not delete conversations or credentials. Page and provider host permissions can be removed separately from Chrome's extension settings.

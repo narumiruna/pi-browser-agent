@@ -146,6 +146,11 @@ beforeEach(async () => {
   vi.stubGlobal("chrome", {
     commands: { onCommand: noopEvent },
     storage: {
+      session: {
+        get: vi.fn(async () => ({})),
+        set: vi.fn(async () => undefined),
+        remove: vi.fn(async () => undefined),
+      },
       local: {
         setAccessLevel: vi.fn(async () => {}),
         get: vi.fn(async () => ({

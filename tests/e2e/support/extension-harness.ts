@@ -86,6 +86,7 @@ export async function launchExtensionHarness(
     hostPatterns?: string[]
     browserArgs?: string[]
     locale?: string
+    contextMenuEvents?: boolean
   } = {},
 ): Promise<ExtensionHarness> {
   const fixtureServer = await startFixtureServer()
@@ -104,6 +105,15 @@ export async function launchExtensionHarness(
       permissions?: string[]
       optional_permissions?: string[]
       side_panel?: { default_path?: string }
+      background?: { service_worker?: string }
+    }
+    if (options.contextMenuEvents) {
+      const workerPath = copiedManifest.background?.service_worker
+      if (!workerPath) throw new Error("Missing copied worker entry")
+      const target = join(extensionDirectory, workerPath)
+      const source = await readFile(target, "utf8")
+      const probe = `globalThis.__piTestMenus=[];const nativeAddMenuListener=chrome.contextMenus.onClicked.addListener.bind(chrome.contextMenus.onClicked);chrome.contextMenus.onClicked.addListener=(listener)=>{globalThis.__piTestMenus.push(listener);nativeAddMenuListener(listener)};\n`
+      await writeFile(target, probe + source)
     }
     const fixturePattern = hostPermissionPattern(fixtureServer.origin)
     copiedManifest.host_permissions = [

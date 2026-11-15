@@ -1293,6 +1293,39 @@ textarea {
     0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
+@media (prefers-reduced-motion: no-preference) {
+  .translation-preview-fade {
+    animation: translation-preview-fade 180ms ease-out;
+  }
+}
+@keyframes translation-preview-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+#translation-settings summary {
+  min-height: 44px;
+  padding-block: 12px;
+  cursor: pointer;
+}
+
+#translation-settings [hidden],
+#translation-stop[hidden],
+#translation-approve[hidden] {
+  display: none;
+}
+
+.page-context:has(#translation-stop:not([hidden])),
+.page-context:has(#translation-approve:not([hidden])) {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .page-context {
   padding: 0 12px 6px;
   color: var(--text-muted);
@@ -1304,6 +1337,10 @@ textarea {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.page-context #page-status {
+  flex: 1;
 }
 
 body[data-page="waiting"] .composer-shell {

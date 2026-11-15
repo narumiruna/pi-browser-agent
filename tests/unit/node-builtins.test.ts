@@ -1,5 +1,4 @@
 import { describe, expect, test } from "vitest"
-// @ts-expect-error The audited Node script is intentionally plain ESM.
 import { containsNodeBuiltinImport } from "../../tooling/node-builtins.mjs"
 
 describe("Node built-in import detection", () => {
