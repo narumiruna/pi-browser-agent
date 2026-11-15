@@ -1,3 +1,8 @@
+import {
+  isTranslationContentMessage,
+  TRANSLATION_CONTENT_LIMITS,
+} from "../../runtime/translation.js"
+
 const MESSAGE_TYPES = Object.freeze({
   AUTOMATION_OPEN_PDF: "automation-open-pdf",
   AUTOMATION_TRANSLATE_PAGE: "automation-translate-page",
@@ -125,6 +130,37 @@ function showToast(payload) {
   return createMessage(MESSAGE_TYPES.SHOW_TOAST, payload)
 }
 
+function batchPageTranslationItems(sessionId, items) {
+  const messages = []
+  const rejectedItems = []
+  const encoder = new TextEncoder()
+  const messageFor = (batch) => queuePageTranslationItems({ sessionId, items: batch })
+  const emptyBytes = encoder.encode(JSON.stringify(messageFor([]))).length
+  let batch = []
+  let bytes = emptyBytes
+  for (const item of items) {
+    const single = messageFor([item])
+    if (!isTranslationContentMessage(single)) {
+      rejectedItems.push(item)
+      continue
+    }
+    const itemBytes = encoder.encode(JSON.stringify(single)).length - emptyBytes
+    const separatorBytes = batch.length ? 1 : 0
+    if (
+      batch.length >= TRANSLATION_CONTENT_LIMITS.maximumItems ||
+      bytes + separatorBytes + itemBytes > TRANSLATION_CONTENT_LIMITS.maximumBytes
+    ) {
+      messages.push(messageFor(batch))
+      batch = []
+      bytes = emptyBytes
+    }
+    bytes += itemBytes + (batch.length ? 1 : 0)
+    batch.push(item)
+  }
+  if (batch.length) messages.push(messageFor(batch))
+  return { messages, rejectedItems }
+}
+
 function startPageTranslationSession(payload) {
   return createMessage(MESSAGE_TYPES.START_PAGE_TRANSLATION_SESSION, payload)
 }
@@ -141,6 +177,7 @@ export {
   automationOpenPdf,
   automationTranslatePage,
   automationTranslateSelection,
+  batchPageTranslationItems,
   cancelYoutubeSubtitleTranslation,
   clearPagePlaceholders,
   clearPendingTranslations,

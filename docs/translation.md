@@ -32,7 +32,7 @@ Custom OpenAI-compatible translation uses Responses, not Chat Completions. Enter
 
 ## Extraction and output
 
-The extractor retains semantic placement for prose, headings, lists, quotes, table cells, and code-adjacent text. It prioritizes visible and nearby content, observes dynamic changes, reprioritizes on scrolling, and suppresses stale source revisions. Hidden copies, controls, metadata, and editable content are excluded. Page extraction checks descendant visibility and editable ancestry, including bare and `plaintext-only` editors, before collecting prose, code, or math. It excludes design-mode documents and does not serialize source HTML into protected math fragments. Code, paths, commands, URLs, math, and identifiers use protected fragments; malformed or unresolved placeholders are not successful translations.
+The extractor retains semantic placement for prose, headings, lists, quotes, table cells, and code-adjacent text. It prioritizes visible and nearby content, observes dynamic changes, reprioritizes on scrolling, and suppresses stale source revisions. Hidden copies, controls, metadata, and editable content are excluded. Page extraction checks descendant visibility and editable ancestry, including bare and `plaintext-only` editors, before collecting prose, code, or math. It excludes design-mode documents and does not serialize source HTML into protected math fragments. Code, paths, commands, URLs, math, and identifiers use protected fragments; malformed or unresolved placeholders are not successful translations. Source identity includes masked text and protected fragments. An equation-only change invalidates old output and preserves the newer pending revision.
 
 Site profiles cover antirez, Carmina, Disqus, Findy, GitHub, Reddit, Schiit, YouTube, X posts/Articles, and Threads. Approved Disqus comments on antirez use a separate frame capability. Explicit selection results remain in the selected approved frame. This does not broaden ordinary agent tools beyond their top-frame boundary.
 
@@ -63,6 +63,7 @@ Cancel, document replacement, settings/credential changes, and disconnect cancel
 | Boundary                                                 | Limit                                                        |
 | -------------------------------------------------------- | ------------------------------------------------------------ |
 | Ordinary source chunk                                    | 5,000 characters                                             |
+| Page queue packet                                        | 64 items; 131,072 UTF-8 bytes; 20,000 characters per item       |
 | Translation scheduler and profile-wide provider dispatch | At most five active requests                                 |
 | Ordinary/PDF batch deadline                              | 120 seconds                                                  |
 | Subtitle batch deadline                                  | 30 seconds                                                   |

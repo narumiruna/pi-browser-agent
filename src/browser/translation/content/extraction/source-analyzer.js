@@ -1,3 +1,5 @@
+import { getSourceIdentity } from "../../shared/source-identity.js"
+
 export function createSourceAnalyzer(options = {}) {
   const {
     document,
@@ -68,9 +70,15 @@ export function createSourceAnalyzer(options = {}) {
     sourceIdCounter = null
   }
 
-  function rememberSourceText(element, text) {
+  function rememberSourceText(element, text, protectedFragments) {
     if (element) {
-      sourceTextSnapshots.set(element, String(text || ""))
+      sourceTextSnapshots.set(
+        element,
+        getSourceIdentity(
+          String(text || ""),
+          protectedFragments ?? getSegmentContent(element).protectedFragments,
+        ),
+      )
     }
   }
 
@@ -85,7 +93,8 @@ export function createSourceAnalyzer(options = {}) {
       return true
     }
 
-    return getSegmentContent(element).text !== previousText
+    const content = getSegmentContent(element)
+    return getSourceIdentity(content.text, content.protectedFragments) !== previousText
   }
 
   function resetSourceTextSnapshotsForTest() {

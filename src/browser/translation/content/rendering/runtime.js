@@ -1,4 +1,6 @@
+import { getSourceIdentity } from "../../shared/source-identity.js"
 import { ui } from "../../shared/ui.js"
+
 export function createContentRenderer(options = {}) {
   const {
     document,
@@ -755,9 +757,11 @@ export function createContentRenderer(options = {}) {
         continue
       }
 
+      const content = getSegmentContent(element)
       if (
         !(subtitleProfile && translationItem.provisional) &&
-        translationItem.sourceText !== getSegmentContent(element).text
+        getSourceIdentity(translationItem.sourceText, translationItem.protectedFragments) !==
+          getSourceIdentity(content.text, content.protectedFragments)
       ) {
         stale += 1
         if (fallbackTargetIds.has(translationItem.id)) fallbackDiscarded += 1
@@ -770,7 +774,7 @@ export function createContentRenderer(options = {}) {
         translation,
         payload.targetLanguage,
         translationItem.protectedFragments,
-        translationItem.sourceText || getSegmentContent(element).text,
+        translationItem.sourceText || content.text,
         youtubeSubtitleDisplayMode,
       )
 
@@ -819,7 +823,12 @@ export function createContentRenderer(options = {}) {
 
   function clearPagePlaceholders(payload) {
     const ids = new Set(payload.ids || [])
-    const snapshots = new Map((payload.items || []).map((item) => [item.id, item.text]))
+    const snapshots = new Map(
+      (payload.items || []).map((item) => [
+        item.id,
+        getSourceIdentity(item.text, item.protectedFragments),
+      ]),
+    )
 
     if (SubtitleApi.isSubtitleProfile(ACTIVE_SITE_PROFILE)) {
       if (payload.reason) failYoutubeCaptionFallbacks?.(payload)
@@ -835,14 +844,13 @@ export function createContentRenderer(options = {}) {
       }
 
       const source = document.querySelector(`[${SOURCE_ATTR}="${id}"]`)
-      if (
-        source &&
-        !SubtitleApi.isSubtitleProfile(ACTIVE_SITE_PROFILE) &&
-        (snapshots.has(id)
-          ? snapshots.get(id) !== getSegmentContent(source).text
-          : source.getAttribute(STALE_ATTR) === "true")
-      )
-        continue
+      if (source && !SubtitleApi.isSubtitleProfile(ACTIVE_SITE_PROFILE)) {
+        if (snapshots.has(id)) {
+          const content = getSegmentContent(source)
+          if (snapshots.get(id) !== getSourceIdentity(content.text, content.protectedFragments))
+            continue
+        } else if (source.getAttribute(STALE_ATTR) === "true") continue
+      }
 
       withObserverPaused(() => {
         note.remove()
@@ -952,20 +960,23 @@ export function createContentRenderer(options = {}) {
 
   function showToast(message, level, timeout) {
     const toast = document.createElement("div")
-    const layer = getToastLayer()
+    const layer = withObserverPaused(() => {
+      const layer = getToastLayer()
+      toast.setAttribute(ROOT_ATTR, "toast")
+      toast.setAttribute("data-level", level || "info")
+      toast.textContent = message
+      layer.appendChild(toast)
+      return layer
+    })
 
-    toast.setAttribute(ROOT_ATTR, "toast")
-    toast.setAttribute("data-level", level || "info")
-    toast.textContent = message
-    layer.appendChild(toast)
-
-    window.setTimeout(() => {
-      toast.remove()
-
-      if (layer.childElementCount === 0) {
-        layer.remove()
-      }
-    }, timeout || 3200)
+    window.setTimeout(
+      () =>
+        withObserverPaused(() => {
+          toast.remove()
+          if (layer.childElementCount === 0) layer.remove()
+        }),
+      timeout || 3200,
+    )
   }
 
   function cleanupRendering() {

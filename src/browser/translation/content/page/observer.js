@@ -54,7 +54,16 @@ export function createPageObserver(options = {}) {
     if (!observer || !document.body) return
     observer.observe(document.body, {
       attributes: true,
-      attributeFilter: ["class", "style", "hidden", "aria-hidden"],
+      attributeFilter: [
+        "class",
+        "style",
+        "hidden",
+        "aria-hidden",
+        "data-tex",
+        "data-latex",
+        "alttext",
+        "aria-label",
+      ],
       childList: true,
       characterData: true,
       subtree: true,

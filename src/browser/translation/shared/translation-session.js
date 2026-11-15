@@ -1,3 +1,5 @@
+import { getSourceIdentity } from "./source-identity.js"
+
 const DEFAULT_CONCURRENCY = 5
 const DEFAULT_BATCH_SIZE = 8
 
@@ -228,9 +230,8 @@ function createPageTranslationQueue(options = {}) {
         const ordinarySnapshot = item.kind !== "subtitle" && typeof item.text === "string"
         if (activeItem && ordinarySnapshot) {
           if (
-            item.text === activeItem.text &&
-            JSON.stringify(item.protectedFragments || []) ===
-              JSON.stringify(activeItem.protectedFragments || [])
+            getSourceIdentity(item.text, item.protectedFragments) ===
+            getSourceIdentity(activeItem.text, activeItem.protectedFragments)
           )
             session.latestPendingItems.delete(item.id)
           else {

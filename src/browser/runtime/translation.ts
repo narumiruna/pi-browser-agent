@@ -65,7 +65,12 @@ const contentTypes = new Set([
 export function record(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value))
 }
-export function boundedJson(value: unknown, maximum = 131072): boolean {
+export const TRANSLATION_CONTENT_LIMITS = Object.freeze({ maximumBytes: 131072, maximumItems: 64 })
+
+export function boundedJson(
+  value: unknown,
+  maximum: number = TRANSLATION_CONTENT_LIMITS.maximumBytes,
+): boolean {
   try {
     return new TextEncoder().encode(JSON.stringify(value)).length <= maximum
   } catch {
@@ -134,7 +139,7 @@ export function isTranslationContentMessage(
       typeof payload.sessionId === "string" &&
       payload.sessionId.length <= 128 &&
       Array.isArray(payload.items) &&
-      payload.items.length <= 64 &&
+      payload.items.length <= TRANSLATION_CONTENT_LIMITS.maximumItems &&
       payload.items.every(
         (item) =>
           record(item) &&

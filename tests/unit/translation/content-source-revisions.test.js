@@ -1,5 +1,8 @@
 import assert from "node:assert/strict"
+import { JSDOM } from "jsdom"
 import { test } from "vitest"
+import * as Rules from "../../../src/browser/translation/content/extraction/rules.js"
+import { createSourceAnalyzer } from "../../../src/browser/translation/content/extraction/source-analyzer.js"
 import { createContentRenderer } from "../../../src/browser/translation/content/rendering/runtime.js"
 import * as SubtitleApi from "../../../src/browser/translation/content/youtube/subtitles.js"
 
@@ -40,6 +43,7 @@ function createFixture() {
     "data-ot-queued": "true",
   })
   source.text = "Current revision C"
+  source.protectedFragments = []
   const note = createElement({
     "data-phase": "pending",
     "data-ot-note-id": "source",
@@ -81,7 +85,7 @@ function createFixture() {
     ensureStyles() {},
     ensureObserver() {},
     getExistingNoteForSource: () => note,
-    getSegmentContent: () => ({ text: source.text }),
+    getSegmentContent: () => ({ text: source.text, protectedFragments: source.protectedFragments }),
     setSourceTranslated: (element, value) =>
       element.setAttribute("data-ot-translated", String(value)),
     setSourceQueued: (element, value) => element.setAttribute("data-ot-queued", String(value)),
@@ -143,4 +147,104 @@ test("old ordinary failure preserves a newer stale source and its pending note",
   assert.equal(source.getAttribute("data-ot-source-stale"), "true")
   assert.equal(source.getAttribute("data-ot-translated"), "stale")
   assert.equal(source.getAttribute("data-ot-queued"), "true")
+})
+
+const mathFragment = (value) => ({
+  placeholder: "__OT_MATH_1__",
+  preservePlaceholder: true,
+  kind: "math",
+  text: value,
+  value,
+})
+test("source revisions include math even when masked prose is unchanged", () => {
+  const dom = new JSDOM(
+    '<p>Review this equation <span class="katex">x = 1</span> before continuing.</p>',
+  )
+  try {
+    const { window } = dom
+    const analyzer = createSourceAnalyzer({
+      document: window.document,
+      window,
+      Node: window.Node,
+      activeSiteProfile: { id: "default" },
+      sourceAttr: "data-ot-source-id",
+      rootAttr: "data-ot-role",
+      mathSelector: Rules.MATH_SELECTOR,
+      skipAncestorSelector: Rules.SKIP_ANCESTOR_SELECTOR,
+      inlineCodeSelector: Rules.INLINE_CODE_SELECTOR,
+      ExtractionApi: Rules,
+      SubtitleApi,
+      isInsideTranslation: () => false,
+      normalizeSegmentText: Rules.normalizeSegmentText,
+      normalizeInlineWhitespace: Rules.normalizeInlineWhitespace,
+    })
+    const source = window.document.querySelector("p")
+    const original = analyzer.getSegmentContent(source)
+    analyzer.rememberSourceText(source, original.text)
+    assert.equal(analyzer.hasSourceTextChanged(source), false)
+    window.document.querySelector(".katex").textContent = "x = 2"
+    assert.equal(analyzer.getSegmentContent(source).text, original.text)
+    assert.equal(analyzer.hasSourceTextChanged(source), true)
+    analyzer.rememberSourceText(source, original.text)
+    assert.equal(analyzer.hasSourceTextChanged(source), false)
+  } finally {
+    dom.window.close()
+  }
+})
+for (const fragments of [undefined, [mathFragment("x = 1")]])
+  test("ordinary math rejects missing or old protected source snapshots", () => {
+    const { renderer, source, note, body } = createFixture()
+    source.text = "Equation __OT_MATH_1__"
+    source.protectedFragments = [mathFragment("x = 2")]
+    const result = renderer.renderPageTranslationUpdates({
+      targetLanguage: "zh-TW",
+      translations: [
+        {
+          id: "source",
+          sourceText: source.text,
+          protectedFragments: fragments,
+          translation: "Current __OT_MATH_1__",
+        },
+      ],
+    })
+    assert.equal(result.rendered, 0)
+    assert.equal(source.getAttribute("data-ot-source-stale"), "true")
+    assert.equal(note.getAttribute("data-phase"), "pending")
+    assert.deepEqual(body.children, ["pending"])
+  })
+test("ordinary math accepts a matching full source snapshot", () => {
+  const { renderer, source, body } = createFixture()
+  source.text = "Equation __OT_MATH_1__"
+  source.protectedFragments = [mathFragment("x = 2")]
+  const result = renderer.renderPageTranslationUpdates({
+    targetLanguage: "zh-TW",
+    translations: [
+      {
+        id: "source",
+        sourceText: source.text,
+        protectedFragments: [mathFragment("x = 2")],
+        translation: "Current __OT_MATH_1__",
+      },
+    ],
+  })
+  assert.equal(result.rendered, 1)
+  assert.deepEqual(body.children, ["Current ", "x = 2"])
+})
+test("old math failure cannot clear the newer revision's pending note", () => {
+  const { renderer, source, note } = createFixture()
+  source.text = "Equation __OT_MATH_1__"
+  source.protectedFragments = [mathFragment("x = 2")]
+  const result = renderer.clearPagePlaceholders({
+    ids: ["source"],
+    items: [
+      {
+        id: "source",
+        text: source.text,
+        protectedFragments: [mathFragment("x = 1")],
+      },
+    ],
+  })
+  assert.equal(result.cleared, 0)
+  assert.equal(note.removed, undefined)
+  assert.equal(source.getAttribute("data-ot-source-stale"), "true")
 })

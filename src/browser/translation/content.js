@@ -344,7 +344,7 @@ export function createContentRuntime(options = {}) {
       element.setAttribute(QUEUED_ATTR, "false")
     }
 
-    rememberSourceText(element, content.text)
+    rememberSourceText(element, content.text, content.protectedFragments)
 
     return {
       id: itemId,
@@ -626,29 +626,37 @@ export function createContentRuntime(options = {}) {
     }
 
     const sessionId = pageState.pageTranslation.sessionId
-    try {
-      const response = await chrome.runtime.sendMessage(
-        Messages.queuePageTranslationItems({
-          sessionId,
-          items: pendingItems,
-        }),
-      )
-
-      if (SubtitleApi.isSubtitleProfile(ACTIVE_SITE_PROFILE)) {
-        handleYoutubeQueueResult(pendingItems, response, sessionId)
-        if (sessionId !== pageState.pageTranslation.sessionId) return
+    const { messages, rejectedItems } = Messages.batchPageTranslationItems(sessionId, pendingItems)
+    if (rejectedItems.length)
+      showToast("Some page text could not be translated. Try again.", "error")
+    for (const message of messages) {
+      if (!isPageTranslationSessionActive() || sessionId !== pageState.pageTranslation.sessionId)
+        return
+      let response
+      try {
+        response = await chrome.runtime.sendMessage(message)
+      } catch (_error) {
+        response = { ok: false }
+      }
+      if (!isPageTranslationSessionActive() || sessionId !== pageState.pageTranslation.sessionId)
+        return
+      const subtitleProfile = SubtitleApi.isSubtitleProfile(ACTIVE_SITE_PROFILE)
+      if (subtitleProfile) {
+        handleYoutubeQueueResult(message.payload.items, response, sessionId)
+        if (!isPageTranslationSessionActive() || sessionId !== pageState.pageTranslation.sessionId)
+          return
+      }
+      if (response?.ok !== true || response.sessionStatus === "missing") {
+        if (subtitleProfile)
+          recordYoutubeDiagnostic("queue-error", "Could not queue caption items", { show: true })
+        else showToast("Some page text could not be translated. Try again.", "error")
+        return
+      }
+      if (subtitleProfile)
         recordYoutubeDiagnostic(
           "queued",
-          `Background accepted ${Number(response?.queued) || 0} caption item(s)`,
+          `Background accepted ${Number(response.queued) || 0} caption item(s)`,
         )
-      }
-    } catch (_error) {
-      if (SubtitleApi.isSubtitleProfile(ACTIVE_SITE_PROFILE)) {
-        handleYoutubeQueueResult(pendingItems, { ok: false }, sessionId)
-        if (sessionId !== pageState.pageTranslation.sessionId) return
-        recordYoutubeDiagnostic("queue-error", "Could not queue caption items", { show: true })
-      }
-      // Ignore runtime messaging failures on teardown or unsupported pages.
     }
   }
 
