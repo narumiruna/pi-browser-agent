@@ -152,6 +152,10 @@ All built-in browser tools are enabled by default, including tools added by upda
 
 ## Development
 
+Install `zizmor` on `PATH` before committing, for example with
+`uv tool install zizmor`. After `npm ci`, the pre-commit hook migrates the Biome
+configuration, formats and checks `src/`, and runs `zizmor --pedantic .`.
+
 ```sh
 npm run dev:chrome
 npm test
