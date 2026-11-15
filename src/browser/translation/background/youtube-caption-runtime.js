@@ -210,7 +210,8 @@ async function captureNativeYoutubeCaptionRequestUrl(
                   (hostname !== "youtube.com" && !hostname.endsWith(".youtube.com")) ||
                   url.pathname !== "/api/timedtext" ||
                   Object.entries(match).some(
-                    ([name, value]) => value && url.searchParams.get(name) !== value,
+                    ([name, value]) =>
+                      (name === "kind" || value) && (url.searchParams.get(name) || "") !== value,
                   )
                 ) {
                   return []

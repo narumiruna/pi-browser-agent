@@ -269,7 +269,12 @@ export class TranslationController {
       throw new Error("Translation startup was superseded")
     const scopedProvider = this.scopedProvider
     if (!scopedProvider) throw new Error("Translation configuration expired")
+    const abort = new AbortController()
+    this.abort = abort
+    this.stopButton.hidden = false
+    this.ui.changed()
     const context = await currentContext()
+    abort.signal.throwIfAborted()
     if (context.tabId !== intent.tab.id || context.url !== intent.tab.url)
       throw new Error("The translation page changed")
     const claimed = await worker("claim", "", {
@@ -281,14 +286,15 @@ export class TranslationController {
     if (!record(claimed) || typeof claimed.owner !== "string" || typeof claimed.boot !== "string")
       throw new Error("Translation ownership failed")
     const owner = claimed.owner
-    if (this.disposed || this.intent !== intent) {
+    const busy = this.ui.busy()
+    if (this.disposed || this.intent !== intent || abort.signal.aborted || busy) {
       await worker("release", owner)
+      if (busy && !abort.signal.aborted)
+        throw new Error("Finish the current operation before translating")
       return
     }
     this.owner = owner
     this.context = context
-    const abort = new AbortController()
-    this.abort = abort
     this.approve.hidden = true
     this.stopButton.hidden = false
     let boot = claimed.boot
@@ -491,6 +497,14 @@ export class TranslationController {
     this.starting = run
     try {
       await run
+    } catch (error) {
+      const cancelled =
+        this.abort?.signal.aborted || (error instanceof DOMException && error.name === "AbortError")
+      if (this.starting === run) {
+        this.starting = undefined
+        await this.stop()
+      }
+      if (!cancelled) throw error
     } finally {
       if (this.starting === run) this.starting = undefined
     }

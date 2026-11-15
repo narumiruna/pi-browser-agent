@@ -11,6 +11,7 @@ import {
 import { builtinProviders } from "@earendil-works/pi-ai/providers/all"
 import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex"
 import {
+  getRadiusCredentialConfig,
   getRadiusModels,
   getRadiusModelsFromConfig,
 } from "@earendil-works/pi-ai/providers/radius-config"
@@ -151,7 +152,43 @@ function browserRadiusProvider(provider: Provider): Provider {
         credential?.type === "oauth" ? [credential.access, credential.refresh] : [String(key)]
       if (privateValues.some((value) => value && JSON.stringify(config).includes(value)))
         throw new Error("Radius model catalog contains authentication data")
-      const refreshed = getRadiusModelsFromConfig(provider.id, config)
+      // This SDK helper only sanitizes gateway metadata; it does not use tokens.
+      const validated = getRadiusCredentialConfig({
+        type: "oauth",
+        access: "",
+        refresh: "",
+        expires: 0,
+        gatewayConfig: config,
+      })
+      if (
+        !validated ||
+        validated.models.length !== config.models.length ||
+        validated.models.some(
+          (model) =>
+            !model.id.trim() ||
+            !model.name.trim() ||
+            !model.input.length ||
+            model.input.some((kind) => !["text", "image"].includes(kind)) ||
+            ![model.contextWindow, model.maxTokens].every(
+              (value) => Number.isFinite(value) && value > 0,
+            ) ||
+            ![
+              model.cost.input,
+              model.cost.output,
+              model.cost.cacheRead,
+              model.cost.cacheWrite,
+            ].every((value) => Number.isFinite(value) && value >= 0),
+        )
+      )
+        throw new Error("Radius model catalog is invalid")
+      const endpoint = new URL(validated.baseUrl)
+      if (
+        !["http:", "https:"].includes(endpoint.protocol) ||
+        endpoint.username ||
+        endpoint.password
+      )
+        throw new Error("Radius model catalog is invalid")
+      const refreshed = getRadiusModelsFromConfig(provider.id, validated)
       if (!signal.aborted && (await hasApprovedHostPermission(RADIUS_CONFIG_URL)))
         await context.publish({
           persist: { models: refreshed, checkedAt: Date.now() },

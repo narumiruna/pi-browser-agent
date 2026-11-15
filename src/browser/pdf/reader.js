@@ -410,6 +410,7 @@ async function loadPdfDocument(source) {
   if (previousLoadingTask && previousLoadingTask !== nextLoadingTask) {
     await previousLoadingTask.destroy().catch(() => {})
   }
+  if (loadSequence !== state.loadSequence) return false
 
   const title = Pdf.sanitizePdfTitle(metadata?.info?.Title, Pdf.sanitizePdfTitle(source.title))
   elements.documentTitle.textContent = title
@@ -418,6 +419,7 @@ async function loadPdfDocument(source) {
   createTranslationPages(filteredPages)
   setupPageObserver()
   await renderWindow(1)
+  if (loadSequence !== state.loadSequence) return false
   if (characterCount < state.pageCount * 20) {
     showError(
       "Very little text could be extracted. This may be a scanned PDF and OCR is not supported yet.",
@@ -426,6 +428,7 @@ async function loadPdfDocument(source) {
     setStatus(`${ui("Ready")} · ${state.pageCount}`)
     await queuePageWindow(1)
   }
+  if (loadSequence !== state.loadSequence) return false
   updateControls()
   return true
 }
@@ -511,7 +514,7 @@ async function renderWindow(center) {
     (pageNumber) => pageNumber >= 1 && pageNumber <= state.pageCount,
   )
   await Promise.all(pageNumbers.map(renderPage))
-  unrenderDistantPages(center)
+  unrenderDistantPages(state.currentPage)
 }
 
 function setupPageObserver() {
@@ -556,6 +559,7 @@ async function applyCachedBlocks(blocks, snapshot) {
     state.translations.set(translation.id, translation.translation)
     updateBlockElement(translation.id)
   }
+  applySearch()
   updateControls()
   return true
 }
@@ -637,8 +641,13 @@ async function queueEntireDocument() {
   ) {
     return
   }
-  for (let pageNumber = 1; pageNumber <= state.pageCount; pageNumber += 1) {
-    await queueBlocks(state.pageData.get(pageNumber)?.blocks || [], "back")
+  const confirmedDocument = state.translationDocumentId
+  const confirmedSession = state.sessionId
+  const pages = [...state.pageData.values()]
+  for (const page of pages) {
+    if (state.translationDocumentId !== confirmedDocument || state.sessionId !== confirmedSession)
+      return
+    await queueBlocks(page.blocks || [], "back")
   }
 }
 
@@ -688,6 +697,7 @@ function revealSourceBlock(block) {
   }
   pageElement.scrollIntoView({ block: "start" })
   state.currentPage = block.pageNumber
+  updateControls()
   renderWindow(block.pageNumber)
     .then(() => {
       pageElement.querySelectorAll(".source-highlight").forEach((item) => {
@@ -778,6 +788,7 @@ async function handleServerMessage(message) {
       state.failedIds.delete(translation.id)
       updateBlockElement(translation.id)
     }
+    applySearch()
     await cacheTranslations(state.cacheContext, state.blocksById, message.translations || [])
     setStatus(ui("Translated blocks: {count}", { count: state.translations.size }))
     updateControls()
@@ -821,6 +832,9 @@ async function handleServerMessage(message) {
   if (message.type === Pdf.SERVER_MESSAGE_TYPES.CANCELLED) {
     cancelRemoteSource()
     state.sessionId = ""
+    const cancelledPort = state.port
+    state.port = null
+    cancelledPort?.disconnect()
     state.pendingIds.clear()
     setStatus(ui("Translation cancelled"))
     sessionStopped()

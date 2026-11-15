@@ -362,7 +362,23 @@ export function createContentRenderer(options = {}) {
   function startPageTranslationSession(payload) {
     ensureStyles(payload?.translationAppearance)
     ensureObserver()
+    const sameSession =
+      payload.sessionId &&
+      payload.sessionId === pageState.pageTranslation.sessionId &&
+      payload.targetLanguage === pageState.pageTranslation.targetLanguage
     clearPendingTranslations()
+    if (!sameSession)
+      withObserverPaused(() => {
+        for (const note of document.querySelectorAll(`[${ROOT_ATTR}="note"]`)) note.remove()
+        for (const source of document.querySelectorAll(`[${SOURCE_ATTR}]`)) {
+          setSourceTranslated(source, false)
+          setSourceQueued(source, false)
+          source.removeAttribute(PROCESSED_ATTR)
+          source.removeAttribute(STALE_ATTR)
+          if (SubtitleApi.SUBTITLE_REPLACED_ATTR)
+            source.removeAttribute(SubtitleApi.SUBTITLE_REPLACED_ATTR)
+        }
+      })
     pageState.debug.enabled = Boolean(payload?.debug?.enabled)
     if (!pageState.debug.enabled) {
       clearDebugPanel()

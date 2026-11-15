@@ -47,12 +47,19 @@ test("translation schemas reject executable fields, oversized payloads, and inva
   for (const frameId of ["0", -1, NaN, 0.5])
     expect(() => parseTranslationRequest(packet("inject", { frameId }))).toThrow()
   expect(isTranslationContentMessage({ type: "get-provider-auth-status" })).toBe(false)
-  expect(
-    isTranslationContentMessage({
-      type: "queue-page-translation-items",
-      payload: { items: Array(65).fill({ id: "x", text: "a" }) },
-    }),
-  ).toBe(false)
+  const queue = (count: number) => ({
+    type: "queue-page-translation-items",
+    payload: {
+      sessionId: "owned-session",
+      items: Array.from({ length: count }, (_, index) => ({
+        id: `item-${index}`,
+        text: "a",
+        kind: "paragraph",
+      })),
+    },
+  })
+  expect(isTranslationContentMessage(queue(64))).toBe(true)
+  expect(isTranslationContentMessage(queue(65))).toBe(false)
 })
 test("source text and forged kinds cannot enter a system template", () => {
   const input = buildTranslationInput({

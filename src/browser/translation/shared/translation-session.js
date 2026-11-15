@@ -227,7 +227,12 @@ function createPageTranslationQueue(options = {}) {
         // Subtitle fallback owns its own prefix matching and coalescing.
         const ordinarySnapshot = item.kind !== "subtitle" && typeof item.text === "string"
         if (activeItem && ordinarySnapshot) {
-          if (item.text === activeItem.text) session.latestPendingItems.delete(item.id)
+          if (
+            item.text === activeItem.text &&
+            JSON.stringify(item.protectedFragments || []) ===
+              JSON.stringify(activeItem.protectedFragments || [])
+          )
+            session.latestPendingItems.delete(item.id)
           else {
             session.latestPendingItems.set(item.id, item)
             session.translatedIds.delete(item.id)

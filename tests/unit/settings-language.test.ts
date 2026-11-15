@@ -15,6 +15,7 @@ const state = vi.hoisted(() => ({
   persisted: {} as AppSettings,
   loaded: {} as AppSettings,
   authBusy: false,
+  refresh: vi.fn(async () => {}),
   confirm: vi.fn(async () => false),
   update: vi.fn<(update: SettingsUpdate) => Promise<void>>(),
 }))
@@ -50,7 +51,9 @@ vi.mock("../../src/browser/sidepanel/authentication.js", () => ({
     get isBusy() {
       return state.authBusy
     }
-    async refresh() {}
+    refresh() {
+      return state.refresh()
+    }
     abort() {}
   },
 }))
@@ -80,10 +83,11 @@ afterEach(() => {
   state.confirm.mockReset().mockResolvedValue(false)
   state.update.mockReset()
   state.authBusy = false
+  state.refresh.mockReset().mockResolvedValue(undefined)
   setLanguagePreference("en")
 })
 
-async function setup() {
+async function setup(options: { deferInitialization?: boolean } = {}) {
   state.persisted = { ...DEFAULT_SETTINGS, language: "en" }
   state.update.mockImplementation(async (update) => {
     const changes = typeof update === "function" ? await update({ ...state.persisted }) : update
@@ -104,7 +108,8 @@ async function setup() {
       onChanged: { addListener: vi.fn(), removeListener: vi.fn() },
     },
   })
-  await initializeSettingsPage(new URLSearchParams())
+  const initializing = initializeSettingsPage(new URLSearchParams())
+  if (!options.deferInitialization) await initializing
   const get = <T extends HTMLElement>(id: string): T => {
     const value = dom.window.document.getElementById(id)
     if (!value) throw new Error(`Missing test element: ${id}`)
@@ -117,6 +122,7 @@ async function setup() {
   }
   return {
     dom,
+    initializing,
     get,
     close,
     sendMessage,
@@ -128,6 +134,26 @@ async function setup() {
 }
 
 describe("Settings language drafts", () => {
+  test("late credential status cannot steal provider-picker focus or close its list", async () => {
+    let release = () => {}
+    let entered = false
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    state.refresh.mockImplementation(async () => {
+      entered = true
+      await gate
+    })
+    const ui = await setup({ deferInitialization: true })
+    await vi.waitFor(() => expect(entered).toBe(true))
+    const search = ui.get<HTMLInputElement>("provider-search")
+    search.focus()
+    expect(ui.get("provider-options").hidden).toBe(false)
+    release()
+    await ui.initializing
+    expect(ui.dom.window.document.activeElement).toBe(search)
+    expect(ui.get("provider-options").hidden).toBe(false)
+  })
   test("offers Follow browser and exactly the approved locales without a preview", async () => {
     const ui = await setup()
     expect([...ui.language.options].map((option) => option.value)).toEqual([

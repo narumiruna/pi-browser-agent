@@ -42,6 +42,7 @@ function setup() {
     { documentId, result: { url: context.url, contentType: "text/html", owned: true } },
   ])
   const sendMessage = vi.fn(async (_message: unknown) => ({ ok: true }))
+  const tabSendMessage = vi.fn(async (_tabId: number, _message: unknown) => ({ ok: true }))
   vi.stubGlobal("chrome", {
     runtime: {
       id: "extension",
@@ -56,7 +57,7 @@ function setup() {
     action: { setBadgeText: vi.fn(async () => undefined) },
     tabs: {
       get: async () => ({ id: 7, url: context.url, windowId: 3 }),
-      sendMessage,
+      sendMessage: tabSendMessage,
       onActivated: activated,
       onUpdated: updated,
       onRemoved: removed,
@@ -123,6 +124,7 @@ function setup() {
     menus,
     executeScript,
     sendMessage,
+    tabSendMessage,
     context: () => context,
     setContext: (next: TabContext) => {
       context = next
@@ -199,8 +201,8 @@ test("revocation, stale context and protected capture withdrawal suppress later 
     ),
   ).rejects.toThrow()
   expect(
-    f.sendMessage.mock.calls.some(
-      ([message]) => (message as { type?: string }).type === "render-page-placeholders",
+    f.tabSendMessage.mock.calls.some(
+      ([, message]) => (message as { type?: string }).type === "render-page-placeholders",
     ),
   ).toBe(false)
   vi.mocked(hasApprovedHostPermission).mockResolvedValue(true)
@@ -307,4 +309,55 @@ test("restart restores routing only for the same live UI and web document, never
     next.handle(f.packet("resume", { context: f.context() }, owner), f.sender),
   ).rejects.toThrow()
   expect(Object.keys(f.session)).toEqual([])
+})
+
+test("a superseded claim cannot release the newer owner after its awaited validation", async () => {
+  const f = setup()
+  const originalCurrent = f.options.current
+  let entered = false
+  let release = () => {}
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  f.options.current = async () => {
+    if (!entered) {
+      entered = true
+      await gate
+    }
+    return originalCurrent()
+  }
+  const first = f.claim().then(
+    (value) => value,
+    (error) => error,
+  )
+  await vi.waitFor(() => expect(entered).toBe(true))
+  const replacement = { ...f.sender, documentId: "newer-ui" }
+  f.menus.emit(
+    { menuItemId: "pi-translate-page", frameId: 0 },
+    { id: 7, url: f.context().url, windowId: 3 },
+  )
+  const pending = (await f.worker.handle(f.packet("take", { windowId: 3 }), replacement)) as {
+    id: string
+  }
+  const claimed = (await f.worker.handle(
+    f.packet("claim", { intentId: pending.id, context: f.context() }),
+    replacement,
+  )) as { owner: string }
+  release()
+  expect(await first).toBeInstanceOf(Error)
+  await expect(
+    f.worker.handle(f.packet("validate", {}, claimed.owner), replacement),
+  ).resolves.toEqual(f.context())
+  expect(Object.keys(f.session)).toEqual([`piBrowserAgentTranslationOwnerV1:${claimed.owner}`])
+})
+test("tab publication assertions inspect the actual message argument", async () => {
+  const f = setup()
+  const owner = (await f.claim()).owner
+  const message = { type: "render-page-placeholders", payload: { items: [] } }
+  await f.request("message", { message }, owner)
+  expect(f.tabSendMessage).toHaveBeenCalledWith(7, message, { documentId: "web-document" })
+  f.tabSendMessage.mockClear()
+  vi.mocked(hasApprovedHostPermission).mockResolvedValue(false)
+  await expect(f.request("message", { message }, owner)).rejects.toThrow()
+  expect(f.tabSendMessage).not.toHaveBeenCalled()
 })

@@ -24,7 +24,7 @@ function normalizeTextItem(item, index) {
   if (!item || typeof item.str !== "string" || !Array.isArray(item.transform)) {
     return null
   }
-  const text = normalizeText(item.str)
+  const text = item.str.replace(/\s+/gu, " ")
   if (!text) {
     return null
   }
@@ -98,14 +98,17 @@ function finalizeLine(line) {
   return line
 }
 
-function splitWideLine(line) {
+function splitWideLine(line, gutters) {
   line.items.sort((a, b) => a.x - b.x || a.index - b.index)
   const groups = []
   let current = []
   let previous = null
   for (const item of line.items) {
     const gap = previous ? item.x - (previous.x + previous.width) : 0
-    if (current.length > 0 && gap > Math.max(40, line.height * 4)) {
+    const sharedGutter =
+      previous &&
+      gutters.some((gutter) => previous.x + previous.width <= gutter.left && item.x >= gutter.right)
+    if (current.length > 0 && (gap > Math.max(40, line.height * 4) || sharedGutter)) {
       groups.push(current)
       current = []
     }
@@ -171,7 +174,36 @@ function groupItemsIntoLines(items) {
     }
   }
 
-  return lines.flatMap(splitWideLine).filter((line) => line.text)
+  // A narrow gap is a column gutter only when it repeats across separate rows
+  // and has substantial text on both sides. Ordinary word spacing stays joined.
+  const gutters = []
+  for (const [row, line] of lines.entries()) {
+    line.items.sort((a, b) => a.x - b.x || a.index - b.index)
+    const first = line.items[0]
+    const last = line.items.at(-1)
+    for (let index = 1; index < line.items.length; index += 1) {
+      const previous = line.items[index - 1]
+      const next = line.items[index]
+      const left = previous.x + previous.width
+      const right = next.x
+      if (
+        right - left < Math.max(12, line.height * 1.5) ||
+        left - first.x < line.height * 6 ||
+        last.x + last.width - right < line.height * 6
+      )
+        continue
+      const existing = gutters.find(
+        (gutter) => Math.max(left, gutter.left) < Math.min(right, gutter.right),
+      )
+      if (existing) {
+        existing.left = Math.max(existing.left, left)
+        existing.right = Math.min(existing.right, right)
+        existing.rows.add(row)
+      } else gutters.push({ left, right, rows: new Set([row]) })
+    }
+  }
+  const repeated = gutters.filter((gutter) => gutter.rows.size >= 2)
+  return lines.flatMap((line) => splitWideLine(line, repeated)).filter((line) => line.text)
 }
 
 function detectColumnStarts(lines, pageWidth) {
@@ -179,7 +211,7 @@ function detectColumnStarts(lines, pageWidth) {
     .filter((line) => Math.abs(line.rotation) < 0.08 && line.x2 - line.x < pageWidth * 0.72)
     .map((line) => line.x)
     .sort((a, b) => a - b)
-  if (starts.length < 6) {
+  if (starts.length < 4) {
     return [0]
   }
 

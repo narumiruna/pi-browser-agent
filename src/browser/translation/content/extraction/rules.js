@@ -137,7 +137,9 @@ const SKIP_ANCESTOR_SELECTOR = [
   "mjx-assistive-mml",
   '[role="math"]',
   '[aria-hidden="true"]',
-  '[contenteditable="true"]',
+  '[contenteditable="true" i]',
+  '[contenteditable=""]',
+  '[contenteditable="plaintext-only" i]',
   "[data-ot-role]",
 ].join(", ")
 const INTERACTIVE_SELECTOR = 'a, button, [role="button"], input, select, textarea'
@@ -344,7 +346,7 @@ function isLikelyUiMetaBlock(element, text) {
 
   return (
     (linkDensity >= 0.35 && linkCount >= 2) ||
-    (interactiveCount >= 2 && textLength < 160) ||
+    (interactiveCount - linkCount >= 2 && textLength < 160) ||
     (directBlockChildCount >= 4 && linkCount >= 2)
   )
 }

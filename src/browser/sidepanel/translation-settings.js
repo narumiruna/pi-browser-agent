@@ -102,6 +102,7 @@ export async function initializeTranslationSettings(configuration, authenticatio
     if (path[0] === "translationAppearance" && path[1] !== "presetId")
       draft.translationAppearance.presetId = "custom"
     updatePreview()
+    if (["customBaseUrl", "model"].includes(path[0])) void updateEndpoints()
     changed()
   }
   function field(title, path, options = {}, parent = general) {
@@ -191,7 +192,16 @@ export async function initializeTranslationSettings(configuration, authenticatio
   const credential = action("Add or update provider credential", "+", general)
   credential.type = "button"
   credential.addEventListener("click", () => {
-    void authentication.configure(undefined, draft.provider).then(updateEndpoints).catch(showError)
+    void authentication
+      .configure(undefined, draft.provider)
+      .then(async (configured) => {
+        if (configured) {
+          updateModels()
+          changed()
+        }
+        await updateEndpoints()
+      })
+      .catch(showError)
   })
   const connection = action("Test Connection", "↗", general)
   connection.type = "button"

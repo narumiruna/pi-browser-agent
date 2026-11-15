@@ -545,6 +545,6 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
     event.preventDefault()
     event.returnValue = ""
   })
-  await authentication.refresh()
   closeButton.focus()
+  await authentication.refresh()
 }

@@ -50,6 +50,35 @@ test("packaged PDF reader renders selectable originals and translates local byte
   }
 })
 
+test("Cancel then the first explicit Start restarts PDF translation without losing completed text", async () => {
+  const { harness, requests } = await setupTranslation()
+  try {
+    const reader = await harness.context.newPage()
+    await reader.goto(`chrome-extension://${harness.extensionId}/pages/pdf.html`)
+    await expect(reader.locator("#local-file")).toBeEnabled()
+    await reader
+      .locator("#local-file")
+      .setInputFiles({ name: "restart.pdf", mimeType: "application/pdf", buffer: pdfFixture() })
+    await reader.locator("#pdf-approve").click()
+    const notes = reader.locator(".translation-block[data-state=ready]")
+    await expect(notes).toBeVisible()
+    const text = await notes.textContent()
+    const completed = requests()
+    await reader.locator("#cancel-translation").click()
+    await expect(reader.locator("#pdf-approve")).toBeVisible()
+    await expect(reader.locator("#pdf-approve")).toBeEnabled()
+    expect(requests()).toBe(completed)
+    await reader.locator("#pdf-approve").click()
+    await expect(reader.locator("#pdf-approve")).toBeHidden()
+    await expect(reader.locator("#cancel-translation")).toBeEnabled()
+    await expect(notes).toHaveText(text ?? "")
+    await expect(reader.locator("#error")).toBeHidden()
+    expect(harness.pageErrors).toEqual([])
+  } finally {
+    await harness.close()
+  }
+})
+
 test("encrypted PDF passwords stay in memory and wrong passwords can be corrected", async () => {
   const { harness, requests } = await setupTranslation()
   try {
@@ -66,7 +95,7 @@ test("encrypted PDF passwords stay in memory and wrong passwords can be correcte
     await reader.locator("#submit-password").click()
     await expect(reader.locator("#password-dialog p")).toContainText("incorrect")
     await reader.locator("#pdf-password").fill("reader-private-password")
-    await reader.locator("#submit-password").click()
+    await reader.locator("#pdf-password").press("Enter")
     await expect(reader.locator(".text-layer")).toContainText("encrypted owned document")
     await expect(reader.locator("#pdf-password")).toHaveValue("")
     expect(requests()).toBe(0)

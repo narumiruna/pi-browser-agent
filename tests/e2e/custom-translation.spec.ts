@@ -2,6 +2,69 @@ import { expect, test } from "@playwright/test"
 import { finalTextResponse } from "./support/mock-codex.js"
 import { menu, setupTranslation } from "./support/translation.js"
 
+test("editing a custom host, path, and model refreshes Test Connection without reopening Settings", async () => {
+  const { harness } = await setupTranslation({
+    hostPatterns: ["https://first-api.example/*", "https://second-api.example/*"],
+  })
+  const sent: Array<{ url: string; model: string }> = []
+  try {
+    await harness.controller.evaluate(async () => {
+      await chrome.storage.local.set({
+        piBrowserAgentCredentialsV1: {
+          "openai-compatible": { type: "api_key", key: "custom-review-fixture-key" },
+        },
+        piBrowserAgentTranslationSettingsV1: {
+          version: 1,
+          settings: {
+            provider: "openai-compatible",
+            model: "first-model",
+            customBaseUrl: "https://first-api.example/v1",
+          },
+        },
+      })
+    })
+    await harness.context.route("https://second-api.example/**", async (route) => {
+      sent.push({ url: route.request().url(), model: route.request().postDataJSON().model })
+      await route.fulfill({
+        contentType: "text/event-stream",
+        body: finalTextResponse(
+          sent.length,
+          JSON.stringify({
+            translations: [{ id: "connection", translatedText: "Connection verified" }],
+          }),
+        ),
+      })
+    })
+    const settings = await harness.context.newPage()
+    await settings.goto(`${harness.controller.url()}?view=settings`)
+    await settings.locator("#settings-tab-translation").click()
+    await settings
+      .locator("#translation-customBaseUrl")
+      .fill("https://second-api.example/prefix/v1")
+    await settings.locator("#translation-custom-model").fill("edited-model")
+    const connection = settings.getByRole("button", { name: "Test Connection", exact: true })
+    await expect(connection).toBeEnabled()
+    await connection.click()
+    await expect.poll(() => sent.length).toBe(1)
+    await expect(settings.locator("#translation-settings [role=status]")).toHaveText(
+      "Connection verified",
+    )
+    expect(sent[0]).toEqual({
+      url: "https://second-api.example/prefix/v1/responses",
+      model: "edited-model",
+    })
+    await settings.locator("#translation-customBaseUrl").fill("https://second-api.example/other/v1")
+    await expect(connection).toBeEnabled()
+    await connection.click()
+    await expect.poll(() => sent.length).toBe(2)
+    expect(sent[1]?.url).toBe("https://second-api.example/other/v1/responses")
+    await expect(connection).toBeEnabled()
+    expect(harness.pageErrors).toEqual([])
+  } finally {
+    await harness.close()
+  }
+})
+
 test("Custom Responses uses the exact model and approved base path without replacing chat settings", async () => {
   const { harness } = await setupTranslation({ hostPatterns: ["https://custom-api.example/*"] })
   let calls = 0

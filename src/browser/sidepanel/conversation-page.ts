@@ -1745,6 +1745,7 @@ export async function initializeConversationPage(params: URLSearchParams): Promi
     busy: () =>
       disposed ||
       runtime.isBusy ||
+      Boolean(activeSubmissionGuard) ||
       Boolean(authentication?.isBusy) ||
       pickerActive ||
       pickerStarting ||

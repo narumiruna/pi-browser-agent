@@ -434,6 +434,10 @@ export function installTranslationWorker(options: {
       const windowRevision = (windowRevisions.get(windowId) ?? 0) + 1
       windowRevisions.set(windowId, windowRevision)
       windowClaims.set(windowId, intent.tab.id)
+      const assertClaim = () => {
+        if (generation !== lifecycleVersion || windowRevisions.get(windowId) !== windowRevision)
+          throw new Error("Translation startup was superseded")
+      }
       try {
         const frameId = Number(payload.frameId ?? 0)
         const frameUrl = frameId ? String(payload.frameUrl ?? "") : context.url
@@ -460,9 +464,13 @@ export function installTranslationWorker(options: {
           !(await hasApprovedHostPermission(url))
         )
           throw new Error("Translation frame approval is required")
-        for (const previous of owners.values())
+        assertClaim()
+        for (const previous of [...owners.values()]) {
+          assertClaim()
           if (previous.windowId === tab.windowId) await release(previous)
-        await withdrawWindow(windowId)
+        }
+        assertClaim()
+        await withdrawWindow(windowId, assertClaim)
         await Promise.allSettled([...releases])
         if (generation !== lifecycleVersion || windowRevisions.get(windowId) !== windowRevision)
           throw new Error("Translation startup was superseded")
@@ -620,8 +628,9 @@ export function installTranslationWorker(options: {
     tickets.clear()
     for (const owner of [...owners.values()]) void release(owner)
   }
-  async function withdrawWindow(windowId: number): Promise<void> {
+  async function withdrawWindow(windowId: number, assertClaim: () => void): Promise<void> {
     const records = await chrome.storage.session.get(null)
+    assertClaim()
     for (const [key, value] of Object.entries(records)) {
       if (
         !key.startsWith(OWNER_PREFIX) ||
@@ -634,10 +643,13 @@ export function installTranslationWorker(options: {
         const { owner } = await storedOwner(key.slice(OWNER_PREFIX.length), {
           documentId: value.client,
         })
+        assertClaim()
         await release(owners.get(owner.token) ?? owner)
       } catch {
+        assertClaim()
         await chrome.storage.session.remove(key)
       }
+      assertClaim()
     }
   }
   async function withdrawStored(client?: string): Promise<void> {

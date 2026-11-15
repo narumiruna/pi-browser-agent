@@ -110,54 +110,53 @@ export function createSourceAnalyzer(options = {}) {
     return placeholder
   }
 
-  function extractMathFragment(element) {
-    if (!element?.matches) {
-      return null
+  function isEditableSource(element) {
+    if (document.designMode?.toLowerCase() === "on") return true
+    for (let current = element; current; current = current.parentElement) {
+      const value = current.getAttribute?.("contenteditable")
+      if (
+        current.isContentEditable ||
+        (value !== null &&
+          value !== undefined &&
+          ["", "true", "plaintext-only"].includes(value.toLowerCase()))
+      )
+        return true
     }
+    return false
+  }
 
-    const html = typeof element.outerHTML === "string" ? element.outerHTML.trim() : ""
-    const text = normalizeSegmentText(element.textContent || "")
-
-    if (html) {
-      return {
-        kind: "math",
-        html,
-        text,
-        value: text,
-      }
+  function isExcludedSource(element, context) {
+    if (isEditableSource(element)) return true
+    if (
+      element.matches?.(
+        'script, style, noscript, textarea, input, select, option, button, [role="button"]',
+      )
+    )
+      return true
+    for (let current = element; current; current = current.parentElement) {
+      // Only the owned, ready note can authorize its hidden native caption.
+      if (current === context.sourceRoot && context.readableCaption) continue
+      if (current.hasAttribute?.("hidden") || current.getAttribute?.("aria-hidden") === "true")
+        return true
+      const style = window.getComputedStyle(current)
+      if (
+        style.display === "none" ||
+        style.contentVisibility === "hidden" ||
+        style.opacity === "0" ||
+        (current === element && ["hidden", "collapse"].includes(style.visibility))
+      )
+        return true
     }
+    return false
+  }
 
-    const mathChild = !element.matches("math") ? element.querySelector("math") : null
-
-    if (mathChild?.outerHTML) {
-      return {
-        kind: "math",
-        html: mathChild.outerHTML,
-        text,
-        value: text,
-      }
-    }
-
+  function extractMathFragment(element, context) {
+    const text = normalizeSegmentText(serializeNode(element, context, true))
+    if (text) return { kind: "math", text, value: text }
     for (const attributeName of ["data-tex", "data-latex", "alttext", "aria-label"]) {
-      const attributeValue = normalizeSegmentText(element.getAttribute(attributeName) || "")
-
-      if (attributeValue) {
-        return {
-          kind: "math",
-          text: attributeValue,
-          value: attributeValue,
-        }
-      }
+      const value = normalizeSegmentText(element.getAttribute(attributeName) || "")
+      if (value) return { kind: "math", text: value, value }
     }
-
-    if (text) {
-      return {
-        kind: "math",
-        text,
-        value: text,
-      }
-    }
-
     return null
   }
 
@@ -224,7 +223,7 @@ export function createSourceAnalyzer(options = {}) {
 
   const isHeadingLikeElement = ExtractionApi.isHeadingLikeElement
 
-  function serializeNode(node, context) {
+  function serializeNode(node, context, plain = false) {
     if (!node) {
       return ""
     }
@@ -239,17 +238,19 @@ export function createSourceAnalyzer(options = {}) {
 
     const element = node
 
-    if (element.getAttribute && element.getAttribute("aria-hidden") === "true") {
-      return ""
-    }
+    if (isExcludedSource(element, context)) return ""
 
-    if (element.matches(MATH_SELECTOR)) {
-      const mathFragment = extractMathFragment(element)
+    if (!plain && element.matches(MATH_SELECTOR)) {
+      const mathFragment = extractMathFragment(element, context)
 
       return createProtectedPlaceholder(context, mathFragment)
     }
 
-    if (element.closest(SKIP_ANCESTOR_SELECTOR) && !element.matches(INLINE_CODE_SELECTOR)) {
+    if (
+      !plain &&
+      element.closest(SKIP_ANCESTOR_SELECTOR) &&
+      !element.matches(INLINE_CODE_SELECTOR)
+    ) {
       return ""
     }
 
@@ -257,23 +258,32 @@ export function createSourceAnalyzer(options = {}) {
       return "\n"
     }
 
-    if (element.matches(INLINE_CODE_SELECTOR)) {
-      return `\`${normalizeInlineWhitespace(element.textContent || "")}\``
-    }
-
-    if (element.matches("pre") && !element.matches(EXPLICIT_TEXT_BLOCK_SELECTOR)) {
-      return `\`${normalizeInlineWhitespace(element.textContent || "")}\``
+    if (
+      !plain &&
+      (element.matches(INLINE_CODE_SELECTOR) ||
+        (element.matches("pre") && !element.matches(EXPLICIT_TEXT_BLOCK_SELECTOR)))
+    ) {
+      return `\`${normalizeInlineWhitespace(serializeNode(element, context, true))}\``
     }
 
     return Array.from(element.childNodes)
-      .map((child) => serializeNode(child, context))
+      .map((child) => serializeNode(child, context, plain))
       .join("")
   }
 
   function getSegmentContent(element) {
+    const caption =
+      SubtitleApi?.isSubtitleProfile(ACTIVE_SITE_PROFILE) &&
+      element.matches?.(SubtitleApi.YOUTUBE_CAPTION_SEGMENT_SELECTOR) &&
+      element.getAttribute?.(SubtitleApi.SUBTITLE_REPLACED_ATTR) === "true"
+    const note = caption && getExistingNoteForSource?.(element, element.getAttribute(SOURCE_ATTR))
     const context = {
       counter: 0,
       tokens: [],
+      sourceRoot: element,
+      readableCaption: Boolean(
+        note?.isConnected && note.getAttribute("data-phase") === "ready" && isVisible(note),
+      ),
     }
 
     return {
@@ -331,6 +341,8 @@ export function createSourceAnalyzer(options = {}) {
       debugSkip("already translated", element)
       return { ok: false, reason: "already translated" }
     }
+
+    if (isEditableSource(element)) return { ok: false, reason: "editable content" }
 
     if (isUnsupportedElement(element)) {
       debugSkip("unsupported element", element)

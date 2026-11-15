@@ -59,13 +59,14 @@ function hardSplitText(text, limit) {
       // Keep a placeholder atomic, even when it exceeds the requested limit.
       end = crossing.start > index ? crossing.start : crossing.end
     }
-    const touchesPlaceholder = placeholders.some(
-      (token) => token.start === end || token.end === end,
-    )
-    parts.push({
-      text: normalized.slice(index, end),
-      joiner: end < normalized.length && !touchesPlaceholder ? " " : "",
-    })
+    if (
+      end < normalized.length &&
+      /[\uD800-\uDBFF]/u.test(normalized[end - 1]) &&
+      /[\uDC00-\uDFFF]/u.test(normalized[end])
+    ) {
+      end = end - 1 > index ? end - 1 : end + 1
+    }
+    parts.push({ text: normalized.slice(index, end), joiner: "" })
     index = end
   }
 

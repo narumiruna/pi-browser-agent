@@ -7,7 +7,8 @@ const INLINE_CODE_REGEX = /`[^`\n]+`/g
 const DISPLAY_LATEX_REGEX = /\$\$[\s\S]+?\$\$/g
 // Allow padded math, but keep numeric price openings from absorbing prose.
 // A closing dollar before a price digit belongs to the next price instead.
-const INLINE_DOLLAR_MATH_REGEX = /(?<!\\)\$(?:(?!\d)[^$\n]+|(?!\s)[^$\n]*[^\s$\n])\$(?!\d)/g
+const INLINE_DOLLAR_MATH_REGEX =
+  /(?<!\\)\$(?:(?!\d)[^$\n]+|\d(?=[^$\n]*[+*/=^_-])[^$\n]*[^\s$\n]\s+|(?!\s)[^$\n]*[^\s$\n])\$(?!\d)/g
 const CURRENCY_REGEX =
   /(?<![\\\w])\$\d+(?:,\d{3})*(?:\.\d+)?(?:\s*[-–—]\s*\$?\d+(?:,\d{3})*(?:\.\d+)?)?(?:\s*\/\s*(?:hr|hour|day|week|mo|month|yr|year)s?)?(?![\w$])/g
 // Prefer complete math expressions over a numeric price prefix, e.g. $2 + 3$.
@@ -89,8 +90,8 @@ function maskProtectedFragments(text, existingTokens) {
   replaceWithToken(DISPLAY_LATEX_REGEX)
   replaceWithToken(BLOCK_BRACKET_MATH_REGEX)
   replaceWithToken(INLINE_PAREN_MATH_REGEX)
-  replaceWithToken(DOLLAR_FRAGMENT_REGEX)
   replaceWithToken(URL_REGEX)
+  replaceWithToken(DOLLAR_FRAGMENT_REGEX)
   replaceWithToken(FILE_PATH_REGEX)
   replaceWithToken(TECH_TERM_REGEX)
 

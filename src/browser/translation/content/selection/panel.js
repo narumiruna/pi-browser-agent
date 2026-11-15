@@ -112,7 +112,8 @@ function createSelectionPanelRenderer(options = {}) {
     const lineBreakCount = body.querySelectorAll("br").length
     const canExpand =
       panelState === "ready" &&
-      (normalizedText.length > 140 ||
+      (isExpanded() ||
+        normalizedText.length > 140 ||
         lineBreakCount >= 3 ||
         body.scrollHeight > body.clientHeight + 1 ||
         body.scrollWidth > body.clientWidth + 1)

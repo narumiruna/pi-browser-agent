@@ -428,6 +428,9 @@ test("selection panel expansion keeps the configured width stable", () => {
   const body = panel.querySelector('[data-ot-role="selection-panel-body"]')
 
   body.scrollHeight = 240
+  Object.defineProperty(body, "clientHeight", {
+    get: () => (panel.getAttribute("data-expanded") === "true" ? 320 : 132),
+  })
   renderer.renderTranslation({
     requestId: "request-a",
     targetLanguage: "日本語",

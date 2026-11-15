@@ -686,11 +686,14 @@ export function createContentRuntime(options = {}) {
   }
 
   async function restorePageTranslationSession() {
+    if (clearGeneration > 0) return false
     try {
+      const generation = clearGeneration
       const response = await chrome.runtime.sendMessage(Messages.getPageTranslationSession())
 
       if (
         cleanedUp ||
+        generation !== clearGeneration ||
         isPageTranslationSessionActive() ||
         !response?.ok ||
         !response.active ||
@@ -779,6 +782,7 @@ export function createContentRuntime(options = {}) {
 
   const MessageTypes = Messages.MESSAGE_TYPES
   let cleanedUp = false
+  let clearGeneration = 0
   let restoreSessionTimer = null
   const onRuntimeMessage = (message, sender, sendResponse) => {
     if (sender?.id !== chrome.runtime.id || sender?.tab) return
@@ -896,6 +900,7 @@ export function createContentRuntime(options = {}) {
     }
 
     if (message.type === MessageTypes.CLEAR_PENDING_TRANSLATIONS) {
+      clearGeneration += 1
       sendResponse({
         ok: true,
         ...clearPendingTranslations(),

@@ -54,7 +54,10 @@ export function createPageProfile(options = {}) {
     block.setAttribute(proseBlockAttr, "")
 
     function flushBlock() {
-      if (!normalizeSegmentText(block.textContent || "")) {
+      if (
+        !normalizeSegmentText(block.textContent || "") &&
+        !Array.from(block.childNodes).some((node) => node.nodeType !== Node.TEXT_NODE)
+      ) {
         return
       }
 
@@ -96,7 +99,9 @@ export function createPageProfile(options = {}) {
   }
 
   function getTranslationProfile() {
-    const siteRoot = document.querySelector(siteRootSelector)
+    const siteRoot = Array.from(document.querySelectorAll(siteRootSelector)).find((candidate) =>
+      Number.isFinite(scoreRoot(candidate)),
+    )
     const requireSiteRoot = contentRules?.requireRoot === true
     const candidates = siteRoot || requireSiteRoot ? [] : getRootCandidates()
     let root = siteRoot || (requireSiteRoot ? null : document.body)

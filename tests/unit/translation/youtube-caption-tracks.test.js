@@ -93,17 +93,14 @@ test("native caption request resolver prefers the current proof-bearing track", 
 test("native caption request resolver rejects unrelated requests safely", () => {
   const advertisedUrl = "https://www.youtube.com/api/timedtext?v=current&lang=en&kind=asr"
 
-  assert.equal(
-    resolveNativeYoutubeCaptionRequestUrl(
-      [
-        "not a URL",
-        "http://www.youtube.com/api/timedtext?v=current&lang=en",
-        "https://m.youtube.com/api/timedtext?v=other&lang=en",
-      ],
-      advertisedUrl,
-    ),
-    "",
-  )
+  for (const candidate of [
+    "not a URL",
+    "http://www.youtube.com/api/timedtext?v=current&lang=en&kind=asr",
+    "https://attacker.example/api/timedtext?v=current&lang=en&kind=asr",
+    "https://www.youtube.com/watch?v=current&lang=en&kind=asr",
+    "https://m.youtube.com/api/timedtext?v=other&lang=en&kind=asr",
+  ])
+    assert.equal(resolveNativeYoutubeCaptionRequestUrl([candidate], advertisedUrl), "")
   assert.equal(resolveNativeYoutubeCaptionRequestUrl([], advertisedUrl), "")
   assert.equal(
     resolveNativeYoutubeCaptionRequestUrl(
@@ -143,4 +140,24 @@ test("caption track resolver falls back across direct and option sources", () =>
     trackSource: "none",
     timedTrackAvailable: false,
   })
+})
+
+test("manual selection does not match an earlier automatic caption track", () => {
+  const manual = track("en", { baseUrl: "https://www.youtube.com/api/timedtext?v=current&lang=en" })
+  const automatic = track("en", {
+    baseUrl: "https://www.youtube.com/api/timedtext?v=current&lang=en&kind=asr",
+    kind: "asr",
+  })
+  assert.equal(
+    resolveYoutubeCaptionTracks({
+      currentVideoId: "current",
+      selectedTrack: manual,
+      playerResponse: { videoId: "current", tracks: [automatic, manual] },
+    }).trackBaseUrl,
+    manual.baseUrl,
+  )
+  assert.equal(
+    resolveNativeYoutubeCaptionRequestUrl([automatic.baseUrl + "&pot=wrong"], manual.baseUrl),
+    "",
+  )
 })

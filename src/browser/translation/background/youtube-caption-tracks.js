@@ -53,7 +53,10 @@ function resolveNativeYoutubeCaptionRequestUrl(requestUrls, advertisedUrl) {
       matchParameters.some((name) => {
         const expected = advertised.searchParams.get(name)
 
-        return expected && candidate.searchParams.get(name) !== expected
+        return (
+          (name === "kind" || expected) &&
+          (candidate.searchParams.get(name) || "") !== (expected || "")
+        )
       })
     ) {
       continue
@@ -82,7 +85,7 @@ function matchesSelectedTrack(track, selectedTrack) {
     return false
   }
 
-  return !selectedKind || String(track?.kind || "") === selectedKind
+  return String(track?.kind || "") === selectedKind
 }
 
 function resolveYoutubeCaptionTracks(input = {}) {
