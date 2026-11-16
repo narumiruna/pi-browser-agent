@@ -29,6 +29,31 @@ for (const path of files) {
 }
 
 const manifest = JSON.parse(await readFile(join(root, "manifest.json"), "utf8"))
+const csp = manifest.content_security_policy?.extension_pages
+if (csp !== undefined) {
+  const directives =
+    typeof csp === "string" ? csp.split(";").map((part) => part.trim().split(/\s+/)) : []
+  const scripts = directives.filter(([name]) => name === "script-src")
+  if (
+    scripts.length !== 1 ||
+    !scripts[0].includes("'self'") ||
+    directives.some(
+      ([name, ...sources]) =>
+        name.startsWith("script-src") &&
+        sources.some((source) => !["'self'", "'wasm-unsafe-eval'"].includes(source)),
+    )
+  ) {
+    failures.push("manifest.json: scripts must stay packaged-only; JavaScript eval is forbidden")
+  }
+}
+const pdfDecoders = new Set([
+  "pdf/wasm/jbig2.wasm",
+  "pdf/wasm/openjpeg.wasm",
+  "pdf/wasm/qcms_bg.wasm",
+])
+for (const path of artifactFiles)
+  if (path.endsWith(".wasm") && !pdfDecoders.has(path))
+    failures.push(`${path}: unexpected WebAssembly asset`)
 // Chrome resolves native message references at runtime. Keep the placeholders intact.
 const nativeReferences = new Set()
 function collectNativeReferences(value) {

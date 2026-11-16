@@ -1,0 +1,48 @@
+{
+  "timedCues": [
+    {
+      "cueIndex": 0,
+      "startMs": 1000,
+      "durationMs": 3000,
+      "text": "Build reliable tools"
+    },
+    {
+      "cueIndex": 1,
+      "startMs": 4000,
+      "durationMs": 2500,
+      "text": "Keep captions synchronized"
+    }
+  ],
+  "mutations": [
+    {
+      "atMs": 1100,
+      "slot": "0",
+      "operation": "insert",
+      "text": "Build"
+    },
+    {
+      "atMs": 1450,
+      "slot": "0",
+      "operation": "in-place",
+      "text": "Build reliable"
+    },
+    {
+      "atMs": 1800,
+      "slot": "0",
+      "operation": "replace",
+      "text": "Build reliable tools"
+    },
+    {
+      "atMs": 4200,
+      "slot": "0",
+      "operation": "replace",
+      "text": "Keep captions"
+    },
+    {
+      "atMs": 4700,
+      "slot": "0",
+      "operation": "in-place",
+      "text": "Keep captions synchronized"
+    }
+  ]
+}

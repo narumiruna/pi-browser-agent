@@ -1,7 +1,15 @@
 import { expect, type Page, test } from "@playwright/test"
 import { type ExtensionHarness, launchExtensionHarness } from "./support/extension-harness.js"
 
-const names = ["Model", "Tools", "MCP", "Skills", "Appearance", "Instructions"] as const
+const names = [
+  "Model",
+  "Tools",
+  "MCP",
+  "Skills",
+  "Translation",
+  "Appearance",
+  "Instructions",
+] as const
 
 async function openSettings(harness: ExtensionHarness): Promise<Page> {
   const page = await harness.context.newPage()

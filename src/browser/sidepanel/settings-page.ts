@@ -22,6 +22,7 @@ import { initializeSettingsConfirmation } from "./settings-confirmation.js"
 import { initializeSettingsTabs } from "./settings-tabs.js"
 import { renderToolOptions } from "./settings-tools.js"
 import { initializeSkillsSettings } from "./skills-settings.js"
+import { initializeTranslationSettings } from "./translation-settings.js"
 import { applyAppearance, element, run, type SettingsSectionState, setErrorOutput } from "./ui.js"
 
 const THINKING_LABELS = {
@@ -93,6 +94,7 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
   let clearingApprovals = false
   let mcpState: SettingsSectionState = { hasDraft: () => false, isBusy: () => false }
   let skillState: SettingsSectionState = { hasDraft: () => false, isBusy: () => false }
+  let translationState = { hasDraft: () => false, isBusy: () => false, save: async () => {} }
   const confirmSettingsAction = initializeSettingsConfirmation()
   let authentication: AuthenticationController | undefined
   const configuration = new BrowserConfiguration((event) => authentication?.onAuthEvent(event))
@@ -257,7 +259,12 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
   }
 
   function hasGeneralChanges(): boolean {
-    return generalFormState() !== savedFormState || settingsModelChanged || settingsThinkingChanged
+    return (
+      generalFormState() !== savedFormState ||
+      settingsModelChanged ||
+      settingsThinkingChanged ||
+      translationState.hasDraft()
+    )
   }
 
   function isActionBusy(): boolean {
@@ -266,6 +273,7 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
       clearingApprovals ||
       mcpState.isBusy() ||
       skillState.isBusy() ||
+      translationState.isBusy() ||
       Boolean(authentication?.isBusy)
     )
   }
@@ -457,6 +465,7 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
       page.setAttribute("aria-busy", "true")
       saveButton.textContent = t("Saving…")
       try {
+        await translationState.save()
         const applyModelToActiveSession = settingsModelChanged
         await configuration.syncSettings()
         const applyThinkingToActiveSession =
@@ -521,6 +530,11 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
   populateSettings()
   mcpState = await initializeMcpSettings(confirmSettingsAction, updateSaveState)
   skillState = await initializeSkillsSettings(updateSaveState)
+  translationState = await initializeTranslationSettings(
+    configuration,
+    authentication,
+    updateSaveState,
+  )
   applyAppearance(configuration.appSettings.fontFamily, configuration.appSettings.fontSize)
   initializeSettingsTabs(page)
   page.hidden = false
@@ -531,6 +545,6 @@ export async function initializeSettingsPage(params: URLSearchParams): Promise<v
     event.preventDefault()
     event.returnValue = ""
   })
-  await authentication.refresh()
   closeButton.focus()
+  await authentication.refresh()
 }

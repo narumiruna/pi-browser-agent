@@ -1769,7 +1769,7 @@ test("opens Settings in a full browser tab and persists the selected interface f
   await configureProvider.click()
   await authMethodDialog.getByRole("button", { name: "Sign in with an account" }).click()
   await expect(authProviderDialog).toBeVisible()
-  await expect(authProviderDialog.locator("#auth-provider option")).toHaveCount(1)
+  await expect(authProviderDialog.locator("#auth-provider option")).toHaveCount(7)
   await expect(authProviderDialog.locator("#auth-provider")).toHaveValue("openai-codex")
   expect(
     await settingsTab.evaluate(

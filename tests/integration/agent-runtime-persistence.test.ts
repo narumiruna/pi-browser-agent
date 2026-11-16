@@ -622,7 +622,15 @@ describe("browser agent session persistence", () => {
     const codex = accountProviders.find((provider) => provider.id === "openai-codex")
     const openai = apiKeyProviders.find((provider) => provider.id === "openai")
 
-    expect(accountProviders.map((provider) => provider.id)).toEqual(["openai-codex"])
+    expect(accountProviders.map((provider) => provider.id)).toEqual([
+      "anthropic",
+      "github-copilot",
+      "kimi-coding",
+      "openai-codex",
+      "openrouter",
+      "radius",
+      "xai",
+    ])
     expect(codex?.authMethods).toEqual([{ type: "oauth", label: "OpenAI (ChatGPT Plus/Pro)" }])
     expect(apiKeyProviders.map((provider) => provider.id)).toContain("anthropic")
     expect(apiKeyProviders.map((provider) => provider.id)).not.toContain("openai-codex")
@@ -1106,7 +1114,7 @@ describe("browser agent session persistence", () => {
       },
     )
     const setup = configuration.login("anthropic", "api_key", controller.signal, vi.fn())
-    controller.abort()
+    controller.abort(cancelled)
     await expect(setup).rejects.toBe(cancelled)
     expect(configuration.isChangingAuth).toBe(false)
   })

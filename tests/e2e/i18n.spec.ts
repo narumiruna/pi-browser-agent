@@ -31,7 +31,15 @@ const sendLabels = {
 
 type Locale = keyof typeof sendLabels
 const locales = Object.keys(sendLabels) as Locale[]
-const sections = ["model", "tools", "mcp", "skills", "appearance", "instructions"] as const
+const sections = [
+  "model",
+  "tools",
+  "mcp",
+  "skills",
+  "translation",
+  "appearance",
+  "instructions",
+] as const
 const visibleControls =
   'button:visible, input:visible:not([aria-hidden="true"]), select:visible:not([aria-hidden="true"]), textarea:visible, summary:visible'
 
@@ -591,7 +599,7 @@ async function capture(page: Page, info: TestInfo, name: string): Promise<void> 
 }
 
 for (const locale of locales) {
-  test(`${locale} renders conversation, six Settings panels, and microphone labels`, async () => {
+  test(`${locale} renders conversation, seven Settings panels, and microphone labels`, async () => {
     const info = test.info()
     const harness = await launchExtensionHarness()
     try {
@@ -645,7 +653,7 @@ for (const locale of ["de", "ru", "zh-TW", "th", "hi"] as const) {
     ]) {
       test(`${locale} controls and dialogs at ${width}px / ${fontSize}px in ${colorScheme}`, async () => {
         const info = test.info()
-        // Each case checks every visible control in six panels and three dialogs, with captures.
+        // Each case checks every visible control in seven panels and three dialogs, with captures.
         test.setTimeout(90_000)
         const harness = await launchExtensionHarness()
         try {

@@ -1,6 +1,8 @@
 import type { Catalog } from "./en.js"
+import { translationCatalog } from "./translation.js"
 
 export default {
+  ...translationCatalog.hi,
   "Reset page pinch zoom before capturing a region": "क्षेत्र कैप्चर करने से पहले पेज का पिंच ज़ूम रीसेट करें",
   "Capture region": "क्षेत्र कैप्चर करें",
   "Cancel region capture": "क्षेत्र कैप्चर रद्द करें",

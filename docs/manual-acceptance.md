@@ -2,6 +2,18 @@
 
 Use a production build from `npm run build`. Do not test login with development output or record tokens, authorization codes, screenshots, or account IDs.
 
+## Translation integration — 2026-11-15
+
+Translation is additive: native menu actions, one Settings panel, and a separate PDF reader. The retained [translation evidence and handoff](translation.md#evidence-and-provenance) maps F01–F18 to destination tests. Local browser fixtures use the production artifact in a temporary copy, mocked providers, generated PDF bytes, real cross-origin comment frames, and actual worker stops. Native menu callbacks in that harness prove binding, not physical Chrome menu UI.
+
+Final local verification used Node.js 24.22.1, npm 11.19.1, Extension.js 4.1.39, and Chromium 158.0.8127.18. `npm run ci` passed with 2,892 unit/integration tests in 125 files, the browser-boundary probe, production build/typecheck, 259-file artifact audit, and all 398 unsharded E2E scenarios. The separate smoke command passed both scenarios; `git diff --check` passed. Existing bundle-size warnings remain. Earlier summary-target/Escape failures were corrected; a later overlapping Playwright run lost shared trace files, and the final isolated run passed without skipped scenarios.
+
+Review captures are available locally under `/tmp/pi-translator-review-captures/` (13 PNG files, not committed). Re-create them from the repository root after a successful build with `npx playwright test tests/e2e/translation-settings.spec.ts tests/e2e/settings-design.spec.ts --output=/tmp/pi-translator-review-captures`; all 18 scenarios passed. Keep this output separate from another running Playwright command.
+
+The packaged PDF-only proof rendered selectable generated pages on Chromium 158.0.8127.18 and Chrome 116.0.5845.96. Current-Chromium reader scenarios also compile the three packaged decoder WebAssembly modules under the extension CSP, reject malformed bytes, unlock an encrypted file after a wrong password, navigate six pages, confirm whole-document quota use, and invalidate old translations after a target change. This is not full-extension Chrome 116 acceptance; the [existing startup limitation](#known-minimum-version-baseline-limitation) is unchanged.
+
+The UI maintainer must physically operate blank-page and selection menus, permissions, toolbar/shortcut, and screen-reader focus/announcements. Authorized account owners must verify live sign-in, cancellation, refresh, and removal for supported providers without exposing secrets. **Do not release the changed Anthropic flow before live sign-in, cancellation, and refresh pass.** Other live provider-policy paths remain unverified. The authorized tester/CI maintainer must perform the at-least-20-minute real-time caption/provider soak described in [external acceptance](translation.md#external-acceptance-and-release-restrictions), without bypassing access controls or claiming local mocks resolve historical live incidents. Native-language and subjective visual review also remain external acceptance.
+
 ## Extension review fixes — 2026-11-12
 
 Automated verification used Node.js 26.10.0, npm 11.19.1, Extension.js 4.1.39, and Chromium 158.0.8127.18. The production source version remains 0.12.0; the patch changeset supplies the next release version.

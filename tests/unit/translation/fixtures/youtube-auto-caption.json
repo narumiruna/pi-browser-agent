@@ -1,0 +1,28 @@
+{
+  "events": [
+    {
+      "tStartMs": 1000,
+      "dDurationMs": 3000,
+      "segs": [
+        { "utf8": "Build" },
+        { "utf8": " reliable", "tOffsetMs": 400 },
+        { "utf8": " tools", "tOffsetMs": 900 }
+      ]
+    },
+    {
+      "tStartMs": 2400,
+      "dDurationMs": 1600,
+      "aAppend": 1,
+      "segs": [{ "utf8": "\n" }]
+    },
+    {
+      "tStartMs": 2500,
+      "dDurationMs": 2800,
+      "segs": [
+        { "utf8": "Keep" },
+        { "utf8": " captions", "tOffsetMs": 350 },
+        { "utf8": " synchronized", "tOffsetMs": 800 }
+      ]
+    }
+  ]
+}

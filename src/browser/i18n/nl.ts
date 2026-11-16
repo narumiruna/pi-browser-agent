@@ -1,6 +1,8 @@
 import type { Catalog } from "./en.js"
+import { translationCatalog } from "./translation.js"
 
 export default {
+  ...translationCatalog.nl,
   "Reset page pinch zoom before capturing a region":
     "Stel de knijpzoom van de pagina opnieuw in voordat u een gebied vastlegt",
   "Capture region": "Gebied vastleggen",

@@ -274,8 +274,17 @@ for (const exit of ["Escape", "Back", "Cancel"] as const) {
       await selectTab(reopened, "Instructions")
       await expect(reopened.locator("#system-prompt")).toHaveValue(initialPrompt)
       const cleanClosed = reopened.waitForEvent("close")
-      if (exit === "Escape") await reopened.keyboard.press("Escape")
-      else await reopened.locator(exit === "Back" ? "#close-settings" : "#cancel-settings").click()
+      if (exit === "Escape") {
+        // Escape closes on keydown. The Page can disappear before press sends keyup.
+        await reopened.keyboard.press("Escape").catch((error: unknown) => {
+          if (
+            !reopened.isClosed() ||
+            !String(error).includes("Target page, context or browser has been closed")
+          )
+            throw error
+        })
+      } else
+        await reopened.locator(exit === "Back" ? "#close-settings" : "#cancel-settings").click()
       await cleanClosed
       expect(harness.pageErrors).toEqual([])
     } finally {

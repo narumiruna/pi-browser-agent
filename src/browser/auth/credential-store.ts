@@ -98,11 +98,18 @@ export class ChromeCredentialStore implements CredentialStore {
     })
   }
 
-  delete(providerId: string, options?: AuthOperationOptions): Promise<void> {
+  delete(
+    providerId: string,
+    options?: AuthOperationOptions & { expectedType?: Credential["type"] },
+  ): Promise<void> {
     return this.enqueue(async () => {
       throwIfAborted(options)
       const all = await this.readAll()
-      if (!(providerId in all)) return
+      if (
+        !(providerId in all) ||
+        (options?.expectedType && all[providerId]?.type !== options.expectedType)
+      )
+        return
       delete all[providerId]
       if (Object.keys(all).length === 0) await this.area.remove(CREDENTIALS_KEY)
       else await this.area.set({ [CREDENTIALS_KEY]: all })

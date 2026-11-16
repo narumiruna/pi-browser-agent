@@ -7,7 +7,7 @@ const html = readFileSync(
   new URL("../../src/browser/sidepanel/index.html", import.meta.url),
   "utf8",
 )
-const names = ["Model", "Tools", "MCP", "Skills", "Appearance", "Instructions"]
+const names = ["Model", "Tools", "MCP", "Skills", "Translation", "Appearance", "Instructions"]
 const environments: JSDOM[] = []
 
 afterEach(() => {
@@ -53,7 +53,7 @@ function expectActive(env: ReturnType<typeof setup>, name: string): void {
 }
 
 describe("Settings tabs", () => {
-  test("links six tabs to named panels and selects Model by default", () => {
+  test("links seven tabs to named panels and selects Model by default", () => {
     const env = setup()
     expect(env.tabs.map((tab) => tab.textContent)).toEqual(names)
     expect(env.panels).toHaveLength(names.length)
@@ -191,8 +191,8 @@ describe("Settings tabs", () => {
     env.tab("Skills").click()
     env.tab("Skills").focus()
     for (const [width, key, initial, expected] of [
-      [799, "ArrowRight", "Skills", "Appearance"],
-      [800, "ArrowUp", "Appearance", "Skills"],
+      [799, "ArrowRight", "Skills", "Translation"],
+      [800, "ArrowUp", "Translation", "Skills"],
     ] as const) {
       env.resize(width)
       const event = new env.dom.window.KeyboardEvent("keydown", {
@@ -221,9 +221,9 @@ describe("Settings tabs", () => {
       .dispatchEvent(
         new env.dom.window.KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
       )
-    expect(scroll.mock.contexts.at(-1)).toBe(env.tab("Appearance"))
+    expect(scroll.mock.contexts.at(-1)).toBe(env.tab("Translation"))
     env.resize(320)
-    expect(scroll.mock.contexts.at(-1)).toBe(env.tab("Appearance"))
+    expect(scroll.mock.contexts.at(-1)).toBe(env.tab("Translation"))
     expect(scroll).toHaveBeenCalledTimes(3)
     for (const [options] of scroll.mock.calls) {
       expect(options).toEqual({ block: "nearest", inline: "nearest" })

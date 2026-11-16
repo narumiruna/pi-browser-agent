@@ -119,7 +119,11 @@ describe("service worker visible-tab targeting", () => {
           }),
         },
       },
-      permissions: { contains, getAll: vi.fn(async () => ({ origins: [] })) },
+      permissions: {
+        contains,
+        getAll: vi.fn(async () => ({ origins: [] })),
+        onRemoved: { addListener: vi.fn() },
+      },
       bookmarks: { search: searchBookmarks, getRecent: getRecentBookmarks },
       runtime: {
         id: "test-extension",
@@ -781,8 +785,26 @@ describe("service worker visible-tab targeting", () => {
       })
     })
 
-    // Worker initialization creates the menu without requiring installation/update.
-    await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(1))
+    const selectionMenus = () =>
+      create.mock.calls.filter(
+        ([properties]) =>
+          (properties as chrome.contextMenus.CreateProperties).id ===
+          "pi-browser-agent-send-selection",
+      )
+    expect(
+      create.mock.calls.map(
+        ([properties]) => (properties as chrome.contextMenus.CreateProperties).id,
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        "pi-translate-page",
+        "pi-translate-selection",
+        "pi-translate-youtube",
+        "pi-translate-pdf",
+      ]),
+    )
+    // Worker initialization creates all menus without requiring installation/update.
+    await vi.waitFor(() => expect(selectionMenus()).toHaveLength(1))
     expect(create).toHaveBeenLastCalledWith(
       expect.objectContaining({
         id: "pi-browser-agent-send-selection",
@@ -792,14 +814,14 @@ describe("service worker visible-tab targeting", () => {
       expect.any(Function),
     )
     listeners.installed?.()
-    await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(2))
+    await vi.waitFor(() => expect(selectionMenus()).toHaveLength(2))
     const { translate } = await import("../../src/browser/i18n/index.js")
     local.piBrowserAgentSettings = { language: "ja" }
     listeners.storageChanged?.(
       { piBrowserAgentSettings: { oldValue: { language: "en" }, newValue: { language: "ja" } } },
       "local",
     )
-    await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(3))
+    await vi.waitFor(() => expect(selectionMenus()).toHaveLength(3))
     expect(create).toHaveBeenLastCalledWith(
       expect.objectContaining({
         id: "pi-browser-agent-send-selection",
@@ -809,7 +831,7 @@ describe("service worker visible-tab targeting", () => {
       expect.any(Function),
     )
     listeners.startup?.()
-    await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(4))
+    await vi.waitFor(() => expect(selectionMenus()).toHaveLength(4))
     // Unrelated settings and non-local changes cannot request permissions or rebuild the menu.
     listeners.storageChanged?.(
       {
@@ -825,13 +847,13 @@ describe("service worker visible-tab targeting", () => {
       "session",
     )
     await new Promise((resolve) => setTimeout(resolve, 0))
-    expect(create).toHaveBeenCalledTimes(4)
+    expect(selectionMenus()).toHaveLength(4)
     local.piBrowserAgentSettings = { language: "auto" }
     listeners.storageChanged?.(
       { piBrowserAgentSettings: { oldValue: { language: "ja" }, newValue: { language: "auto" } } },
       "local",
     )
-    await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(5))
+    await vi.waitFor(() => expect(selectionMenus()).toHaveLength(5))
     expect(create).toHaveBeenLastCalledWith(
       expect.objectContaining({
         id: "pi-browser-agent-send-selection",

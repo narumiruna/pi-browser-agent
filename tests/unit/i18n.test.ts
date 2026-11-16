@@ -4,7 +4,10 @@ import { afterEach, describe, expect, test, vi } from "vitest"
 import { BROWSER_TOOL_NAMES } from "../../src/browser/agent/browser-tool-names.js"
 import { BROWSER_TOOL_OPTIONS } from "../../src/browser/agent/browser-tools.js"
 import { catalogs } from "../../src/browser/i18n/catalogs.js"
-import { CONTEXT_MENU_TITLES } from "../../src/browser/i18n/context-menu.js"
+import {
+  CONTEXT_MENU_TITLES,
+  TRANSLATION_CONTEXT_MENU_TITLES,
+} from "../../src/browser/i18n/context-menu.js"
 import {
   applyDocumentLanguage,
   initializeDocumentLanguage,
@@ -109,6 +112,18 @@ describe("complete bundled catalogs", () => {
     expect(Object.keys(CONTEXT_MENU_TITLES).sort()).toEqual([...codes].sort())
     for (const { code } of LOCALES)
       expect(CONTEXT_MENU_TITLES[code]).toBe(translate(code, "Send selection to Pi Browser Agent"))
+  })
+
+  test("keeps all translation worker titles aligned with the 18 application catalogs", () => {
+    const keys = [
+      "Translate this page",
+      "Translate selected text",
+      "Translate YouTube subtitles",
+      "Translate PDF",
+    ] as const
+    expect(Object.keys(TRANSLATION_CONTEXT_MENU_TITLES).sort()).toEqual([...codes].sort())
+    for (const { code } of LOCALES)
+      expect(TRANSLATION_CONTEXT_MENU_TITLES[code]).toEqual(keys.map((key) => translate(code, key)))
   })
 
   test("ships exactly the approved native catalogs with matching metadata messages", async () => {

@@ -1,6 +1,8 @@
 import type { Catalog } from "./en.js"
+import { translationCatalog } from "./translation.js"
 
 export default {
+  ...translationCatalog.tr,
   "Reset page pinch zoom before capturing a region":
     "Bir bölge yakalamadan önce sayfanın sıkıştırma yakınlaştırmasını sıfırlayın",
   "Capture region": "Bölgeyi yakala",

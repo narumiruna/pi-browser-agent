@@ -1,6 +1,8 @@
 import type { Catalog } from "./en.js"
+import { translationCatalog } from "./translation.js"
 
 export default {
+  ...translationCatalog.th,
   "Reset page pinch zoom before capturing a region": "รีเซ็ตการซูมด้วยนิ้วของหน้าก่อนจับภาพพื้นที่",
   "Capture region": "จับภาพพื้นที่",
   "Cancel region capture": "ยกเลิกการจับภาพพื้นที่",

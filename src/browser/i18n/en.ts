@@ -1,5 +1,8 @@
 // English source messages are stable catalog keys. Use them only for trusted presentation.
+import { englishTranslation } from "./translation.js"
+
 export const english = {
+  ...englishTranslation,
   "Reset page pinch zoom before capturing a region":
     "Reset page pinch zoom before capturing a region",
   "Capture region": "Capture region",

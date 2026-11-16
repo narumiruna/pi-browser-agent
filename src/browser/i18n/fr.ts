@@ -1,6 +1,8 @@
 import type { Catalog } from "./en.js"
+import { translationCatalog } from "./translation.js"
 
 export default {
+  ...translationCatalog.fr,
   "Reset page pinch zoom before capturing a region":
     "Réinitialisez le zoom par pincement de la page avant de capturer une zone",
   "Capture region": "Capturer une zone",

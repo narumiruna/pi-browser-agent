@@ -28,7 +28,8 @@ describe("browser pi-ai providers", () => {
     expect(ids).toEqual(
       builtinProviders()
         .map((provider) => provider.id)
-        .filter((id) => !BROWSER_EXCLUDED_PROVIDERS.some((excluded) => excluded === id)),
+        .filter((id) => !BROWSER_EXCLUDED_PROVIDERS.some((excluded) => excluded === id))
+        .concat("openai-compatible"),
     )
     expect(ids).toContain("azure")
     expect(ids).not.toContain("azure-openai-responses")
@@ -44,8 +45,19 @@ describe("browser pi-ai providers", () => {
     expect(codex?.auth.apiKey).toBeUndefined()
     expect(openai?.auth.apiKey?.login).toBeDefined()
     expect(openai?.auth.oauth).toBeUndefined()
-    for (const provider of providers.filter((candidate) => candidate.id !== "openai-codex")) {
-      expect(provider.auth.oauth, provider.id).toBeUndefined()
+    const accountProviders = [
+      "anthropic",
+      "github-copilot",
+      "kimi-coding",
+      "openai-codex",
+      "openrouter",
+      "radius",
+      "xai",
+    ]
+    for (const provider of providers) {
+      if (accountProviders.includes(provider.id))
+        expect(provider.auth.oauth, provider.id).toBeDefined()
+      else expect(provider.auth.oauth, provider.id).toBeUndefined()
     }
   })
 

@@ -129,6 +129,8 @@
       <label for="prompt" class="visually-hidden">Message</label>
       <div class="page-context" id="page-context" aria-live="polite">
         <span id="page-status">Checking current page…</span>
+        <button id="translation-approve" type="button" hidden>Start translation and allow access</button>
+        <button id="translation-stop" type="button" class="icon-button" aria-label="Stop translation" title="Stop translation" hidden>■</button>
       </div>
       <div class="composer-shell">
         <div
@@ -317,6 +319,15 @@
           tabindex="-1"
         ><svg class="radix-icon" viewBox="0 0 15 15" aria-hidden="true"><path d="m7.5 1 2 4.5L14 7.5l-4.5 2-2 4.5-2-4.5L1 7.5l4.5-2Z"/></svg>Skills</button>
         <button
+          id="settings-tab-translation"
+          class="settings-tab"
+          type="button"
+          role="tab"
+          aria-controls="settings-panel-translation"
+          aria-selected="false"
+          tabindex="-1"
+        >Translation</button>
+        <button
           id="settings-tab-appearance"
           class="settings-tab"
           type="button"
@@ -336,6 +347,10 @@
         ><svg class="radix-icon" viewBox="0 0 15 15" aria-hidden="true"><path d="M3 1.5h6l3 3v9H3Zm6 0v3h3M5 7h5m-5 3h5"/></svg>Instructions</button>
       </div>
       <main class="settings-content">
+        <!-- biome-ignore lint/a11y/noNoninteractiveTabindex: Persistent keyboard-accessible settings panel. -->
+        <div id="settings-panel-translation" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-translation" tabindex="0" hidden>
+          <section class="settings-section" aria-labelledby="translation-title"><h2 id="translation-title">Translation</h2><div id="translation-settings"></div></section>
+        </div>
         <!-- biome-ignore lint/a11y/noNoninteractiveTabindex: Tab panels provide keyboard access to their headings and help text. -->
         <div id="settings-panel-model" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-model" tabindex="0">
           <section class="settings-section" aria-labelledby="model-title">

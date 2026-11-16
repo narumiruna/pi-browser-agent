@@ -1,6 +1,8 @@
 import type { Catalog } from "./en.js"
+import { translationCatalog } from "./translation.js"
 
 export default {
+  ...translationCatalog["zh-TW"],
   "Reset page pinch zoom before capturing a region": "擷取區域前請重設頁面的雙指縮放",
   "Capture region": "擷取區域",
   "Cancel region capture": "取消區域擷取",
