@@ -3,7 +3,11 @@
 // If you need additional types, consider creating a new *.d.ts file and
 // referencing it in the "include" array of your tsconfig.json file.
 // See https://www.typescriptlang.org/tsconfig#include for more information.
-/// <reference types="extension/types" />
+/// <reference types="extension/types/legacy" />
+
+// This project installs @types/chrome, so it types the extension APIs.
+// Remove that package to get chrome-types and the native browser namespace.
+/// <reference types="chrome" />
 
 // Polyfill types for browser.* APIs
 /// <reference types="extension/types/polyfill" />
