@@ -1,5 +1,11 @@
 # pi-browser-agent
 
+## 0.12.2
+
+### Patch Changes
+
+- 12e6100: Update the Pi runtime, HTML sanitizer, Markdown parser, and schema validation dependencies.
+
 ## 0.12.1
 
 ### Patch Changes
