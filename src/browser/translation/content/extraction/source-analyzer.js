@@ -134,6 +134,20 @@ export function createSourceAnalyzer(options = {}) {
     return false
   }
 
+  function isVisuallyHiddenLabel(style) {
+    const fullyClipped =
+      style.clip === "rect(0px, 0px, 0px, 0px)" ||
+      style.clipPath === "inset(50%)" ||
+      style.clipPath === "inset(0px 100% 100% 0px)"
+    return (
+      fullyClipped &&
+      style.display !== "contents" &&
+      (style.position === "absolute" || style.position === "fixed") &&
+      Number.parseFloat(style.width) <= 1 &&
+      Number.parseFloat(style.height) <= 1
+    )
+  }
+
   function isExcludedSource(element, context) {
     if (isEditableSource(element)) return true
     if (
@@ -152,6 +166,7 @@ export function createSourceAnalyzer(options = {}) {
         style.display === "none" ||
         style.contentVisibility === "hidden" ||
         style.opacity === "0" ||
+        isVisuallyHiddenLabel(style) ||
         (current === element && ["hidden", "collapse"].includes(style.visibility))
       )
         return true

@@ -25,6 +25,49 @@ test("translation sends public prose but excludes hidden and editable descendant
   }
 })
 
+test("visually hidden accessibility labels do not produce visible translations", async () => {
+  const { harness } = await setupTranslation()
+  const inputs: string[] = []
+  try {
+    harness.context.on("request", (request) => {
+      if (request.url().includes("/codex/responses")) inputs.push(request.postData() ?? "")
+    })
+    const page = harness.fixturePage
+    await page.evaluate(() => {
+      document.body.innerHTML = `
+        <style>
+          .primer, .legacy, .modern { position: absolute; width: 1px; height: 1px; overflow: hidden; }
+          .primer { clip-path: inset(0 100% 100% 0); }
+          .legacy { clip: rect(0, 0, 0, 0); }
+          .modern { clip-path: inset(50%); }
+        </style>
+        <main><article>
+          <h2 id="accessible-heading" class="primer">ACCESSIBILITY_HEADING for assistive technology only</h2>
+          <p>Visible neighboring prose remains eligible for page translation.
+            <span class="legacy">ACCESSIBILITY_LEGACY_LABEL</span>
+            <span style="display: contents"><span class="modern"><span>ACCESSIBILITY_LABEL</span></span>
+              Visible boxless prose remains eligible.</span>
+          </p>
+          <p style="clip-path: inset(0 8px 0 0)">Partly clipped visible prose remains eligible for page translation.</p>
+        </article></main>`
+    })
+    await menu(harness, "pi-translate-page")
+    const notes = page.locator('[data-ot-role="note-body"][data-state="ready"]')
+    await expect(notes.filter({ hasText: "Partly clipped visible prose" })).toHaveCount(1)
+    await expect(notes.filter({ hasText: "Visible neighboring prose" })).toHaveCount(1)
+    const input = inputs.join("\n")
+    expect(input).not.toContain("ACCESSIBILITY_")
+    expect(input).toContain("Visible boxless prose")
+    await expect(notes).toHaveCount(2)
+    await expect(page.locator("#accessible-heading")).toHaveText(
+      "ACCESSIBILITY_HEADING for assistive technology only",
+    )
+    expect(harness.pageErrors).toEqual([])
+  } finally {
+    await harness.close()
+  }
+})
+
 test("design-mode documents make no translation request", async () => {
   const { harness, requests } = await setupTranslation()
   try {

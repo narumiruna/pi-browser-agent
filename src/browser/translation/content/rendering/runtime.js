@@ -130,6 +130,71 @@ export function createContentRenderer(options = {}) {
     return replacement
   }
 
+  function measureNoteColumn(note, target) {
+    const parent = target.parentElement
+    if (!parent || note.parentElement !== parent) return null
+    const style = window.getComputedStyle(target)
+    const parentStyle = window.getComputedStyle(parent)
+    if (
+      style.writingMode !== "horizontal-tb" ||
+      parentStyle.writingMode !== "horizontal-tb" ||
+      style.display.startsWith("inline") ||
+      style.float !== "none" ||
+      ["absolute", "fixed", "sticky"].includes(style.position) ||
+      parentStyle.columnCount !== "auto" ||
+      parentStyle.columnWidth !== "auto" ||
+      !parent.offsetWidth
+    )
+      return null
+
+    const parentBox = parent.getBoundingClientRect()
+    const targetBox = target.getBoundingClientRect()
+    const scale = parentBox.width / parent.offsetWidth
+    if (!scale || !targetBox.width) return null
+    const leftPadding = Number.parseFloat(parentStyle.paddingLeft)
+    const rightPadding = Number.parseFloat(parentStyle.paddingRight)
+    const available = parent.clientWidth - leftPadding - rightPadding
+    const parentLeft = parent.clientLeft + leftPadding - parent.scrollLeft
+    const targetScale = (target.currentCSSZoom ?? 1) / (parent.currentCSSZoom ?? 1)
+    const leftInset =
+      Number.parseFloat(style.paddingLeft) + Number.parseFloat(style.borderLeftWidth)
+    const rightInset =
+      Number.parseFloat(style.paddingRight) + Number.parseFloat(style.borderRightWidth)
+    const left = (targetBox.left - parentBox.left) / scale - parentLeft + leftInset * targetScale
+    const right = (targetBox.right - parentBox.left) / scale - parentLeft - rightInset * targetScale
+    const rtl = parentStyle.direction === "rtl"
+    const start = Math.max(0, rtl ? available - right : left)
+    const size = Math.min(available, rtl ? available - left : right) - start
+    return size > 0 ? { start, size } : null
+  }
+
+  const columnUpdates = new Map()
+
+  function scheduleNoteColumn(note, target) {
+    if (!window.requestAnimationFrame || SubtitleApi.isSubtitleProfile(ACTIVE_SITE_PROFILE)) return
+    const alreadyScheduled = columnUpdates.size > 0
+    columnUpdates.set(note, target)
+    if (alreadyScheduled) return
+    window.requestAnimationFrame(() => {
+      // Read all source boxes before changing any note styles.
+      const columns = Array.from(columnUpdates, ([note, target]) => [
+        note,
+        target && note.isConnected ? measureNoteColumn(note, target) : null,
+      ])
+      columnUpdates.clear()
+      for (const [note, column] of columns) {
+        note.toggleAttribute("data-ot-note-aligned", Boolean(column))
+        if (column) {
+          note.style.setProperty("--ot-note-inline-start", `${column.start}px`)
+          note.style.setProperty("--ot-note-inline-size", `${column.size}px`)
+        } else {
+          note.style.removeProperty("--ot-note-inline-start")
+          note.style.removeProperty("--ot-note-inline-size")
+        }
+      }
+    })
+  }
+
   function insertNoteForTarget(insertionTarget, note, sourceElement = insertionTarget) {
     const appendInside = shouldAppendNoteInsideTarget(insertionTarget)
     if (!appendInside && !canInsertSiblingNote(insertionTarget)) {
@@ -143,6 +208,8 @@ export function createContentRenderer(options = {}) {
       if (note.parentElement !== insertionTarget || insertionTarget.lastChild !== note) {
         insertionTarget.appendChild(note)
       }
+      if (note.hasAttribute?.("data-ot-note-aligned") || columnUpdates.has(note))
+        scheduleNoteColumn(note, null)
       return note
     }
     note.style?.removeProperty("display")
@@ -161,6 +228,7 @@ export function createContentRenderer(options = {}) {
     if (adjacent !== note) {
       insertionTarget.insertAdjacentElement(reversed ? "beforebegin" : "afterend", note)
     }
+    scheduleNoteColumn(note, insertionTarget)
     return note
   }
 

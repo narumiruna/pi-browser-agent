@@ -125,6 +125,12 @@ export function applyContentStyles(options = {}) {
         position: static;
       }
 
+      .translation[${ROOT_ATTR}="note"][data-ot-note-aligned] {
+        align-self: start;
+        inline-size: min(${inlineAppearance.maxWidthPx}px, var(--ot-note-inline-size), calc(100% - var(--ot-note-inline-start)));
+        margin-inline-start: var(--ot-note-inline-start);
+      }
+
       .translation[${ROOT_ATTR}="note"][data-phase="ready"] {
         animation: ${fadeAnimation};
       }

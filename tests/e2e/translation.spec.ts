@@ -104,6 +104,61 @@ test("hidden and editable fields stay out of model input and table/flex layout r
   }
 })
 
+test("page notes follow an inset article column and reflow when it narrows", async () => {
+  const { harness } = await setup()
+  try {
+    const page = harness.fixturePage
+    await page.setViewportSize({ width: 1220, height: 780 })
+    await page.evaluate(() => {
+      document.body.innerHTML = `
+        <style>
+          article { border: 3px solid transparent; padding-inline: 16px; }
+          article p { box-sizing: border-box; margin-inline: auto 0; }
+          #inset-source { width: 66%; padding-inline: 12px; }
+          #wide-source { width: min(96%, 920px); }
+          @media (max-width: 600px) {
+            #inset-source, #wide-source { width: 100%; }
+          }
+        </style>
+        <main><article>
+          <p id="inset-source">This right-inset article paragraph uses a narrower text column than its parent. A translated note should wrap within that same column.</p>
+          <div dir="rtl"><p id="wide-source">This wider article paragraph confirms that the appearance setting still limits the maximum width of translation notes without moving their start edge.</p></div>
+        </article></main>`
+    })
+    await menu(harness, "pi-translate-page")
+    await expect(page.locator('[data-ot-role="note-body"][data-state="ready"]')).toHaveCount(2)
+
+    async function expectColumn(selector: string, padding: number, rtl = false) {
+      const source = page.locator(selector)
+      const note = page.locator(`${selector} + [data-ot-role="note"]`)
+      await expect(note).toContainText("譯文")
+      await expect
+        .poll(async () => {
+          const [sourceBox, noteBox] = await Promise.all([source.boundingBox(), note.boundingBox()])
+          if (!sourceBox || !noteBox) return Number.POSITIVE_INFINITY
+          const startDifference = rtl
+            ? sourceBox.x + sourceBox.width - (noteBox.x + noteBox.width)
+            : noteBox.x - sourceBox.x
+          return Math.max(
+            Math.abs(startDifference - padding),
+            Math.abs(noteBox.width - Math.min(sourceBox.width - padding * 2, 832)),
+          )
+        })
+        .toBeLessThan(1.5)
+    }
+
+    await expectColumn("#inset-source", 12)
+    await expectColumn("#wide-source", 0, true)
+    await page.setViewportSize({ width: 390, height: 780 })
+    await expectColumn("#inset-source", 12)
+    await expectColumn("#wide-source", 0, true)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390)
+    expect(harness.pageErrors).toEqual([])
+  } finally {
+    await harness.close()
+  }
+})
+
 test("selection translation uses the floating panel and ignores results after dismissal", async () => {
   const { harness } = await setup()
   try {
