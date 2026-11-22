@@ -1,6 +1,6 @@
 # Chrome Web Store Listing — Pi Browser Agent
 
-Last updated: 2026-11-15
+Last updated: 2026-11-22
 
 Status: draft. This file does not establish store readiness or a prior store submission.
 
@@ -16,7 +16,7 @@ Status: draft. This file does not establish store readiness or a prior store sub
 
 Ask questions about the page you are viewing and complete browser tasks with an AI provider you select.
 
-Read page text, point to an element, attach images, capture a visible region, or draw on a page before sending it. Translate pages, selected text, YouTube captions, or explicitly selected/approved PDFs from the native context menu, with independent translation settings. Review protected browser actions before they run. Optional bookmark access lets the assistant find matching or recent bookmarks. You can also configure remote tools or import reviewed text skills.
+Read page text, point to an element, attach images, capture a visible region, or draw on a page before sending it. Translate pages, selected text, YouTube captions, or explicitly selected/approved PDFs from the native context menu, with independent translation settings. Inline translations follow the width of the original text column where possible. Review protected browser actions before they run. Optional bookmark access lets the assistant find matching or recent bookmarks. You can also configure remote tools or import reviewed text skills.
 
 Open the Side Panel, choose a provider and model, add a credential, and send a prompt. Conversations remain in your Chrome profile until removed. Close other conversation windows before clearing all session data.
 
@@ -94,7 +94,7 @@ The source manifest remains at `0.12.0`. The release workflow assigns the next v
 
 | Version    | Date       | Changes                                                                                                                                                 | Status                                                             |
 | ---------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| Next minor | 2026-11-15 | Integrate native-menu page/selection/subtitle/PDF translation, independent settings, local PDF assets, and shared browser account adapters.             | Draft; live Anthropic and other retained release gates remain open |
+| Next minor | 2026-11-22 | Add page, selection, subtitle, and PDF translation with independent settings and inline page notes that follow the source column.                        | Draft; live Anthropic and other retained release gates remain open |
 | Next patch | 2026-11-12 | Fix confirmation dismissal, page-text privacy, context invalidation, cancellation, conversation clearing, selected-text delivery, and credential flows. | Draft; not submitted                                               |
 
 ## Review notes

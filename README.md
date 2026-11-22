@@ -53,7 +53,7 @@ Pi Browser Agent registers the browser-compatible built-in `pi-ai` providers and
 
 ## Translation
 
-Right-click an empty page area and choose **Translate this page**, select text and choose **Translate selected text**, or use **Translate YouTube subtitles** on a watch page. These actions translate inline without submitting chat. Page translations follow the source text column where possible. **Translate PDF** opens a separate reader while retaining the original tab; **Choose PDF** supports selected local or downloaded authenticated files.
+Right-click an empty page area and choose **Translate this page**, select text and choose **Translate selected text**, or use **Translate YouTube subtitles** on a watch page. These actions translate inline without submitting chat. Page translations use the start and width of the source text column where possible, up to the appearance width limit. **Translate PDF** opens a separate reader while retaining the original tab; **Choose PDF** supports selected local or downloaded authenticated files.
 
 **Settings → Translation** has independent provider/model/thinking and target-language choices, templates, appearance previews, subtitle options, disabled domains, and PDF cache clearing. The default target is Traditional Chinese (Taiwan). Missing access requires an explicit approval action. Page extraction excludes hidden content, including labels hidden by commonly used screen-reader CSS, and editor drafts. Use the compact Stop control to cancel; navigation and owner closure cannot silently resume old requests. See [translation, limits, evidence, and release handoff](docs/translation.md).
 

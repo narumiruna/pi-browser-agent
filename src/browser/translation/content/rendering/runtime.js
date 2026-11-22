@@ -131,10 +131,24 @@ export function createContentRenderer(options = {}) {
   }
 
   function measureNoteColumn(note, target) {
-    const parent = target.parentElement
-    if (!parent || note.parentElement !== parent) return null
+    const siblingParent = target.parentElement
+    if (!siblingParent || note.parentElement !== siblingParent) return null
     const style = window.getComputedStyle(target)
-    const parentStyle = window.getComputedStyle(parent)
+    let parent = siblingParent
+    let parentStyle = window.getComputedStyle(parent)
+    const direction = parentStyle.direction
+    // A display: contents wrapper is in the DOM but has no box to measure.
+    while (parentStyle.display === "contents" && parent.parentElement) {
+      parent = parent.parentElement
+      parentStyle = window.getComputedStyle(parent)
+    }
+    if (
+      parent !== siblingParent &&
+      (!["block", "flow-root", "list-item", "table-cell"].includes(parentStyle.display) ||
+        parentStyle.direction !== direction ||
+        note.currentCSSZoom !== parent.currentCSSZoom)
+    )
+      return null
     if (
       style.writingMode !== "horizontal-tb" ||
       parentStyle.writingMode !== "horizontal-tb" ||

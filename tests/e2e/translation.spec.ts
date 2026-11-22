@@ -114,19 +114,21 @@ test("page notes follow an inset article column and reflow when it narrows", asy
         <style>
           article { border: 3px solid transparent; padding-inline: 16px; }
           article p { box-sizing: border-box; margin-inline: auto 0; }
-          #inset-source { width: 66%; padding-inline: 12px; }
+          #inset-source, #wrapped-source { width: 66%; padding-inline: 12px; }
           #wide-source { width: min(96%, 920px); }
+          .contents { display: contents; }
           @media (max-width: 600px) {
-            #inset-source, #wide-source { width: 100%; }
+            #inset-source, #wrapped-source, #wide-source { width: 100%; }
           }
         </style>
         <main><article>
           <p id="inset-source">This right-inset article paragraph uses a narrower text column than its parent. A translated note should wrap within that same column.</p>
+          <div class="contents"><div class="contents"><p id="wrapped-source">This inset paragraph is nested inside wrappers that do not create layout boxes. Its translated note should still use the same text column.</p></div></div>
           <div dir="rtl"><p id="wide-source">This wider article paragraph confirms that the appearance setting still limits the maximum width of translation notes without moving their start edge.</p></div>
         </article></main>`
     })
     await menu(harness, "pi-translate-page")
-    await expect(page.locator('[data-ot-role="note-body"][data-state="ready"]')).toHaveCount(2)
+    await expect(page.locator('[data-ot-role="note-body"][data-state="ready"]')).toHaveCount(3)
 
     async function expectColumn(selector: string, padding: number, rtl = false) {
       const source = page.locator(selector)
@@ -148,9 +150,11 @@ test("page notes follow an inset article column and reflow when it narrows", asy
     }
 
     await expectColumn("#inset-source", 12)
+    await expectColumn("#wrapped-source", 12)
     await expectColumn("#wide-source", 0, true)
     await page.setViewportSize({ width: 390, height: 780 })
     await expectColumn("#inset-source", 12)
+    await expectColumn("#wrapped-source", 12)
     await expectColumn("#wide-source", 0, true)
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390)
     expect(harness.pageErrors).toEqual([])
